@@ -1,0 +1,37 @@
+[project]
+name = "jshookz"
+version = "0.1.0"
+description = "Deterministic JavaScript/TypeScript runtime and compiler for Xahau Hooks"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Nicholas Dudfield" }]
+requires-python = ">=3.10"
+dependencies = [
+    # wasmtime-py publishes independently from the native C API patch release;
+    # both product paths are pinned to Wasmtime major 47.
+    "wasmtime==47.0.1",
+]
+
+[project.urls]
+Repository = "https://github.com/sublimator/jshookz"
+Issues = "https://github.com/sublimator/jshookz/issues"
+
+[project.scripts]
+jshookz = "jshookz.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jshookz"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-timeout>=2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+timeout = 60

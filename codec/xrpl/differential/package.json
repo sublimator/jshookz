@@ -1,0 +1,16 @@
+{
+  "name": "jshookz-xrpl-codec-differential",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Node-side ripple-binary-codec differential oracle for the jshookz XRPL/Xahau codec.",
+  "license": "MIT",
+  "scripts": {
+    "decode-fixtures": "node decode-fixtures.cjs"
+  },
+  "dependencies": {
+    "ripple-binary-codec": "2.4.1"
+  },
+  "overrides": {
+    "ws": "8.21.0"
+  }
+}

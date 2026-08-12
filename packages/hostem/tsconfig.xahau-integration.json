@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "outDir": "../../build/xahau-provider/hooks",
+    "rootDir": "examples",
+    "skipLibCheck": false,
+    "strict": true,
+    "target": "ES2023"
+  },
+  "files": [
+    "../jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
+    "examples/xahau-accept.hook.ts",
+    "examples/xahau-v1-surface.hook.ts"
+  ]
+}

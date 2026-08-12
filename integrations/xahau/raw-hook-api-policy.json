@@ -1,0 +1,17 @@
+{
+  "functions": [
+    "accept",
+    "rollback",
+    "ledger_seq",
+    "ledger_last_time",
+    "ledger_last_hash",
+    "otxn_type",
+    "hook_account",
+    "trace",
+    "state",
+    "state_set",
+    "prepare",
+    "etxn_reserve",
+    "emit"
+  ]
+}

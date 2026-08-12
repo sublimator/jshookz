@@ -1,0 +1,201 @@
+{
+  "source": {
+    "repository": "https://github.com/Xahau/xahaud",
+    "commit": "bb244ef7729503a0317bcff0f8fdaa93ca5cb7d2",
+    "path": "include/xrpl/hook/hook_api.macro",
+    "macro_function_count": 75
+  },
+  "selected": [
+    {
+      "name": "accept",
+      "return_type": "int64_t",
+      "param_types": [
+        "uint32_t",
+        "uint32_t",
+        "int64_t"
+      ],
+      "amendment": null,
+      "wasm_signature": [
+        "0x7e",
+        "0x7f",
+        "0x7f",
+        "0x7e"
+      ]
+    },
+    {
+      "name": "rollback",
+      "return_type": "int64_t",
+      "param_types": [
+        "uint32_t",
+        "uint32_t",
+        "int64_t"
+      ],
+      "amendment": null,
+      "wasm_signature": [
+        "0x7e",
+        "0x7f",
+        "0x7f",
+        "0x7e"
+      ]
+    },
+    {
+      "name": "ledger_seq",
+      "return_type": "int64_t",
+      "param_types": [],
+      "amendment": null,
+      "wasm_signature": [
+        "0x7e"
+      ]
+    },
+    {
+      "name": "ledger_last_time",
+      "return_type": "int64_t",
+      "param_types": [],
+      "amendment": null,
+      "wasm_signature": [
+        "0x7e"
+      ]
+    },
+    {
+      "name": "ledger_last_hash",
+      "return_type": "int64_t",
+      "param_types": [
+        "uint32_t",
+        "uint32_t"
+      ],
+      "amendment": null,
+      "wasm_signature": [
+        "0x7e",
+        "0x7f",
+        "0x7f"
+      ]
+    },
+    {
+      "name": "otxn_type",
+      "return_type": "int64_t",
+      "param_types": [],
+      "amendment": null,
+      "wasm_signature": [
+        "0x7e"
+      ]
+    },
+    {
+      "name": "hook_account",
+      "return_type": "int64_t",
+      "param_types": [
+        "uint32_t",
+        "uint32_t"
+      ],
+      "amendment": null,
+      "wasm_signature": [
+        "0x7e",
+        "0x7f",
+        "0x7f"
+      ]
+    },
+    {
+      "name": "trace",
+      "return_type": "int64_t",
+      "param_types": [
+        "uint32_t",
+        "uint32_t",
+        "uint32_t",
+        "uint32_t",
+        "uint32_t"
+      ],
+      "amendment": null,
+      "wasm_signature": [
+        "0x7e",
+        "0x7f",
+        "0x7f",
+        "0x7f",
+        "0x7f",
+        "0x7f"
+      ]
+    },
+    {
+      "name": "state",
+      "return_type": "int64_t",
+      "param_types": [
+        "uint32_t",
+        "uint32_t",
+        "uint32_t",
+        "uint32_t"
+      ],
+      "amendment": null,
+      "wasm_signature": [
+        "0x7e",
+        "0x7f",
+        "0x7f",
+        "0x7f",
+        "0x7f"
+      ]
+    },
+    {
+      "name": "state_set",
+      "return_type": "int64_t",
+      "param_types": [
+        "uint32_t",
+        "uint32_t",
+        "uint32_t",
+        "uint32_t"
+      ],
+      "amendment": null,
+      "wasm_signature": [
+        "0x7e",
+        "0x7f",
+        "0x7f",
+        "0x7f",
+        "0x7f"
+      ]
+    },
+    {
+      "name": "prepare",
+      "return_type": "int64_t",
+      "param_types": [
+        "uint32_t",
+        "uint32_t",
+        "uint32_t",
+        "uint32_t"
+      ],
+      "amendment": "featureHooksUpdate2",
+      "wasm_signature": [
+        "0x7e",
+        "0x7f",
+        "0x7f",
+        "0x7f",
+        "0x7f"
+      ]
+    },
+    {
+      "name": "etxn_reserve",
+      "return_type": "int64_t",
+      "param_types": [
+        "uint32_t"
+      ],
+      "amendment": null,
+      "wasm_signature": [
+        "0x7e",
+        "0x7f"
+      ]
+    },
+    {
+      "name": "emit",
+      "return_type": "int64_t",
+      "param_types": [
+        "uint32_t",
+        "uint32_t",
+        "uint32_t",
+        "uint32_t"
+      ],
+      "amendment": null,
+      "wasm_signature": [
+        "0x7e",
+        "0x7f",
+        "0x7f",
+        "0x7f",
+        "0x7f"
+      ]
+    }
+  ]
+}

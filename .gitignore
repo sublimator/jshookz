@@ -1,0 +1,43 @@
+# Private engineering notes use their own Git repository.
+.ai-docs/
+.ai-docs.git/
+
+# Build and generated local artifacts.
+build/
+dist/
+/qjsc
+*.wasm
+*.a
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Python environments and caches.
+.venv/
+**/.venv/
+**/.uv-cache/
+**/.pytest_cache/
+**/.hypothesis/
+**/.ruff_cache/
+**/.mypy_cache/
+**/.tmp/
+**/.obj/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Conan and CMake local state.
+CMakeUserPresets.json
+compile_commands.json
+
+# Editors, operating systems, and local worktrees.
+.DS_Store
+.idea/
+.vscode/
+.worktrees/
+
+# Node dependencies used by differential tests.
+node_modules/

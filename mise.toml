@@ -1,0 +1,4 @@
+[tools]
+node = "22.21.0"
+rust = "1.94.1"
+wasi-sdk = "32"
