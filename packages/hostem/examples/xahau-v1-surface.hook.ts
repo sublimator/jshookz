@@ -28,7 +28,10 @@ function typecheckV1Surface(blob: STBlob, hash: Hash256, account: AccountID): vo
   ledger.sequence;
   ledger.lastTime;
   ledger.lastHash;
-  otxn.type();
+  const transactionType = otxn.type();
+  if (transactionType.ok) {
+    void (transactionType.value === TransactionType.Payment);
+  }
   state.get("key");
   state.set("key", blob);
   emit.reserve(1);
