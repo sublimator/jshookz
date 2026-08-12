@@ -27,6 +27,87 @@ type HostSuccess<T> = { readonly ok: true; readonly value: T };
 type HostFailure = { readonly ok: false; readonly code: HookReturnCode };
 type HostResult<T> = HostSuccess<T> | HostFailure;
 
+/** Compile-time transaction codes; const-enum values emit no runtime lookup. */
+declare const enum TransactionType {
+  Payment = 0,
+  EscrowCreate = 1,
+  EscrowFinish = 2,
+  AccountSet = 3,
+  EscrowCancel = 4,
+  SetRegularKey = 5,
+  NicknameSet = 6,
+  OfferCreate = 7,
+  OfferCancel = 8,
+  Contract = 9,
+  TicketCreate = 10,
+  SpinalTap = 11,
+  SignerListSet = 12,
+  PaymentChannelCreate = 13,
+  PaymentChannelFund = 14,
+  PaymentChannelClaim = 15,
+  CheckCreate = 16,
+  CheckCash = 17,
+  CheckCancel = 18,
+  DepositPreauth = 19,
+  TrustSet = 20,
+  AccountDelete = 21,
+  SetHook = 22,
+  NFTokenMint = 25,
+  NFTokenBurn = 26,
+  NFTokenCreateOffer = 27,
+  NFTokenCancelOffer = 28,
+  NFTokenAcceptOffer = 29,
+  Clawback = 30,
+  AMMClawback = 31,
+  AMMCreate = 35,
+  AMMDeposit = 36,
+  AMMWithdraw = 37,
+  AMMVote = 38,
+  AMMBid = 39,
+  AMMDelete = 40,
+  URITokenMint = 45,
+  URITokenBurn = 46,
+  URITokenBuy = 47,
+  URITokenCreateSellOffer = 48,
+  URITokenCancelSellOffer = 49,
+  XChainCreateClaimID = 50,
+  XChainCommit = 51,
+  XChainClaim = 52,
+  XChainAccountCreateCommit = 53,
+  XChainAddClaimAttestation = 54,
+  XChainAddAccountCreateAttestation = 55,
+  XChainModifyBridge = 56,
+  XChainCreateBridge = 57,
+  DIDSet = 58,
+  DIDDelete = 59,
+  OracleSet = 60,
+  OracleDelete = 61,
+  LedgerStateFix = 62,
+  MPTokenIssuanceCreate = 63,
+  MPTokenIssuanceDestroy = 64,
+  MPTokenIssuanceSet = 65,
+  MPTokenAuthorize = 66,
+  CredentialCreate = 67,
+  CredentialAccept = 68,
+  CredentialDelete = 69,
+  NFTokenModify = 70,
+  PermissionedDomainSet = 71,
+  PermissionedDomainDelete = 72,
+  Cron = 92,
+  CronSet = 93,
+  SetRemarks = 94,
+  Remit = 95,
+  GenesisMint = 96,
+  Import = 97,
+  ClaimReward = 98,
+  Invoke = 99,
+  EnableAmendment = 100,
+  SetFee = 101,
+  UNLModify = 102,
+  EmitFailure = 103,
+  UNLReport = 104,
+}
+
 declare class STBlob {
   readonly byteLength: number;
   static from(value: BytesLike): STBlob;
@@ -84,7 +165,7 @@ declare namespace ledger {
 }
 
 declare namespace otxn {
-  function type(): HostResult<number>;
+  function type(): HostResult<TransactionType>;
 }
 
 declare namespace state {
