@@ -10,7 +10,7 @@ from jshookz.paths import (
     XAHAU_RUNTIME_PROFILE_LOCK,
     XAHAU_RUNTIME_PROFILE_SOURCE,
 )
-from jshookz.build import seal_xahau_hook_provider_bundle
+from jshookz.build import _validate_native_abi, seal_xahau_hook_provider_bundle
 from jshookz.host import WasmHost
 from jshookz.runtime_profile import (
     build_runtime_profile_lock,
@@ -136,6 +136,7 @@ def test_provider_bundle_manifest_is_the_verified_profile_lock(tmp_path: Path):
     lock_path = tmp_path / "profile.lock.json"
     manifest_path = tmp_path / "jshookz_provider.manifest.json"
     cmake_manifest_path = tmp_path / "jshookz_provider.manifest.cmake"
+    native_abi_path = tmp_path / "jshookz_provider.native-abi.json"
     _write_json(lock_path, lock)
 
     emitted = seal_xahau_hook_provider_bundle(
@@ -143,6 +144,7 @@ def test_provider_bundle_manifest_is_the_verified_profile_lock(tmp_path: Path):
         lock_path,
         manifest_path,
         cmake_manifest_path,
+        native_abi_path,
     )
 
     assert emitted == manifest_path
@@ -161,9 +163,23 @@ def test_provider_bundle_manifest_is_the_verified_profile_lock(tmp_path: Path):
     )
     assert 'XAHAU_QUICKJS_PROVIDER_IMPORT_COUNT "13"' in cmake_manifest
     assert (
-        r"\"accept\", \"emit\", \"etxn_reserve\", \"hook_account\""
+        'XAHAU_QUICKJS_NATIVE_ABI_FILE "jshookz_provider.native-abi.json"'
         in cmake_manifest
     )
+    assert (
+        hashlib.sha256(native_abi_path.read_bytes()).hexdigest()
+        in cmake_manifest
+    )
+    assert (
+        json.loads(native_abi_path.read_text())["source"]["macro_function_count"]
+        == 75
+    )
+
+
+def test_native_projection_rejects_duplicate_provider_import():
+    imports = json.loads(CHECKED_LOCK.read_text())["provider"]["imports"]
+    with pytest.raises(ValueError, match="pinned raw Hook ABI"):
+        _validate_native_abi([*imports, imports[0]])
 
 
 class _LedgerClockHost:
