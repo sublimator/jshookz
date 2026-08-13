@@ -60,11 +60,17 @@ XAHAU_HOOK_PROVIDER_MANIFEST = (
 XAHAU_HOOK_PROVIDER_CMAKE_MANIFEST = (
     XAHAU_PROVIDER_BUILD_DIR / "jshookz_provider.manifest.cmake"
 )
+XAHAU_HOOK_PROVIDER_NATIVE_ABI = (
+    XAHAU_PROVIDER_BUILD_DIR / "jshookz_provider.native-abi.json"
+)
 XAHAU_RUNTIME_PROFILE_SOURCE = (
     REPO_ROOT / "integrations/xahau/profiles" / "xahau-quickjs-v1.source.json"
 )
 XAHAU_RUNTIME_PROFILE_LOCK = (
     REPO_ROOT / "integrations/xahau/profiles" / "xahau-quickjs-v1.lock.json"
+)
+XAHAU_RAW_HOOK_ABI = (
+    REPO_ROOT / "integrations/xahau/generated" / "raw-hook-abi.json"
 )
 
 # wasi-sdk
