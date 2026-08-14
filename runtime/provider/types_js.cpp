@@ -504,7 +504,7 @@ static const JSCFunctionListEntry js_xfl_static_funcs[] = {
     JS_CFUNC_DEF("fromRaw", 1, js_xfl_from_raw),
 };
 
-// --- Registration function (called from wasm_bindings.c) ---
+// --- Registration function (called from provider.cpp) ---
 
 extern "C" void register_cpp_types(JSContext *ctx)
 {

@@ -3,7 +3,7 @@
 
 The parser is hookz's Tree-sitter implementation.  This tool only selects a
 reviewed incremental slice and renders provider-specific mechanical glue; rich
-JavaScript lowering remains handwritten in wasm_bindings.c.
+JavaScript lowering remains handwritten in runtime/provider/bindings/.
 """
 
 from __future__ import annotations
