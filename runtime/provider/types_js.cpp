@@ -18,109 +18,13 @@
  */
 
 #include "types.hpp"
-
-// QuickJS is C, so we need extern "C" for its headers
-extern "C" {
-#include "../../engine/quickjs/quickjs.h"
-}
+#include "quickjs.hpp"
 
 #include <cstdio>
 #include <cstring>
 
 using namespace hook;
-
-// --- BytesLike: accept Uint8Array | ArrayBuffer | hex string ---
-
-struct BytesLike {
-    const uint8_t *ptr = nullptr;
-    size_t len = 0;
-    // Owned buffer for hex parsing (needs freeing)
-    uint8_t *owned = nullptr;
-    // For TypedArray: hold reference to prevent GC
-    JSValue ab_ref = JS_UNDEFINED;
-
-    ~BytesLike() { /* caller must call release() with ctx */ }
-
-    void release(JSContext *ctx) {
-        if (owned) { js_free(ctx, owned); owned = nullptr; }
-        JS_FreeValue(ctx, ab_ref);
-        ab_ref = JS_UNDEFINED;
-        ptr = nullptr;
-        len = 0;
-    }
-};
-
-static int hex_nibble(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
-}
-
-// Parse BytesLike from JSValue: Uint8Array, ArrayBuffer, or hex string
-static bool parse_bytes_like(JSContext *ctx, JSValueConst val, BytesLike &out) {
-    // Try TypedArray first (Uint8Array, Int8Array, etc.)
-    size_t offset, byte_len, buf_size;
-    JSValue ab = JS_GetTypedArrayBuffer(ctx, val, &offset, &byte_len, nullptr);
-    if (!JS_IsException(ab)) {
-        uint8_t *buf = JS_GetArrayBuffer(ctx, &buf_size, ab);
-        if (buf) {
-            out.ptr = buf + offset;
-            out.len = byte_len;
-            out.ab_ref = ab;  // prevent GC
-            return true;
-        }
-        JS_FreeValue(ctx, ab);
-    } else {
-        // Clear the exception from failed GetTypedArrayBuffer
-        JSValue exc = JS_GetException(ctx);
-        JS_FreeValue(ctx, exc);
-    }
-
-    // Try ArrayBuffer
-    {
-        uint8_t *buf = JS_GetArrayBuffer(ctx, &buf_size, val);
-        if (buf) {
-            out.ptr = buf;
-            out.len = buf_size;
-            return true;
-        }
-    }
-
-    // Try hex string
-    if (JS_IsString(val)) {
-        size_t slen;
-        const char *s = JS_ToCStringLen(ctx, &slen, val);
-        if (!s) return false;
-        if (slen % 2 != 0) {
-            JS_FreeCString(ctx, s);
-            return false;
-        }
-        size_t n = slen / 2;
-        out.owned = (uint8_t *)js_malloc(ctx, n);
-        if (!out.owned) {
-            JS_FreeCString(ctx, s);
-            return false;
-        }
-        for (size_t i = 0; i < n; i++) {
-            int hi = hex_nibble(s[i * 2]);
-            int lo = hex_nibble(s[i * 2 + 1]);
-            if (hi < 0 || lo < 0) {
-                JS_FreeCString(ctx, s);
-                js_free(ctx, out.owned);
-                out.owned = nullptr;
-                return false;
-            }
-            out.owned[i] = (hi << 4) | lo;
-        }
-        JS_FreeCString(ctx, s);
-        out.ptr = out.owned;
-        out.len = n;
-        return true;
-    }
-
-    return false;
-}
+namespace qjs = jshookz::provider::qjs;
 
 // Create a Uint8Array from raw bytes
 static JSValue new_uint8array(JSContext *ctx, const uint8_t *data, size_t len) {
@@ -190,13 +94,12 @@ static JSValue js_blob_from(JSContext *ctx, JSValueConst this_val,
 {
     if (argc < 1)
         return JS_ThrowTypeError(ctx, "STBlob.from() expects a byte value");
-    BytesLike bytes;
-    if (!parse_bytes_like(ctx, argv[0], bytes))
+    auto bytes = qjs::ByteView::get(
+        ctx, argv[0], qjs::StringBytes::hex);
+    if (!bytes)
         return JS_ThrowTypeError(
             ctx, "STBlob.from() expects Uint8Array, ArrayBuffer, or hex string");
-    JSValue result = js_blob_new(ctx, bytes.ptr, bytes.len);
-    bytes.release(ctx);
-    return result;
+    return js_blob_new(ctx, bytes.data(), bytes.size());
 }
 
 static JSValue js_blob_byte_length(JSContext *ctx, JSValueConst this_val)
@@ -251,11 +154,12 @@ static JSValue js_blob_equals(JSContext *ctx, JSValueConst this_val,
     auto *blob = (JSBlob *)JS_GetOpaque2(ctx, this_val, js_blob_class_id);
     if (!blob) return JS_EXCEPTION;
     if (argc < 1) return JS_FALSE;
-    BytesLike other;
-    if (!parse_bytes_like(ctx, argv[0], other)) return JS_FALSE;
-    bool equal = blob->len == other.len &&
-        (blob->len == 0 || std::memcmp(blob->data, other.ptr, blob->len) == 0);
-    other.release(ctx);
+    auto other = qjs::ByteView::get(
+        ctx, argv[0], qjs::StringBytes::hex);
+    if (!other) return JS_FALSE;
+    bool equal = blob->len == other.size() &&
+        (blob->len == 0 ||
+         std::memcmp(blob->data, other.data(), blob->len) == 0);
     return JS_NewBool(ctx, equal);
 }
 
@@ -287,18 +191,20 @@ static JSClassDef js_hash256_class = {
 static JSValue js_hash256_from(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv)
 {
-    BytesLike bl;
-    if (!parse_bytes_like(ctx, argv[0], bl)) {
+    auto bytes = qjs::ByteView::get(
+        ctx, argv[0], qjs::StringBytes::hex);
+    if (!bytes) {
         return JS_ThrowTypeError(ctx, "Hash256.from() expects Uint8Array, ArrayBuffer, or hex string");
     }
-    if (bl.len != 32) {
-        bl.release(ctx);
-        return JS_ThrowTypeError(ctx, "Hash256.from() needs exactly 32 bytes (got %zu)", bl.len);
+    if (bytes.size() != 32) {
+        return JS_ThrowTypeError(
+            ctx,
+            "Hash256.from() needs exactly 32 bytes (got %u)",
+            bytes.size());
     }
 
     auto *h = (Hash256 *)js_mallocz(ctx, sizeof(Hash256));
-    new (h) Hash256(bl.ptr, bl.len);
-    bl.release(ctx);
+    new (h) Hash256(bytes.data(), bytes.size());
 
     JSValue obj = JS_NewObjectClass(ctx, js_hash256_class_id);
     JS_SetOpaque(obj, h);
@@ -371,18 +277,20 @@ static JSClassDef js_accountid_class = {
 static JSValue js_accountid_from(JSContext *ctx, JSValueConst this_val,
                                   int argc, JSValueConst *argv)
 {
-    BytesLike bl;
-    if (!parse_bytes_like(ctx, argv[0], bl)) {
+    auto bytes = qjs::ByteView::get(
+        ctx, argv[0], qjs::StringBytes::hex);
+    if (!bytes) {
         return JS_ThrowTypeError(ctx, "AccountID.from() expects Uint8Array, ArrayBuffer, or hex string");
     }
-    if (bl.len != 20) {
-        bl.release(ctx);
-        return JS_ThrowTypeError(ctx, "AccountID.from() needs exactly 20 bytes (got %zu)", bl.len);
+    if (bytes.size() != 20) {
+        return JS_ThrowTypeError(
+            ctx,
+            "AccountID.from() needs exactly 20 bytes (got %u)",
+            bytes.size());
     }
 
     auto *a = (AccountID *)js_mallocz(ctx, sizeof(AccountID));
-    new (a) AccountID(bl.ptr, bl.len);
-    bl.release(ctx);
+    new (a) AccountID(bytes.data(), bytes.size());
 
     JSValue obj = JS_NewObjectClass(ctx, js_accountid_class_id);
     JS_SetOpaque(obj, a);

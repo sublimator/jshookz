@@ -90,13 +90,13 @@ JSValue
 js_util_sha256(JSContext *ctx, JSValueConst this_val,
                int argc, JSValueConst *argv)
 {
-    BytesInput in;
-    if (!get_bytes_input(ctx, argv[0], &in))
+    auto in = qjs::ByteView::get(
+        ctx, argv[0], qjs::StringBytes::hex);
+    if (!in)
         return JS_ThrowTypeError(ctx, "util_sha256: expected Uint8Array, ArrayBuffer, or hex string");
 
     uint8_t hash[32];
-    host_util_sha256(in.ptr, in.len, hash, 32);
-    free_bytes_input(ctx, &in);
+    host_util_sha256(in.data(), in.size(), hash, 32);
     return make_uint8array(ctx, hash, 32);
 }
 
@@ -104,13 +104,13 @@ JSValue
 js_util_sha512h(JSContext *ctx, JSValueConst this_val,
                 int argc, JSValueConst *argv)
 {
-    BytesInput in;
-    if (!get_bytes_input(ctx, argv[0], &in))
+    auto in = qjs::ByteView::get(
+        ctx, argv[0], qjs::StringBytes::hex);
+    if (!in)
         return JS_ThrowTypeError(ctx, "util_sha512h: expected Uint8Array, ArrayBuffer, or hex string");
 
     uint8_t hash[32];
-    host_util_sha512h(in.ptr, in.len, hash, 32);
-    free_bytes_input(ctx, &in);
+    host_util_sha512h(in.data(), in.size(), hash, 32);
     return make_uint8array(ctx, hash, 32);
 }
 
@@ -118,13 +118,13 @@ JSValue
 js_util_ripemd160(JSContext *ctx, JSValueConst this_val,
                   int argc, JSValueConst *argv)
 {
-    BytesInput in;
-    if (!get_bytes_input(ctx, argv[0], &in))
+    auto in = qjs::ByteView::get(
+        ctx, argv[0], qjs::StringBytes::hex);
+    if (!in)
         return JS_ThrowTypeError(ctx, "util_ripemd160: expected Uint8Array, ArrayBuffer, or hex string");
 
     uint8_t hash[20];
-    host_util_ripemd160(in.ptr, in.len, hash, 20);
-    free_bytes_input(ctx, &in);
+    host_util_ripemd160(in.data(), in.size(), hash, 20);
     return make_uint8array(ctx, hash, 20);
 }
 

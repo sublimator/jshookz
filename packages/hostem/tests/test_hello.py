@@ -355,6 +355,35 @@ def test_javascript_reads_host_state_as_blob_then_replaces_it():
     ]
 
 
+def test_rich_hook_input_retains_bare_array_buffer_from_to_bytes():
+    source = """
+        export function main(_reserved) {
+          const rich = {
+            toBytes() {
+              return new Uint8Array([0xA1, 0xB2, 0xC3]).buffer;
+            },
+          };
+          rollback.onFail(state.set("RICH", rich));
+          rollback.onFail(state.set("HEX", { toBytes: () => "0D0E0F" }));
+          accept("rich bytes retained", 85);
+        }
+    """
+    runner = HookRunner()
+
+    result = runner.run(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"rich bytes retained"
+    assert result.return_code == 85
+    assert runner.runtime.state_db[b"RICH"] == bytes([0xA1, 0xB2, 0xC3])
+    assert runner.runtime.state_db[b"HEX"] == bytes([0x0D, 0x0E, 0x0F])
+    assert [call.name for call in result.call_log] == [
+        "state_set",
+        "state_set",
+        "accept",
+    ]
+
+
 def test_module_without_main_export_is_refused():
     source = """
         const marker = "ordinary module initialization";

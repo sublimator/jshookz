@@ -3,6 +3,7 @@
 # exported Wasm lifecycle.
 set(JSHOOKZ_PROVIDER_CPP_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/provider.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/quickjs.cpp
     ${CMAKE_CURRENT_LIST_DIR}/sandbox.cpp
     ${CMAKE_CURRENT_LIST_DIR}/types_js.cpp
     ${CMAKE_CURRENT_LIST_DIR}/bindings/common.cpp
