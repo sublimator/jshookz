@@ -9,6 +9,12 @@ XAHAU_PROVIDER = ROOT / "build" / "xahau-provider" / "jshookz_provider.wasm"
 XAHAU_TYPESCRIPT = (
     ROOT / "packages" / "hostem" / "examples" / "xahau-accept.hook.ts"
 )
+XAHAU_STATE_TYPESCRIPT = (
+    ROOT / "packages" / "hostem" / "examples" / "xahau-state.hook.ts"
+)
+XAHAU_STATE_BATCH_TYPESCRIPT = (
+    ROOT / "packages" / "hostem" / "examples" / "xahau-state-batch.hook.ts"
+)
 
 
 def test_javascript_hook_calls_real_hookz_host_and_accepts():
@@ -488,6 +494,38 @@ def test_xahau_provider_runs_compiled_typescript_hook():
     assert result.return_msg == b"hello from TypeScript"
     assert result.return_code == 42
     assert [call.name for call in result.call_log] == ["accept"]
+
+
+def test_readme_state_example_runs_against_xahau_provider():
+    result = HookRunner(wasm_path=XAHAU_PROVIDER).run_file(XAHAU_STATE_TYPESCRIPT)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"Hi"
+    assert result.return_code == 0
+    assert result.state_writes
+    assert [call.name for call in result.call_log] == [
+        "state",
+        "state_set",
+        "state",
+        "accept",
+    ]
+
+
+def test_readme_batch_example_runs_against_xahau_provider():
+    result = HookRunner(wasm_path=XAHAU_PROVIDER).run_file(
+        XAHAU_STATE_BATCH_TYPESCRIPT
+    )
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"first=1"
+    assert result.return_code == 0
+    assert len(result.state_writes) == 2
+    assert [call.name for call in result.call_log] == [
+        "state_set",
+        "state_set",
+        "state",
+        "accept",
+    ]
 
 
 def test_typescript_public_api_reaches_the_real_host():
