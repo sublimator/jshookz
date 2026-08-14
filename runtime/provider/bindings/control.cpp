@@ -1,5 +1,6 @@
 #include "common.hpp"
 #include "hook_imports.hpp"
+#include "../quickjs.hpp"
 
 #include <cstdio>
 
@@ -71,17 +72,14 @@ get_result_success(JSContext *ctx, JSValueConst value,
         return -1;
     }
 
-    JSValue ok = JS_GetPropertyStr(ctx, value, "ok");
-    if (JS_IsException(ok))
+    qjs::OwnedValue ok = qjs::property(ctx, value, "ok");
+    if (ok.isException())
         return -1;
-    if (!JS_IsBool(ok)) {
-        JS_FreeValue(ctx, ok);
+    if (!JS_IsBool(ok.get())) {
         JS_ThrowTypeError(ctx, "%s: expected boolean ok", function_name);
         return -1;
     }
-    int success = JS_ToBool(ctx, ok);
-    JS_FreeValue(ctx, ok);
-    return success;
+    return JS_ToBool(ctx, ok.get());
 }
 
 int
@@ -96,12 +94,10 @@ get_result_array_length(JSContext *ctx, JSValueConst value,
         return -1;
     }
 
-    JSValue length_value = JS_GetPropertyStr(ctx, value, "length");
-    if (JS_IsException(length_value))
+    qjs::OwnedValue length_value = qjs::property(ctx, value, "length");
+    if (length_value.isException())
         return -1;
-    int const status = JS_ToUint32(ctx, length, length_value);
-    JS_FreeValue(ctx, length_value);
-    return status;
+    return JS_ToUint32(ctx, length, length_value.get());
 }
 
 JSValue
@@ -115,7 +111,7 @@ js_rollback_on_fail(JSContext *ctx, JSValueConst this_val,
     if (success < 0)
         return JS_EXCEPTION;
     if (success)
-        return JS_GetPropertyStr(ctx, argv[0], "value");
+        return qjs::property(ctx, argv[0], "value").release();
 
     int64_t code;
     int const explicit_code = argc > 2 && !JS_IsUndefined(argv[2]);
@@ -128,25 +124,21 @@ js_rollback_on_fail(JSContext *ctx, JSValueConst this_val,
             return JS_ThrowTypeError(
                 ctx, "rollback.onFail: expected numeric rollback code");
     } else {
-        JSValue code_value = JS_GetPropertyStr(ctx, argv[0], "code");
-        if (JS_IsException(code_value))
-            return code_value;
-        if (!JS_IsNumber(code_value) ||
-            JS_ToInt64(ctx, &code, code_value) < 0) {
-            JS_FreeValue(ctx, code_value);
+        qjs::OwnedValue code_value = qjs::property(ctx, argv[0], "code");
+        if (code_value.isException())
+            return code_value.release();
+        if (!JS_IsNumber(code_value.get()) ||
+            JS_ToInt64(ctx, &code, code_value.get()) < 0) {
             return JS_ThrowTypeError(
                 ctx,
                 "rollback.onFail: uncoded Result requires explicit code");
         }
-        JS_FreeValue(ctx, code_value);
     }
 
     if (argc > 1 && !JS_IsUndefined(argv[1])) {
-        JSValue code_arg = JS_NewInt64(ctx, code);
-        JSValueConst rollback_args[2] = { argv[1], code_arg };
-        JSValue result = js_hook_rollback(ctx, this_val, 2, rollback_args);
-        JS_FreeValue(ctx, code_arg);
-        return result;
+        qjs::OwnedValue code_arg(ctx, JS_NewInt64(ctx, code));
+        JSValueConst rollback_args[2] = { argv[1], code_arg.get() };
+        return js_hook_rollback(ctx, this_val, 2, rollback_args);
     }
 
     char message[64];
@@ -171,10 +163,9 @@ js_rollback_require(JSContext *ctx, JSValueConst this_val,
     if (success < 0)
         return JS_EXCEPTION;
     if (success) {
-        JSValue value = JS_GetPropertyStr(ctx, argv[0], "value");
-        if (JS_IsException(value) || !JS_IsUndefined(value))
-            return value;
-        JS_FreeValue(ctx, value);
+        qjs::OwnedValue value = qjs::property(ctx, argv[0], "value");
+        if (value.isException() || !JS_IsUndefined(value.get()))
+            return value.release();
     }
 
     if (argc < 3 || JS_IsUndefined(argv[1]) ||
@@ -198,51 +189,38 @@ js_rollback_on_any_fail(JSContext *ctx, JSValueConst this_val,
             ctx, argv[0], "rollback.onAnyFail", &length) < 0)
         return JS_EXCEPTION;
 
-    JSValue values = JS_NewArray(ctx);
-    if (JS_IsException(values))
-        return values;
+    qjs::ArrayBuilder values(ctx);
+    if (values.isException())
+        return values.release();
 
     for (uint32_t index = 0; index < length; ++index) {
-        JSValue item = JS_GetPropertyUint32(ctx, argv[0], index);
-        if (JS_IsException(item)) {
-            JS_FreeValue(ctx, values);
-            return item;
-        }
+        qjs::OwnedValue item = qjs::element(ctx, argv[0], index);
+        if (item.isException())
+            return item.release();
 
         int const success =
-            get_result_success(ctx, item, "rollback.onAnyFail");
-        if (success < 0) {
-            JS_FreeValue(ctx, item);
-            JS_FreeValue(ctx, values);
+            get_result_success(ctx, item.get(), "rollback.onAnyFail");
+        if (success < 0)
             return JS_EXCEPTION;
-        }
         if (!success) {
-            JSValue on_fail_args[3] = {
-                item,
+            JSValueConst on_fail_args[3] = {
+                item.get(),
                 argc > 1 ? argv[1] : JS_UNDEFINED,
                 argc > 2 ? argv[2] : JS_UNDEFINED,
             };
             int const on_fail_argc = argc > 2 ? 3 : argc > 1 ? 2 : 1;
-            JSValue result = js_rollback_on_fail(
+            return js_rollback_on_fail(
                 ctx, this_val, on_fail_argc, on_fail_args);
-            JS_FreeValue(ctx, item);
-            JS_FreeValue(ctx, values);
-            return result;
         }
 
-        JSValue value = JS_GetPropertyStr(ctx, item, "value");
-        JS_FreeValue(ctx, item);
-        if (JS_IsException(value)) {
-            JS_FreeValue(ctx, values);
-            return value;
-        }
-        if (JS_SetPropertyUint32(ctx, values, index, value) < 0) {
-            JS_FreeValue(ctx, values);
+        qjs::OwnedValue value = qjs::property(ctx, item.get(), "value");
+        if (value.isException())
+            return value.release();
+        if (!values.append(std::move(value)))
             return JS_EXCEPTION;
-        }
     }
 
-    return values;
+    return values.release();
 }
 
 JSValue
@@ -258,46 +236,32 @@ js_rollback_on_all_fail(JSContext *ctx, JSValueConst this_val,
             ctx, argv[0], "rollback.onAllFail", &length) < 0)
         return JS_EXCEPTION;
 
-    JSValue values = JS_NewArray(ctx);
-    if (JS_IsException(values))
-        return values;
+    qjs::ArrayBuilder values(ctx);
+    if (values.isException())
+        return values.release();
 
-    uint32_t output_index = 0;
     for (uint32_t index = 0; index < length; ++index) {
-        JSValue item = JS_GetPropertyUint32(ctx, argv[0], index);
-        if (JS_IsException(item)) {
-            JS_FreeValue(ctx, values);
-            return item;
-        }
+        qjs::OwnedValue item = qjs::element(ctx, argv[0], index);
+        if (item.isException())
+            return item.release();
 
         int const success =
-            get_result_success(ctx, item, "rollback.onAllFail");
-        if (success < 0) {
-            JS_FreeValue(ctx, item);
-            JS_FreeValue(ctx, values);
+            get_result_success(ctx, item.get(), "rollback.onAllFail");
+        if (success < 0)
             return JS_EXCEPTION;
-        }
-        if (!success) {
-            JS_FreeValue(ctx, item);
+        if (!success)
             continue;
-        }
 
-        JSValue value = JS_GetPropertyStr(ctx, item, "value");
-        JS_FreeValue(ctx, item);
-        if (JS_IsException(value)) {
-            JS_FreeValue(ctx, values);
-            return value;
-        }
-        if (JS_SetPropertyUint32(ctx, values, output_index++, value) < 0) {
-            JS_FreeValue(ctx, values);
+        qjs::OwnedValue value = qjs::property(ctx, item.get(), "value");
+        if (value.isException())
+            return value.release();
+        if (!values.append(std::move(value)))
             return JS_EXCEPTION;
-        }
     }
 
-    if (output_index > 0)
-        return values;
+    if (values.size() > 0)
+        return values.release();
 
-    JS_FreeValue(ctx, values);
     if (argc < 3 || JS_IsUndefined(argv[1]) ||
         !JS_IsNumber(argv[2]))
         return JS_ThrowTypeError(
