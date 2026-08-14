@@ -52,6 +52,30 @@ def test_tagged_host_failure_can_drive_javascript_rollback():
     assert [call.name for call in result.call_log] == ["state_set", "rollback"]
 
 
+def test_rollback_on_host_failure_preserves_absence_and_exact_failure_code():
+    source = """
+        export function hook(_reserved) {
+          const missing = rollback.onHostFailure(state.get("MISSING"));
+          if (missing !== undefined) rollback("state unexpectedly present", -1);
+          rollback.onHostFailure(
+            state.set("K".repeat(33), new Uint8Array([1]))
+          );
+          accept("unexpected");
+        }
+    """
+
+    result = HookRunner().run(source)
+
+    assert result.rejected, result.error
+    assert result.return_code < 0
+    assert result.return_msg == f"host operation failed: {result.return_code}".encode()
+    assert [call.name for call in result.call_log] == [
+        "state",
+        "state_set",
+        "rollback",
+    ]
+
+
 def test_hook_terminal_bypasses_javascript_try_catch():
     source = """
         export function hook(_reserved) {

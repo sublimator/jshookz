@@ -172,6 +172,10 @@ declare namespace emit {
   function tx(transaction: BytesLike | STBlob): HostResult<Hash256>;
 }
 
+declare namespace rollback {
+  function onHostFailure<T>(result: HostResult<T>): T;
+}
+
 /** Core Hook terminals and tracing. */
 
 declare function accept(
