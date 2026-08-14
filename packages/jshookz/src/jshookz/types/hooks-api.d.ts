@@ -1101,16 +1101,28 @@ declare namespace lifecycle {
 }
 
 /**
- * Accept and terminate this hook execution. A supplied `code` becomes the
- * integer HookReturnCode recorded on-ledger; omit it only when that value is
- * not part of the contract's intended interface. C hooks commonly pass
- * `__LINE__` as a source-location breadcrumb, but TypeScript translations are
- * not required to preserve that source-language convention. Explicitly
- * meaningful codes remain caller-owned.
+ * Accept and terminate this hook execution. The host records the terminal
+ * result and unwinds the current Wasm invocation; no JavaScript statement
+ * after this call can run, hence the `never` return type.
+ *
+ * C Hooks have the same observable behavior even though their import ABI is
+ * declared as returning `int64_t`: Xahaud turns `RC_ACCEPT` into engine
+ * termination before the import returns to guest code. C source therefore
+ * uses both `accept(...)` and the redundant `return accept(...)` spelling.
+ * TypeScript should normally use the direct call.
+ *
+ * A supplied `code` becomes the integer HookReturnCode recorded on-ledger;
+ * omit it only when that value is not part of the contract's intended
+ * interface. C Hooks commonly pass `__LINE__` as a source-location breadcrumb,
+ * but TypeScript translations are not required to preserve that
+ * source-language convention. Explicitly meaningful codes remain caller-owned.
  */
 declare function accept(message?: string | BytesLike | STBlob, code?: number): never;
 
-/** Reject, roll back, and terminate this hook execution. See `accept`. */
+/**
+ * Reject, atomically roll back, and terminate this hook execution. Like
+ * `accept`, the host unwinds the Wasm invocation and this call never returns.
+ */
 declare function rollback(message?: string | BytesLike | STBlob, code?: number): never;
 
 declare namespace rollback {
