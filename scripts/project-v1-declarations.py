@@ -175,7 +175,7 @@ PROFILE = (
     ContainerProjection(
         "rollback",
         "rollback",
-        ("onFail", "require"),
+        ("onFail", "require", "onAnyFail", "onAllFail"),
         kind="namespace",
     ),
 )
