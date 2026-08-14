@@ -200,6 +200,11 @@ declare namespace rollback {
     message: string | BytesLike | STBlob,
     code: number,
   ): T;
+  function require<T, Failure extends ResultFailure>(
+    result: Result<T | undefined, Failure>,
+    message: string | BytesLike | STBlob,
+    code: number,
+  ): T;
 }
 
 /**

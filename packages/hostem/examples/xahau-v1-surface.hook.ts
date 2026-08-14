@@ -40,6 +40,7 @@ function typecheckV1Surface(blob: STBlob, hash: Hash256, account: AccountID): vo
     "invalid value",
     1,
   );
+  rollback.require(state.get("key"), "state is required", 2);
   emit.reserve(1);
   emit.prepare(blob);
   emit.tx(blob);

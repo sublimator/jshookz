@@ -355,10 +355,10 @@
         ]
       }
     ],
-    "sha256": "a68600b7fb18ff8596498fb44d6073fda9ec0ffc4104295d887442195791eef0",
-    "size": 1006965
+    "sha256": "66fc97410d8bf9e9b0621bcc3f789cfaacf20b8e6170cc93b080e3be04d56763",
+    "size": 1005805
   },
-  "runtime_profile_id": "d6183b76d0cdbb00f79efa3d6e50038854189d1419df0a769233e8fba1084b7d",
+  "runtime_profile_id": "b2ce1aa488f6ad62f66871ec873a7e0f8897d62da4d73c24b81f43c8d4cc8048",
   "schema": "xahau.quickjs.runtime-profile-lock.v1",
   "source": {
     "artifact": {
@@ -398,7 +398,7 @@
       "initialization": "finite-cold-qjs-init-budget-before-invocation-fuel-reset",
       "ordinary_host_status": "returned-as-i64-never-trapped",
       "pending_jobs_after_entry": "not-drained",
-      "result_failure_policy": "rollback.onFail-preserves-coded-failure-or-requires-explicit-message-and-code",
+      "result_failure_policy": "rollback.onFail-preserves-coded-failure;rollback.require-collapses-failure-or-absence-to-explicit-message-and-code",
       "sfHookInstructionCount": "initial-wasmtime-invocation-fuel-minus-remaining-fuel",
       "terminals": "record-hook-result-and-uncatchable-wasmtime-trap"
     },
