@@ -172,6 +172,12 @@ PROFILE = (
         },
         kind="namespace",
     ),
+    ContainerProjection(
+        "rollback",
+        "rollback",
+        ("onHostFailure",),
+        kind="namespace",
+    ),
 )
 
 TOP_LEVEL = ("HostSuccess", "HostFailure", "HostResult", "TransactionType")

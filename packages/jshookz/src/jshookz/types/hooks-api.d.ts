@@ -1113,6 +1113,15 @@ declare function accept(message?: string | BytesLike | STBlob, code?: number): n
 /** Reject, roll back, and terminate this hook execution. See `accept`. */
 declare function rollback(message?: string | BytesLike | STBlob, code?: number): never;
 
+declare namespace rollback {
+  /**
+   * Return a successful host value, including a legitimate `undefined`, or
+   * atomically roll back with the exact failed host status as the terminal
+   * code.
+   */
+  function onHostFailure<T>(result: HostResult<T>): T;
+}
+
 /** Trace a value; callable namespace members provide explicit encodings. */
 declare function trace(label: string, value?: unknown): void;
 
