@@ -88,23 +88,27 @@ PROFILE = (
         ("byteLength", "from", "byteAt", "toBytes", "toHex", "equals"),
     ),
     ContainerProjection(
-        "STHash",
+        "Hash256",
         "Hash256",
         ("from", "toHex", "toBytes", "isZero", "equals"),
         overrides={
+            "from": ProfileOverride(
+                "a8f0218ad61f4360abf35c5e9fc5c6bd604aa982b9b9090a1ba730cb65a40a80",
+                "static from(value: BytesLike): Hash256;",
+            ),
             "equals": ProfileOverride(
-                "1f408ec4301e13611e226182d446fc8dea4d74ea6faa023df4d8ea35d1d3e233",
+                "2d49feeb7292b3fc6b285394eed7b62dc5172964c0c5ab532c203ddf5d7559cf",
                 "equals(other: Hash256): boolean;",
             )
         },
     ),
     ContainerProjection(
-        "STAddress",
+        "AccountID",
         "AccountID",
         ("from", "toHex", "toBytes"),
         overrides={
             "from": ProfileOverride(
-                "820400f272131c3f8daf6e4ab2aa50b5ba557d18be53aeed79517bb87127f0b3",
+                "6f2a78eb89cdbbc16206ea4bea119f693ec792376574be136f2b7afcdb80716f",
                 "static from(value: BytesLike): AccountID;",
             )
         },
@@ -166,7 +170,7 @@ PROFILE = (
                 "function prepare(transaction: BytesLike | STBlob): HostResult<STBlob>;",
             ),
             "tx": ProfileOverride(
-                "8162619549d58dbdf5f6bcc6ff34a1732bad41a8bd0e6a6885d0b89be778b0be",
+                "f3e604856d509a1df70ff7c3f81b31a86d129dd58d529bf955262bcc72d0ffb0",
                 "function tx(transaction: BytesLike | STBlob): HostResult<Hash256>;",
             ),
         },
@@ -298,18 +302,32 @@ class CanonicalModel:
             )
         if body is None:
             raise ValueError(f"canonical container {name!r} has no body")
-        result: dict[str, list[str]] = {}
+        declaration_text = self.text(declaration)
+        header = declaration_text.split("{", 1)[0]
+        base = re.search(
+            r"\b(?:class|interface)\s+[A-Za-z_][\w]*"
+            r"(?:<[^>]*>)?\s+extends\s+([A-Za-z_][\w]*)",
+            header,
+        )
+        result: dict[str, list[str]] = (
+            {key: list(values) for key, values in self.members(base.group(1)).items()}
+            if base is not None
+            else {}
+        )
+        local: set[str] = set()
         for child in body.named_children:
             inner = self._unwrap(child)
             member_name = self._name(inner)
             if member_name is not None:
+                if member_name not in local:
+                    result[member_name] = []
+                    local.add(member_name)
                 result.setdefault(member_name, []).append(self.text(inner))
         return result
 
 
 def _replace_profile_names(text: str) -> str:
-    text = re.sub(r"\bSTHash(?:<[^>]+>)?", "Hash256", text)
-    text = re.sub(r"\bSTAddress\b", "AccountID", text)
+    text = re.sub(r"\bHash(?:<[^>]+>)?(?![A-Za-z0-9_])", "Hash256", text)
     text = re.sub(r"\bHexString\b", "string", text)
     text = re.sub(r"\bLedgerSequence\b", "number", text)
     text = re.sub(r"\bRippleTime\b", "number", text)
