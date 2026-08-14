@@ -439,11 +439,16 @@ declare interface STObject {
   toJSON(): unknown;
 }
 
-/** @serial STArray
- *  @inner-rich-type STArray */
-declare interface STArray<T extends STObject = STObject> extends Iterable<T> {
+/**
+ * Lazy fixed-shape array view. Numeric access decodes an element on demand;
+ * an out-of-range index produces `undefined`.
+ *
+ * @serial STArray
+ * @inner-rich-type STArray
+ */
+declare interface STArray<T extends STObject = STObject> {
   readonly length: number;
-  at(index: number): T | undefined;
+  readonly [index: number]: T | undefined;
 }
 
 /** @serial Transaction */
@@ -501,14 +506,40 @@ declare interface STAccountRoot extends STObject {
   readonly Remarks?: STArray;
 }
 
-declare interface STActiveValidator {
-  readonly account: STAddress;
-  readonly publicKey?: STBlob;
+/** Installed Hook object held inside a Hook ledger entry's `Hooks` array. */
+declare interface STHook extends STObject {
+  readonly HookHash?: STHash<32>;
+}
+
+/** Serialized-array wrapper for one installed Hook object. */
+declare interface STHookArrayEntry extends STObject {
+  readonly Hook: STHook;
+}
+
+/** Account-level ledger entry containing its fixed-position Hook array. */
+declare interface STHookLedger extends STObject {
+  readonly LedgerEntryType: "Hook";
+  readonly Hooks: STArray<STHookArrayEntry>;
+}
+
+/** Ledger entry containing one installed Hook implementation. */
+declare interface STHookDefinition extends STObject {
+  readonly LedgerEntryType: "HookDefinition";
+  readonly HookHash: STHash<32>;
+}
+
+declare interface STActiveValidator extends STObject {
+  readonly PublicKey: STBlob;
+  readonly Account?: STAddress;
+}
+
+declare interface STActiveValidatorArrayEntry extends STObject {
+  readonly ActiveValidator: STActiveValidator;
 }
 
 declare interface STUNLReport extends STObject {
   readonly LedgerEntryType: "UNLReport";
-  readonly ActiveValidators: readonly STActiveValidator[];
+  readonly ActiveValidators?: STArray<STActiveValidatorArrayEntry>;
 }
 
 declare interface STNFToken extends STObject {
@@ -825,7 +856,12 @@ declare const enum HookExecutionMode {
   Callback = "callback",
 }
 
-declare class LedgerKeylet {
+/**
+ * Typed ledger locator. `T` is erased at runtime and records the ledger-object
+ * shape returned when this keylet is passed to `ledger.lookup`.
+ */
+declare class LedgerKeylet<T extends STObject = STObject> {
+  private readonly __valueType?: T;
   readonly byteLength: 34;
   readonly type: number;
   constructor(value: BytesLike);
@@ -895,7 +931,7 @@ declare namespace state {
 
 declare namespace slot {
   type SlotValue = STObject | STArray | STFieldValue;
-  function fromLedger(keylet: LedgerKeylet): HostResult<STObject | undefined>;
+  function fromLedger<T extends STObject>(keylet: LedgerKeylet<T>): HostResult<T | undefined>;
   function meta(): HostResult<STObject | undefined>;
   function xpop(): HostResult<STXPop | undefined>;
   function clear(value: SlotValue): HostResult<void>;
@@ -1062,9 +1098,9 @@ declare namespace emit {
 
 declare namespace util {
   namespace keylet {
-    function account(account: STAddress): LedgerKeylet;
-    function hook(account: STAddress): LedgerKeylet;
-    function hookDefinition(hash: STHash<32>): LedgerKeylet;
+    function account(account: STAddress): LedgerKeylet<STAccountRoot>;
+    function hook(account: STAddress): LedgerKeylet<STHookLedger>;
+    function hookDefinition(hash: STHash<32>): LedgerKeylet<STHookDefinition>;
     function hookState(account: STAddress, key: STHash<32>, namespace: STHash<32>): LedgerKeylet;
     function hookStateDir(account: STAddress, namespace: STHash<32>): LedgerKeylet;
     /** Account order is normalized by the host when deriving the trust-line key. */
@@ -1129,7 +1165,8 @@ declare namespace ledger {
   function nonce(): HostResult<STHash<32>>;
   function accountRoot(account: STAddress): HostResult<STAccountRoot | undefined>;
   function unlReport(): HostResult<STUNLReport | undefined>;
-  function lookup(locator: LedgerKeylet | STHash<32>): HostResult<STObject | undefined>;
+  function lookup<T extends STObject>(locator: LedgerKeylet<T>): HostResult<T | undefined>;
+  function lookup(locator: STHash<32>): HostResult<STObject | undefined>;
   function lookupMany(locators: readonly (LedgerKeylet | STHash<32>)[]): HostResult<readonly (STObject | undefined)[]>;
   function nextKeylet(lo: LedgerKeylet, hi: LedgerKeylet): HostResult<LedgerKeylet | undefined>;
 }
