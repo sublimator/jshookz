@@ -61,8 +61,11 @@ def test_typescript_hook_compiles_to_provider_bytecode(tmp_path: Path):
     source = tmp_path / "accept.hook.ts"
     source.write_text(
         """
-        export function main(_reserved: number): never {
-          throw new Error(`entered main:${_reserved}`);
+        export function main(): never {
+          throw new Error("entered main");
+        }
+        export function callback(info: CallbackInfo): never {
+          throw new Error(`entered callback:${info.failed}:${info.rawFlags}`);
         }
         """
     )
@@ -70,21 +73,28 @@ def test_typescript_hook_compiles_to_provider_bytecode(tmp_path: Path):
     result = compile_hook(source)
 
     assert result.bytecode
-    assert "_reserved" in result.javascript
+    assert "rawFlags" in result.javascript
 
     host = WasmHost(wasm_path=XAHAU_HOOK_PROVIDER_WASM)
     host.init()
-    evaluated = host.run_hook_bytecode(result.bytecode, reserved=7)
+    evaluated = host.run_hook_bytecode(
+        result.bytecode,
+        export="cbak",
+        reserved=7,
+    )
     assert evaluated.exit_code == -1
-    assert evaluated.error == "Error: entered main:7"
+    assert evaluated.error == "Error: entered callback:true:7"
 
 
 def test_typescript_hook_packages_payload_with_explicit_identities(tmp_path: Path):
     source = tmp_path / "packaged.hook.ts"
     source.write_text(
         """
-        export function main(_reserved: number): never {
-          throw new Error(`packaged:${_reserved}`);
+        export function main(): never {
+          throw new Error("entered main");
+        }
+        export function callback(info: CallbackInfo): never {
+          throw new Error(`packaged:${info.failed}:${info.rawFlags}`);
         }
         """
     )
@@ -107,9 +117,32 @@ def test_typescript_hook_packages_payload_with_explicit_identities(tmp_path: Pat
 
     host = WasmHost(wasm_path=XAHAU_HOOK_PROVIDER_WASM)
     host.init()
-    evaluated = host.run_hook_bytecode(parsed.payload, reserved=11)
+    evaluated = host.run_hook_bytecode(
+        parsed.payload,
+        export="cbak",
+        reserved=10,
+    )
     assert evaluated.exit_code == -1
-    assert evaluated.error == "Error: packaged:11"
+    assert evaluated.error == "Error: packaged:false:10"
+
+
+def test_main_does_not_receive_the_raw_callback_word(tmp_path: Path):
+    source = tmp_path / "main-arguments.hook.ts"
+    source.write_text(
+        """
+        export function main(...args: unknown[]): never {
+          throw new Error(`main arguments:${args.length}`);
+        }
+        """
+    )
+    compiled = compile_hook(source)
+
+    host = WasmHost(wasm_path=XAHAU_HOOK_PROVIDER_WASM)
+    host.init()
+    evaluated = host.run_hook_bytecode(compiled.bytecode, reserved=9)
+
+    assert evaluated.exit_code == -1
+    assert evaluated.error == "Error: main arguments:0"
 
 
 def test_packager_rejects_host_calls_during_module_initialization(
@@ -181,8 +214,8 @@ def test_provider_dispatches_callback_export(tmp_path: Path):
     source = tmp_path / "callback.hook.ts"
     source.write_text(
         """
-        export function callback(_reserved: number): never {
-          throw new Error(`entered callback:${_reserved}`);
+        export function callback(info: CallbackInfo): never {
+          throw new Error(`entered callback:${info.failed}:${info.rawFlags}`);
         }
         """
     )
@@ -197,4 +230,4 @@ def test_provider_dispatches_callback_export(tmp_path: Path):
     )
 
     assert evaluated.exit_code == -1
-    assert evaluated.error == "Error: entered callback:9"
+    assert evaluated.error == "Error: entered callback:true:9"
