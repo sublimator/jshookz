@@ -8,6 +8,7 @@
 
 #include "provider_internal.hpp"
 #include "bindings/hook_imports.hpp"
+#include "quickjs.hpp"
 
 #include <cstdlib>
 #include <cstring>
@@ -29,6 +30,31 @@ static uint8_t module_loader_buf[65536];
 
 static JSRuntime *rt = NULL;
 static JSContext *ctx = NULL;
+
+static JSValue
+callbackInfo(JSContext *context, uint32_t rawFlags)
+{
+    using jshookz::provider::qjs::OwnedValue;
+
+    OwnedValue info(context, JS_NewObject(context));
+    if (info.isException())
+        return info.release();
+    if (JS_DefinePropertyValueStr(
+            context,
+            info.get(),
+            "failed",
+            JS_NewBool(context, (rawFlags & 1U) != 0),
+            JS_PROP_ENUMERABLE) < 0)
+        return JS_EXCEPTION;
+    if (JS_DefinePropertyValueStr(
+            context,
+            info.get(),
+            "rawFlags",
+            JS_NewUint32(context, rawFlags),
+            JS_PROP_ENUMERABLE) < 0)
+        return JS_EXCEPTION;
+    return info.release();
+}
 
 /* Buffer for returning result strings to the host */
 /* RESULT_MAX — the consensus result cap (issue 0009, decided 2026-07-26).
@@ -503,9 +529,18 @@ static int32_t qjs_invoke_bytecode_export(
         return -1;
     }
 
-    JSValue argument = JS_NewInt64(ctx, reserved);
-    JSValue result = JS_Call(ctx, entry, JS_UNDEFINED, 1, &argument);
-    JS_FreeValue(ctx, argument);
+    bool const is_callback = std::strcmp(export_name, "callback") == 0;
+    jshookz::provider::qjs::OwnedValue argument(
+        ctx, is_callback ? callbackInfo(ctx, reserved) : JS_UNDEFINED);
+    if (argument.isException()) {
+        store_exception();
+        JS_FreeValue(ctx, entry);
+        return -1;
+    }
+    JSValueConst argument_value = argument.get();
+    JSValueConst *arguments = is_callback ? &argument_value : nullptr;
+    JSValue result = JS_Call(
+        ctx, entry, JS_UNDEFINED, is_callback ? 1 : 0, arguments);
     JS_FreeValue(ctx, entry);
     if (JS_IsException(result)) {
         store_exception();

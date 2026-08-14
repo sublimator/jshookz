@@ -52,7 +52,9 @@ export function main(): never {
   return accept("surface declarations compile", 0);
 }
 
-export function callback(_reserved: number): never {
-  void _reserved;
+export function callback(info: CallbackInfo): never {
+  if (info.failed !== ((info.rawFlags & 1) !== 0)) {
+    return rollback("callback info invariant failed", 1);
+  }
   return accept("callback declarations compile", 0);
 }

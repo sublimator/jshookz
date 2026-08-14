@@ -906,6 +906,18 @@ declare const enum HookExecutionMode {
   Callback = "callback",
 }
 
+/** Information supplied to an emitted-transaction callback entry point. */
+interface CallbackInfo {
+  /** Whether the emitted transaction failed. */
+  readonly failed: boolean;
+
+  /**
+   * Exact uint32 callback word supplied by Xahau. Prefer named properties;
+   * this is retained for diagnostics and forward-compatible expert use.
+   */
+  readonly rawFlags: number;
+}
+
 /**
  * Typed ledger locator. `T` is erased at runtime and records the ledger-object
  * shape returned when this keylet is passed to `ledger.lookup`.

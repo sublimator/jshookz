@@ -190,9 +190,10 @@ TOP_LEVEL = (
     "Result",
     "HostFailure",
     "HostResult",
+    "CallbackInfo",
     "TransactionType",
 )
-TOP_LEVEL_DOCS = {"ResultSuccess", "HostResult"}
+TOP_LEVEL_DOCS = {"ResultSuccess", "HostResult", "CallbackInfo"}
 GLOBAL_FUNCTIONS = ("accept", "rollback", "trace")
 GLOBAL_OVERRIDES = {
     "accept": ProfileOverride(
