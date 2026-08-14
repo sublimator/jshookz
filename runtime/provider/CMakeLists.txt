@@ -49,21 +49,18 @@ set(QUICKJS_SOURCES
     ${QUICKJS_SOURCE_DIR}/libunicode.c
 )
 
-# C++ types and bindings compiled into the WASM module
-set(CPP_SOURCES
-    types_js.cpp
-)
+# Provider-owned C++ sources compiled into the WASM module.
+include(provider_sources.cmake)
 
 add_executable(jshookz_provider
     ${QUICKJS_SOURCES}
-    wasm_bindings.c
-    ${CPP_SOURCES}
+    ${JSHOOKZ_PROVIDER_CPP_SOURCES}
 )
 
 # Only C files need the quickjs parent include (for quickjs.h etc.)
 # C++ files include quickjs.h via relative path to avoid VERSION file clash
 # (QuickJS repo has a VERSION file that conflicts with C++ <version> header)
-set_source_files_properties(${QUICKJS_SOURCES} wasm_bindings.c PROPERTIES
+set_source_files_properties(${QUICKJS_SOURCES} PROPERTIES
     INCLUDE_DIRECTORIES "${QUICKJS_SOURCE_DIR}"
 )
 
@@ -87,12 +84,12 @@ if(XAHAU_HOOK_PROVIDER)
 endif()
 
 # C flags
-set_source_files_properties(${QUICKJS_SOURCES} wasm_bindings.c PROPERTIES COMPILE_OPTIONS
+set_source_files_properties(${QUICKJS_SOURCES} PROPERTIES COMPILE_OPTIONS
     "-O2;-fwrapv;-funsigned-char;-Wno-sign-compare;-Wno-missing-field-initializers;-Wno-unused-parameter;-mllvm;-wasm-enable-sjlj"
 )
 
 # C++ flags
-set_source_files_properties(${CPP_SOURCES} PROPERTIES COMPILE_OPTIONS
+set_source_files_properties(${JSHOOKZ_PROVIDER_CPP_SOURCES} PROPERTIES COMPILE_OPTIONS
     "-O2;-fno-exceptions;-fno-rtti;-Wno-c99-designator;-mllvm;-wasm-enable-sjlj"
 )
 

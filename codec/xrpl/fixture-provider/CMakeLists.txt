@@ -31,8 +31,7 @@ set(QUICKJS_SOURCES
     ${QUICKJS_DIR}/libunicode.c
 )
 
-set(RUNTIME_BINDING_SOURCE ${REPO_ROOT}/runtime/provider/wasm_bindings.c)
-set(RUNTIME_TYPES_SOURCE ${REPO_ROOT}/runtime/provider/types_js.cpp)
+include(${REPO_ROOT}/runtime/provider/provider_sources.cmake)
 
 # Pinned xdata backend source set: keep in sync with the xdata branch of
 # codec/xrpl/CMakeLists.txt, not with the whole vendor tree.
@@ -51,8 +50,7 @@ set(BOOST_NO_EXCEPTIONS_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/boost_no_exceptions.c
 
 add_executable(jshookz_codec_fixture
     ${QUICKJS_SOURCES}
-    ${RUNTIME_BINDING_SOURCE}
-    ${RUNTIME_TYPES_SOURCE}
+    ${JSHOOKZ_PROVIDER_CPP_SOURCES}
     ${DIGEST_STUB_SOURCE}
     ${BOOST_NO_EXCEPTIONS_SOURCE}
     ${XDATA_SOURCES}
@@ -76,14 +74,14 @@ target_compile_definitions(jshookz_codec_fixture PRIVATE
 
 # Only C files get the QuickJS repo include dir. C++ files include quickjs.h
 # through relative paths so QuickJS's VERSION file cannot shadow <version>.
-set_source_files_properties(${QUICKJS_SOURCES} ${RUNTIME_BINDING_SOURCE}
+set_source_files_properties(${QUICKJS_SOURCES}
     PROPERTIES
     INCLUDE_DIRECTORIES "${QUICKJS_DIR}"
     COMPILE_OPTIONS "-O2;-fwrapv;-funsigned-char;-Wno-sign-compare;-Wno-missing-field-initializers;-Wno-unused-parameter;-mllvm;-wasm-enable-sjlj"
 )
 
 set(PROVIDER_CXX_SOURCES
-    ${RUNTIME_TYPES_SOURCE}
+    ${JSHOOKZ_PROVIDER_CPP_SOURCES}
     ${DIGEST_STUB_SOURCE}
     ${BOOST_NO_EXCEPTIONS_SOURCE}
     ${XDATA_SOURCES}
