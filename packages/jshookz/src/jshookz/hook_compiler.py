@@ -46,13 +46,6 @@ function visit(node) {
       ["hook", "cbak", "accept", "rollback"].includes(target.text)
     ) {
       forbidden = target.text;
-    } else if (
-      ts.isPropertyAccessExpression(target) &&
-      ts.isIdentifier(target.expression) &&
-      target.expression.text === "lifecycle" &&
-      ["accept", "rollback"].includes(target.name.text)
-    ) {
-      forbidden = `lifecycle.${target.name.text}`;
     }
     if (forbidden !== null) {
       const position = file.getLineAndCharacterOfPosition(node.getStart(file));

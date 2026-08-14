@@ -6,7 +6,9 @@ for deterministic JavaScript/TypeScript Xahau Hooks.
 The wheel includes two TypeScript declarations:
 
 - `xahau-quickjs-v1.d.ts` is the exact surface implemented by the sealed v1
-  provider and is the compiler default.
+  provider and is the compiler default. It is generated from the canonical
+  declaration plus the explicit v1 selection/refinement policy in
+  `scripts/project-v1-declarations.py`.
 - `hooks-api.d.ts` is the broader, aspirational public API specification.
 
 Provider binaries are deliberately not embedded in the wheel. Set

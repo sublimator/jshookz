@@ -43,7 +43,7 @@ function typecheckV1Surface(blob: STBlob, hash: Hash256, account: AccountID): vo
 export function hook(_reserved: number): never {
   void _reserved;
   void typecheckV1Surface;
-  return lifecycle.accept("surface declarations compile", 0);
+  return accept("surface declarations compile", 0);
 }
 
 export function cbak(_reserved: number): never {

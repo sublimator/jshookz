@@ -763,12 +763,7 @@ static void register_host_functions(JSContext *ctx)
     JSValue lifecycle = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, lifecycle, "account",
         JS_NewCFunction(ctx, js_lifecycle_account, "account", 0));
-    JS_SetPropertyStr(ctx, lifecycle, "accept",
-        JS_NewCFunction(ctx, js_hook_accept, "accept", 2));
-    JS_SetPropertyStr(ctx, lifecycle, "rollback",
-        JS_NewCFunction(ctx, js_hook_rollback, "rollback", 2));
     JS_SetPropertyStr(ctx, global, "lifecycle", lifecycle);
-    /* Canonical compatibility alias used by the existing port corpus. */
     JS_SetPropertyStr(ctx, global, "accept",
         JS_NewCFunction(ctx, js_hook_accept, "accept", 2));
     JS_SetPropertyStr(ctx, global, "rollback",

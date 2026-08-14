@@ -29,7 +29,7 @@ Wasmtime dispatcher—while reusing the existing C Hook host implementations.
 ```ts
 export function hook(_reserved: number): never {
   trace("ledger", ledger.sequence);
-  lifecycle.accept("hello from JavaScript", 0);
+  accept("hello from JavaScript", 0);
 }
 ```
 
@@ -57,7 +57,7 @@ packages/jshookz/.venv/bin/jshookz package-hook hook.ts \
 
 The v1 runtime exposes 13 existing Hook host functions, including ledger
 reads, tracing, state, emission, accept, and rollback. Its exact TypeScript
-surface is
+surface is generated from the canonical API and checked in CI:
 [`xahau-quickjs-v1.d.ts`](packages/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts).
 
 The broader [`hooks-api.d.ts`](packages/jshookz/src/jshookz/types/hooks-api.d.ts)

@@ -103,7 +103,7 @@ class HookRunner:
                 result.error = error
         else:
             result.error = RuntimeError(
-                "JavaScript Hook returned without lifecycle.accept/rollback")
+                "JavaScript Hook returned without accept/rollback")
 
         result.call_log = list(rt.call_log)
         result.state_writes = rt.state_journal[journal_mark:]
