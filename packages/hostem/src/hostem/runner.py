@@ -1,7 +1,8 @@
-"""Run a JavaScript Hook against hookz's raw Xahau host implementation."""
+"""Run a JavaScript or TypeScript Hook against hookz's Xahau host."""
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 from hookz.runtime import (
@@ -12,6 +13,7 @@ from hookz.runtime import (
 )
 from jshookz.generated_hook_raw import RAW_HOOK_ABI
 from jshookz.host import WasmHost
+from jshookz.hook_compiler import compile_hook
 
 
 _RAW_HOOK_NAMES = frozenset(row[0] for row in RAW_HOOK_ABI)
@@ -42,7 +44,7 @@ def _find_terminal(error: BaseException):
 
 
 class HookRunner:
-    """One fresh QuickJS instance per JavaScript Hook delivery."""
+    """One fresh QuickJS instance per JavaScript/TypeScript Hook delivery."""
 
     def __init__(
         self,
@@ -54,9 +56,36 @@ class HookRunner:
         self.wasm_path = Path(wasm_path) if wasm_path is not None else None
 
     def run_file(self, path: str | Path) -> HookResult:
-        return self.run(Path(path).read_text(), label=str(path))
+        source = Path(path)
+        if source.suffix.lower() == ".ts":
+            compiled = compile_hook(source, wasm_path=self.wasm_path)
+            return self._run_bytecode(compiled.bytecode, label=str(source))
+        return self.run(source.read_text(), label=str(source))
+
+    def run_typescript(
+        self,
+        source: str,
+        *,
+        label: str = "<hook.ts>",
+    ) -> HookResult:
+        """Compile exact-v1 TypeScript, then execute its QuickJS bytecode."""
+        with tempfile.TemporaryDirectory(prefix="hostem-hook-ts-") as temp:
+            source_path = Path(temp) / "hook.ts"
+            source_path.write_text(source)
+            compiled = compile_hook(source_path, wasm_path=self.wasm_path)
+        return self._run_bytecode(compiled.bytecode, label=label)
 
     def run(self, source: str, *, label: str = "<hook>") -> HookResult:
+        provider = _HookzProvider(self.runtime)
+        compiler = WasmHost(handler=provider, wasm_path=self.wasm_path)
+        compiler.init()
+        try:
+            bytecode = compiler.compile_source(source, module=True)
+        finally:
+            compiler.destroy()
+        return self._run_bytecode(bytecode, label=label)
+
+    def _run_bytecode(self, bytecode: bytes, *, label: str) -> HookResult:
         rt = self.runtime
         result = HookResult()
         rt.call_log = []
@@ -68,13 +97,6 @@ class HookRunner:
         journal_mark = len(rt.state_journal)
 
         provider = _HookzProvider(rt)
-        compiler = WasmHost(handler=provider, wasm_path=self.wasm_path)
-        compiler.init()
-        try:
-            bytecode = compiler.compile_source(source, module=True)
-        finally:
-            compiler.destroy()
-
         host = WasmHost(handler=provider, wasm_path=self.wasm_path)
 
         try:

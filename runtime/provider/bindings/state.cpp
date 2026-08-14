@@ -16,7 +16,7 @@ js_state_get(JSContext *ctx, JSValueConst this_val,
         qjs::StringBytes::utf8,
         qjs::RichBytes::callToBytes);
     if (!key)
-        return JS_ThrowTypeError(ctx, "state.get: invalid key");
+        return qjs::pendingOrTypeError(ctx, "state.get: invalid key");
 
     /* Extended Hook state tops out at 16 * 256 bytes. A maximum-sized buffer
        preserves the fixed-buffer host contract: TOO_SMALL never means a
@@ -50,14 +50,19 @@ js_state_set(JSContext *ctx, JSValueConst this_val,
         qjs::StringBytes::utf8,
         qjs::RichBytes::callToBytes);
     if (!key)
-        return JS_ThrowTypeError(ctx, "state.set: invalid key");
+        return qjs::pendingOrTypeError(ctx, "state.set: invalid key");
+    /* Parsing a rich value executes its toBytes method. Snapshot the key so
+       that method cannot detach or resize the key's ArrayBuffer underneath
+       the subsequent host call. */
+    if (!key.snapshot())
+        return JS_EXCEPTION;
     auto value = qjs::ByteView::get(
         ctx,
         argv[1],
         qjs::StringBytes::utf8,
         qjs::RichBytes::callToBytes);
     if (!value)
-        return JS_ThrowTypeError(ctx, "state.set: invalid value");
+        return qjs::pendingOrTypeError(ctx, "state.set: invalid value");
 
     int64_t result = hook_state_set(
         (uint32_t)(uintptr_t)value.data(), value.size(),

@@ -6,10 +6,6 @@
 
 namespace jshookz::provider::bindings {
 
-JSValue make_uint8array(
-    JSContext* ctx,
-    std::uint8_t const* data,
-    std::uint32_t length);
 JSValue host_success(JSContext* ctx, JSValue value);
 JSValue host_failure(JSContext* ctx, std::int64_t code);
 JSValue rich_from_bytes(

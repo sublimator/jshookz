@@ -25,8 +25,8 @@ js_hook_accept(JSContext *ctx, JSValueConst this_val,
     auto message = qjs::ByteView::get(
         ctx, argv[0], qjs::StringBytes::utf8);
     if (!message)
-        return JS_ThrowTypeError(
-            ctx, "accept: expected string, Uint8Array, or ArrayBuffer");
+        return qjs::byteInputTypeError(
+            ctx, "accept", qjs::StringBytes::utf8);
     int64_t result = hook_accept(
         (uint32_t)(uintptr_t)message.data(), message.size(), code);
     return JS_NewInt64(ctx, result);
@@ -49,8 +49,8 @@ js_hook_rollback(JSContext *ctx, JSValueConst this_val,
         qjs::StringBytes::utf8,
         qjs::RichBytes::callToBytes);
     if (!message)
-        return JS_ThrowTypeError(
-            ctx, "rollback: expected string, Uint8Array, or ArrayBuffer");
+        return qjs::byteInputTypeError(
+            ctx, "rollback", qjs::StringBytes::utf8);
     int64_t result = hook_rollback(
         (uint32_t)(uintptr_t)message.data(), message.size(), code);
     return JS_NewInt64(ctx, result);
