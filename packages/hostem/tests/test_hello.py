@@ -39,8 +39,8 @@ def test_tagged_host_failure_can_drive_javascript_rollback():
     source = """
         export function hook(_reserved) {
           const write = state.set("K".repeat(33), new Uint8Array([1]));
-          if (!write.ok) lifecycle.rollback("state failed", write.code);
-          lifecycle.accept("unexpected");
+          if (!write.ok) rollback("state failed", write.code);
+          accept("unexpected");
         }
     """
 
@@ -56,10 +56,10 @@ def test_hook_terminal_bypasses_javascript_try_catch():
     source = """
         export function hook(_reserved) {
           try {
-            lifecycle.accept("terminal", 23);
+            accept("terminal", 23);
           } catch (error) {
             state.set("CAUGHT", new Uint8Array([1]));
-            lifecycle.rollback("caught terminal", 24);
+            rollback("caught terminal", 24);
           }
         }
     """
@@ -78,17 +78,17 @@ def test_javascript_reads_host_state_as_blob_then_replaces_it():
     source = """
         export function hook(_reserved) {
           const seeded = state.get("BRIDGE");
-          if (!seeded.ok) lifecycle.rollback("state read failed", seeded.code);
-          if (seeded.value === undefined) lifecycle.rollback("state missing", -1);
+          if (!seeded.ok) rollback("state read failed", seeded.code);
+          if (seeded.value === undefined) rollback("state missing", -1);
           const seededHex = seeded.value.toHex();
           trace("js-state-read", seededHex);
           if (seededHex !== "66726F6D2D63") {
-            lifecycle.rollback(`unexpected state:${seededHex}`, -2);
+            rollback(`unexpected state:${seededHex}`, -2);
           }
           const write = state.set("BRIDGE", "from-js");
-          if (!write.ok) lifecycle.rollback("state write failed", write.code);
+          if (!write.ok) rollback("state write failed", write.code);
           trace("js-state-write", "from-js");
-          lifecycle.accept("state bridged", 84);
+          accept("state bridged", 84);
         }
     """
     runner = HookRunner()
@@ -117,7 +117,7 @@ def test_module_without_hook_export_is_refused():
     source = """
         const marker = "ordinary module initialization";
         export function other(_reserved) {
-          lifecycle.accept(marker, 1);
+          accept(marker, 1);
         }
     """
     runner = HookRunner()

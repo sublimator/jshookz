@@ -1,4 +1,3 @@
-//@@start api
 /**
  * The canonical JavaScript/TypeScript API declaration for Xahau Hooks.
  *
@@ -51,16 +50,25 @@ type RecordParseResult<T> =
       readonly field?: string;
     };
 
-type BinaryRecordShape = Readonly<Record<string, record.Field<unknown, number>>>;
-type BinaryRecordFieldValue<T> = T extends record.Field<infer V, number> ? V : never;
-type BinaryRecordValue<T extends BinaryRecordShape> = {
-  -readonly [K in keyof T as BinaryRecordFieldValue<T[K]> extends never ? never : K]: BinaryRecordFieldValue<T[K]>;
+interface RecordField<T, Width extends number = number> {
+  readonly kind: string;
+  readonly offset: number;
+  readonly byteLength: Width;
+
+  /** Permit overlap only with fields carrying the same non-empty group. */
+  overlay(group: string): RecordField<T, Width>;
+}
+
+type RecordShape = Readonly<Record<string, RecordField<unknown, number>>>;
+type RecordFieldValue<T> = T extends RecordField<infer V, number> ? V : never;
+type RecordValue<T extends RecordShape> = {
+  -readonly [K in keyof T as RecordFieldValue<T[K]> extends never ? never : K]: RecordFieldValue<T[K]>;
 };
 
-interface BinaryRecordSchema<
+interface RecordSchema<
   Name extends string,
   Size extends number,
-  Shape extends BinaryRecordShape,
+  Shape extends RecordShape,
 > {
   readonly name: Name;
   readonly byteLength: Size;
@@ -70,18 +78,18 @@ interface BinaryRecordSchema<
    * Decode a record after validating its size and field representations.
    * Prefer this result-valued form for state or transaction-derived bytes.
    */
-  safeParse(value: BytesLike | STBlob): RecordParseResult<BinaryRecordValue<Shape>>;
+  safeParse(value: BytesLike | STBlob): RecordParseResult<RecordValue<Shape>>;
 
   /**
    * Assertion form for a programmer-guaranteed record. Throws on malformed
    * input; it must not become the default for untrusted persisted bytes.
    */
-  parse(value: BytesLike | STBlob): BinaryRecordValue<Shape>;
+  parse(value: BytesLike | STBlob): RecordValue<Shape>;
 
-  encode(value: BinaryRecordValue<Shape>): STBlob;
+  encode(value: RecordValue<Shape>): STBlob;
   patch(
     source: BytesLike | STBlob,
-    values: Partial<BinaryRecordValue<Shape>>,
+    values: Partial<RecordValue<Shape>>,
   ): RecordParseResult<STBlob>;
 }
 
@@ -100,47 +108,39 @@ interface BinaryRecordSchema<
 declare function record<
   const Name extends string,
   const Size extends number,
-  const Shape extends BinaryRecordShape,
+  const Shape extends RecordShape,
 >(
   name: Name,
   byteLength: Size,
   fields: Shape,
   options?: record.Options,
-): BinaryRecordSchema<Name, Size, Shape>;
+): RecordSchema<Name, Size, Shape>;
 
 declare namespace record {
   interface Options {
     readonly coverage?: "complete" | "allow-gaps";
   }
 
-  interface Field<T, Width extends number = number> {
-    readonly kind: string;
-    readonly offset: number;
-    readonly byteLength: Width;
-
-    /** Permit overlap only with fields carrying the same non-empty group. */
-    overlay(group: string): Field<T, Width>;
-  }
-
-  function u8(offset: number): Field<UInt8, 1>;
-  function u16be(offset: number): Field<UInt16, 2>;
-  function u16le(offset: number): Field<UInt16, 2>;
-  function u32be(offset: number): Field<UInt32, 4>;
-  function u32le(offset: number): Field<UInt32, 4>;
-  function i32be(offset: number): Field<number, 4>;
-  function i32le(offset: number): Field<number, 4>;
-  function u64be(offset: number): Field<UInt64, 8>;
-  function u64le(offset: number): Field<UInt64, 8>;
-  function i64be(offset: number): Field<bigint, 8>;
-  function i64le(offset: number): Field<bigint, 8>;
-  function xflbe(offset: number): Field<XFL, 8>;
-  function bytes<const Width extends number>(offset: number, byteLength: Width): Field<STBlob, Width>;
-  function hash<const Width extends number>(offset: number, byteLength: Width): Field<STHash<Width>, Width>;
-  function address(offset: number): Field<STAddress, 20>;
-  function currency(offset: number): Field<STCurrency, 20>;
+  function u8(offset: number): RecordField<UInt8, 1>;
+  function u16be(offset: number): RecordField<UInt16, 2>;
+  function u16le(offset: number): RecordField<UInt16, 2>;
+  function u32be(offset: number): RecordField<UInt32, 4>;
+  function u32le(offset: number): RecordField<UInt32, 4>;
+  function i32be(offset: number): RecordField<number, 4>;
+  function i32le(offset: number): RecordField<number, 4>;
+  function u64be(offset: number): RecordField<UInt64, 8>;
+  function u64le(offset: number): RecordField<UInt64, 8>;
+  function i64be(offset: number): RecordField<bigint, 8>;
+  function i64le(offset: number): RecordField<bigint, 8>;
+  function xflbe(offset: number): RecordField<XFL, 8>;
+  function xflle(offset: number): RecordField<XFL, 8>;
+  function bytes<const Width extends number>(offset: number, byteLength: Width): RecordField<STBlob, Width>;
+  function hash<const Width extends number>(offset: number, byteLength: Width): RecordField<STHash<Width>, Width>;
+  function address(offset: number): RecordField<STAddress, 20>;
+  function currency(offset: number): RecordField<STCurrency, 20>;
 
   /** A named field that participates in coverage but is omitted from values. */
-  function padding<const Width extends number>(offset: number, byteLength: Width): Field<never, Width>;
+  function padding<const Width extends number>(offset: number, byteLength: Width): RecordField<never, Width>;
 }
 
 interface ByteCompareOptions {
@@ -319,29 +319,15 @@ declare class STPathSet implements Iterable<STPath> {
   [Symbol.iterator](): IterableIterator<STPath>;
 }
 
-type STFieldValue =
-  | undefined
-  | null
-  | boolean
-  | number
-  | bigint
-  | string
-  | STBlob
-  | STHash
-  | STAddress
-  | STCurrency
-  | STIssue
-  | STAmount
-  | STPathSet
-  | STObject
-  | STArray;
-
 /**
  * A protocol field descriptor derived from Xahau definitions.
  *
  * `T` is type-only; the runtime value contains the three numeric codes. The
  * literal code parameters let drift checkers retain exact source equality
- * while `T` lets generic object access infer the decoded value.
+ * while `T` lets generic object access infer the decoded value. `Code` is
+ * redundant by design: it equals `(TypeCode << 16) | FieldCode`, but
+ * TypeScript cannot express that numeric-literal arithmetic directly. The
+ * declaration checker enforces the relationship instead.
  */
 declare interface SerializedField<
   T,
@@ -355,8 +341,27 @@ declare interface SerializedField<
   readonly __valueType?: T;
 }
 
-/** @serial STObject LedgerEntry
- *  @inner-rich-type STObject */
+type SerializedFieldValue<T> =
+  T extends SerializedField<infer V> ? unknown extends V ? never : V : never;
+
+/** Values derived mechanically from the protocol `Field` descriptor table. */
+type ProtocolFieldValue = {
+  [K in keyof typeof Field]: SerializedFieldValue<(typeof Field)[K]>;
+}[keyof typeof Field];
+
+/** A decoded protocol field value, plus absence for an unset field. */
+type STFieldValue = ProtocolFieldValue | undefined;
+
+/**
+ * Immutable decoded-object view.
+ *
+ * `withField` and `withoutField` return a new logical value and never mutate
+ * this object. Implementations may structurally share backing bytes, decoded
+ * values, and patch overlays so long as that sharing is unobservable.
+ *
+ * @serial STObject LedgerEntry
+ * @inner-rich-type STObject
+ */
 declare interface STObject {
   has(field: string | SerializedField<unknown>): boolean;
   get<T>(field: SerializedField<T>): T | undefined;
@@ -440,7 +445,6 @@ declare interface STUNLReport extends STObject {
   readonly ActiveValidators: readonly STActiveValidator[];
 }
 
-//@@start xpop-types
 declare interface STNFToken extends STObject {
   readonly NFTokenID: STHash<32>;
   readonly URI?: STBlob;
@@ -456,7 +460,6 @@ declare interface STXPop {
   readonly transaction: STTransaction;
   readonly metadata: STMetadata;
 }
-//@@end xpop-types
 
 declare const enum TransactionType {
   Payment = 0,
@@ -741,7 +744,16 @@ declare const enum TransactionResult {
 }
 
 declare const enum HookExecutionMode {
+  /** Strong pre-apply execution. */
   Strong = "strong",
+
+  /**
+   * Weak post-apply execution. Xahau has no `hefWEAK` symbol: this is the
+   * execution state with neither `hefSTRONG` nor `hefCALLBACK` set.
+   */
+  Weak = "weak",
+
+  /** Emitted-transaction callback execution. */
   Callback = "callback",
 }
 
@@ -838,6 +850,13 @@ declare namespace emit {
     readonly value: StateValueLike;
   }
 
+  /**
+   * Selected typed emitted-transaction builders.
+   *
+   * This is not yet the complete Xahau transaction catalogue. Every omitted
+   * transaction type must eventually be projected or carry an explicit
+   * unsupported/not-emittable disposition; see the builder coverage gate.
+   */
   namespace build {
     interface InvokeOptions {
       readonly destination?: STAddress;
@@ -885,7 +904,6 @@ declare namespace emit {
       readonly hookParameters?: readonly HookParameter[];
     }
 
-    //@@start remit-options
     interface RemitOptions {
       readonly destination: STAddress;
       readonly uri?: StateValueLike;
@@ -895,7 +913,6 @@ declare namespace emit {
       readonly flags?: UInt32;
       readonly hookParameters?: readonly HookParameter[];
     }
-    //@@end remit-options
 
     interface ClaimRewardOptions {
       readonly account?: STAddress;
@@ -1005,7 +1022,6 @@ declare namespace util {
     function negativeUNL(): LedgerKeylet;
     function emittedDir(): LedgerKeylet;
     function amm(left: STIssue, right: STIssue): LedgerKeylet;
-    function range(lo: LedgerKeylet, hi: LedgerKeylet): LedgerKeylet | undefined;
   }
 
   function sha512h(data: BytesLike | STBlob): STHash<32>;
@@ -1082,28 +1098,22 @@ declare namespace lifecycle {
   function skip(targetHook: STHash<32>, remove?: boolean): HostResult<void>;
   function again(): HostResult<void>;
 
-  class Accept extends Error {
-    readonly code: number;
-  }
-  class Rollback extends Error {
-    readonly code: number;
-  }
-
-  /**
-   * Terminate this hook execution. A supplied `code` becomes the integer
-   * HookReturnCode recorded on-ledger; omit it only when that value is not part
-   * of the contract's intended interface. C hooks commonly pass `__LINE__` as
-   * a source-location breadcrumb, but TypeScript translations are not required
-   * to preserve that source-language convention. Explicitly meaningful codes
-   * remain caller-owned.
-   */
-  function accept(message?: string | BytesLike | STBlob, code?: number): never;
-  function rollback(message?: string | BytesLike | STBlob, code?: number): never;
-  function trace(label: string, value?: unknown): void;
 }
 
+/**
+ * Accept and terminate this hook execution. A supplied `code` becomes the
+ * integer HookReturnCode recorded on-ledger; omit it only when that value is
+ * not part of the contract's intended interface. C hooks commonly pass
+ * `__LINE__` as a source-location breadcrumb, but TypeScript translations are
+ * not required to preserve that source-language convention. Explicitly
+ * meaningful codes remain caller-owned.
+ */
 declare function accept(message?: string | BytesLike | STBlob, code?: number): never;
+
+/** Reject, roll back, and terminate this hook execution. See `accept`. */
 declare function rollback(message?: string | BytesLike | STBlob, code?: number): never;
+
+/** Trace a value; callable namespace members provide explicit encodings. */
 declare function trace(label: string, value?: unknown): void;
 
 declare namespace trace {
@@ -1524,5 +1534,3 @@ declare const Field: {
   readonly BaseAsset: SerializedField<STCurrency, 1703937, 26, 1>;
   readonly QuoteAsset: SerializedField<STCurrency, 1703938, 26, 2>;
 };
-
-//@@end api

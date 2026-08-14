@@ -83,6 +83,7 @@ jobs:
         run: |
           packages/hostem/.venv/bin/python \
             integrations/xahau/tools/generate_raw_hook_abi.py --check
+          ./scripts/project-v1-declarations.py --check
           tsc -p packages/hostem/tsconfig.xahau-integration.json
 
       - name: Build and seal Xahau provider

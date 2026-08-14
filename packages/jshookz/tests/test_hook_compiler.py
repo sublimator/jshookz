@@ -30,7 +30,7 @@ def test_default_v1_declarations_reject_unimplemented_rich_api(tmp_path: Path):
     source.write_text(
         "export function hook(): never { "
         "record('future', 1, { value: record.u8(0) }); "
-        "return lifecycle.accept(); }"
+        "return accept(); }"
     )
 
     with pytest.raises(RuntimeError, match="Cannot find name 'record'"):
@@ -42,7 +42,7 @@ def test_v1_example_compiles_and_packages(tmp_path: Path):
     source.write_text(
         "export function hook(_reserved: number): never { "
         "void _reserved; trace('ledger', ledger.sequence); "
-        "return lifecycle.accept('ok', 0); }"
+        "return accept('ok', 0); }"
     )
 
     compiled = compile_hook(source)
@@ -149,7 +149,7 @@ def test_compiler_rejects_top_level_terminal_invocation(tmp_path: Path):
         export function hook(_reserved: number): never {
           throw new Error("entry");
         }
-        lifecycle.accept("not an entry", 1);
+        accept("not an entry", 1);
         """
     )
 

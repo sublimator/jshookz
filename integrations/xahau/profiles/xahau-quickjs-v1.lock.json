@@ -355,10 +355,10 @@
         ]
       }
     ],
-    "sha256": "fb544a87204491b5e81ea0ebcb117ad6e03955674a6e31f0e21730aabd7bd086",
-    "size": 1005720
+    "sha256": "60979d3128c2dc8d454019915154a0da1c9db361a4170f017e13a3000eec97f3",
+    "size": 1005672
   },
-  "runtime_profile_id": "a3619f29dbe5d3d3da332736cc56900b73a30ac24d593bba2f190bcc6f7893e5",
+  "runtime_profile_id": "2edaf6f74094b2a624a38e374156e86e6cec186ad599cf43fe2939efce509537",
   "schema": "xahau.quickjs.runtime-profile-lock.v1",
   "source": {
     "artifact": {

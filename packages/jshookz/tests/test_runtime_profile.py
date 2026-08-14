@@ -208,6 +208,19 @@ def test_profile_javascript_surface_is_ledger_derived_and_reduced():
             "atomics: typeof Atomics,"
             "weak: typeof WeakRef,"
             "finalizer: typeof FinalizationRegistry,"
+            "setTimeout: typeof setTimeout,"
+            "clearTimeout: typeof clearTimeout,"
+            "setInterval: typeof setInterval,"
+            "clearInterval: typeof clearInterval,"
+            "setImmediate: typeof setImmediate,"
+            "clearImmediate: typeof clearImmediate,"
+            "requestAnimationFrame: typeof requestAnimationFrame,"
+            "cancelAnimationFrame: typeof cancelAnimationFrame,"
+            "queueMicrotask: typeof queueMicrotask,"
+            "accept: typeof accept,"
+            "rollback: typeof rollback,"
+            "lifecycleAccept: typeof lifecycle.accept,"
+            "lifecycleRollback: typeof lifecycle.rollback,"
             "promise: typeof Promise,"
             "number: typeof Number"
             "})"
@@ -227,6 +240,19 @@ def test_profile_javascript_surface_is_ledger_derived_and_reduced():
         "atomics": "undefined",
         "weak": "undefined",
         "finalizer": "undefined",
+        "setTimeout": "undefined",
+        "clearTimeout": "undefined",
+        "setInterval": "undefined",
+        "clearInterval": "undefined",
+        "setImmediate": "undefined",
+        "clearImmediate": "undefined",
+        "requestAnimationFrame": "undefined",
+        "cancelAnimationFrame": "undefined",
+        "queueMicrotask": "undefined",
+        "accept": "function",
+        "rollback": "function",
+        "lifecycleAccept": "undefined",
+        "lifecycleRollback": "undefined",
         "promise": "function",
         "number": "function",
     }
