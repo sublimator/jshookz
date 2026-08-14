@@ -26,6 +26,13 @@ type StateValueLike = BytesLike | STBlob | STHash | STAddress | STCurrency | STA
 type BatchKeys = Record<string, StateKeyLike>;
 type BatchValues<T extends Record<string, unknown>> = { readonly [K in keyof T]: STBlob | undefined };
 
+/** Shared discriminated carrier; each domain owns its failure payload. */
+type ResultSuccess<T> = { readonly ok: true; readonly value: T };
+type ResultFailure = { readonly ok: false };
+type Result<T, Failure extends ResultFailure> = ResultSuccess<T> | Failure;
+
+type HostFailure = ResultFailure & { readonly code: HookReturnCode };
+
 /**
  * The result of an operation governed by Hooks host-status semantics.
  *
@@ -39,28 +46,23 @@ type BatchValues<T extends Record<string, unknown>> = { readonly [K in keyof T]:
  * Provider-side rich facades may return `HostResult` when they enforce the
  * same host rules and preserve the corresponding Hook status exactly.
  */
-type HostSuccess<T> = { readonly ok: true; readonly value: T };
-type HostFailure = { readonly ok: false; readonly code: HookReturnCode };
-type HostResult<T> = HostSuccess<T> | HostFailure;
+type HostResult<T> = Result<T, HostFailure>;
 
 /** A pure binary-codec validation result; no Hooks host call occurred. */
-type ParseResult<T> =
-  | { readonly ok: true; readonly value: T }
-  | {
-      readonly ok: false;
+type ParseFailure =
+  | (ResultFailure & {
       readonly issue: "wrong-length";
       readonly expectedLength: number;
       readonly actualLength: number;
-    }
-  | {
-      readonly ok: false;
+    })
+  | (ResultFailure & {
       readonly issue: "invalid-value";
-    }
-  | {
-      readonly ok: false;
+    })
+  | (ResultFailure & {
       readonly issue: "invalid-field";
       readonly field: string;
-    };
+    });
+type ParseResult<T> = Result<T, ParseFailure>;
 
 interface RecordField<T, Width extends number = number> {
   readonly kind: string;
@@ -905,9 +907,10 @@ declare namespace emit {
 
   /** Host stage that failed while finalizing fee/details for an emission. */
   type BuildStage = "details" | "fee";
-  type BuildResult =
-    | HostSuccess<EmittedTransaction>
-    | (HostFailure & { readonly stage: BuildStage });
+  type BuildResult = Result<
+    EmittedTransaction,
+    HostFailure & { readonly stage: BuildStage }
+  >;
 
   interface HookParameter {
     readonly name: StateKeyLike;
@@ -1196,7 +1199,20 @@ declare namespace rollback {
    * code. Supply `message` when the surrounding contract gives that failure
    * more useful context than the default host-status diagnostic.
    */
-  function onHostFailure<T>(result: HostResult<T>, message?: string | BytesLike | STBlob): T;
+  function onFail<T>(
+    result: HostResult<T>,
+    message?: string | BytesLike | STBlob,
+  ): T;
+
+  /**
+   * Apply a contract-owned terminal policy to a result whose failure does not
+   * already carry a Hook status.
+   */
+  function onFail<T, Failure extends ResultFailure>(
+    result: Result<T, Failure>,
+    message: string | BytesLike | STBlob,
+    code: number,
+  ): T;
 }
 
 /** Trace a value; callable namespace members provide explicit encodings. */

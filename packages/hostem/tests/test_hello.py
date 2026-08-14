@@ -52,12 +52,12 @@ def test_tagged_host_failure_can_drive_javascript_rollback():
     assert [call.name for call in result.call_log] == ["state_set", "rollback"]
 
 
-def test_rollback_on_host_failure_preserves_absence_and_exact_failure_code():
+def test_rollback_on_fail_preserves_absence_and_exact_failure_code():
     source = """
         export function hook(_reserved) {
-          const missing = rollback.onHostFailure(state.get("MISSING"));
+          const missing = rollback.onFail(state.get("MISSING"));
           if (missing !== undefined) rollback("state unexpectedly present", -1);
-          rollback.onHostFailure(
+          rollback.onFail(
             state.set("K".repeat(33), new Uint8Array([1]))
           );
           accept("unexpected");
@@ -76,10 +76,10 @@ def test_rollback_on_host_failure_preserves_absence_and_exact_failure_code():
     ]
 
 
-def test_rollback_on_host_failure_accepts_context_without_losing_status_code():
+def test_rollback_on_fail_accepts_context_without_losing_status_code():
     source = """
         export function hook(_reserved) {
-          rollback.onHostFailure(
+          rollback.onFail(
             state.set("K".repeat(33), new Uint8Array([1])),
             "state write failed"
           );
@@ -93,6 +93,26 @@ def test_rollback_on_host_failure_accepts_context_without_losing_status_code():
     assert result.return_code < 0
     assert result.return_msg == b"state write failed"
     assert [call.name for call in result.call_log] == ["state_set", "rollback"]
+
+
+def test_rollback_on_fail_applies_policy_to_an_uncoded_result():
+    source = """
+        export function hook(_reserved) {
+          rollback.onFail(
+            { ok: false, issue: "wrong-length" },
+            "invalid configuration",
+            137
+          );
+          accept("unexpected");
+        }
+    """
+
+    result = HookRunner().run(source)
+
+    assert result.rejected, result.error
+    assert result.return_code == 137
+    assert result.return_msg == b"invalid configuration"
+    assert [call.name for call in result.call_log] == ["rollback"]
 
 
 def test_hook_terminal_bypasses_javascript_try_catch():

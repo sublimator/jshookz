@@ -34,7 +34,12 @@ function typecheckV1Surface(blob: STBlob, hash: Hash256, account: AccountID): vo
   }
   state.get("key");
   state.set("key", blob);
-  rollback.onHostFailure(state.get("key"), "state read failed");
+  rollback.onFail(state.get("key"), "state read failed");
+  rollback.onFail<number, ResultFailure & { readonly issue: "invalid-value" }>(
+    { ok: false, issue: "invalid-value" },
+    "invalid value",
+    1,
+  );
   emit.reserve(1);
   emit.prepare(blob);
   emit.tx(blob);
