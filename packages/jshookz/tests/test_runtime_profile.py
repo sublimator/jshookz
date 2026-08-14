@@ -219,7 +219,7 @@ def test_profile_javascript_surface_is_ledger_derived_and_reduced():
             "queueMicrotask: typeof queueMicrotask,"
             "accept: typeof accept,"
             "rollback: typeof rollback,"
-            "rollbackOnHostFailure: typeof rollback.onHostFailure,"
+            "rollbackOnFail: typeof rollback.onFail,"
             "lifecycleAccept: typeof lifecycle.accept,"
             "lifecycleRollback: typeof lifecycle.rollback,"
             "promise: typeof Promise,"
@@ -252,7 +252,7 @@ def test_profile_javascript_surface_is_ledger_derived_and_reduced():
         "queueMicrotask": "undefined",
         "accept": "function",
         "rollback": "function",
-        "rollbackOnHostFailure": "function",
+        "rollbackOnFail": "function",
         "lifecycleAccept": "undefined",
         "lifecycleRollback": "undefined",
         "promise": "function",

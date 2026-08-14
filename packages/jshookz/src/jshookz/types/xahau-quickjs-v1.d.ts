@@ -26,11 +26,29 @@ type BytesLike =
 
 type HookReturnCode = number;
 
-type HostSuccess<T> = { readonly ok: true; readonly value: T };
+/** Shared discriminated carrier; each domain owns its failure payload. */
+type ResultSuccess<T> = { readonly ok: true; readonly value: T };
 
-type HostFailure = { readonly ok: false; readonly code: HookReturnCode };
+type ResultFailure = { readonly ok: false };
 
-type HostResult<T> = HostSuccess<T> | HostFailure;
+type Result<T, Failure extends ResultFailure> = ResultSuccess<T> | Failure;
+
+type HostFailure = ResultFailure & { readonly code: HookReturnCode };
+
+/**
+ * The result of an operation governed by Hooks host-status semantics.
+ *
+ * A negative Hooks status is ordinary contract-visible data, not an exception.
+ * Successful optional reads may still contain `undefined` when the operation
+ * explicitly folds `DOESNT_EXIST` into absence; every other host failure keeps
+ * its exact `HookReturnCode`. Hook termination and JavaScript/runtime faults
+ * remain exceptions.
+ *
+ * This carrier does not prove that a Wasm host bridge was physically crossed.
+ * Provider-side rich facades may return `HostResult` when they enforce the
+ * same host rules and preserve the corresponding Hook status exactly.
+ */
+type HostResult<T> = Result<T, HostFailure>;
 
 declare const enum TransactionType {
   Payment = 0,
@@ -173,7 +191,15 @@ declare namespace emit {
 }
 
 declare namespace rollback {
-  function onHostFailure<T>(result: HostResult<T>, message?: string | BytesLike | STBlob): T;
+  function onFail<T>(
+    result: HostResult<T>,
+    message?: string | BytesLike | STBlob,
+  ): T;
+  function onFail<T, Failure extends ResultFailure>(
+    result: Result<T, Failure>,
+    message: string | BytesLike | STBlob,
+    code: number,
+  ): T;
 }
 
 /**

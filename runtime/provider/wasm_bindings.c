@@ -348,13 +348,11 @@ static JSValue js_hook_rollback(JSContext *ctx, JSValueConst this_val,
     return JS_NewInt64(ctx, result);
 }
 
-static JSValue js_rollback_on_host_failure(JSContext *ctx,
-                                           JSValueConst this_val,
-                                           int argc, JSValueConst *argv)
+static JSValue js_rollback_on_fail(JSContext *ctx, JSValueConst this_val,
+                                   int argc, JSValueConst *argv)
 {
     if (argc < 1 || !JS_IsObject(argv[0]))
-        return JS_ThrowTypeError(
-            ctx, "rollback.onHostFailure: expected HostResult");
+        return JS_ThrowTypeError(ctx, "rollback.onFail: expected Result");
 
     JSValue ok = JS_GetPropertyStr(ctx, argv[0], "ok");
     if (JS_IsException(ok))
@@ -362,23 +360,37 @@ static JSValue js_rollback_on_host_failure(JSContext *ctx,
     if (!JS_IsBool(ok)) {
         JS_FreeValue(ctx, ok);
         return JS_ThrowTypeError(
-            ctx, "rollback.onHostFailure: expected boolean ok");
+            ctx, "rollback.onFail: expected boolean ok");
     }
     int success = JS_ToBool(ctx, ok);
     JS_FreeValue(ctx, ok);
     if (success)
         return JS_GetPropertyStr(ctx, argv[0], "value");
 
-    JSValue code_value = JS_GetPropertyStr(ctx, argv[0], "code");
-    if (JS_IsException(code_value))
-        return code_value;
     int64_t code;
-    if (!JS_IsNumber(code_value) || JS_ToInt64(ctx, &code, code_value) < 0) {
+    int const explicit_code =
+        argc > 2 && !JS_IsUndefined(argv[2]);
+    if (explicit_code) {
+        if (argc < 2 || JS_IsUndefined(argv[1]))
+            return JS_ThrowTypeError(
+                ctx,
+                "rollback.onFail: uncoded Result requires message and code");
+        if (!JS_IsNumber(argv[2]) || JS_ToInt64(ctx, &code, argv[2]) < 0)
+            return JS_ThrowTypeError(
+                ctx, "rollback.onFail: expected numeric rollback code");
+    } else {
+        JSValue code_value = JS_GetPropertyStr(ctx, argv[0], "code");
+        if (JS_IsException(code_value))
+            return code_value;
+        if (!JS_IsNumber(code_value) ||
+            JS_ToInt64(ctx, &code, code_value) < 0) {
+            JS_FreeValue(ctx, code_value);
+            return JS_ThrowTypeError(
+                ctx,
+                "rollback.onFail: uncoded Result requires explicit code");
+        }
         JS_FreeValue(ctx, code_value);
-        return JS_ThrowTypeError(
-            ctx, "rollback.onHostFailure: expected numeric failure code");
     }
-    JS_FreeValue(ctx, code_value);
 
     if (argc > 1 && !JS_IsUndefined(argv[1])) {
         JSValue code_arg = JS_NewInt64(ctx, code);
@@ -394,7 +406,7 @@ static JSValue js_rollback_on_host_failure(JSContext *ctx,
         (long long)code);
     if (length < 0 || (size_t)length >= sizeof(message))
         return JS_ThrowInternalError(
-            ctx, "rollback.onHostFailure: failed to format status");
+            ctx, "rollback.onFail: failed to format status");
     return JS_NewInt64(ctx, hook_rollback(
         (uint32_t)(uintptr_t)message, (uint32_t)length, code));
 }
@@ -819,9 +831,8 @@ static void register_host_functions(JSContext *ctx)
     JS_SetPropertyStr(ctx, global, "accept",
         JS_NewCFunction(ctx, js_hook_accept, "accept", 2));
     JSValue rollback = JS_NewCFunction(ctx, js_hook_rollback, "rollback", 2);
-    JS_SetPropertyStr(ctx, rollback, "onHostFailure",
-        JS_NewCFunction(
-            ctx, js_rollback_on_host_failure, "onHostFailure", 2));
+    JS_SetPropertyStr(ctx, rollback, "onFail",
+        JS_NewCFunction(ctx, js_rollback_on_fail, "onFail", 3));
     JS_SetPropertyStr(ctx, global, "rollback", rollback);
 
     JSValue ledger = JS_NewObject(ctx);

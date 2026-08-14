@@ -175,12 +175,20 @@ PROFILE = (
     ContainerProjection(
         "rollback",
         "rollback",
-        ("onHostFailure",),
+        ("onFail",),
         kind="namespace",
     ),
 )
 
-TOP_LEVEL = ("HostSuccess", "HostFailure", "HostResult", "TransactionType")
+TOP_LEVEL = (
+    "ResultSuccess",
+    "ResultFailure",
+    "Result",
+    "HostFailure",
+    "HostResult",
+    "TransactionType",
+)
+TOP_LEVEL_DOCS = {"ResultSuccess", "HostResult"}
 GLOBAL_FUNCTIONS = ("accept", "rollback", "trace")
 GLOBAL_OVERRIDES = {
     "accept": ProfileOverride(
@@ -254,13 +262,30 @@ class CanonicalModel:
         except KeyError as exc:
             raise ValueError(f"canonical declaration {name!r} is missing") from exc
 
+    def leading_comment(self, name: str) -> str:
+        try:
+            declaration = self.declarations[name]
+        except KeyError as exc:
+            raise ValueError(f"canonical declaration {name!r} is missing") from exc
+
+        previous: Node | None = None
+        for child in self.tree.root_node.named_children:
+            if child.end_byte <= declaration.start_byte:
+                previous = child
+                continue
+            break
+        if previous is None or previous.type != "comment":
+            return ""
+        gap = self.raw[previous.end_byte : declaration.start_byte]
+        return self.text(previous) if not gap.strip() else ""
+
     def function(self, name: str) -> str:
         try:
             return self.text(self.functions[name])
         except KeyError as exc:
             raise ValueError(f"canonical function {name!r} is missing") from exc
 
-    def members(self, name: str) -> dict[str, str]:
+    def members(self, name: str) -> dict[str, list[str]]:
         try:
             declaration = self.declarations[name]
         except KeyError as exc:
@@ -273,12 +298,12 @@ class CanonicalModel:
             )
         if body is None:
             raise ValueError(f"canonical container {name!r} has no body")
-        result: dict[str, str] = {}
+        result: dict[str, list[str]] = {}
         for child in body.named_children:
             inner = self._unwrap(child)
             member_name = self._name(inner)
             if member_name is not None:
-                result[member_name] = self.text(inner)
+                result.setdefault(member_name, []).append(self.text(inner))
         return result
 
 
@@ -292,7 +317,17 @@ def _replace_profile_names(text: str) -> str:
 
 
 def _indent(text: str) -> str:
-    return "\n".join("  " + line if line else line for line in text.splitlines())
+    lines = text.splitlines()
+    if len(lines) > 1:
+        indents = [
+            len(line) - len(line.lstrip())
+            for line in lines[1:]
+            if line.strip()
+        ]
+        margin = min(indents, default=0)
+        if margin:
+            lines[1:] = [line[margin:] if line.strip() else line for line in lines[1:]]
+    return "\n".join("  " + line if line else line for line in lines)
 
 
 def _terminated(text: str) -> str:
@@ -324,16 +359,24 @@ def _render_container(model: CanonicalModel, projection: ContainerProjection) ->
             raise ValueError(
                 f"{projection.source}.{member} is absent from canonical declaration"
             )
-        value = available[member]
+        values = available[member]
         override = projection.overrides.get(member)
         if override is not None:
+            if len(values) != 1:
+                raise ValueError(
+                    f"{projection.source}.{member}: profile override cannot "
+                    "select among overloaded declarations"
+                )
             _assert_lock(
                 f"{projection.source}.{member}",
-                _terminated(value),
+                _terminated(values[0]),
                 override.canonical_sha256,
             )
-            value = override.profile
-        rendered.append(_indent(_terminated(_replace_profile_names(value))))
+            values = [override.profile]
+        rendered.extend(
+            _indent(_terminated(_replace_profile_names(value)))
+            for value in values
+        )
     return (
         f"declare {projection.kind} {projection.output} {{\n"
         + "\n".join(rendered)
@@ -347,10 +390,15 @@ def render() -> str:
         _assert_lock(name, model.declaration(name), expected)
     parts = [HEADER.rstrip(), PROFILE_PREAMBLE.strip()]
     for name in TOP_LEVEL:
+        comment = ""
+        if name in TOP_LEVEL_DOCS:
+            comment = model.leading_comment(name)
+            if not comment:
+                raise ValueError(f"canonical declaration {name!r} has no documentation")
         value = _replace_profile_names(model.declaration(name))
         if value.startswith("const enum "):
             value = "declare " + value
-        parts.append(value)
+        parts.append(f"{comment}\n{value}" if comment else value)
     for projection in PROFILE:
         parts.append(_render_container(model, projection))
     parts.append(
