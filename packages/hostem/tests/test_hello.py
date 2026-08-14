@@ -174,6 +174,126 @@ def test_rollback_require_collapses_host_failure_and_absence():
     ]
 
 
+def test_rollback_on_any_fail_returns_every_value_and_accepts_empty_input():
+    source = """
+        export function main(_reserved) {
+          const empty = rollback.onAnyFail([]);
+          const values = rollback.onAnyFail([
+            { ok: true, value: "first" },
+            { ok: true, value: undefined },
+            { ok: true, value: "third" }
+          ]);
+          if (empty.length !== 0 || values.length !== 3 ||
+              values[0] !== "first" || values[1] !== undefined ||
+              values[2] !== "third") {
+            rollback("unexpected batch values", 80);
+          }
+          accept("all succeeded", 81);
+        }
+    """
+
+    result = HookRunner().run(source)
+
+    assert result.accepted, result.error
+    assert result.return_code == 81
+    assert result.return_msg == b"all succeeded"
+    assert [call.name for call in result.call_log] == ["accept"]
+
+
+def test_rollback_on_any_fail_uses_first_failure_in_input_order():
+    source = """
+        export function main(_reserved) {
+          rollback.onAnyFail([
+            { ok: true, value: "before" },
+            { ok: false, code: -31 },
+            { ok: false, code: -32 }
+          ], "first batch failure");
+          accept("unexpected");
+        }
+    """
+
+    result = HookRunner().run(source)
+
+    assert result.rejected, result.error
+    assert result.return_code == -31
+    assert result.return_msg == b"first batch failure"
+    assert [call.name for call in result.call_log] == ["rollback"]
+
+
+def test_rollback_on_any_fail_applies_domain_failure_policy():
+    source = """
+        export function main(_reserved) {
+          rollback.onAnyFail([
+            { ok: true, value: "before" },
+            { ok: false, issue: "invalid-value" }
+          ], "invalid batch value", 137);
+          accept("unexpected");
+        }
+    """
+
+    result = HookRunner().run(source)
+
+    assert result.rejected, result.error
+    assert result.return_code == 137
+    assert result.return_msg == b"invalid batch value"
+    assert [call.name for call in result.call_log] == ["rollback"]
+
+
+def test_rollback_on_all_fail_returns_successes_in_input_order():
+    source = """
+        export function main(_reserved) {
+          const values = rollback.onAllFail([
+            { ok: false, issue: "invalid-value" },
+            { ok: true, value: "first" },
+            { ok: false, issue: "wrong-length" },
+            { ok: true, value: "second" }
+          ], "all failed", 91);
+          if (values.length !== 2 || values[0] !== "first" ||
+              values[1] !== "second") {
+            rollback("unexpected successful values", 92);
+          }
+          accept("partial success", 93);
+        }
+    """
+
+    result = HookRunner().run(source)
+
+    assert result.accepted, result.error
+    assert result.return_code == 93
+    assert result.return_msg == b"partial success"
+    assert [call.name for call in result.call_log] == ["accept"]
+
+
+def test_rollback_on_all_fail_applies_policy_to_all_failed_and_empty_batches():
+    all_failed = """
+        export function main(_reserved) {
+          rollback.onAllFail([
+            { ok: false, code: -41 },
+            { ok: false, issue: "invalid-value" }
+          ], "no operation succeeded", 94);
+          accept("unexpected");
+        }
+    """
+    empty = """
+        export function main(_reserved) {
+          rollback.onAllFail([], "empty batch", 95);
+          accept("unexpected");
+        }
+    """
+
+    failed_result = HookRunner().run(all_failed)
+    empty_result = HookRunner().run(empty)
+
+    assert failed_result.rejected, failed_result.error
+    assert failed_result.return_code == 94
+    assert failed_result.return_msg == b"no operation succeeded"
+    assert [call.name for call in failed_result.call_log] == ["rollback"]
+    assert empty_result.rejected, empty_result.error
+    assert empty_result.return_code == 95
+    assert empty_result.return_msg == b"empty batch"
+    assert [call.name for call in empty_result.call_log] == ["rollback"]
+
+
 def test_hook_terminal_bypasses_javascript_try_catch():
     source = """
         export function main(_reserved) {

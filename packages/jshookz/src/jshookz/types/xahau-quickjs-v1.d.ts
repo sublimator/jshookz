@@ -205,6 +205,20 @@ declare namespace rollback {
     message: string | BytesLike | STBlob,
     code: number,
   ): T;
+  function onAnyFail<T>(
+    results: readonly HostResult<T>[],
+    message?: string | BytesLike | STBlob,
+  ): readonly T[];
+  function onAnyFail<T, Failure extends ResultFailure>(
+    results: readonly Result<T, Failure>[],
+    message: string | BytesLike | STBlob,
+    code: number,
+  ): readonly T[];
+  function onAllFail<T, Failure extends ResultFailure>(
+    results: readonly Result<T, Failure>[],
+    message: string | BytesLike | STBlob,
+    code: number,
+  ): readonly T[];
 }
 
 /**
