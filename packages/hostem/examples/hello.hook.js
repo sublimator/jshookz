@@ -1,5 +1,4 @@
-export function main(_reserved) {
-  void _reserved;
+export function main() {
 
   const txType = otxn.type();
   if (!txType.ok) rollback("otxn.type failed", txType.code);

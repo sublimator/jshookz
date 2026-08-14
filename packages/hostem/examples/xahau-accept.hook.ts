@@ -1,4 +1,3 @@
-export function main(_reserved: number): never {
-  void _reserved;
+export function main(): never {
   accept("hello from TypeScript", 42);
 }
