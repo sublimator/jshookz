@@ -27,27 +27,39 @@ type BatchKeys = Record<string, StateKeyLike>;
 type BatchValues<T extends Record<string, unknown>> = { readonly [K in keyof T]: STBlob | undefined };
 
 /**
- * The result of an operation that crossed the Hooks host boundary.
+ * The result of an operation governed by Hooks host-status semantics.
  *
  * A negative Hooks status is ordinary contract-visible data, not an exception.
  * Successful optional reads may still contain `undefined` when the operation
  * explicitly folds `DOESNT_EXIST` into absence; every other host failure keeps
  * its exact `HookReturnCode`. Hook termination and JavaScript/runtime faults
  * remain exceptions.
+ *
+ * This carrier does not prove that a Wasm host bridge was physically crossed.
+ * Provider-side rich facades may return `HostResult` when they enforce the
+ * same host rules and preserve the corresponding Hook status exactly.
  */
 type HostSuccess<T> = { readonly ok: true; readonly value: T };
 type HostFailure = { readonly ok: false; readonly code: HookReturnCode };
 type HostResult<T> = HostSuccess<T> | HostFailure;
 
-/** A pure binary-schema validation result; no Hooks host call occurred. */
-type RecordParseResult<T> =
+/** A pure binary-codec validation result; no Hooks host call occurred. */
+type ParseResult<T> =
   | { readonly ok: true; readonly value: T }
   | {
       readonly ok: false;
-      readonly issue: "wrong-length" | "invalid-field";
+      readonly issue: "wrong-length";
       readonly expectedLength: number;
       readonly actualLength: number;
-      readonly field?: string;
+    }
+  | {
+      readonly ok: false;
+      readonly issue: "invalid-value";
+    }
+  | {
+      readonly ok: false;
+      readonly issue: "invalid-field";
+      readonly field: string;
     };
 
 interface RecordField<T, Width extends number = number> {
@@ -58,6 +70,50 @@ interface RecordField<T, Width extends number = number> {
   /** Permit overlap only with fields carrying the same non-empty group. */
   overlay(group: string): RecordField<T, Width>;
 }
+
+/** Produce one configured record field at the requested offset. */
+type RootFieldFactory<T, Width extends number> =
+  (offset: number) => RecordField<T, Width>;
+
+/**
+ * A named scalar schema produced from one configured root-field factory.
+ * Parsing requires exactly `byteLength`; encoding and parsing reuse the
+ * returned field's representation logic. Runtime schema objects are frozen.
+ */
+interface ScalarSchema<
+  Name extends string,
+  T,
+  Width extends number,
+> {
+  readonly name: Name;
+  readonly byteLength: Width;
+  safeParse(value: BytesLike | STBlob): ParseResult<T>;
+  parse(value: BytesLike | STBlob): T;
+  encode(value: T): STBlob;
+}
+
+/**
+ * Define a named scalar schema from either a field factory or an already
+ * configured root field. `cell` invokes a factory with zero, then requires a
+ * genuine record-field descriptor rooted at offset zero in either form.
+ */
+declare function cell<
+  const Name extends string,
+  T,
+  const Width extends number,
+>(
+  name: Name,
+  factory: RootFieldFactory<T, Width>,
+): ScalarSchema<Name, T, Width>;
+
+declare function cell<
+  const Name extends string,
+  T,
+  const Width extends number,
+>(
+  name: Name,
+  rootField: RecordField<T, Width>,
+): ScalarSchema<Name, T, Width>;
 
 type RecordShape = Readonly<Record<string, RecordField<unknown, number>>>;
 type RecordFieldValue<T> = T extends RecordField<infer V, number> ? V : never;
@@ -78,7 +134,7 @@ interface RecordSchema<
    * Decode a record after validating its size and field representations.
    * Prefer this result-valued form for state or transaction-derived bytes.
    */
-  safeParse(value: BytesLike | STBlob): RecordParseResult<RecordValue<Shape>>;
+  safeParse(value: BytesLike | STBlob): ParseResult<RecordValue<Shape>>;
 
   /**
    * Assertion form for a programmer-guaranteed record. Throws on malformed
@@ -90,11 +146,11 @@ interface RecordSchema<
   patch(
     source: BytesLike | STBlob,
     values: Partial<RecordValue<Shape>>,
-  ): RecordParseResult<STBlob>;
+  ): ParseResult<STBlob>;
 }
 
 /**
- * Define a checked fixed-width binary record at hook runtime.
+ * Define a checked fixed-width composite binary record at hook runtime.
  *
  * Construction validates bounds, coverage, and overlap. Overlapping fields
  * are rejected unless every participant names the same explicit overlay
@@ -252,7 +308,11 @@ declare class XFL {
   sign(): -1 | 0 | 1;
   log(): XFL;
   root(degree: number): XFL;
-  toInt(decimalPlaces?: number, absolute?: boolean): bigint;
+  /**
+   * Apply the bounded Hooks `float_int` projection. Conversion failures remain
+   * ordinary Hook statuses even when a provider evaluates the rule locally.
+   */
+  toInt(decimalPlaces?: number, absolute?: boolean): HostResult<bigint>;
   toString(): string;
   equals(other: XFL): boolean;
   compare(other: XFL): number;
