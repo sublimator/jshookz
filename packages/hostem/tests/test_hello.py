@@ -7,7 +7,7 @@ EXAMPLE = Path(__file__).parents[1] / "examples" / "hello.hook.js"
 ROOT = Path(__file__).parents[3]
 XAHAU_PROVIDER = ROOT / "build" / "xahau-provider" / "jshookz_provider.wasm"
 XAHAU_TYPESCRIPT = (
-    ROOT / "build" / "xahau-provider" / "hooks" / "xahau-accept.hook.js"
+    ROOT / "packages" / "hostem" / "examples" / "xahau-accept.hook.ts"
 )
 
 
@@ -384,6 +384,83 @@ def test_rich_hook_input_retains_bare_array_buffer_from_to_bytes():
     ]
 
 
+def test_rich_hook_input_preserves_to_bytes_exception():
+    source = """
+        export function main(_reserved) {
+          let message = "missing exception";
+          try {
+            state.set("KEY", {
+              toBytes() { throw new Error("sentinel"); },
+            });
+          } catch (error) {
+            message = error.message;
+          }
+          if (message !== "sentinel") rollback(`unexpected:${message}`, 86);
+          accept("exception preserved", 87);
+        }
+    """
+
+    result = HookRunner().run(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"exception preserved"
+    assert result.return_code == 87
+    assert [call.name for call in result.call_log] == ["accept"]
+
+
+def test_later_rich_input_cannot_detach_earlier_key_view():
+    source = """
+        export function main(_reserved) {
+          const keyBuffer = new Uint8Array([75, 69, 89, 33]).buffer;
+          const key = new Uint8Array(keyBuffer);
+          const value = {
+            toBytes() {
+              keyBuffer.transfer(0);
+              return new Uint8Array([1, 2, 3]);
+            },
+          };
+          rollback.onFail(state.set(key, value));
+          accept("detachment safe", 88);
+        }
+    """
+    runner = HookRunner()
+
+    result = runner.run(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"detachment safe"
+    assert result.return_code == 88
+    assert runner.runtime.state_db[b"KEY!"] == bytes([1, 2, 3])
+    assert [call.name for call in result.call_log] == ["state_set", "accept"]
+
+
+def test_accept_does_not_invoke_rich_to_bytes():
+    source = """
+        export function main(_reserved) {
+          let called = false;
+          try {
+            accept({
+              toBytes() {
+                called = true;
+                return new Uint8Array([1]);
+              },
+            });
+          } catch (error) {
+            if (!(error instanceof TypeError)) rollback("wrong error", 89);
+          }
+          if (called) rollback("accept invoked toBytes", 90);
+          accept("rich accept rejected", 91);
+        }
+    """
+
+    result = HookRunner().run(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"rich accept rejected"
+    assert result.return_code == 91
+    assert [call.name for call in result.call_log] == ["accept"]
+
+
 def test_module_without_main_export_is_refused():
     source = """
         const marker = "ordinary module initialization";
@@ -403,7 +480,7 @@ def test_module_without_main_export_is_refused():
 
 def test_xahau_provider_runs_compiled_typescript_hook():
     assert XAHAU_PROVIDER.exists(), "build the XAHAU_HOOK_PROVIDER CMake variant"
-    assert XAHAU_TYPESCRIPT.exists(), "compile tsconfig.xahau-integration.json"
+    assert XAHAU_TYPESCRIPT.exists()
 
     result = HookRunner(wasm_path=XAHAU_PROVIDER).run_file(XAHAU_TYPESCRIPT)
 
@@ -411,3 +488,54 @@ def test_xahau_provider_runs_compiled_typescript_hook():
     assert result.return_msg == b"hello from TypeScript"
     assert result.return_code == 42
     assert [call.name for call in result.call_log] == ["accept"]
+
+
+def test_typescript_public_api_reaches_the_real_host():
+    source = """
+        export function main(_reserved: number): never {
+          const previous = rollback.onFail(state.get("TYPED"));
+          if (previous !== undefined) rollback("state unexpectedly present", 92);
+
+          rollback.onAnyFail([
+            state.set("TYPED", STBlob.from("A1B2C3")),
+            state.set("TYPED-SECOND", new Uint8Array([4, 5, 6])),
+          ]);
+          const selected = rollback.onAllFail<
+            string,
+            ResultFailure & { readonly issue: "missing" }
+          >(
+            [
+              { ok: false, issue: "missing" },
+              { ok: true, value: "kept" },
+            ],
+            "no typed candidate",
+            96,
+          );
+          if (selected.length !== 1 || selected[0] !== "kept") {
+            rollback("typed result mismatch", 97);
+          }
+          const stored = rollback.require(
+            state.get("TYPED"),
+            "typed state write disappeared",
+            93,
+          );
+          if (stored.toHex() !== "A1B2C3") rollback("typed state mismatch", 94);
+          accept("TypeScript reached hookz", 95);
+        }
+    """
+    runner = HookRunner()
+
+    result = runner.run_typescript(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"TypeScript reached hookz"
+    assert result.return_code == 95
+    assert runner.runtime.state_db[b"TYPED"] == bytes.fromhex("A1B2C3")
+    assert runner.runtime.state_db[b"TYPED-SECOND"] == bytes([4, 5, 6])
+    assert [call.name for call in result.call_log] == [
+        "state",
+        "state_set",
+        "state_set",
+        "state",
+        "accept",
+    ]

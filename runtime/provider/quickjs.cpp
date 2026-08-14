@@ -1,5 +1,6 @@
 #include "quickjs.hpp"
 
+#include <cstring>
 #include <limits>
 
 namespace jshookz::provider::qjs {
@@ -202,11 +203,83 @@ ByteView::get(
     RichBytes rich)
 {
     ByteView result(ctx);
-    if (result.parseBinary(value) || result.parseString(value, strings))
+    /* Strings dominate Hook keys and messages. Avoid using two thrown and
+       cleared invalid-class exceptions as routine type probes for them. */
+    if (JS_IsString(value)) {
+        result.parseString(value, strings);
+        return result;
+    }
+    if (result.parseBinary(value))
+        return result;
+    if (JS_HasException(ctx))
         return result;
     if (rich == RichBytes::callToBytes)
         result.parseRich(value);
     return result;
+}
+
+bool
+ByteView::snapshot()
+{
+    if (!valid_)
+        return false;
+    /* Hex decoding and UTF-8 conversion already own engine-independent
+       storage. Only borrowed ArrayBuffer storage needs a defensive copy. */
+    if (size_ == 0 || allocated_ != nullptr || string_ != nullptr)
+        return true;
+
+    auto *copy = static_cast<std::uint8_t *>(js_malloc(ctx_, size_));
+    if (copy == nullptr)
+        return false;
+    std::memcpy(copy, data_, size_);
+    auto const copiedSize = size_;
+    clear();
+    allocated_ = copy;
+    data_ = copy;
+    size_ = copiedSize;
+    valid_ = true;
+    return true;
+}
+
+JSValue
+uint8Array(JSContext *ctx, std::span<std::uint8_t const> bytes)
+{
+    OwnedValue buffer(
+        ctx, JS_NewArrayBufferCopy(ctx, bytes.data(), bytes.size()));
+    if (buffer.isException())
+        return buffer.release();
+    OwnedValue offset(ctx, JS_NewInt32(ctx, 0));
+    OwnedValue length(ctx, JS_NewUint32(ctx, bytes.size()));
+    JSValueConst args[3] = {buffer.get(), offset.get(), length.get()};
+    return JS_NewTypedArray(ctx, 3, args, JS_TYPED_ARRAY_UINT8);
+}
+
+JSValue
+pendingOrTypeError(JSContext *ctx, char const *message)
+{
+    if (JS_HasException(ctx))
+        return JS_EXCEPTION;
+    return JS_ThrowTypeError(ctx, "%s", message);
+}
+
+JSValue
+byteInputTypeError(
+    JSContext *ctx,
+    char const *operation,
+    StringBytes strings)
+{
+    if (JS_HasException(ctx))
+        return JS_EXCEPTION;
+    if (strings == StringBytes::hex) {
+        return JS_ThrowTypeError(
+            ctx,
+            "%s: expected Uint8Array, ArrayBuffer, or hex string",
+            operation);
+    }
+    return JS_ThrowTypeError(
+        ctx,
+        "%s: expected string, Uint8Array, or ArrayBuffer",
+        operation);
 }
 
 }  // namespace jshookz::provider::qjs

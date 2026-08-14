@@ -46,23 +46,14 @@ rich_from_bytes(JSContext *ctx, const char *type_name,
     qjs::OwnedValue from = qjs::property(ctx, type.get(), "from");
     if (from.isException())
         return from.release();
-    qjs::OwnedValue input(ctx, make_uint8array(ctx, bytes, length));
+    qjs::OwnedValue input(
+        ctx,
+        qjs::uint8Array(
+            ctx, std::span<std::uint8_t const>{bytes, length}));
     if (input.isException())
         return input.release();
     JSValueConst args[1] = {input.get()};
     return JS_Call(ctx, from.get(), type.get(), 1, args);
-}
-
-JSValue
-make_uint8array(JSContext *ctx, const uint8_t *data, uint32_t len)
-{
-    qjs::OwnedValue buffer(ctx, JS_NewArrayBufferCopy(ctx, data, len));
-    if (buffer.isException())
-        return buffer.release();
-    qjs::OwnedValue offset(ctx, JS_NewInt32(ctx, 0));
-    qjs::OwnedValue length(ctx, JS_NewInt32(ctx, (int32_t)len));
-    JSValueConst args[3] = {buffer.get(), offset.get(), length.get()};
-    return JS_NewTypedArray(ctx, 3, args, JS_TYPED_ARRAY_UINT8);
 }
 
 }  // namespace jshookz::provider::bindings

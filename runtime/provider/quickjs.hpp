@@ -86,7 +86,9 @@ enum class RichBytes : std::uint8_t
 
 /**
  * Borrowed bytes whose QuickJS backing values and temporary conversions stay
- * alive for the view's C++ lifetime.
+ * alive for the view's C++ lifetime. A later JavaScript call can still detach
+ * or resize an ArrayBuffer; snapshot() before executing JavaScript while the
+ * bytes must remain stable.
  */
 class ByteView
 {
@@ -118,6 +120,9 @@ public:
         JSValueConst value,
         StringBytes strings,
         RichBytes rich = RichBytes::reject);
+
+    /** Replace a borrowed view with an engine-owned stable byte snapshot. */
+    bool snapshot();
 
     explicit operator bool() const noexcept
     {
@@ -154,6 +159,21 @@ element(JSContext *ctx, JSValueConst array, std::uint32_t index)
 {
     return OwnedValue(ctx, JS_GetPropertyUint32(ctx, array, index));
 }
+
+/** Copy bytes into a new JavaScript Uint8Array. */
+JSValue
+uint8Array(JSContext *ctx, std::span<std::uint8_t const> bytes);
+
+/** Preserve a pending JavaScript exception, or create the contract TypeError. */
+JSValue
+pendingOrTypeError(JSContext *ctx, char const *message);
+
+/** Preserve a pending exception, or describe the selected byte-input policy. */
+JSValue
+byteInputTypeError(
+    JSContext *ctx,
+    char const *operation,
+    StringBytes strings);
 
 /** Sequential array construction with explicit ownership transfer to JS. */
 class ArrayBuilder

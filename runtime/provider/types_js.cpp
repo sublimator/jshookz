@@ -26,18 +26,6 @@
 using namespace hook;
 namespace qjs = jshookz::provider::qjs;
 
-// Create a Uint8Array from raw bytes
-static JSValue new_uint8array(JSContext *ctx, const uint8_t *data, size_t len) {
-    JSValue ab = JS_NewArrayBufferCopy(ctx, data, len);
-    if (JS_IsException(ab)) return ab;
-    JSValue args[] = { ab, JS_NewInt32(ctx, 0), JS_NewInt32(ctx, (int32_t)len) };
-    JSValue ta = JS_NewTypedArray(ctx, 3, args, JS_TYPED_ARRAY_UINT8);
-    JS_FreeValue(ctx, ab);
-    JS_FreeValue(ctx, args[1]);
-    JS_FreeValue(ctx, args[2]);
-    return ta;
-}
-
 // --- Class IDs (registered with QuickJS) ---
 
 static JSClassID js_hash256_class_id;
@@ -97,8 +85,8 @@ static JSValue js_blob_from(JSContext *ctx, JSValueConst this_val,
     auto bytes = qjs::ByteView::get(
         ctx, argv[0], qjs::StringBytes::hex);
     if (!bytes)
-        return JS_ThrowTypeError(
-            ctx, "STBlob.from() expects Uint8Array, ArrayBuffer, or hex string");
+        return qjs::byteInputTypeError(
+            ctx, "STBlob.from()", qjs::StringBytes::hex);
     return js_blob_new(ctx, bytes.data(), bytes.size());
 }
 
@@ -114,7 +102,8 @@ static JSValue js_blob_to_bytes(JSContext *ctx, JSValueConst this_val,
 {
     auto *blob = (JSBlob *)JS_GetOpaque2(ctx, this_val, js_blob_class_id);
     if (!blob) return JS_EXCEPTION;
-    return new_uint8array(ctx, blob->data, blob->len);
+    return qjs::uint8Array(
+        ctx, std::span<std::uint8_t const>{blob->data, blob->len});
 }
 
 static JSValue js_blob_to_hex(JSContext *ctx, JSValueConst this_val,
@@ -156,7 +145,8 @@ static JSValue js_blob_equals(JSContext *ctx, JSValueConst this_val,
     if (argc < 1) return JS_FALSE;
     auto other = qjs::ByteView::get(
         ctx, argv[0], qjs::StringBytes::hex);
-    if (!other) return JS_FALSE;
+    if (!other)
+        return JS_HasException(ctx) ? JS_EXCEPTION : JS_FALSE;
     bool equal = blob->len == other.size() &&
         (blob->len == 0 ||
          std::memcmp(blob->data, other.data(), blob->len) == 0);
@@ -194,7 +184,8 @@ static JSValue js_hash256_from(JSContext *ctx, JSValueConst this_val,
     auto bytes = qjs::ByteView::get(
         ctx, argv[0], qjs::StringBytes::hex);
     if (!bytes) {
-        return JS_ThrowTypeError(ctx, "Hash256.from() expects Uint8Array, ArrayBuffer, or hex string");
+        return qjs::byteInputTypeError(
+            ctx, "Hash256.from()", qjs::StringBytes::hex);
     }
     if (bytes.size() != 32) {
         return JS_ThrowTypeError(
@@ -228,7 +219,8 @@ static JSValue js_hash256_to_bytes(JSContext *ctx, JSValueConst this_val,
 {
     auto *h = (Hash256 *)JS_GetOpaque2(ctx, this_val, js_hash256_class_id);
     if (!h) return JS_EXCEPTION;
-    return new_uint8array(ctx, h->data(), h->size());
+    return qjs::uint8Array(
+        ctx, std::span<std::uint8_t const>{h->data(), h->size()});
 }
 
 static JSValue js_hash256_is_zero(JSContext *ctx, JSValueConst this_val,
@@ -280,7 +272,8 @@ static JSValue js_accountid_from(JSContext *ctx, JSValueConst this_val,
     auto bytes = qjs::ByteView::get(
         ctx, argv[0], qjs::StringBytes::hex);
     if (!bytes) {
-        return JS_ThrowTypeError(ctx, "AccountID.from() expects Uint8Array, ArrayBuffer, or hex string");
+        return qjs::byteInputTypeError(
+            ctx, "AccountID.from()", qjs::StringBytes::hex);
     }
     if (bytes.size() != 20) {
         return JS_ThrowTypeError(
@@ -313,7 +306,8 @@ static JSValue js_accountid_to_bytes(JSContext *ctx, JSValueConst this_val,
 {
     auto *a = (AccountID *)JS_GetOpaque2(ctx, this_val, js_accountid_class_id);
     if (!a) return JS_EXCEPTION;
-    return new_uint8array(ctx, a->data(), a->size());
+    return qjs::uint8Array(
+        ctx, std::span<std::uint8_t const>{a->data(), a->size()});
 }
 
 //@@impl STAddress

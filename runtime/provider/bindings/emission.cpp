@@ -16,7 +16,8 @@ js_emit_prepare(JSContext *ctx, JSValueConst this_val,
         qjs::StringBytes::utf8,
         qjs::RichBytes::callToBytes);
     if (!transaction)
-        return JS_ThrowTypeError(ctx, "emit.prepare: invalid transaction bytes");
+        return qjs::pendingOrTypeError(
+            ctx, "emit.prepare: invalid transaction bytes");
 
     /* Preparation injects bounded protocol fields into the partial STObject.
        Keep the declared buffer proportional to its input so host-work
@@ -75,7 +76,8 @@ js_emit_tx(JSContext *ctx, JSValueConst this_val,
         qjs::StringBytes::utf8,
         qjs::RichBytes::callToBytes);
     if (!transaction)
-        return JS_ThrowTypeError(ctx, "emit.tx: invalid transaction bytes");
+        return qjs::pendingOrTypeError(
+            ctx, "emit.tx: invalid transaction bytes");
 
     uint8_t hash[32];
     int64_t result = hook_emit(
