@@ -240,6 +240,10 @@ declare class XFL {
   static readonly zero: XFL;
   static readonly one: XFL;
   static fromRaw(raw: bigint): XFL;
+  /**
+   * Construct `mantissa × 10^exponent`. The value comes first so ordinary
+   * calls read in the same order as the decimal quantity they express.
+   */
   static from(mantissa: bigint | number, exponent: number): XFL;
   mantissa(): bigint;
   exponent(): number;
