@@ -176,7 +176,12 @@ declare namespace rollback {
   function onHostFailure<T>(result: HostResult<T>, message?: string | BytesLike | STBlob): T;
 }
 
-/** Core Hook terminals and tracing. */
+/**
+ * `accept` and `rollback` are non-returning Hook terminals: Xahaud records
+ * the outcome and unwinds the current Wasm invocation. C Hooks have the same
+ * behavior despite an `int64_t` import ABI; engine termination happens before
+ * the import can return to guest code.
+ */
 
 declare function accept(
   message?: string | Uint8Array | ArrayBuffer,
