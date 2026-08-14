@@ -20,25 +20,15 @@ js_hook_accept(JSContext *ctx, JSValueConst this_val,
         return JS_NewInt64(ctx, hook_accept(0, 0, code));
 
     /* A lifecycle message string is UTF-8 text, not the hex-string shorthand
-       accepted by BytesLike APIs. */
-    if (JS_IsString(argv[0])) {
-        size_t len;
-        const char *message = JS_ToCStringLen(ctx, &len, argv[0]);
-        if (!message)
-            return JS_EXCEPTION;
-        int64_t result = hook_accept(
-            (uint32_t)(uintptr_t)message, (uint32_t)len, code);
-        JS_FreeCString(ctx, message);
-        return JS_NewInt64(ctx, result);
-    }
-
-    BytesInput message;
-    if (!get_bytes_input(ctx, argv[0], &message))
+       accepted by BytesLike APIs. accept deliberately does not invoke an
+       arbitrary rich value's toBytes method before terminating execution. */
+    auto message = qjs::ByteView::get(
+        ctx, argv[0], qjs::StringBytes::utf8);
+    if (!message)
         return JS_ThrowTypeError(
             ctx, "accept: expected string, Uint8Array, or ArrayBuffer");
     int64_t result = hook_accept(
-        (uint32_t)(uintptr_t)message.ptr, message.len, code);
-    free_bytes_input(ctx, &message);
+        (uint32_t)(uintptr_t)message.data(), message.size(), code);
     return JS_NewInt64(ctx, result);
 }
 
@@ -53,13 +43,16 @@ js_hook_rollback(JSContext *ctx, JSValueConst this_val,
     if (argc == 0 || JS_IsUndefined(argv[0]))
         return JS_NewInt64(ctx, hook_rollback(0, 0, code));
 
-    BytesInput message;
-    if (!get_hook_input(ctx, argv[0], &message))
+    auto message = qjs::ByteView::get(
+        ctx,
+        argv[0],
+        qjs::StringBytes::utf8,
+        qjs::RichBytes::callToBytes);
+    if (!message)
         return JS_ThrowTypeError(
             ctx, "rollback: expected string, Uint8Array, or ArrayBuffer");
     int64_t result = hook_rollback(
-        (uint32_t)(uintptr_t)message.ptr, message.len, code);
-    free_bytes_input(ctx, &message);
+        (uint32_t)(uintptr_t)message.data(), message.size(), code);
     return JS_NewInt64(ctx, result);
 }
 

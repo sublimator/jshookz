@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <utility>
 
 extern "C" {
@@ -16,6 +17,11 @@ class OwnedValue
     JSValue value_;
 
 public:
+    explicit OwnedValue(JSContext *ctx) noexcept
+        : OwnedValue(ctx, JS_UNDEFINED)
+    {
+    }
+
     OwnedValue(JSContext *ctx, JSValue value) noexcept
         : ctx_(ctx), value_(value)
     {
@@ -63,6 +69,77 @@ public:
         JSValue value = value_;
         value_ = JS_UNDEFINED;
         return value;
+    }
+};
+
+enum class StringBytes : std::uint8_t
+{
+    hex,
+    utf8,
+};
+
+enum class RichBytes : std::uint8_t
+{
+    reject,
+    callToBytes,
+};
+
+/**
+ * Borrowed bytes whose QuickJS backing values and temporary conversions stay
+ * alive for the view's C++ lifetime.
+ */
+class ByteView
+{
+    JSContext *ctx_;
+    std::uint8_t const *data_ = nullptr;
+    std::uint32_t size_ = 0;
+    std::uint8_t *allocated_ = nullptr;
+    char const *string_ = nullptr;
+    OwnedValue backing_;
+    bool valid_ = false;
+
+    explicit ByteView(JSContext *ctx) noexcept;
+    void clear() noexcept;
+    bool parseBinary(JSValueConst value);
+    bool parseString(JSValueConst value, StringBytes strings);
+    bool parseRich(JSValueConst value);
+
+public:
+    ~ByteView();
+
+    ByteView(ByteView const&) = delete;
+    ByteView& operator=(ByteView const&) = delete;
+    ByteView(ByteView&& other) noexcept;
+    ByteView& operator=(ByteView&& other) noexcept;
+
+    static ByteView
+    get(
+        JSContext *ctx,
+        JSValueConst value,
+        StringBytes strings,
+        RichBytes rich = RichBytes::reject);
+
+    explicit operator bool() const noexcept
+    {
+        return valid_;
+    }
+
+    std::uint8_t const *
+    data() const noexcept
+    {
+        return data_;
+    }
+
+    std::uint32_t
+    size() const noexcept
+    {
+        return size_;
+    }
+
+    std::span<std::uint8_t const>
+    bytes() const noexcept
+    {
+        return {data_, size_};
     }
 };
 

@@ -1,25 +1,10 @@
 #pragma once
 
+#include "../quickjs.hpp"
+
 #include <cstdint>
 
-extern "C" {
-#include "../../../engine/quickjs/quickjs.h"
-}
-
 namespace jshookz::provider::bindings {
-
-struct BytesInput
-{
-    std::uint8_t const* ptr = nullptr;
-    std::uint32_t len = 0;
-    std::uint8_t* owned = nullptr;
-    char const* cstring = nullptr;
-    JSValue ab_ref = JS_UNDEFINED;
-};
-
-int get_bytes_input(JSContext* ctx, JSValueConst value, BytesInput* out);
-int get_hook_input(JSContext* ctx, JSValueConst value, BytesInput* out);
-void free_bytes_input(JSContext* ctx, BytesInput* input);
 
 JSValue make_uint8array(
     JSContext* ctx,

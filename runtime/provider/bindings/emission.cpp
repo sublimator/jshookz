@@ -10,8 +10,12 @@ js_emit_prepare(JSContext *ctx, JSValueConst this_val,
 {
     if (argc < 1)
         return JS_ThrowTypeError(ctx, "emit.prepare: expected transaction bytes");
-    BytesInput transaction;
-    if (!get_hook_input(ctx, argv[0], &transaction))
+    auto transaction = qjs::ByteView::get(
+        ctx,
+        argv[0],
+        qjs::StringBytes::utf8,
+        qjs::RichBytes::callToBytes);
+    if (!transaction)
         return JS_ThrowTypeError(ctx, "emit.prepare: invalid transaction bytes");
 
     /* Preparation injects bounded protocol fields into the partial STObject.
@@ -21,19 +25,16 @@ js_emit_prepare(JSContext *ctx, JSValueConst this_val,
     static const uint32_t max_transaction_bytes = 1024U * 1024U;
     static const uint32_t preparation_allowance = 4U * 1024U;
     uint64_t requested_capacity =
-        (uint64_t)transaction.len + preparation_allowance;
+        (uint64_t)transaction.size() + preparation_allowance;
     uint32_t output_capacity = requested_capacity < max_transaction_bytes
         ? (uint32_t)requested_capacity
         : max_transaction_bytes;
     uint8_t *output = (uint8_t *)js_malloc(ctx, output_capacity);
-    if (!output) {
-        free_bytes_input(ctx, &transaction);
+    if (!output)
         return JS_EXCEPTION;
-    }
     int64_t result = hook_prepare(
         (uint32_t)(uintptr_t)output, output_capacity,
-        (uint32_t)(uintptr_t)transaction.ptr, transaction.len);
-    free_bytes_input(ctx, &transaction);
+        (uint32_t)(uintptr_t)transaction.data(), transaction.size());
     if (result < 0) {
         js_free(ctx, output);
         return host_failure(ctx, result);
@@ -68,15 +69,18 @@ js_emit_tx(JSContext *ctx, JSValueConst this_val,
 {
     if (argc < 1)
         return JS_ThrowTypeError(ctx, "emit.tx: expected transaction bytes");
-    BytesInput transaction;
-    if (!get_hook_input(ctx, argv[0], &transaction))
+    auto transaction = qjs::ByteView::get(
+        ctx,
+        argv[0],
+        qjs::StringBytes::utf8,
+        qjs::RichBytes::callToBytes);
+    if (!transaction)
         return JS_ThrowTypeError(ctx, "emit.tx: invalid transaction bytes");
 
     uint8_t hash[32];
     int64_t result = hook_emit(
         (uint32_t)(uintptr_t)hash, sizeof(hash),
-        (uint32_t)(uintptr_t)transaction.ptr, transaction.len);
-    free_bytes_input(ctx, &transaction);
+        (uint32_t)(uintptr_t)transaction.data(), transaction.size());
     if (result < 0)
         return host_failure(ctx, result);
     if (result != (int64_t)sizeof(hash))
