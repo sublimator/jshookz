@@ -519,6 +519,8 @@ declare interface STNFToken extends STObject {
 /** @serial Metadata */
 declare interface STMetadata extends STObject {
   readonly TransactionResult: TransactionResult;
+
+  /** Find an affected NFToken by ID, including a token removed by a burn. */
   findNFToken(id: STHash<32>): STNFToken | undefined;
 }
 
