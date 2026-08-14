@@ -19,10 +19,11 @@ type UInt64 = bigint;
 type Drops = bigint;
 type LedgerSequence = number;
 type RippleTime = number;
-type UInt32OrHash = UInt32 | STHash<32>;
-type BytePart = BytesLike | STBlob | STHash | STAddress | STCurrency | number | bigint;
-type StateKeyLike = BytesLike | string | STBlob | STHash | STAddress | STCurrency;
-type StateValueLike = BytesLike | STBlob | STHash | STAddress | STCurrency | STAmount;
+type HashWidth = 16 | 20 | 24 | 32 | 48 | 64;
+type UInt32OrHash = UInt32 | Hash256;
+type BytePart = BytesLike | STBlob | Hash | AccountID | STCurrency | number | bigint;
+type StateKeyLike = BytesLike | string | STBlob | Hash | AccountID | STCurrency;
+type StateValueLike = BytesLike | STBlob | Hash | AccountID | STCurrency | STAmount;
 type BatchKeys = Record<string, StateKeyLike>;
 type BatchValues<T extends Record<string, unknown>> = { readonly [K in keyof T]: STBlob | undefined };
 
@@ -193,8 +194,8 @@ declare namespace record {
   function xflbe(offset: number): RecordField<XFL, 8>;
   function xflle(offset: number): RecordField<XFL, 8>;
   function bytes<const Width extends number>(offset: number, byteLength: Width): RecordField<STBlob, Width>;
-  function hash<const Width extends number>(offset: number, byteLength: Width): RecordField<STHash<Width>, Width>;
-  function address(offset: number): RecordField<STAddress, 20>;
+  function hash<const Width extends HashWidth>(offset: number, byteLength: Width): RecordField<HashByWidth[Width], Width>;
+  function accountID(offset: number): RecordField<AccountID, 20>;
   function currency(offset: number): RecordField<STCurrency, 20>;
 
   /** A named field that participates in coverage but is omitted from values. */
@@ -230,42 +231,91 @@ declare class STBlob {
   toUint32(endian?: "big" | "little"): number;
   toUint64(endian?: "big" | "little"): bigint;
   toXFL(endian?: "big" | "little"): XFL;
-  toAddress(): STAddress;
+  toAccountID(): AccountID;
   toCurrency(): STCurrency;
-  toHash<N extends number = number>(): STHash<N>;
+  toHash128(): Hash128;
+  toHash160(): Hash160;
+  toHash192(): Hash192;
+  toHash256(): Hash256;
+  toHash384(): Hash384;
+  toHash512(): Hash512;
   isZero(): boolean;
   equals(other: BytesLike | STBlob): boolean;
   compare(other: BytesLike | STBlob, options?: ByteCompareOptions): -1 | 0 | 1;
   indexOf(needle: BytesLike | STBlob, options?: ByteFindOptions): number | undefined;
 }
 
-/** @serial Hash128 Hash160 Hash192 Hash256 Hash384 Hash512
- *  @inner-rich-type STHash */
-declare class STHash<N extends number = number> {
-  readonly byteLength: N;
-  static readonly zero256: STHash<32>;
-  static from(value: BytesLike): STHash<32>;
-  constructor(value: BytesLike);
+/** @inner-rich-type Hash */
+declare abstract class Hash<Width extends HashWidth = HashWidth> {
+  private readonly __hashWidthBrand: Width;
+  readonly byteLength: Width;
+  protected constructor(value: BytesLike);
   toBytes(): Uint8Array;
   toHex(): HexString;
   isZero(): boolean;
-  equals(other: BytesLike | STHash<N>): boolean;
-  compare(other: STHash<N>): number;
+  equals(other: BytesLike | Hash<Width>): boolean;
+  compare(other: Hash<Width>): -1 | 0 | 1;
 }
 
-/** @serial AccountID
- *  @inner-rich-type STAddress */
-declare class STAddress {
-  readonly byteLength: 20;
+/** @serial Hash128 */
+declare class Hash128 extends Hash<16> {
+  static readonly zero: Hash128;
+  static from(value: BytesLike | Hash<16>): Hash128;
+  constructor(value: BytesLike | Hash<16>);
+}
+
+/** @serial Hash160 */
+declare class Hash160 extends Hash<20> {
+  static readonly zero: Hash160;
+  static from(value: BytesLike | Hash<20>): Hash160;
+  constructor(value: BytesLike | Hash<20>);
+}
+
+/** @serial Hash192 */
+declare class Hash192 extends Hash<24> {
+  static readonly zero: Hash192;
+  static from(value: BytesLike | Hash<24>): Hash192;
+  constructor(value: BytesLike | Hash<24>);
+}
+
+/** @serial Hash256 */
+declare class Hash256 extends Hash<32> {
+  static readonly zero: Hash256;
+  static from(value: BytesLike | Hash<32>): Hash256;
+  constructor(value: BytesLike | Hash<32>);
+}
+
+/** @serial Hash384 */
+declare class Hash384 extends Hash<48> {
+  static readonly zero: Hash384;
+  static from(value: BytesLike | Hash<48>): Hash384;
+  constructor(value: BytesLike | Hash<48>);
+}
+
+/** @serial Hash512 */
+declare class Hash512 extends Hash<64> {
+  static readonly zero: Hash512;
+  static from(value: BytesLike | Hash<64>): Hash512;
+  constructor(value: BytesLike | Hash<64>);
+}
+
+interface HashByWidth {
+  readonly 16: Hash128;
+  readonly 20: Hash160;
+  readonly 24: Hash192;
+  readonly 32: Hash256;
+  readonly 48: Hash384;
+  readonly 64: Hash512;
+}
+
+/** @serial AccountID */
+declare class AccountID extends Hash160 {
   readonly r: string;
-  static readonly zero: STAddress;
-  static from(value: BytesLike | string): STAddress;
-  static fromRAddress(value: string): STAddress;
-  toBytes(): Uint8Array;
-  toHex(): HexString;
+  static readonly zero: AccountID;
+  static from(value: BytesLike | Hash160 | string): AccountID;
+  static fromRAddress(value: string): AccountID;
+  constructor(value: BytesLike | Hash160);
   toString(): string;
-  equals(other: STAddress | BytesLike | string): boolean;
-  compare(other: STAddress): number;
 }
 
 /** @serial Currency */
@@ -284,11 +334,11 @@ declare class STCurrency {
 declare class STIssue {
   readonly kind: "native" | "iou" | "mpt";
   readonly currency?: STCurrency;
-  readonly issuer?: STAddress;
-  readonly mptIssuanceId?: STHash<32>;
+  readonly issuer?: AccountID;
+  readonly mptIssuanceId?: Hash256;
   static native(): STIssue;
-  static iou(currency: STCurrency, issuer: STAddress): STIssue;
-  static mpt(mptIssuanceId: STHash<32>): STIssue;
+  static iou(currency: STCurrency, issuer: AccountID): STIssue;
+  static mpt(mptIssuanceId: Hash256): STIssue;
   equals(other: STIssue): boolean;
 }
 
@@ -325,15 +375,15 @@ declare class STAmount {
   readonly kind: "native" | "iou" | "mpt";
   readonly issue: STIssue;
   readonly currency?: STCurrency;
-  readonly issuer?: STAddress;
-  readonly mptIssuanceId?: STHash<32>;
+  readonly issuer?: AccountID;
+  readonly mptIssuanceId?: Hash256;
   readonly xfl?: XFL;
   readonly drops?: Drops;
   readonly byteLength: 8 | 33 | 48;
   static from(value: BytesLike | STBlob): STAmount;
   static drops(value: Drops): STNativeAmount;
-  static iou(value: XFL, currency: STCurrency, issuer: STAddress): STAmount;
-  static mpt(value: XFL, mptIssuanceId: STHash<32>): STAmount;
+  static iou(value: XFL, currency: STCurrency, issuer: AccountID): STAmount;
+  static mpt(value: XFL, mptIssuanceId: Hash256): STAmount;
   toBytes(options?: STSerializeOptions): Uint8Array;
   toXFL(): XFL;
   toString(): string;
@@ -356,21 +406,21 @@ declare interface STIOUAmount extends STAmount {
   readonly kind: "iou";
   readonly drops: undefined;
   readonly currency: STCurrency;
-  readonly issuer: STAddress;
+  readonly issuer: AccountID;
   readonly xfl: XFL;
 }
 
 declare interface STMPTAmount extends STAmount {
   readonly kind: "mpt";
   readonly drops: undefined;
-  readonly mptIssuanceId: STHash<32>;
+  readonly mptIssuanceId: Hash256;
   readonly xfl: XFL;
 }
 
 declare interface STPathHop {
-  readonly account?: STAddress;
+  readonly account?: AccountID;
   readonly currency?: STCurrency;
-  readonly issuer?: STAddress;
+  readonly issuer?: AccountID;
 }
 
 declare interface STPath extends Iterable<STPathHop> {
@@ -454,21 +504,21 @@ declare interface STArray<T extends STObject = STObject> {
 /** @serial Transaction */
 declare interface STTransaction extends STObject {
   readonly TransactionType: TransactionType;
-  readonly Account: STAddress;
-  readonly Destination?: STAddress;
+  readonly Account: AccountID;
+  readonly Destination?: AccountID;
   readonly Amount?: STAmount;
   readonly Amounts?: STArray;
   readonly Fee?: STAmount;
   readonly Flags?: UInt32;
   readonly Sequence?: UInt32;
   readonly Blob?: STBlob;
-  readonly NFTokenID?: STHash<32>;
+  readonly NFTokenID?: Hash256;
   readonly HookParameters?: STArray;
 }
 
 declare interface STAccountRoot extends STObject {
   readonly LedgerEntryType: "AccountRoot";
-  readonly Account: STAddress;
+  readonly Account: AccountID;
   readonly Balance: STNativeAmount;
   readonly Flags: UInt32;
   readonly ImportSequence?: UInt32;
@@ -478,37 +528,37 @@ declare interface STAccountRoot extends STObject {
   readonly RewardTime?: RippleTime;
   readonly Sequence: UInt32;
   readonly OwnerCount: UInt32;
-  readonly PreviousTxnID: STHash<32>;
+  readonly PreviousTxnID: Hash256;
   readonly PreviousTxnLgrSeq: UInt32;
-  readonly AccountTxnID?: STHash<32>;
-  readonly RegularKey?: STAddress;
-  readonly EmailHash?: STHash<16>;
-  readonly WalletLocator?: STHash<32>;
+  readonly AccountTxnID?: Hash256;
+  readonly RegularKey?: AccountID;
+  readonly EmailHash?: Hash128;
+  readonly WalletLocator?: Hash256;
   readonly WalletSize?: UInt32;
   readonly MessageKey?: STBlob;
   readonly TransferRate?: UInt32;
   readonly Domain?: STBlob;
   readonly TickSize?: UInt8;
   readonly TicketCount?: UInt32;
-  readonly NFTokenMinter?: STAddress;
+  readonly NFTokenMinter?: AccountID;
   readonly MintedNFTokens?: UInt32;
   readonly BurnedNFTokens?: UInt32;
   readonly HookStateCount?: UInt32;
   readonly FirstNFTokenSequence?: UInt32;
-  readonly GovernanceFlags?: STHash<32>;
-  readonly GovernanceMarks?: STHash<32>;
+  readonly GovernanceFlags?: Hash256;
+  readonly GovernanceMarks?: Hash256;
   readonly AccountIndex?: UInt64;
   readonly TouchCount?: UInt64;
   readonly HookStateScale?: UInt16;
-  readonly Cron?: STHash<32>;
-  readonly AMMID?: STHash<32>;
-  readonly LedgerIndex?: STHash<32>;
+  readonly Cron?: Hash256;
+  readonly AMMID?: Hash256;
+  readonly LedgerIndex?: Hash256;
   readonly Remarks?: STArray;
 }
 
 /** Installed Hook object held inside a Hook ledger entry's `Hooks` array. */
 declare interface STHook extends STObject {
-  readonly HookHash?: STHash<32>;
+  readonly HookHash?: Hash256;
 }
 
 /** Serialized-array wrapper for one installed Hook object. */
@@ -525,12 +575,12 @@ declare interface STHookLedger extends STObject {
 /** Ledger entry containing one installed Hook implementation. */
 declare interface STHookDefinition extends STObject {
   readonly LedgerEntryType: "HookDefinition";
-  readonly HookHash: STHash<32>;
+  readonly HookHash: Hash256;
 }
 
 declare interface STActiveValidator extends STObject {
   readonly PublicKey: STBlob;
-  readonly Account?: STAddress;
+  readonly Account?: AccountID;
 }
 
 declare interface STActiveValidatorArrayEntry extends STObject {
@@ -543,7 +593,7 @@ declare interface STUNLReport extends STObject {
 }
 
 declare interface STNFToken extends STObject {
-  readonly NFTokenID: STHash<32>;
+  readonly NFTokenID: Hash256;
   readonly URI?: STBlob;
 }
 
@@ -552,7 +602,7 @@ declare interface STMetadata extends STObject {
   readonly TransactionResult: TransactionResult;
 
   /** Find an affected NFToken by ID, including a token removed by a burn. */
-  findNFToken(id: STHash<32>): STNFToken | undefined;
+  findNFToken(id: Hash256): STNFToken | undefined;
 }
 
 declare interface STXPop {
@@ -874,7 +924,7 @@ declare namespace otxn {
   function current(): HostResult<STTransaction>;
   function object(): HostResult<STObject>;
   function type(): HostResult<TransactionType>;
-  function id(flags?: number): HostResult<STHash<32>>;
+  function id(flags?: number): HostResult<Hash256>;
   function generation(): HostResult<number>;
   function burden(): HostResult<bigint>;
   function param(name: StateKeyLike): HostResult<STBlob | undefined>;
@@ -912,7 +962,7 @@ declare namespace state {
   function set(key: StateKeyLike, value: StateValueLike): HostResult<void>;
   function del(key: StateKeyLike): HostResult<void>;
   function setMany(items: readonly Put[]): HostResult<void>;
-  function foreign(account: STAddress, namespace: STHash<32>): Accessor;
+  function foreign(account: AccountID, namespace: Hash256): Accessor;
 }
 
 declare namespace slot {
@@ -950,26 +1000,26 @@ declare namespace emit {
    */
   namespace build {
     interface InvokeOptions {
-      readonly destination?: STAddress;
+      readonly destination?: AccountID;
       readonly hookParameters?: readonly HookParameter[];
       readonly blob?: StateValueLike;
     }
 
     interface HookSetOptions {
-      readonly account?: STAddress;
+      readonly account?: AccountID;
       readonly hooks: readonly {
         readonly position: number;
-        readonly hookHash: STHash<32> | null;
+        readonly hookHash: Hash256 | null;
       }[];
     }
 
     interface PaymentOptions {
-      readonly destination: STAddress;
+      readonly destination: AccountID;
       readonly amount: STAmount;
       readonly sourceTag?: UInt32;
       readonly destinationTag?: UInt32;
       readonly flags?: UInt32;
-      readonly invoiceId?: STHash<32>;
+      readonly invoiceId?: Hash256;
       readonly sendMax?: STAmount;
       readonly deliverMin?: STAmount;
       readonly hookParameters?: readonly HookParameter[];
@@ -977,7 +1027,7 @@ declare namespace emit {
 
     /** Build an OfferCreate for direct DEX placement. */
     interface OfferCreateOptions {
-      readonly account?: STAddress;
+      readonly account?: AccountID;
       readonly takerPays: STAmount;
       readonly takerGets: STAmount;
       readonly expiration?: RippleTime;
@@ -987,7 +1037,7 @@ declare namespace emit {
 
     /** Build a TrustSet for trustline limits, qualities, and flags. */
     interface TrustSetOptions {
-      readonly account?: STAddress;
+      readonly account?: AccountID;
       readonly limitAmount?: STAmount;
       readonly qualityIn?: UInt32;
       readonly qualityOut?: UInt32;
@@ -996,7 +1046,7 @@ declare namespace emit {
     }
 
     interface RemitOptions {
-      readonly destination: STAddress;
+      readonly destination: AccountID;
       readonly uri?: StateValueLike;
       readonly amounts?: readonly STAmount[];
       readonly sourceTag?: UInt32;
@@ -1006,19 +1056,19 @@ declare namespace emit {
     }
 
     interface ClaimRewardOptions {
-      readonly account?: STAddress;
-      readonly issuer: STAddress;
+      readonly account?: AccountID;
+      readonly issuer: AccountID;
       readonly flags?: UInt32;
       readonly hookParameters?: readonly HookParameter[];
     }
 
     interface SignerEntry {
-      readonly account: STAddress;
+      readonly account: AccountID;
       readonly weight: UInt16;
     }
 
     interface SignerListSetOptions {
-      readonly account?: STAddress;
+      readonly account?: AccountID;
       readonly signerQuorum: UInt32;
       readonly signerEntries: readonly SignerEntry[];
       readonly flags?: UInt32;
@@ -1026,23 +1076,23 @@ declare namespace emit {
     }
 
     interface URITokenMintOptions {
-      readonly account?: STAddress;
-      readonly destination?: STAddress;
+      readonly account?: AccountID;
+      readonly destination?: AccountID;
       readonly uri: StateValueLike;
       readonly amount?: STAmount;
-      readonly digest?: STHash<32>;
+      readonly digest?: Hash256;
       readonly flags?: UInt32;
       readonly hookParameters?: readonly HookParameter[];
     }
 
     interface GenesisMintBaseOptions {
-      readonly account?: STAddress;
+      readonly account?: AccountID;
       readonly flags?: UInt32;
       readonly hookParameters?: readonly HookParameter[];
     }
 
     interface GenesisMintEntry {
-      readonly account: STAddress;
+      readonly account: AccountID;
       readonly amount: STNativeAmount | Drops;
     }
 
@@ -1072,7 +1122,7 @@ declare namespace emit {
   }
 
   function reserve(count: number): HostResult<void>;
-  function tx(transaction: BytesLike | STBlob | EmittedTransaction): HostResult<STHash<32>>;
+  function tx(transaction: BytesLike | STBlob | EmittedTransaction): HostResult<Hash256>;
   /**
    * Attempt every transaction in input order and retain each individual host
    * result. Use `rollback.onAnyFail` when all emissions are required or
@@ -1080,39 +1130,39 @@ declare namespace emit {
    */
   function txMany(
     transactions: readonly (BytesLike | STBlob | EmittedTransaction)[],
-  ): readonly HostResult<STHash<32>>[];
+  ): readonly HostResult<Hash256>[];
   function prepare(partial: BytesLike | STBlob | STObject): HostResult<STBlob>;
   function details(): HostResult<STBlob>;
   function feeBase(transaction: BytesLike | STBlob | EmittedTransaction): HostResult<Drops>;
-  function nonce(): HostResult<STHash<32>>;
+  function nonce(): HostResult<Hash256>;
   function generation(): HostResult<number>;
   function burden(): HostResult<bigint>;
 }
 
 declare namespace util {
   namespace keylet {
-    function account(account: STAddress): LedgerKeylet<STAccountRoot>;
-    function hook(account: STAddress): LedgerKeylet<STHookLedger>;
-    function hookDefinition(hash: STHash<32>): LedgerKeylet<STHookDefinition>;
-    function hookState(account: STAddress, key: STHash<32>, namespace: STHash<32>): LedgerKeylet;
-    function hookStateDir(account: STAddress, namespace: STHash<32>): LedgerKeylet;
+    function account(account: AccountID): LedgerKeylet<STAccountRoot>;
+    function hook(account: AccountID): LedgerKeylet<STHookLedger>;
+    function hookDefinition(hash: Hash256): LedgerKeylet<STHookDefinition>;
+    function hookState(account: AccountID, key: Hash256, namespace: Hash256): LedgerKeylet;
+    function hookStateDir(account: AccountID, namespace: Hash256): LedgerKeylet;
     /** Account order is normalized by the host when deriving the trust-line key. */
-    function line(accountA: STAddress, accountB: STAddress, currency: STCurrency): LedgerKeylet;
-    function ownerDir(account: STAddress): LedgerKeylet;
-    function signers(account: STAddress): LedgerKeylet;
-    function did(account: STAddress): LedgerKeylet;
-    function oracle(account: STAddress, sequence: UInt32): LedgerKeylet;
-    function offer(account: STAddress, sequence: UInt32OrHash): LedgerKeylet;
-    function check(account: STAddress, sequence: UInt32OrHash): LedgerKeylet;
-    function escrow(account: STAddress, sequence: UInt32OrHash): LedgerKeylet;
-    function nftOffer(account: STAddress, sequence: UInt32OrHash): LedgerKeylet;
-    function cron(account: STAddress, sequence: UInt32): LedgerKeylet;
-    function paychan(source: STAddress, destination: STAddress, sequence: UInt32OrHash): LedgerKeylet;
-    function depositPreauth(owner: STAddress, authorized: STAddress): LedgerKeylet;
-    function child(hash: STHash<32>): LedgerKeylet;
-    function emittedTxn(hash: STHash<32>): LedgerKeylet;
-    function unchecked(hash: STHash<32>): LedgerKeylet;
-    function page(hash: STHash<32>, index: UInt64 | number): LedgerKeylet;
+    function line(accountA: AccountID, accountB: AccountID, currency: STCurrency): LedgerKeylet;
+    function ownerDir(account: AccountID): LedgerKeylet;
+    function signers(account: AccountID): LedgerKeylet;
+    function did(account: AccountID): LedgerKeylet;
+    function oracle(account: AccountID, sequence: UInt32): LedgerKeylet;
+    function offer(account: AccountID, sequence: UInt32OrHash): LedgerKeylet;
+    function check(account: AccountID, sequence: UInt32OrHash): LedgerKeylet;
+    function escrow(account: AccountID, sequence: UInt32OrHash): LedgerKeylet;
+    function nftOffer(account: AccountID, sequence: UInt32OrHash): LedgerKeylet;
+    function cron(account: AccountID, sequence: UInt32): LedgerKeylet;
+    function paychan(source: AccountID, destination: AccountID, sequence: UInt32OrHash): LedgerKeylet;
+    function depositPreauth(owner: AccountID, authorized: AccountID): LedgerKeylet;
+    function child(hash: Hash256): LedgerKeylet;
+    function emittedTxn(hash: Hash256): LedgerKeylet;
+    function unchecked(hash: Hash256): LedgerKeylet;
+    function page(hash: Hash256, index: UInt64 | number): LedgerKeylet;
     function quality(directory: LedgerKeylet, quality: UInt64 | number): LedgerKeylet;
     function skip(position?: UInt32): LedgerKeylet;
     function amendments(): LedgerKeylet;
@@ -1122,11 +1172,11 @@ declare namespace util {
     function amm(left: STIssue, right: STIssue): LedgerKeylet;
   }
 
-  function sha512h(data: BytesLike | STBlob): STHash<32>;
+  function sha512h(data: BytesLike | STBlob): Hash256;
   function verify(publicKey: BytesLike, signature: BytesLike, message: BytesLike | STBlob): boolean;
   function bytes(...parts: readonly BytePart[]): STBlob;
-  function toRAddress(account: STAddress | BytesLike): string;
-  function fromRAddress(account: string): STAddress;
+  function toRAddress(account: AccountID | BytesLike): string;
+  function fromRAddress(account: string): AccountID;
   function encodeObject(value: STObject): STBlob;
   function decodeObject(value: BytesLike | STBlob): STObject;
   function validateObject(value: BytesLike | STBlob): boolean;
@@ -1153,14 +1203,14 @@ declare namespace float {
 declare namespace ledger {
   const sequence: LedgerSequence;
   const lastTime: RippleTime;
-  const lastHash: STHash<32>;
+  const lastHash: Hash256;
   const feeBase: Drops;
-  function nonce(): HostResult<STHash<32>>;
-  function accountRoot(account: STAddress): HostResult<STAccountRoot | undefined>;
+  function nonce(): HostResult<Hash256>;
+  function accountRoot(account: AccountID): HostResult<STAccountRoot | undefined>;
   function unlReport(): HostResult<STUNLReport | undefined>;
   function lookup<T extends STObject>(locator: LedgerKeylet<T>): HostResult<T | undefined>;
-  function lookup(locator: STHash<32>): HostResult<STObject | undefined>;
-  function lookupMany(locators: readonly (LedgerKeylet | STHash<32>)[]): HostResult<readonly (STObject | undefined)[]>;
+  function lookup(locator: Hash256): HostResult<STObject | undefined>;
+  function lookupMany(locators: readonly (LedgerKeylet | Hash256)[]): HostResult<readonly (STObject | undefined)[]>;
   function nextKeylet(lo: LedgerKeylet, hi: LedgerKeylet): HostResult<LedgerKeylet | undefined>;
 }
 
@@ -1186,16 +1236,16 @@ declare namespace guard {
 
 /** Metadata and configuration for the currently executing Hook. */
 declare namespace hook {
-  function account(): HostResult<STAddress>;
-  function hash(): HostResult<STHash<32>>;
+  function account(): HostResult<AccountID>;
+  function hash(): HostResult<Hash256>;
   function position(): HostResult<number>;
   function mode(): HostResult<HookExecutionMode>;
-  function hashAt(position: number): HostResult<STHash<32> | undefined>;
+  function hashAt(position: number): HostResult<Hash256 | undefined>;
   function param(name: StateKeyLike): HostResult<STBlob | undefined>;
   function params(names: readonly StateKeyLike[]): HostResult<readonly (STBlob | undefined)[]>;
   function params<const T extends BatchKeys>(names: T): HostResult<BatchValues<T>>;
-  function paramSet(targetHook: STHash<32>, name: StateKeyLike, value: BytesLike): HostResult<void>;
-  function skip(targetHook: STHash<32>, remove?: boolean): HostResult<void>;
+  function paramSet(targetHook: Hash256, name: StateKeyLike, value: BytesLike): HostResult<void>;
+  function skip(targetHook: Hash256, remove?: boolean): HostResult<void>;
   function again(): HostResult<void>;
 
 }
@@ -1291,7 +1341,7 @@ declare namespace rollback {
 declare function trace(label: string, value?: unknown): void;
 
 declare namespace trace {
-  function hex(label: string, value: BytesLike | STBlob | STHash | STAddress | STCurrency): void;
+  function hex(label: string, value: BytesLike | STBlob | Hash | AccountID | STCurrency): void;
   function number(label: string, value: number | bigint | XFL): void;
 }
 /**
@@ -1308,7 +1358,7 @@ declare namespace trace {
  * exotic — Vector256 is structurally an array of 32-byte hashes, and it covers
  * seven real fields (Indexes, Hashes, Amendments, NFTokenOffers,
  * HookNamespaces, CredentialIDs, URITokenIDs). The open question is what a type
- * should *prevent*: STHash<32>[] reads fine and lets you append a currency code
+ * should *prevent*: Hash256[] reads fine and lets you append a currency code
  * to it; an STVector256 does not. Declared unmapped rather than quietly absent,
  * so the choice stays visible.
  *
@@ -1316,7 +1366,7 @@ declare namespace trace {
  * the protocol from 260 to 337 fields in total — 325 of them serialized, which
  * is what the Field table below declares. Currency, Issue and XChainBridge are
  * structured rather than scalar, so they are the ones likely to want real
- * declarations; Hash192/384/512 are the existing generic STHash at other
+ * declarations; Hash192/384/512 are the existing generic Hash at other
  * widths. They are listed to keep coverage total — that the refresh surfaced
  * them automatically is the point of parsing this file rather than keeping the
  * mapping in the checker.
@@ -1467,47 +1517,47 @@ declare const Field: {
   readonly AccountIndex: SerializedField<UInt64, 196706, 3, 98>;
   readonly AccountCount: SerializedField<UInt64, 196707, 3, 99>;
   readonly RewardAccumulator: SerializedField<UInt64, 196708, 3, 100>;
-  readonly EmailHash: SerializedField<STHash<16>, 262145, 4, 1>;
-  readonly LedgerHash: SerializedField<STHash<32>, 327681, 5, 1>;
-  readonly ParentHash: SerializedField<STHash<32>, 327682, 5, 2>;
-  readonly TransactionHash: SerializedField<STHash<32>, 327683, 5, 3>;
-  readonly AccountHash: SerializedField<STHash<32>, 327684, 5, 4>;
-  readonly PreviousTxnID: SerializedField<STHash<32>, 327685, 5, 5>;
-  readonly LedgerIndex: SerializedField<STHash<32>, 327686, 5, 6>;
-  readonly WalletLocator: SerializedField<STHash<32>, 327687, 5, 7>;
-  readonly RootIndex: SerializedField<STHash<32>, 327688, 5, 8>;
-  readonly AccountTxnID: SerializedField<STHash<32>, 327689, 5, 9>;
-  readonly NFTokenID: SerializedField<STHash<32>, 327690, 5, 10>;
-  readonly EmitParentTxnID: SerializedField<STHash<32>, 327691, 5, 11>;
-  readonly EmitNonce: SerializedField<STHash<32>, 327692, 5, 12>;
-  readonly EmitHookHash: SerializedField<STHash<32>, 327693, 5, 13>;
-  readonly ObjectID: SerializedField<STHash<32>, 327694, 5, 14>;
-  readonly BookDirectory: SerializedField<STHash<32>, 327696, 5, 16>;
-  readonly InvoiceID: SerializedField<STHash<32>, 327697, 5, 17>;
-  readonly Nickname: SerializedField<STHash<32>, 327698, 5, 18>;
-  readonly Amendment: SerializedField<STHash<32>, 327699, 5, 19>;
-  readonly HookOn: SerializedField<STHash<32>, 327700, 5, 20>;
-  readonly Digest: SerializedField<STHash<32>, 327701, 5, 21>;
-  readonly Channel: SerializedField<STHash<32>, 327702, 5, 22>;
-  readonly ConsensusHash: SerializedField<STHash<32>, 327703, 5, 23>;
-  readonly CheckID: SerializedField<STHash<32>, 327704, 5, 24>;
-  readonly ValidatedHash: SerializedField<STHash<32>, 327705, 5, 25>;
-  readonly PreviousPageMin: SerializedField<STHash<32>, 327706, 5, 26>;
-  readonly NextPageMin: SerializedField<STHash<32>, 327707, 5, 27>;
-  readonly NFTokenBuyOffer: SerializedField<STHash<32>, 327708, 5, 28>;
-  readonly NFTokenSellOffer: SerializedField<STHash<32>, 327709, 5, 29>;
-  readonly HookStateKey: SerializedField<STHash<32>, 327710, 5, 30>;
-  readonly HookHash: SerializedField<STHash<32>, 327711, 5, 31>;
-  readonly HookNamespace: SerializedField<STHash<32>, 327712, 5, 32>;
-  readonly HookSetTxnID: SerializedField<STHash<32>, 327713, 5, 33>;
-  readonly OfferID: SerializedField<STHash<32>, 327714, 5, 34>;
-  readonly EscrowID: SerializedField<STHash<32>, 327715, 5, 35>;
-  readonly URITokenID: SerializedField<STHash<32>, 327716, 5, 36>;
-  readonly Cron: SerializedField<STHash<32>, 327775, 5, 95>;
-  readonly HookCanEmit: SerializedField<STHash<32>, 327776, 5, 96>;
-  readonly EmittedTxnID: SerializedField<STHash<32>, 327777, 5, 97>;
-  readonly GovernanceMarks: SerializedField<STHash<32>, 327778, 5, 98>;
-  readonly GovernanceFlags: SerializedField<STHash<32>, 327779, 5, 99>;
+  readonly EmailHash: SerializedField<Hash128, 262145, 4, 1>;
+  readonly LedgerHash: SerializedField<Hash256, 327681, 5, 1>;
+  readonly ParentHash: SerializedField<Hash256, 327682, 5, 2>;
+  readonly TransactionHash: SerializedField<Hash256, 327683, 5, 3>;
+  readonly AccountHash: SerializedField<Hash256, 327684, 5, 4>;
+  readonly PreviousTxnID: SerializedField<Hash256, 327685, 5, 5>;
+  readonly LedgerIndex: SerializedField<Hash256, 327686, 5, 6>;
+  readonly WalletLocator: SerializedField<Hash256, 327687, 5, 7>;
+  readonly RootIndex: SerializedField<Hash256, 327688, 5, 8>;
+  readonly AccountTxnID: SerializedField<Hash256, 327689, 5, 9>;
+  readonly NFTokenID: SerializedField<Hash256, 327690, 5, 10>;
+  readonly EmitParentTxnID: SerializedField<Hash256, 327691, 5, 11>;
+  readonly EmitNonce: SerializedField<Hash256, 327692, 5, 12>;
+  readonly EmitHookHash: SerializedField<Hash256, 327693, 5, 13>;
+  readonly ObjectID: SerializedField<Hash256, 327694, 5, 14>;
+  readonly BookDirectory: SerializedField<Hash256, 327696, 5, 16>;
+  readonly InvoiceID: SerializedField<Hash256, 327697, 5, 17>;
+  readonly Nickname: SerializedField<Hash256, 327698, 5, 18>;
+  readonly Amendment: SerializedField<Hash256, 327699, 5, 19>;
+  readonly HookOn: SerializedField<Hash256, 327700, 5, 20>;
+  readonly Digest: SerializedField<Hash256, 327701, 5, 21>;
+  readonly Channel: SerializedField<Hash256, 327702, 5, 22>;
+  readonly ConsensusHash: SerializedField<Hash256, 327703, 5, 23>;
+  readonly CheckID: SerializedField<Hash256, 327704, 5, 24>;
+  readonly ValidatedHash: SerializedField<Hash256, 327705, 5, 25>;
+  readonly PreviousPageMin: SerializedField<Hash256, 327706, 5, 26>;
+  readonly NextPageMin: SerializedField<Hash256, 327707, 5, 27>;
+  readonly NFTokenBuyOffer: SerializedField<Hash256, 327708, 5, 28>;
+  readonly NFTokenSellOffer: SerializedField<Hash256, 327709, 5, 29>;
+  readonly HookStateKey: SerializedField<Hash256, 327710, 5, 30>;
+  readonly HookHash: SerializedField<Hash256, 327711, 5, 31>;
+  readonly HookNamespace: SerializedField<Hash256, 327712, 5, 32>;
+  readonly HookSetTxnID: SerializedField<Hash256, 327713, 5, 33>;
+  readonly OfferID: SerializedField<Hash256, 327714, 5, 34>;
+  readonly EscrowID: SerializedField<Hash256, 327715, 5, 35>;
+  readonly URITokenID: SerializedField<Hash256, 327716, 5, 36>;
+  readonly Cron: SerializedField<Hash256, 327775, 5, 95>;
+  readonly HookCanEmit: SerializedField<Hash256, 327776, 5, 96>;
+  readonly EmittedTxnID: SerializedField<Hash256, 327777, 5, 97>;
+  readonly GovernanceMarks: SerializedField<Hash256, 327778, 5, 98>;
+  readonly GovernanceFlags: SerializedField<Hash256, 327779, 5, 99>;
   readonly Amount: SerializedField<STAmount, 393217, 6, 1>;
   readonly Balance: SerializedField<STAmount, 393218, 6, 2>;
   readonly LimitAmount: SerializedField<STAmount, 393219, 6, 3>;
@@ -1554,17 +1604,17 @@ declare const Field: {
   readonly Blob: SerializedField<STBlob, 458778, 7, 26>;
   readonly RemarkValue: SerializedField<STBlob, 458850, 7, 98>;
   readonly RemarkName: SerializedField<STBlob, 458851, 7, 99>;
-  readonly Account: SerializedField<STAddress, 524289, 8, 1>;
-  readonly Owner: SerializedField<STAddress, 524290, 8, 2>;
-  readonly Destination: SerializedField<STAddress, 524291, 8, 3>;
-  readonly Issuer: SerializedField<STAddress, 524292, 8, 4>;
-  readonly Authorize: SerializedField<STAddress, 524293, 8, 5>;
-  readonly Unauthorize: SerializedField<STAddress, 524294, 8, 6>;
-  readonly RegularKey: SerializedField<STAddress, 524296, 8, 8>;
-  readonly NFTokenMinter: SerializedField<STAddress, 524297, 8, 9>;
-  readonly EmitCallback: SerializedField<STAddress, 524298, 8, 10>;
-  readonly HookAccount: SerializedField<STAddress, 524304, 8, 16>;
-  readonly Inform: SerializedField<STAddress, 524387, 8, 99>;
+  readonly Account: SerializedField<AccountID, 524289, 8, 1>;
+  readonly Owner: SerializedField<AccountID, 524290, 8, 2>;
+  readonly Destination: SerializedField<AccountID, 524291, 8, 3>;
+  readonly Issuer: SerializedField<AccountID, 524292, 8, 4>;
+  readonly Authorize: SerializedField<AccountID, 524293, 8, 5>;
+  readonly Unauthorize: SerializedField<AccountID, 524294, 8, 6>;
+  readonly RegularKey: SerializedField<AccountID, 524296, 8, 8>;
+  readonly NFTokenMinter: SerializedField<AccountID, 524297, 8, 9>;
+  readonly EmitCallback: SerializedField<AccountID, 524298, 8, 10>;
+  readonly HookAccount: SerializedField<AccountID, 524304, 8, 16>;
+  readonly Inform: SerializedField<AccountID, 524387, 8, 99>;
   readonly TransactionMetaData: SerializedField<STObject, 917506, 14, 2>;
   readonly CreatedNode: SerializedField<STObject, 917507, 14, 3>;
   readonly DeletedNode: SerializedField<STObject, 917508, 14, 4>;
@@ -1618,10 +1668,10 @@ declare const Field: {
   readonly TickSize: SerializedField<UInt8, 1048592, 16, 16>;
   readonly UNLModifyDisabling: SerializedField<UInt8, 1048593, 16, 17>;
   readonly HookResult: SerializedField<UInt8, 1048594, 16, 18>;
-  readonly TakerPaysCurrency: SerializedField<STHash<20>, 1114113, 17, 1>;
-  readonly TakerPaysIssuer: SerializedField<STHash<20>, 1114114, 17, 2>;
-  readonly TakerGetsCurrency: SerializedField<STHash<20>, 1114115, 17, 3>;
-  readonly TakerGetsIssuer: SerializedField<STHash<20>, 1114116, 17, 4>;
+  readonly TakerPaysCurrency: SerializedField<Hash160, 1114113, 17, 1>;
+  readonly TakerPaysIssuer: SerializedField<Hash160, 1114114, 17, 2>;
+  readonly TakerGetsCurrency: SerializedField<Hash160, 1114115, 17, 3>;
+  readonly TakerGetsIssuer: SerializedField<Hash160, 1114116, 17, 4>;
   readonly Paths: SerializedField<STPathSet, 1179649, 18, 1>;
   readonly Indexes: SerializedField<unknown, 1245185, 19, 1>;
   readonly Hashes: SerializedField<unknown, 1245186, 19, 2>;
@@ -1644,10 +1694,10 @@ declare const Field: {
   readonly MPTAmount: SerializedField<UInt64, 196634, 3, 26>;
   readonly IssuerNode: SerializedField<UInt64, 196635, 3, 27>;
   readonly SubjectNode: SerializedField<UInt64, 196636, 3, 28>;
-  readonly AMMID: SerializedField<STHash<32>, 327695, 5, 15>;
-  readonly DomainID: SerializedField<STHash<32>, 327717, 5, 37>;
-  readonly HookOnOutgoing: SerializedField<STHash<32>, 327773, 5, 93>;
-  readonly HookOnIncoming: SerializedField<STHash<32>, 327774, 5, 94>;
+  readonly AMMID: SerializedField<Hash256, 327695, 5, 15>;
+  readonly DomainID: SerializedField<Hash256, 327717, 5, 37>;
+  readonly HookOnOutgoing: SerializedField<Hash256, 327773, 5, 93>;
+  readonly HookOnIncoming: SerializedField<Hash256, 327774, 5, 94>;
   readonly Amount2: SerializedField<STAmount, 393227, 6, 11>;
   readonly BidMin: SerializedField<STAmount, 393228, 6, 12>;
   readonly BidMax: SerializedField<STAmount, 393229, 6, 13>;
@@ -1666,14 +1716,14 @@ declare const Field: {
   readonly MPTokenMetadata: SerializedField<STBlob, 458783, 7, 31>;
   readonly CredentialType: SerializedField<STBlob, 458784, 7, 32>;
   readonly HookName: SerializedField<STBlob, 458849, 7, 97>;
-  readonly Holder: SerializedField<STAddress, 524299, 8, 11>;
-  readonly OtherChainSource: SerializedField<STAddress, 524306, 8, 18>;
-  readonly OtherChainDestination: SerializedField<STAddress, 524307, 8, 19>;
-  readonly AttestationSignerAccount: SerializedField<STAddress, 524308, 8, 20>;
-  readonly AttestationRewardAccount: SerializedField<STAddress, 524309, 8, 21>;
-  readonly LockingChainDoor: SerializedField<STAddress, 524310, 8, 22>;
-  readonly IssuingChainDoor: SerializedField<STAddress, 524311, 8, 23>;
-  readonly Subject: SerializedField<STAddress, 524312, 8, 24>;
+  readonly Holder: SerializedField<AccountID, 524299, 8, 11>;
+  readonly OtherChainSource: SerializedField<AccountID, 524306, 8, 18>;
+  readonly OtherChainDestination: SerializedField<AccountID, 524307, 8, 19>;
+  readonly AttestationSignerAccount: SerializedField<AccountID, 524308, 8, 20>;
+  readonly AttestationRewardAccount: SerializedField<AccountID, 524309, 8, 21>;
+  readonly LockingChainDoor: SerializedField<AccountID, 524310, 8, 22>;
+  readonly IssuingChainDoor: SerializedField<AccountID, 524311, 8, 23>;
+  readonly Subject: SerializedField<AccountID, 524312, 8, 24>;
   readonly Number: SerializedField<unknown, 589825, 9, 1>;
   readonly VoteEntry: SerializedField<STObject, 917529, 14, 25>;
   readonly AuctionSlot: SerializedField<STObject, 917530, 14, 26>;
@@ -1698,7 +1748,7 @@ declare const Field: {
   readonly AssetScale: SerializedField<UInt8, 1048581, 16, 5>;
   readonly WasLockingChainSend: SerializedField<UInt8, 1048595, 16, 19>;
   readonly CredentialIDs: SerializedField<unknown, 1245190, 19, 6>;
-  readonly MPTokenIssuanceID: SerializedField<STHash<24>, 1376257, 21, 1>;
+  readonly MPTokenIssuanceID: SerializedField<Hash192, 1376257, 21, 1>;
   readonly LockingChainIssue: SerializedField<STIssue, 1572865, 24, 1>;
   readonly IssuingChainIssue: SerializedField<STIssue, 1572866, 24, 2>;
   readonly Asset: SerializedField<STIssue, 1572867, 24, 3>;
