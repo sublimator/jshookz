@@ -162,7 +162,7 @@ declare class XFL {
   isZero(): boolean;
 }
 
-declare namespace lifecycle {
+declare namespace hook {
   function account(): HostResult<AccountID>;
 }
 

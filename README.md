@@ -27,7 +27,7 @@ Wasmtime dispatcher—while reusing the existing C Hook host implementations.
 ## Example
 
 ```ts
-export function hook(_reserved: number): never {
+export function main(_reserved: number): never {
   trace("ledger", ledger.sequence);
   accept("hello from JavaScript", 0);
 }

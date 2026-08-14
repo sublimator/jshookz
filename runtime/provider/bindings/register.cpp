@@ -6,7 +6,7 @@ void
 registerBindings(JSContext *ctx)
 {
     JSValue global = JS_GetGlobalObject(ctx);
-    bindings::registerLifecycle(ctx, global);
+    bindings::registerHook(ctx, global);
     bindings::registerControl(ctx, global);
     bindings::registerLedger(ctx, global);
     bindings::registerState(ctx, global);

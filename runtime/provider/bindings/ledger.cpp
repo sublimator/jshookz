@@ -40,8 +40,8 @@ js_otxn_type(JSContext *ctx, JSValueConst this_val,
 }
 
 JSValue
-js_lifecycle_account(JSContext *ctx, JSValueConst this_val,
-                     int argc, JSValueConst *argv)
+js_hook_account(JSContext *ctx, JSValueConst this_val,
+                int argc, JSValueConst *argv)
 {
     uint8_t bytes[20];
     int64_t result = hook_hook_account(
@@ -50,7 +50,7 @@ js_lifecycle_account(JSContext *ctx, JSValueConst this_val,
         return host_failure(ctx, result);
     if (result != (int64_t)sizeof(bytes))
         return JS_ThrowInternalError(
-            ctx, "lifecycle.account: host returned %lld, expected 20",
+            ctx, "hook.account: host returned %lld, expected 20",
             (long long)result);
     return host_success(ctx,
         rich_from_bytes(ctx, "AccountID", bytes, sizeof(bytes)));
@@ -65,12 +65,12 @@ JSCFunctionListEntry const js_ledger_properties[] = {
 }  // namespace
 
 void
-registerLifecycle(JSContext *ctx, JSValue global)
+registerHook(JSContext *ctx, JSValue global)
 {
-    JSValue lifecycle = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, lifecycle, "account",
-        JS_NewCFunction(ctx, js_lifecycle_account, "account", 0));
-    JS_SetPropertyStr(ctx, global, "lifecycle", lifecycle);
+    JSValue hook = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, hook, "account",
+        JS_NewCFunction(ctx, js_hook_account, "account", 0));
+    JS_SetPropertyStr(ctx, global, "hook", hook);
 }
 
 void

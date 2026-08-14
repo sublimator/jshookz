@@ -34,7 +34,7 @@ JSValue rich_from_bytes(
     std::uint32_t length);
 
 void registerControl(JSContext* ctx, JSValue global);
-void registerLifecycle(JSContext* ctx, JSValue global);
+void registerHook(JSContext* ctx, JSValue global);
 void registerLedger(JSContext* ctx, JSValue global);
 void registerTrace(JSContext* ctx, JSValue global);
 void registerState(JSContext* ctx, JSValue global);
