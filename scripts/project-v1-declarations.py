@@ -125,8 +125,8 @@ PROFILE = (
         },
     ),
     ContainerProjection(
-        "lifecycle",
-        "lifecycle",
+        "hook",
+        "hook",
         ("account",),
         kind="namespace",
     ),

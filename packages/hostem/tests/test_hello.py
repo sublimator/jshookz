@@ -37,7 +37,7 @@ def test_javascript_hook_calls_real_hookz_host_and_accepts():
 
 def test_tagged_host_failure_can_drive_javascript_rollback():
     source = """
-        export function hook(_reserved) {
+        export function main(_reserved) {
           const write = state.set("K".repeat(33), new Uint8Array([1]));
           if (!write.ok) rollback("state failed", write.code);
           accept("unexpected");
@@ -54,7 +54,7 @@ def test_tagged_host_failure_can_drive_javascript_rollback():
 
 def test_rollback_on_fail_preserves_absence_and_exact_failure_code():
     source = """
-        export function hook(_reserved) {
+        export function main(_reserved) {
           const missing = rollback.onFail(state.get("MISSING"));
           if (missing !== undefined) rollback("state unexpectedly present", -1);
           rollback.onFail(
@@ -78,7 +78,7 @@ def test_rollback_on_fail_preserves_absence_and_exact_failure_code():
 
 def test_rollback_on_fail_accepts_context_without_losing_status_code():
     source = """
-        export function hook(_reserved) {
+        export function main(_reserved) {
           rollback.onFail(
             state.set("K".repeat(33), new Uint8Array([1])),
             "state write failed"
@@ -97,7 +97,7 @@ def test_rollback_on_fail_accepts_context_without_losing_status_code():
 
 def test_rollback_on_fail_applies_policy_to_an_uncoded_result():
     source = """
-        export function hook(_reserved) {
+        export function main(_reserved) {
           rollback.onFail(
             { ok: false, issue: "wrong-length" },
             "invalid configuration",
@@ -117,7 +117,7 @@ def test_rollback_on_fail_applies_policy_to_an_uncoded_result():
 
 def test_rollback_require_collapses_host_failure_and_absence():
     source = """
-        export function hook(_reserved) {
+        export function main(_reserved) {
           const mode = otxn.type();
           if (!mode.ok) rollback("unexpected type failure", -1);
           if (mode.value === 1) {
@@ -176,7 +176,7 @@ def test_rollback_require_collapses_host_failure_and_absence():
 
 def test_hook_terminal_bypasses_javascript_try_catch():
     source = """
-        export function hook(_reserved) {
+        export function main(_reserved) {
           try {
             accept("terminal", 23);
           } catch (error) {
@@ -198,7 +198,7 @@ def test_hook_terminal_bypasses_javascript_try_catch():
 
 def test_javascript_reads_host_state_as_blob_then_replaces_it():
     source = """
-        export function hook(_reserved) {
+        export function main(_reserved) {
           const seeded = state.get("BRIDGE");
           if (!seeded.ok) rollback("state read failed", seeded.code);
           if (seeded.value === undefined) rollback("state missing", -1);
@@ -235,7 +235,7 @@ def test_javascript_reads_host_state_as_blob_then_replaces_it():
     ]
 
 
-def test_module_without_hook_export_is_refused():
+def test_module_without_main_export_is_refused():
     source = """
         const marker = "ordinary module initialization";
         export function other(_reserved) {
@@ -248,7 +248,7 @@ def test_module_without_hook_export_is_refused():
 
     assert not result.accepted
     assert isinstance(result.error, RuntimeError)
-    assert "no exported hook entry point" in str(result.error)
+    assert "no exported main entry point" in str(result.error)
     assert result.call_log == []
 
 

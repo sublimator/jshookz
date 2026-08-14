@@ -29,9 +29,9 @@ def validate(bytecode: bytes):
         host.destroy()
 
 
-def test_accepts_callable_hook_without_invoking_it():
+def test_accepts_callable_main_without_invoking_it():
     bytecode = compile_bytecode(
-        'export function hook() { throw new Error("entry ran"); }'
+        'export function main() { throw new Error("entry ran"); }'
     )
 
     result = validate(bytecode)
@@ -43,7 +43,7 @@ def test_accepts_callable_hook_without_invoking_it():
 
 def test_callable_callback_sets_callback_bit():
     bytecode = compile_bytecode(
-        "export function hook() {}\nexport function cbak() {}"
+        "export function main() {}\nexport function callback() {}"
     )
 
     result = validate(bytecode)
@@ -52,33 +52,33 @@ def test_callable_callback_sets_callback_bit():
     assert result.has_callback
 
 
-def test_rejects_missing_hook_export():
+def test_rejects_missing_main_export():
     bytecode = compile_bytecode("export function other() {}")
 
     result = validate(bytecode)
 
     assert not result.valid
-    assert result.error == "TypeError: Hook module has no exported hook entry point"
+    assert result.error == "TypeError: Hook module has no exported main entry point"
 
 
-def test_rejects_non_callable_hook_export():
-    bytecode = compile_bytecode("export const hook = 1;")
+def test_rejects_non_callable_main_export():
+    bytecode = compile_bytecode("export const main = 1;")
 
     result = validate(bytecode)
 
     assert not result.valid
-    assert result.error == "TypeError: exported hook entry point is not a function"
+    assert result.error == "TypeError: exported main entry point is not a function"
 
 
 def test_rejects_non_callable_callback_export():
     bytecode = compile_bytecode(
-        "export function hook() {}\nexport const cbak = 2;"
+        "export function main() {}\nexport const callback = 2;"
     )
 
     result = validate(bytecode)
 
     assert not result.valid
-    assert result.error == "TypeError: exported cbak entry point is not a function"
+    assert result.error == "TypeError: exported callback entry point is not a function"
 
 
 def test_rejects_non_module_bytecode():
@@ -99,7 +99,7 @@ def test_rejects_malformed_bytecode():
 
 def test_uses_initialized_export_value_not_only_declared_name():
     bytecode = compile_bytecode(
-        "export let hook = 1;\nhook = function initializedHook() {};"
+        "export let main = 1;\nmain = function initializedMain() {};"
     )
 
     result = validate(bytecode)
@@ -110,7 +110,7 @@ def test_uses_initialized_export_value_not_only_declared_name():
 
 def test_rejects_throwing_module_initialization():
     bytecode = compile_bytecode(
-        'export function hook() {}\nthrow new Error("top-level failed");'
+        'export function main() {}\nthrow new Error("top-level failed");'
     )
 
     result = validate(bytecode)
@@ -121,7 +121,7 @@ def test_rejects_throwing_module_initialization():
 
 def test_rejects_pending_module_initialization():
     bytecode = compile_bytecode(
-        "export function hook() {}\nawait Promise.resolve();"
+        "export function main() {}\nawait Promise.resolve();"
     )
 
     result = validate(bytecode)
@@ -134,7 +134,7 @@ def test_rejects_pending_module_initialization():
 
 def test_rejects_host_calls_during_module_initialization():
     bytecode = compile_bytecode(
-        "export function hook() {}\nvoid ledger.sequence;"
+        "export function main() {}\nvoid ledger.sequence;"
     )
 
     result = validate(bytecode)

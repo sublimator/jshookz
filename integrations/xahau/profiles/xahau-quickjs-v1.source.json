@@ -11,7 +11,11 @@
     "quickjs_bytecode_version": 5,
     "read_flags": ["JS_READ_OBJ_BYTECODE"],
     "write_flags": ["JS_WRITE_OBJ_BYTECODE"],
-    "root": "es-module"
+    "root": "es-module",
+    "entry_exports": {
+      "main": "required-callable",
+      "callback": "optional-callable"
+    }
   },
   "provider": {
     "build": {

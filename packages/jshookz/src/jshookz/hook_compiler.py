@@ -43,7 +43,7 @@ function visit(node) {
     let forbidden = null;
     if (
       ts.isIdentifier(target) &&
-      ["hook", "cbak", "accept", "rollback"].includes(target.text)
+      ["main", "callback", "accept", "rollback"].includes(target.text)
     ) {
       forbidden = target.text;
     }
@@ -109,7 +109,7 @@ def _validate_no_top_level_entry_invocation(
     if completed.returncode:
         detail = completed.stderr.strip() or "entry invocation found"
         raise RuntimeError(
-            "Hook modules export hook/cbak and the provider invokes them. "
+            "Hook modules export main/callback and the provider invokes them. "
             f"Remove top-level entry or terminal invocation ({detail})."
         )
 

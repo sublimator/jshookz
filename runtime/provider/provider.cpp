@@ -484,22 +484,22 @@ static int32_t qjs_invoke_bytecode_export(
     }
     if (JS_IsUndefined(entry)) {
         JS_FreeValue(ctx, entry);
-        if (export_name[0] == 'c')
+        if (std::strcmp(export_name, "callback") == 0)
             store_static_result(
-                "TypeError: Hook module has no exported cbak entry point");
+                "TypeError: Hook module has no exported callback entry point");
         else
             store_static_result(
-                "TypeError: Hook module has no exported hook entry point");
+                "TypeError: Hook module has no exported main entry point");
         return -1;
     }
     if (!JS_IsFunction(ctx, entry)) {
         JS_FreeValue(ctx, entry);
-        if (export_name[0] == 'c')
+        if (std::strcmp(export_name, "callback") == 0)
             store_static_result(
-                "TypeError: exported cbak entry point is not a function");
+                "TypeError: exported callback entry point is not a function");
         else
             store_static_result(
-                "TypeError: exported hook entry point is not a function");
+                "TypeError: exported main entry point is not a function");
         return -1;
     }
 
@@ -520,18 +520,18 @@ static int32_t qjs_invoke_bytecode_export(
 __attribute__((export_name("qjs_hook")))
 int32_t qjs_hook(const uint8_t *buf, uint32_t buf_len, uint32_t reserved)
 {
-    return qjs_invoke_bytecode_export(buf, buf_len, "hook", reserved);
+    return qjs_invoke_bytecode_export(buf, buf_len, "main", reserved);
 }
 
 __attribute__((export_name("qjs_cbak")))
 int32_t qjs_cbak(const uint8_t *buf, uint32_t buf_len, uint32_t reserved)
 {
-    return qjs_invoke_bytecode_export(buf, buf_len, "cbak", reserved);
+    return qjs_invoke_bytecode_export(buf, buf_len, "callback", reserved);
 }
 
 /* Evaluate module initialization in the caller's disposable validation
    instance, but do not invoke either entry point. Result bits:
-   1 = callable hook export, 2 = callable cbak export. */
+   1 = callable main export, 2 = callable callback export. */
 __attribute__((export_name("qjs_validate_hook_module")))
 int32_t qjs_validate_hook_module(const uint8_t *buf, uint32_t buf_len)
 {
@@ -566,39 +566,39 @@ int32_t qjs_validate_hook_module(const uint8_t *buf, uint32_t buf_len)
         store_exception();
         return -1;
     }
-    JSValue hook = JS_GetPropertyStr(ctx, module_namespace, "hook");
-    JSValue cbak = JS_GetPropertyStr(ctx, module_namespace, "cbak");
+    JSValue main_entry = JS_GetPropertyStr(ctx, module_namespace, "main");
+    JSValue callback = JS_GetPropertyStr(ctx, module_namespace, "callback");
     JS_FreeValue(ctx, module_namespace);
-    if (JS_IsException(hook) || JS_IsException(cbak)) {
+    if (JS_IsException(main_entry) || JS_IsException(callback)) {
         store_exception();
-        JS_FreeValue(ctx, hook);
-        JS_FreeValue(ctx, cbak);
+        JS_FreeValue(ctx, main_entry);
+        JS_FreeValue(ctx, callback);
         return -1;
     }
-    if (JS_IsUndefined(hook)) {
-        JS_FreeValue(ctx, hook);
-        JS_FreeValue(ctx, cbak);
+    if (JS_IsUndefined(main_entry)) {
+        JS_FreeValue(ctx, main_entry);
+        JS_FreeValue(ctx, callback);
         store_static_result(
-            "TypeError: Hook module has no exported hook entry point");
+            "TypeError: Hook module has no exported main entry point");
         return -1;
     }
-    if (!JS_IsFunction(ctx, hook)) {
-        JS_FreeValue(ctx, hook);
-        JS_FreeValue(ctx, cbak);
+    if (!JS_IsFunction(ctx, main_entry)) {
+        JS_FreeValue(ctx, main_entry);
+        JS_FreeValue(ctx, callback);
         store_static_result(
-            "TypeError: exported hook entry point is not a function");
+            "TypeError: exported main entry point is not a function");
         return -1;
     }
-    if (!JS_IsUndefined(cbak) && !JS_IsFunction(ctx, cbak)) {
-        JS_FreeValue(ctx, hook);
-        JS_FreeValue(ctx, cbak);
+    if (!JS_IsUndefined(callback) && !JS_IsFunction(ctx, callback)) {
+        JS_FreeValue(ctx, main_entry);
+        JS_FreeValue(ctx, callback);
         store_static_result(
-            "TypeError: exported cbak entry point is not a function");
+            "TypeError: exported callback entry point is not a function");
         return -1;
     }
-    int flags = 1 | (!JS_IsUndefined(cbak) ? 2 : 0);
-    JS_FreeValue(ctx, hook);
-    JS_FreeValue(ctx, cbak);
+    int flags = 1 | (!JS_IsUndefined(callback) ? 2 : 0);
+    JS_FreeValue(ctx, main_entry);
+    JS_FreeValue(ctx, callback);
     return flags;
 }
 

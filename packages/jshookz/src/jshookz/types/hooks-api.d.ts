@@ -1184,12 +1184,8 @@ declare namespace guard {
   function loop<T>(id: number, maxIterations: number, body: (index: number) => T | void): void;
 }
 
-/**
- * Metadata and configuration for the currently executing Hook lifecycle.
- * This is deliberately not named `hook`: every contract exports a `hook()`
- * entry binding, so that global namespace would be shadowed where it matters.
- */
-declare namespace lifecycle {
+/** Metadata and configuration for the currently executing Hook. */
+declare namespace hook {
   function account(): HostResult<STAddress>;
   function hash(): HostResult<STHash<32>>;
   function position(): HostResult<number>;

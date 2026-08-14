@@ -220,8 +220,9 @@ def test_profile_javascript_surface_is_ledger_derived_and_reduced():
             "accept: typeof accept,"
             "rollback: typeof rollback,"
             "rollbackOnFail: typeof rollback.onFail,"
-            "lifecycleAccept: typeof lifecycle.accept,"
-            "lifecycleRollback: typeof lifecycle.rollback,"
+            "hookAccount: typeof hook.account,"
+            "hookAccept: typeof hook.accept,"
+            "hookRollback: typeof hook.rollback,"
             "promise: typeof Promise,"
             "number: typeof Number"
             "})"
@@ -253,8 +254,9 @@ def test_profile_javascript_surface_is_ledger_derived_and_reduced():
         "accept": "function",
         "rollback": "function",
         "rollbackOnFail": "function",
-        "lifecycleAccept": "undefined",
-        "lifecycleRollback": "undefined",
+        "hookAccount": "function",
+        "hookAccept": "undefined",
+        "hookRollback": "undefined",
         "promise": "function",
         "number": "function",
     }

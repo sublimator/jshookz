@@ -1,10 +1,10 @@
-export function hook(_reserved) {
+export function main(_reserved) {
   void _reserved;
 
   const txType = otxn.type();
   if (!txType.ok) rollback("otxn.type failed", txType.code);
 
-  const account = lifecycle.account();
+  const account = hook.account();
   if (!account.ok) rollback("hook_account failed", account.code);
 
   const write = state.set("HELLO", new Uint8Array([1, 2, 3, 4]));

@@ -355,7 +355,7 @@ class WasmHost:
         export: str = "hook",
         reserved: int = 0,
     ) -> ContractResult:
-        """Load a Hook module and invoke its exported hook/cbak entry point."""
+        """Invoke main/callback through the outer qjs_hook/qjs_cbak ABI."""
         if export not in {"hook", "cbak"}:
             raise ValueError("Hook export must be 'hook' or 'cbak'")
 
