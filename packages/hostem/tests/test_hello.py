@@ -492,7 +492,7 @@ def test_xahau_provider_runs_compiled_typescript_hook():
 
 def test_typescript_public_api_reaches_the_real_host():
     source = """
-        export function main(_reserved: number): never {
+        export function main(): never {
           const previous = rollback.onFail(state.get("TYPED"));
           if (previous !== undefined) rollback("state unexpectedly present", 92);
 

@@ -47,8 +47,7 @@ function typecheckV1Surface(blob: STBlob, hash: Hash256, account: AccountID): vo
   trace("surface", 1);
 }
 
-export function main(_reserved: number): never {
-  void _reserved;
+export function main(): never {
   void typecheckV1Surface;
   return accept("surface declarations compile", 0);
 }

@@ -40,8 +40,8 @@ def test_default_v1_declarations_reject_unimplemented_rich_api(tmp_path: Path):
 def test_v1_example_compiles_and_packages(tmp_path: Path):
     source = tmp_path / "v1.hook.ts"
     source.write_text(
-        "export function main(_reserved: number): never { "
-        "void _reserved; trace('ledger', ledger.sequence); "
+        "export function main(): never { "
+        "trace('ledger', ledger.sequence); "
         "return accept('ok', 0); }"
     )
 
@@ -131,10 +131,10 @@ def test_compiler_rejects_top_level_self_invocation(tmp_path: Path):
     source = tmp_path / "self-invoking.hook.ts"
     source.write_text(
         """
-        export function main(_reserved: number): never {
+        export function main(): never {
           throw new Error("entry");
         }
-        main(0);
+        main();
         """
     )
 
@@ -146,7 +146,7 @@ def test_compiler_rejects_top_level_terminal_invocation(tmp_path: Path):
     source = tmp_path / "top-level-terminal.hook.ts"
     source.write_text(
         """
-        export function main(_reserved: number): never {
+        export function main(): never {
           throw new Error("entry");
         }
         accept("not an entry", 1);
