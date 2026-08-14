@@ -24,14 +24,64 @@ well suited to the relatively large QuickJS Wasm provider. Xahau needs only a
 small dual-runtime seam—engine-neutral guest memory and result handling plus a
 Wasmtime dispatcher—while reusing the existing C Hook host implementations.
 
-## Example
+## Examples
 
+### Accept
+
+<!-- BEGIN GENERATED: xahau-accept.hook.ts -->
 ```ts
-export function main(_reserved: number): never {
-  trace("ledger", ledger.sequence);
-  accept("hello from JavaScript", 0);
+export function main(): never {
+  accept("hello from TypeScript", 42);
 }
 ```
+<!-- END GENERATED: xahau-accept.hook.ts -->
+
+### Read and write state
+
+<!-- BEGIN GENERATED: xahau-state.hook.ts -->
+```ts
+export function main(): never {
+  const previous = rollback.onFail(state.get("GREETING"), "state read failed");
+
+  if (previous === undefined) {
+    rollback.onFail(
+      state.set("GREETING", new Uint8Array([72, 105])),
+      "state write failed",
+    );
+  }
+
+  const greeting = rollback.require(
+    state.get("GREETING"),
+    "state disappeared",
+    1,
+  );
+  accept(greeting.toBytes(), 0);
+}
+```
+<!-- END GENERATED: xahau-state.hook.ts -->
+
+### Require a batch of host calls
+
+<!-- BEGIN GENERATED: xahau-state-batch.hook.ts -->
+```ts
+export function main(): never {
+  rollback.onAnyFail(
+    [
+      state.set("FIRST", new Uint8Array([1])),
+      state.set("SECOND", new Uint8Array([2])),
+    ],
+    "batch write failed",
+  );
+
+  const first = rollback.require(
+    state.get("FIRST"),
+    "first value disappeared",
+    1,
+  );
+  accept(`first=${first.byteAt(0)}`, 0);
+}
+```
+<!-- END GENERATED: xahau-state-batch.hook.ts -->
 
 ## Build and test
 
