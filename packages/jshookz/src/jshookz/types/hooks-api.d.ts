@@ -1087,7 +1087,14 @@ declare namespace emit {
 
   function reserve(count: number): HostResult<void>;
   function tx(transaction: BytesLike | STBlob | EmittedTransaction): HostResult<STHash<32>>;
-  function txMany(transactions: readonly (BytesLike | STBlob | EmittedTransaction)[]): HostResult<readonly STHash<32>[]>;
+  /**
+   * Attempt every transaction in input order and retain each individual host
+   * result. Use `rollback.onAnyFail` when all emissions are required or
+   * `rollback.onAllFail` when partial success is part of the contract.
+   */
+  function txMany(
+    transactions: readonly (BytesLike | STBlob | EmittedTransaction)[],
+  ): readonly HostResult<STHash<32>>[];
   function prepare(partial: BytesLike | STBlob | STObject): HostResult<STBlob>;
   function details(): HostResult<STBlob>;
   function feeBase(transaction: BytesLike | STBlob | EmittedTransaction): HostResult<Drops>;
@@ -1263,6 +1270,34 @@ declare namespace rollback {
     message: string | BytesLike | STBlob,
     code: number,
   ): T;
+
+  /**
+   * Return every value when every host operation succeeded. If any failed,
+   * roll back with the first failure's host code, in input order.
+   */
+  function onAnyFail<T>(
+    results: readonly HostResult<T>[],
+    message?: string | BytesLike | STBlob,
+  ): readonly T[];
+
+  /** Apply a contract-owned rollback policy when any domain result failed. */
+  function onAnyFail<T, Failure extends ResultFailure>(
+    results: readonly Result<T, Failure>[],
+    message: string | BytesLike | STBlob,
+    code: number,
+  ): readonly T[];
+
+  /**
+   * Return the successful values in input order when at least one operation
+   * succeeded. If all operations failed, apply the supplied contract-owned
+   * rollback policy. This accepts `ParseResult` and other result domains as
+   * well as host results. An empty input therefore rolls back.
+   */
+  function onAllFail<T, Failure extends ResultFailure>(
+    results: readonly Result<T, Failure>[],
+    message: string | BytesLike | STBlob,
+    code: number,
+  ): readonly T[];
 }
 
 /** Trace a value; callable namespace members provide explicit encodings. */
