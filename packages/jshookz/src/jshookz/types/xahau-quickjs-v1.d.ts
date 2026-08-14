@@ -173,7 +173,7 @@ declare namespace emit {
 }
 
 declare namespace rollback {
-  function onHostFailure<T>(result: HostResult<T>): T;
+  function onHostFailure<T>(result: HostResult<T>, message?: string | BytesLike | STBlob): T;
 }
 
 /** Core Hook terminals and tracing. */

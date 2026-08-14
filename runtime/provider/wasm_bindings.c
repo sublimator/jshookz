@@ -380,6 +380,14 @@ static JSValue js_rollback_on_host_failure(JSContext *ctx,
     }
     JS_FreeValue(ctx, code_value);
 
+    if (argc > 1 && !JS_IsUndefined(argv[1])) {
+        JSValue code_arg = JS_NewInt64(ctx, code);
+        JSValueConst rollback_args[2] = { argv[1], code_arg };
+        JSValue result = js_hook_rollback(ctx, this_val, 2, rollback_args);
+        JS_FreeValue(ctx, code_arg);
+        return result;
+    }
+
     char message[64];
     int length = snprintf(
         message, sizeof(message), "host operation failed: %lld",
@@ -813,7 +821,7 @@ static void register_host_functions(JSContext *ctx)
     JSValue rollback = JS_NewCFunction(ctx, js_hook_rollback, "rollback", 2);
     JS_SetPropertyStr(ctx, rollback, "onHostFailure",
         JS_NewCFunction(
-            ctx, js_rollback_on_host_failure, "onHostFailure", 1));
+            ctx, js_rollback_on_host_failure, "onHostFailure", 2));
     JS_SetPropertyStr(ctx, global, "rollback", rollback);
 
     JSValue ledger = JS_NewObject(ctx);

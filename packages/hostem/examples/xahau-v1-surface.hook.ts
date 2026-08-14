@@ -34,7 +34,7 @@ function typecheckV1Surface(blob: STBlob, hash: Hash256, account: AccountID): vo
   }
   state.get("key");
   state.set("key", blob);
-  rollback.onHostFailure(state.get("key"));
+  rollback.onHostFailure(state.get("key"), "state read failed");
   emit.reserve(1);
   emit.prepare(blob);
   emit.tx(blob);

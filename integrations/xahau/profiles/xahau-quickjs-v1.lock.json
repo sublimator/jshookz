@@ -355,10 +355,10 @@
         ]
       }
     ],
-    "sha256": "6aacb7cf84611330014cbb5c98bbff59ffd1c24e3f19af2f0305f78b37ee3d70",
-    "size": 1006555
+    "sha256": "aa4e81b4e53d2385177bfe66e05fdb8537c96e222d20dadb69c716d7ac94cf0f",
+    "size": 1006762
   },
-  "runtime_profile_id": "e0bc7c8caca1221c70119a0ecf9b25b668da046e96d9f02d403f78d8fa41f5a6",
+  "runtime_profile_id": "cf38731fc1a607c68ffa68ade198359026da6fe14ecafda0c82ebd93ae97cb53",
   "schema": "xahau.quickjs.runtime-profile-lock.v1",
   "source": {
     "artifact": {
@@ -394,7 +394,7 @@
     },
     "execution": {
       "host_adapter_policy": "xahau-raw-hook-host-v1",
-      "host_result_failure_policy": "rollback.onHostFailure-terminates-with-exact-code",
+      "host_result_failure_policy": "rollback.onHostFailure-terminates-with-exact-code-and-optional-message",
       "host_work_exhaustion": "uncatchable-wasmtime-trap-to-wasm-error",
       "initialization": "finite-cold-qjs-init-budget-before-invocation-fuel-reset",
       "ordinary_host_status": "returned-as-i64-never-trapped",

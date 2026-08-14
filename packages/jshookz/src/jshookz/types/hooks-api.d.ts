@@ -1117,9 +1117,10 @@ declare namespace rollback {
   /**
    * Return a successful host value, including a legitimate `undefined`, or
    * atomically roll back with the exact failed host status as the terminal
-   * code.
+   * code. Supply `message` when the surrounding contract gives that failure
+   * more useful context than the default host-status diagnostic.
    */
-  function onHostFailure<T>(result: HostResult<T>): T;
+  function onHostFailure<T>(result: HostResult<T>, message?: string | BytesLike | STBlob): T;
 }
 
 /** Trace a value; callable namespace members provide explicit encodings. */
