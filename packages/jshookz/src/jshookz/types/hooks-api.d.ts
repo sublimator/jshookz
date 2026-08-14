@@ -884,20 +884,6 @@ declare namespace otxn {
   function xpop(): HostResult<STXPop | undefined>;
 }
 
-declare namespace hook {
-  function account(): HostResult<STAddress>;
-  function hash(): HostResult<STHash<32>>;
-  function position(): HostResult<number>;
-  function mode(): HostResult<HookExecutionMode>;
-  function hashAt(position: number): HostResult<STHash<32> | undefined>;
-  function param(name: StateKeyLike): HostResult<STBlob | undefined>;
-  function params(names: readonly StateKeyLike[]): HostResult<readonly (STBlob | undefined)[]>;
-  function params<const T extends BatchKeys>(names: T): HostResult<BatchValues<T>>;
-  function paramSet(targetHook: STHash<32>, name: StateKeyLike, value: BytesLike): HostResult<void>;
-  function skip(targetHook: STHash<32>, remove?: boolean): HostResult<void>;
-  function again(): HostResult<void>;
-}
-
 declare namespace state {
   interface KeyOptions {
     readonly length?: number;
@@ -1198,6 +1184,11 @@ declare namespace guard {
   function loop<T>(id: number, maxIterations: number, body: (index: number) => T | void): void;
 }
 
+/**
+ * Metadata and configuration for the currently executing Hook lifecycle.
+ * This is deliberately not named `hook`: every contract exports a `hook()`
+ * entry binding, so that global namespace would be shadowed where it matters.
+ */
 declare namespace lifecycle {
   function account(): HostResult<STAddress>;
   function hash(): HostResult<STHash<32>>;
