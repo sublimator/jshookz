@@ -62,23 +62,38 @@ js_hook_rollback(JSContext *ctx, JSValueConst this_val,
     return JS_NewInt64(ctx, result);
 }
 
+int
+get_result_success(JSContext *ctx, JSValueConst value,
+                   const char *function_name)
+{
+    if (!JS_IsObject(value)) {
+        JS_ThrowTypeError(ctx, "%s: expected Result", function_name);
+        return -1;
+    }
+
+    JSValue ok = JS_GetPropertyStr(ctx, value, "ok");
+    if (JS_IsException(ok))
+        return -1;
+    if (!JS_IsBool(ok)) {
+        JS_FreeValue(ctx, ok);
+        JS_ThrowTypeError(ctx, "%s: expected boolean ok", function_name);
+        return -1;
+    }
+    int success = JS_ToBool(ctx, ok);
+    JS_FreeValue(ctx, ok);
+    return success;
+}
+
 JSValue
 js_rollback_on_fail(JSContext *ctx, JSValueConst this_val,
                     int argc, JSValueConst *argv)
 {
-    if (argc < 1 || !JS_IsObject(argv[0]))
+    if (argc < 1)
         return JS_ThrowTypeError(ctx, "rollback.onFail: expected Result");
-
-    JSValue ok = JS_GetPropertyStr(ctx, argv[0], "ok");
-    if (JS_IsException(ok))
-        return ok;
-    if (!JS_IsBool(ok)) {
-        JS_FreeValue(ctx, ok);
-        return JS_ThrowTypeError(
-            ctx, "rollback.onFail: expected boolean ok");
-    }
-    int success = JS_ToBool(ctx, ok);
-    JS_FreeValue(ctx, ok);
+    int const success =
+        get_result_success(ctx, argv[0], "rollback.onFail");
+    if (success < 0)
+        return JS_EXCEPTION;
     if (success)
         return JS_GetPropertyStr(ctx, argv[0], "value");
 
@@ -125,6 +140,31 @@ js_rollback_on_fail(JSContext *ctx, JSValueConst this_val,
         (uint32_t)(uintptr_t)message, (uint32_t)length, code));
 }
 
+JSValue
+js_rollback_require(JSContext *ctx, JSValueConst this_val,
+                    int argc, JSValueConst *argv)
+{
+    if (argc < 1)
+        return JS_ThrowTypeError(ctx, "rollback.require: expected Result");
+    int const success =
+        get_result_success(ctx, argv[0], "rollback.require");
+    if (success < 0)
+        return JS_EXCEPTION;
+    if (success) {
+        JSValue value = JS_GetPropertyStr(ctx, argv[0], "value");
+        if (JS_IsException(value) || !JS_IsUndefined(value))
+            return value;
+        JS_FreeValue(ctx, value);
+    }
+
+    if (argc < 3 || JS_IsUndefined(argv[1]) ||
+        !JS_IsNumber(argv[2]))
+        return JS_ThrowTypeError(
+            ctx, "rollback.require: expected message and numeric code");
+    JSValueConst rollback_args[2] = { argv[1], argv[2] };
+    return js_hook_rollback(ctx, this_val, 2, rollback_args);
+}
+
 }  // namespace
 
 void
@@ -135,6 +175,8 @@ registerControl(JSContext *ctx, JSValue global)
     JSValue rollback = JS_NewCFunction(ctx, js_hook_rollback, "rollback", 2);
     JS_SetPropertyStr(ctx, rollback, "onFail",
         JS_NewCFunction(ctx, js_rollback_on_fail, "onFail", 3));
+    JS_SetPropertyStr(ctx, rollback, "require",
+        JS_NewCFunction(ctx, js_rollback_require, "require", 3));
     JS_SetPropertyStr(ctx, global, "rollback", rollback);
 }
 

@@ -1215,6 +1215,17 @@ declare namespace rollback {
     message: string | BytesLike | STBlob,
     code: number,
   ): T;
+
+  /**
+   * Require a successful, present value. A failed result and a successful
+   * `undefined` are both translated into the supplied contract-owned rollback
+   * policy rather than preserving an incidental failure status.
+   */
+  function require<T, Failure extends ResultFailure>(
+    result: Result<T | undefined, Failure>,
+    message: string | BytesLike | STBlob,
+    code: number,
+  ): T;
 }
 
 /** Trace a value; callable namespace members provide explicit encodings. */

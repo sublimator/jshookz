@@ -96,7 +96,7 @@
   },
   "execution": {
     "host_adapter_policy": "xahau-raw-hook-host-v1",
-    "result_failure_policy": "rollback.onFail-preserves-coded-failure-or-requires-explicit-message-and-code",
+    "result_failure_policy": "rollback.onFail-preserves-coded-failure;rollback.require-collapses-failure-or-absence-to-explicit-message-and-code",
     "initialization": "finite-cold-qjs-init-budget-before-invocation-fuel-reset",
     "terminals": "record-hook-result-and-uncatchable-wasmtime-trap",
     "ordinary_host_status": "returned-as-i64-never-trapped",

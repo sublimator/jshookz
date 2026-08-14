@@ -115,6 +115,65 @@ def test_rollback_on_fail_applies_policy_to_an_uncoded_result():
     assert [call.name for call in result.call_log] == ["rollback"]
 
 
+def test_rollback_require_collapses_host_failure_and_absence():
+    source = """
+        export function hook(_reserved) {
+          const mode = otxn.type();
+          if (!mode.ok) rollback("unexpected type failure", -1);
+          if (mode.value === 1) {
+            rollback.require(
+              state.set("K".repeat(33), new Uint8Array([1])),
+              "required operation failed",
+              71
+            );
+          }
+          const value = rollback.require(
+            state.get("MISSING"),
+            "required value missing",
+            72
+          );
+          accept(`required:${value.byteLength}`, 73);
+        }
+    """
+
+    failed_runner = HookRunner()
+    failed_runner.runtime.otxn_type = 1
+    failed = failed_runner.run(source)
+    assert failed.rejected, failed.error
+    assert failed.return_code == 71
+    assert failed.return_msg == b"required operation failed"
+    assert [call.name for call in failed.call_log] == [
+        "otxn_type",
+        "state_set",
+        "rollback",
+    ]
+
+    missing_runner = HookRunner()
+    missing_runner.runtime.otxn_type = 0
+    missing = missing_runner.run(source)
+    assert missing.rejected, missing.error
+    assert missing.return_code == 72
+    assert missing.return_msg == b"required value missing"
+    assert [call.name for call in missing.call_log] == [
+        "otxn_type",
+        "state",
+        "rollback",
+    ]
+
+    present_runner = HookRunner()
+    present_runner.runtime.otxn_type = 0
+    present_runner.runtime.state_db[b"MISSING"] = b"\x01"
+    present = present_runner.run(source)
+    assert present.accepted, present.error
+    assert present.return_code == 73
+    assert present.return_msg == b"required:1"
+    assert [call.name for call in present.call_log] == [
+        "otxn_type",
+        "state",
+        "accept",
+    ]
+
+
 def test_hook_terminal_bypasses_javascript_try_catch():
     source = """
         export function hook(_reserved) {
