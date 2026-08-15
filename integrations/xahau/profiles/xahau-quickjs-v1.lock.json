@@ -3,7 +3,7 @@
   "javascript_surface": {
     "declaration_sha256": "e0db6f99c217019172d577bbc7c21d7fa3ea462fcaa7af546b790cbe7abcd300",
     "schema": "jshookz.javascript-surface.v1",
-    "sha256": "2e175d734630b7616baecae0b6a245e806beee541286412d42451232e0e830c6"
+    "sha256": "514fd79220f9960cd19005d324568f4f775650428723ab4e9cbb032f69013485"
   },
   "provider": {
     "exports": [
@@ -360,10 +360,10 @@
         ]
       }
     ],
-    "sha256": "10ce54df8d2a3b8c313a6cb8c3380b678ae1042b6c7eb106a092b6dda7b301ad",
-    "size": 1026571
+    "sha256": "2f8bb3aa7fc2cfd78d7edb9f0a804f64831e0eec4b75244b51ad1444d2302cff",
+    "size": 1029054
   },
-  "runtime_profile_id": "74779793cf34000274208efe07b5e9aac393c19c38203c2cd7d678acfbcf706d",
+  "runtime_profile_id": "f431f7b971ca64c593df899650063cab210a9c43e2cb70c03f48e93929300672",
   "schema": "xahau.quickjs.runtime-profile-lock.v1",
   "source": {
     "artifact": {

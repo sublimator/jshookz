@@ -56853,6 +56853,19 @@ JSValue JS_NewTypedArray(JSContext *ctx, int argc, JSValueConst *argv,
                                       JS_CLASS_UINT8C_ARRAY + type);
 }
 
+int JS_GetTypedArrayType(JSValueConst obj)
+{
+    JSObject *p;
+
+    if (JS_VALUE_GET_TAG(obj) != JS_TAG_OBJECT)
+        return -1;
+    p = JS_VALUE_GET_OBJ(obj);
+    if (p->class_id < JS_CLASS_UINT8C_ARRAY ||
+        p->class_id > JS_CLASS_FLOAT64_ARRAY)
+        return -1;
+    return p->class_id - JS_CLASS_UINT8C_ARRAY;
+}
+
 /* Return the buffer associated to the typed array or an exception if
    it is not a typed array or if the buffer is detached. pbyte_offset,
    pbyte_length or pbytes_per_element can be NULL. */

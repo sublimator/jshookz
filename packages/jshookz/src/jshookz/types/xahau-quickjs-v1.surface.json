@@ -1,4 +1,46 @@
 {
+  "byte_policies": {
+    "AccountID.from": {
+      "0": "bytesLike"
+    },
+    "AccountID.fromHex": {
+      "0": "hexString"
+    },
+    "Hash256.from": {
+      "0": "bytesLike"
+    },
+    "Hash256.fromHex": {
+      "0": "hexString"
+    },
+    "STBlob.equals": {
+      "0": "bytesLikeOrSTBlob"
+    },
+    "STBlob.from": {
+      "0": "bytesLike"
+    },
+    "STBlob.fromHex": {
+      "0": "hexString"
+    },
+    "accept": {
+      "0": "lifecycleMessage"
+    },
+    "emit.prepare": {
+      "0": "bytesLikeOrSTBlob"
+    },
+    "emit.tx": {
+      "0": "bytesLikeOrSTBlob"
+    },
+    "rollback": {
+      "0": "lifecycleMessage"
+    },
+    "state.get": {
+      "0": "stateKeyLike"
+    },
+    "state.set": {
+      "0": "stateKeyLike",
+      "1": "stateValueLike"
+    }
+  },
   "declaration": {
     "path": "packages/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
     "sha256": "e0db6f99c217019172d577bbc7c21d7fa3ea462fcaa7af546b790cbe7abcd300"

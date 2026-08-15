@@ -176,6 +176,30 @@ def test_v1_bytes_accepts_strict_byte_arrays_and_rejects_ambiguous_inputs():
     assert result.result_value == '["0102FF",true,true,true,true,true,true]'
 
 
+def test_v1_bytes_rejects_typed_arrays_omitted_from_bytes_like():
+    result = evaluate(
+        "JSON.stringify(["
+        "(() => { try { STBlob.from(new Float16Array([1])); return false; } "
+        "catch (error) { return error instanceof TypeError; } })()"
+        "]);"
+    )
+
+    assert result.exit_code == 0
+    assert result.result_value == "[true]"
+
+
+def test_stblob_equals_accepts_the_declared_stblob_input():
+    result = evaluate(
+        "JSON.stringify(["
+        "STBlob.fromHex('A0FF').equals(STBlob.fromHex('A0FF')) ,"
+        "STBlob.fromHex('A0FF').equals(STBlob.fromHex('A000'))"
+        "]);"
+    )
+
+    assert result.exit_code == 0
+    assert result.result_value == "[true,false]"
+
+
 def test_account_id_protocol_constants_have_exact_read_only_values():
     result = evaluate(
         "JSON.stringify(["
@@ -190,3 +214,19 @@ def test_account_id_protocol_constants_have_exact_read_only_values():
     assert result.result_value == (
         '["' + "00" * 20 + '","' + "00" * 19 + '01",false,false]'
     )
+
+
+def test_native_factories_and_prototypes_are_frozen_at_registration():
+    result = evaluate(
+        "JSON.stringify(["
+        "[STBlob, STBlob.from([])],"
+        "[Hash256, Hash256.from(new Uint8Array(32))],"
+        "[AccountID, AccountID.zero],"
+        "[XFL, XFL.fromRaw(0n)],"
+        "[UInt8, UInt8.zero]"
+        "].every(([factory, value]) => "
+        "Object.isFrozen(factory) && Object.isFrozen(Object.getPrototypeOf(value))));"
+    )
+
+    assert result.exit_code == 0
+    assert result.result_value == "true"

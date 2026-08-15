@@ -96,9 +96,67 @@ callbackInfo(JSContext *context, uint32_t rawFlags)
  * boundary by codec/xrpl/tests/test_provider_result_abi.py.
  */
 enum { RESULT_MAX = 1048576 };
-static char *result_buf = NULL;
-static const char *result_static = NULL;
-static uint32_t result_len = 0;
+
+class ResultSlot
+{
+    char *owned_ = nullptr;
+    char const *static_ = nullptr;
+    std::uint32_t size_ = 0;
+
+public:
+    ~ResultSlot()
+    {
+        clear();
+    }
+
+    void
+    clear() noexcept
+    {
+        if (owned_ != nullptr)
+            free(owned_);
+        owned_ = nullptr;
+        static_ = nullptr;
+        size_ = 0;
+    }
+
+    void
+    storeStatic(char const *text) noexcept
+    {
+        clear();
+        static_ = text;
+        size_ = static_cast<std::uint32_t>(std::strlen(text));
+    }
+
+    [[nodiscard]] bool
+    storeCopy(char const *text, std::size_t size) noexcept
+    {
+        auto *copy = static_cast<char *>(malloc(size + 1));
+        if (copy == nullptr)
+            return false;
+        std::memcpy(copy, text, size);
+        copy[size] = '\0';
+        clear();
+        owned_ = copy;
+        size_ = static_cast<std::uint32_t>(size);
+        return true;
+    }
+
+    [[nodiscard]] char const *
+    data() const noexcept
+    {
+        if (owned_ != nullptr)
+            return owned_;
+        return static_ != nullptr ? static_ : "";
+    }
+
+    [[nodiscard]] std::uint32_t
+    size() const noexcept
+    {
+        return size_;
+    }
+};
+
+static ResultSlot resultSlot;
 
 /* ---- On-demand module loader (resolves via host) ---- */
 
@@ -278,19 +336,12 @@ void qjs_enable_coverage(int32_t enable)
 
 static void clear_result(void)
 {
-    if (result_buf) {
-        free(result_buf);
-        result_buf = NULL;
-    }
-    result_static = NULL;
-    result_len = 0;
+    resultSlot.clear();
 }
 
 static void store_static_result(const char *str)
 {
-    clear_result();
-    result_static = str;
-    result_len = (uint32_t)strlen(str);
+    resultSlot.storeStatic(str);
 }
 
 static int store_result_str(const char *str)
@@ -302,30 +353,22 @@ static int store_result_str(const char *str)
         return -1;
     }
 
-    char *buf = (char *)malloc(len + 1);
-    if (!buf) {
+    if (!resultSlot.storeCopy(str, len)) {
         store_static_result("Error: out of memory storing result");
         return -1;
     }
-
-    clear_result();
-    memcpy(buf, str, len);
-    buf[len] = '\0';
-    result_buf = buf;
-    result_len = (uint32_t)len;
     return 0;
 }
 
 static int store_exception(void)
 {
-    JSValue exc = JS_GetException(ctx);
-    const char *str = JS_ToCString(ctx, exc);
+    jshookz::provider::qjs::OwnedValue exception(ctx, JS_GetException(ctx));
+    const char *str = JS_ToCString(ctx, exception.get());
     int status = 0;
     if (str) {
         status = store_result_str(str);
         JS_FreeCString(ctx, str);
     }
-    JS_FreeValue(ctx, exc);
     return status;
 }
 
@@ -347,15 +390,14 @@ int32_t qjs_eval(const char *input, uint32_t input_len)
 {
     clear_result();
 
-    JSValue val = JS_Eval(ctx, input, input_len, "<contract>", JS_EVAL_TYPE_GLOBAL);
-    if (JS_IsException(val)) {
+    jshookz::provider::qjs::OwnedValue value(
+        ctx,
+        JS_Eval(ctx, input, input_len, "<contract>", JS_EVAL_TYPE_GLOBAL));
+    if (value.isException()) {
         store_exception();
-        JS_FreeValue(ctx, val);
         return -1;
     }
-    int status = store_value(val);
-    JS_FreeValue(ctx, val);
-    return status;
+    return store_value(value.get());
 }
 
 __attribute__((export_name("qjs_eval_module")))
@@ -363,16 +405,15 @@ int32_t qjs_eval_module(const char *input, uint32_t input_len)
 {
     clear_result();
 
-    JSValue val = JS_Eval(ctx, input, input_len, "<contract>",
-                          JS_EVAL_TYPE_MODULE);
-    if (JS_IsException(val)) {
+    jshookz::provider::qjs::OwnedValue value(
+        ctx,
+        JS_Eval(
+            ctx, input, input_len, "<contract>", JS_EVAL_TYPE_MODULE));
+    if (value.isException()) {
         store_exception();
-        JS_FreeValue(ctx, val);
         return -1;
     }
-    int status = store_value(val);
-    JS_FreeValue(ctx, val);
-    return status;
+    return store_value(value.get());
 }
 
 /* Compile JS source to bytecode. Returns bytecode size, or -1 on error.
@@ -388,21 +429,22 @@ static int32_t compile_source(
     if (bytecode_buf) { js_free(ctx, bytecode_buf); bytecode_buf = NULL; }
     bytecode_len = 0;
 
-    JSValue obj = JS_Eval(
+    jshookz::provider::qjs::OwnedValue object(
         ctx,
-        input,
-        input_len,
-        "<contract>",
-        eval_type | JS_EVAL_FLAG_COMPILE_ONLY);
-    if (JS_IsException(obj)) {
+        JS_Eval(
+            ctx,
+            input,
+            input_len,
+            "<contract>",
+            eval_type | JS_EVAL_FLAG_COMPILE_ONLY));
+    if (object.isException()) {
         store_exception();
-        JS_FreeValue(ctx, obj);
         return -1;
     }
 
     size_t out_size;
-    bytecode_buf = JS_WriteObject(ctx, &out_size, obj, JS_WRITE_OBJ_BYTECODE);
-    JS_FreeValue(ctx, obj);
+    bytecode_buf = JS_WriteObject(
+        ctx, &out_size, object.get(), JS_WRITE_OBJ_BYTECODE);
 
     if (!bytecode_buf) {
         store_exception();
@@ -443,49 +485,44 @@ int32_t qjs_eval_bytecode(const uint8_t *buf, uint32_t buf_len)
 {
     clear_result();
 
-    JSValue obj = JS_ReadObject(ctx, buf, buf_len, JS_READ_OBJ_BYTECODE);
-    if (JS_IsException(obj)) {
+    jshookz::provider::qjs::OwnedValue object(
+        ctx, JS_ReadObject(ctx, buf, buf_len, JS_READ_OBJ_BYTECODE));
+    if (object.isException()) {
         store_exception();
-        JS_FreeValue(ctx, obj);
         return -1;
     }
 
-    JSValue val = JS_EvalFunction(ctx, obj);
-    /* JS_EvalFunction frees obj */
-    if (JS_IsException(val)) {
+    jshookz::provider::qjs::OwnedValue value(
+        ctx, JS_EvalFunction(ctx, object.release()));
+    if (value.isException()) {
         store_exception();
-        JS_FreeValue(ctx, val);
         return -1;
     }
-    int status = store_value(val);
-    JS_FreeValue(ctx, val);
-    return status;
+    return store_value(value.get());
 }
 
-static int finish_module_evaluation(JSValue evaluated)
+static int
+finish_module_evaluation(jshookz::provider::qjs::OwnedValue evaluated)
 {
-    if (JS_IsException(evaluated)) {
+    if (evaluated.isException()) {
         store_exception();
-        JS_FreeValue(ctx, evaluated);
         return -1;
     }
 
-    int promise_state = JS_PromiseState(ctx, evaluated);
+    int promise_state = JS_PromiseState(ctx, evaluated.get());
     if (promise_state == JS_PROMISE_REJECTED) {
-        JSValue reason = JS_PromiseResult(ctx, evaluated);
-        JS_Throw(ctx, reason); /* transfers reason ownership */
+        jshookz::provider::qjs::OwnedValue reason(
+            ctx, JS_PromiseResult(ctx, evaluated.get()));
+        JS_Throw(ctx, reason.release());
         store_exception();
-        JS_FreeValue(ctx, evaluated);
         return -1;
     }
     if (promise_state == JS_PROMISE_PENDING) {
-        JS_FreeValue(ctx, evaluated);
         store_static_result(
             "TypeError: pending module initialization is not supported");
         return -1;
     }
 
-    JS_FreeValue(ctx, evaluated);
     return 0;
 }
 
@@ -497,44 +534,41 @@ static int32_t qjs_invoke_bytecode_export(
 {
     clear_result();
 
-    JSValue obj = JS_ReadObject(ctx, buf, buf_len, JS_READ_OBJ_BYTECODE);
-    if (JS_IsException(obj)) {
+    using jshookz::provider::qjs::OwnedValue;
+    OwnedValue object(
+        ctx, JS_ReadObject(ctx, buf, buf_len, JS_READ_OBJ_BYTECODE));
+    if (object.isException()) {
         store_exception();
-        JS_FreeValue(ctx, obj);
         return -1;
     }
-    if (JS_VALUE_GET_TAG(obj) != JS_TAG_MODULE) {
-        JS_FreeValue(ctx, obj);
+    if (JS_VALUE_GET_TAG(object.get()) != JS_TAG_MODULE) {
         store_static_result("TypeError: Hook bytecode must contain an ES module");
         return -1;
     }
 
-    JSModuleDef *module = static_cast<JSModuleDef *>(JS_VALUE_GET_PTR(obj));
-    if (JS_ResolveModule(ctx, obj) < 0) {
+    JSModuleDef *module =
+        static_cast<JSModuleDef *>(JS_VALUE_GET_PTR(object.get()));
+    if (JS_ResolveModule(ctx, object.get()) < 0) {
         store_exception();
-        JS_FreeValue(ctx, obj);
         return -1;
     }
 
-    JSValue evaluated = JS_EvalFunction(ctx, obj);
-    /* JS_EvalFunction frees obj. The loaded module retains module. */
-    if (finish_module_evaluation(evaluated) < 0)
+    OwnedValue evaluated(ctx, JS_EvalFunction(ctx, object.release()));
+    if (finish_module_evaluation(std::move(evaluated)) < 0)
         return -1;
 
-    JSValue module_namespace = JS_GetModuleNamespace(ctx, module);
-    if (JS_IsException(module_namespace)) {
+    OwnedValue moduleNamespace(ctx, JS_GetModuleNamespace(ctx, module));
+    if (moduleNamespace.isException()) {
         store_exception();
         return -1;
     }
-    JSValue entry = JS_GetPropertyStr(ctx, module_namespace, export_name);
-    JS_FreeValue(ctx, module_namespace);
-    if (JS_IsException(entry)) {
+    OwnedValue entry(
+        ctx, JS_GetPropertyStr(ctx, moduleNamespace.get(), export_name));
+    if (entry.isException()) {
         store_exception();
-        JS_FreeValue(ctx, entry);
         return -1;
     }
-    if (JS_IsUndefined(entry)) {
-        JS_FreeValue(ctx, entry);
+    if (JS_IsUndefined(entry.get())) {
         if (std::strcmp(export_name, "callback") == 0)
             store_static_result(
                 "TypeError: Hook module has no exported callback entry point");
@@ -543,8 +577,7 @@ static int32_t qjs_invoke_bytecode_export(
                 "TypeError: Hook module has no exported main entry point");
         return -1;
     }
-    if (!JS_IsFunction(ctx, entry)) {
-        JS_FreeValue(ctx, entry);
+    if (!JS_IsFunction(ctx, entry.get())) {
         if (std::strcmp(export_name, "callback") == 0)
             store_static_result(
                 "TypeError: exported callback entry point is not a function");
@@ -555,26 +588,27 @@ static int32_t qjs_invoke_bytecode_export(
     }
 
     bool const is_callback = std::strcmp(export_name, "callback") == 0;
-    jshookz::provider::qjs::OwnedValue argument(
+    OwnedValue argument(
         ctx, is_callback ? callbackInfo(ctx, reserved) : JS_UNDEFINED);
     if (argument.isException()) {
         store_exception();
-        JS_FreeValue(ctx, entry);
         return -1;
     }
     JSValueConst argument_value = argument.get();
     JSValueConst *arguments = is_callback ? &argument_value : nullptr;
-    JSValue result = JS_Call(
-        ctx, entry, JS_UNDEFINED, is_callback ? 1 : 0, arguments);
-    JS_FreeValue(ctx, entry);
-    if (JS_IsException(result)) {
+    OwnedValue result(
+        ctx,
+        JS_Call(
+            ctx,
+            entry.get(),
+            JS_UNDEFINED,
+            is_callback ? 1 : 0,
+            arguments));
+    if (result.isException()) {
         store_exception();
-        JS_FreeValue(ctx, result);
         return -1;
     }
-    int status = store_value(result);
-    JS_FreeValue(ctx, result);
-    return status;
+    return store_value(result.get());
 }
 
 __attribute__((export_name("qjs_hook")))
@@ -597,85 +631,71 @@ int32_t qjs_validate_hook_module(const uint8_t *buf, uint32_t buf_len)
 {
     clear_result();
 
-    JSValue obj = JS_ReadObject(ctx, buf, buf_len, JS_READ_OBJ_BYTECODE);
-    if (JS_IsException(obj)) {
+    using jshookz::provider::qjs::OwnedValue;
+    OwnedValue object(
+        ctx, JS_ReadObject(ctx, buf, buf_len, JS_READ_OBJ_BYTECODE));
+    if (object.isException()) {
         store_exception();
-        JS_FreeValue(ctx, obj);
         return -1;
     }
-    if (JS_VALUE_GET_TAG(obj) != JS_TAG_MODULE) {
-        JS_FreeValue(ctx, obj);
+    if (JS_VALUE_GET_TAG(object.get()) != JS_TAG_MODULE) {
         store_static_result("TypeError: Hook bytecode must contain an ES module");
         return -1;
     }
 
-    JSModuleDef *module = static_cast<JSModuleDef *>(JS_VALUE_GET_PTR(obj));
-    if (JS_ResolveModule(ctx, obj) < 0) {
+    JSModuleDef *module =
+        static_cast<JSModuleDef *>(JS_VALUE_GET_PTR(object.get()));
+    if (JS_ResolveModule(ctx, object.get()) < 0) {
         store_exception();
-        JS_FreeValue(ctx, obj);
         return -1;
     }
 
-    JSValue evaluated = JS_EvalFunction(ctx, obj);
-    /* JS_EvalFunction frees obj. The loaded module retains module. */
-    if (finish_module_evaluation(evaluated) < 0)
+    OwnedValue evaluated(ctx, JS_EvalFunction(ctx, object.release()));
+    if (finish_module_evaluation(std::move(evaluated)) < 0)
         return -1;
 
-    JSValue module_namespace = JS_GetModuleNamespace(ctx, module);
-    if (JS_IsException(module_namespace)) {
+    OwnedValue moduleNamespace(ctx, JS_GetModuleNamespace(ctx, module));
+    if (moduleNamespace.isException()) {
         store_exception();
         return -1;
     }
-    JSValue main_entry = JS_GetPropertyStr(ctx, module_namespace, "main");
-    JSValue callback = JS_GetPropertyStr(ctx, module_namespace, "callback");
-    JS_FreeValue(ctx, module_namespace);
-    if (JS_IsException(main_entry) || JS_IsException(callback)) {
+    OwnedValue mainEntry(
+        ctx, JS_GetPropertyStr(ctx, moduleNamespace.get(), "main"));
+    OwnedValue callback(
+        ctx, JS_GetPropertyStr(ctx, moduleNamespace.get(), "callback"));
+    if (mainEntry.isException() || callback.isException()) {
         store_exception();
-        JS_FreeValue(ctx, main_entry);
-        JS_FreeValue(ctx, callback);
         return -1;
     }
-    if (JS_IsUndefined(main_entry)) {
-        JS_FreeValue(ctx, main_entry);
-        JS_FreeValue(ctx, callback);
+    if (JS_IsUndefined(mainEntry.get())) {
         store_static_result(
             "TypeError: Hook module has no exported main entry point");
         return -1;
     }
-    if (!JS_IsFunction(ctx, main_entry)) {
-        JS_FreeValue(ctx, main_entry);
-        JS_FreeValue(ctx, callback);
+    if (!JS_IsFunction(ctx, mainEntry.get())) {
         store_static_result(
             "TypeError: exported main entry point is not a function");
         return -1;
     }
-    if (!JS_IsUndefined(callback) && !JS_IsFunction(ctx, callback)) {
-        JS_FreeValue(ctx, main_entry);
-        JS_FreeValue(ctx, callback);
+    if (!JS_IsUndefined(callback.get()) &&
+        !JS_IsFunction(ctx, callback.get())) {
         store_static_result(
             "TypeError: exported callback entry point is not a function");
         return -1;
     }
-    int flags = 1 | (!JS_IsUndefined(callback) ? 2 : 0);
-    JS_FreeValue(ctx, main_entry);
-    JS_FreeValue(ctx, callback);
-    return flags;
+    return 1 | (!JS_IsUndefined(callback.get()) ? 2 : 0);
 }
 
 __attribute__((export_name("qjs_get_result_ptr")))
 const char *qjs_get_result_ptr(void)
 {
-    if (result_buf)
-        return result_buf;
-    if (result_static)
-        return result_static;
-    return "";
+    return resultSlot.data();
 }
 
 __attribute__((export_name("qjs_get_result_len")))
 uint32_t qjs_get_result_len(void)
 {
-    return result_len;
+    return resultSlot.size();
 }
 
 __attribute__((export_name("qjs_destroy")))

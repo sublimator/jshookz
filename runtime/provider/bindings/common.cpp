@@ -189,26 +189,19 @@ registerResult(JSContext* ctx)
     qjs::OwnedValue prototype(ctx, JS_NewObject(ctx));
     if (prototype.isException())
         return false;
-    if (JS_SetPropertyFunctionList(
-        ctx,
-        prototype.get(),
-        resultPrototypeFunctions,
-        sizeof(resultPrototypeFunctions) / sizeof(resultPrototypeFunctions[0])) < 0)
+    if (!qjs::installFunctions(
+            ctx, prototype.get(), resultPrototypeFunctions))
         return false;
-    if (JS_PreventExtensions(ctx, prototype.get()) < 0)
+    if (!qjs::freezeObject(ctx, prototype.get()))
         return false;
 
     qjs::OwnedValue effectPrototype(
         ctx, JS_NewObjectProto(ctx, prototype.get()));
     if (effectPrototype.isException())
         return false;
-    if (JS_SetPropertyFunctionList(
-            ctx,
-            effectPrototype.get(),
-            effectResultPrototypeFunctions,
-            sizeof(effectResultPrototypeFunctions) /
-                sizeof(effectResultPrototypeFunctions[0])) < 0 ||
-        JS_PreventExtensions(ctx, effectPrototype.get()) < 0)
+    if (!qjs::installFunctions(
+            ctx, effectPrototype.get(), effectResultPrototypeFunctions) ||
+        !qjs::freezeObject(ctx, effectPrototype.get()))
         return false;
 
     JS_SetClassProto(ctx, resultClassId, prototype.release());

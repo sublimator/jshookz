@@ -12,14 +12,14 @@ js_trace(JSContext *ctx, JSValueConst this_val,
         return JS_ThrowTypeError(ctx, "trace: expected a string label");
 
     auto label = qjs::ByteView::get(
-        ctx, argv[0], qjs::StringBytes::utf8);
+        ctx, argv[0], qjs::BytePolicy::traceLabel);
     if (!label)
         return qjs::byteInputTypeError(
-            ctx, "trace label", qjs::StringBytes::utf8);
+            ctx, "trace label", qjs::BytePolicy::traceLabel);
 
     qjs::OwnedValue rendered(ctx);
     qjs::ByteView data = qjs::ByteView::get(
-        ctx, JS_UNDEFINED, qjs::StringBytes::utf8);
+        ctx, JS_UNDEFINED, qjs::BytePolicy::traceValue);
     std::uint32_t asHex = 0;
 
     if (argc > 1 && !JS_IsUndefined(argv[1])) {
@@ -27,8 +27,7 @@ js_trace(JSContext *ctx, JSValueConst this_val,
             data = qjs::ByteView::get(
                 ctx,
                 argv[1],
-                qjs::StringBytes::hex,
-                qjs::RichBytes::callToBytes);
+                qjs::BytePolicy::traceValue);
             if (data) {
                 asHex = 1;
             } else if (JS_HasException(ctx)) {
@@ -42,10 +41,10 @@ js_trace(JSContext *ctx, JSValueConst this_val,
             if (rendered.isException())
                 return rendered.release();
             data = qjs::ByteView::get(
-                ctx, rendered.get(), qjs::StringBytes::utf8);
+                ctx, rendered.get(), qjs::BytePolicy::traceLabel);
             if (!data)
                 return qjs::byteInputTypeError(
-                    ctx, "trace value", qjs::StringBytes::utf8);
+                    ctx, "trace value", qjs::BytePolicy::traceLabel);
         }
     }
 

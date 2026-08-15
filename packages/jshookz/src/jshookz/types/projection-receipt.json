@@ -2,9 +2,9 @@
   "artifacts": {
     "packages/jshookz/src/jshookz/types/hooks-api.d.ts": "5b0171f3320dff7c5928858b7e0302c2d3c9e76b7240c71f9d445852ce93376d",
     "packages/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts": "e0db6f99c217019172d577bbc7c21d7fa3ea462fcaa7af546b790cbe7abcd300",
-    "packages/jshookz/src/jshookz/types/xahau-quickjs-v1.surface.json": "2e175d734630b7616baecae0b6a245e806beee541286412d42451232e0e830c6"
+    "packages/jshookz/src/jshookz/types/xahau-quickjs-v1.surface.json": "514fd79220f9960cd19005d324568f4f775650428723ab4e9cbb032f69013485"
   },
-  "private_source_sha256": "0f91cdab0693096b36c26213ddaa5ba2747a7045b2865db46dcd030c44478af8",
+  "private_source_sha256": "40766883842d8dd23ee10e53fb14767548a8a1f45292f43d926b551fb5e6b77f",
   "projector": "jzhookzdev.declarations.v1@1",
   "schema": "jshookz.declaration-projection-receipt.v1"
 }
