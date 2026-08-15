@@ -191,9 +191,30 @@ function localResultParameter(call, index) {
   return !!parameter && isResult(checker.getTypeAtLocation(parameter));
 }
 
+function callableReturnsNever(node) {
+  const signatures = checker.getSignaturesOfType(
+    checker.getTypeAtLocation(node),
+    ts.SignatureKind.Call,
+  );
+  return signatures.length > 0 && signatures.every(signature =>
+    (checker.getReturnTypeOfSignature(signature).flags & ts.TypeFlags.Never) !== 0
+  );
+}
+
 function analyzeCallInputs(call, state) {
   const target = unwrap(call.expression);
   if (ts.isPropertyAccessExpression(target) && expressionIsResult(target.expression)) {
+    if (
+      target.name.text === "okOrHandle" &&
+      call.arguments.length > 0 &&
+      callableReturnsNever(call.arguments[0])
+    ) {
+      reject(
+        call.arguments[0],
+        "okOrHandle requires a returning fallback handler; use " +
+          "rollback.onFail(result) or explicit .ok control flow for termination",
+      );
+    }
     if (EXIT_METHODS.has(target.name.text)) {
       analyzeExpression(target.expression, state, { kind: "consume" });
     } else {

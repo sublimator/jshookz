@@ -190,6 +190,52 @@ def test_result_dataflow_accepts_checked_transfers_and_branches(
     assert compile_hook(source).bytecode
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        (
+            "state.get('key').okOrHandle(error => "
+            "rollback('read failed', error.code));"
+        ),
+        (
+            "function abortWith(error: HostError): never { "
+            "rollback('read failed', error.code); } "
+            "state.get('key').okOrHandle(abortWith);"
+        ),
+    ],
+)
+def test_result_dataflow_rejects_nonreturning_ok_or_handle_handlers(
+    tmp_path: Path,
+    body: str,
+):
+    source = tmp_path / "nonreturning-ok-or-handle.hook.ts"
+    source.write_text(
+        "export function main(): never { "
+        f"{body} "
+        "return accept(); }"
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="okOrHandle requires a returning fallback handler",
+    ):
+        compile_hook(source)
+
+
+def test_result_dataflow_accepts_conditionally_terminal_fallback_handler(
+    tmp_path: Path,
+):
+    source = tmp_path / "returning-ok-or-handle.hook.ts"
+    source.write_text(
+        "export function main(): never { "
+        "const value = state.get('key').okOrHandle(error => { "
+        "if (error.code === -1) rollback('fatal read', error.code); "
+        "return undefined; }); void value; return accept(); }"
+    )
+
+    assert compile_hook(source).bytecode
+
+
 def test_raw_javascript_uses_the_same_result_dataflow_gate(tmp_path: Path):
     source = tmp_path / "discarded-result.hook.js"
     source.write_text(
