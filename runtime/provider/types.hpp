@@ -89,7 +89,10 @@ using Hash512 = Hash<64>;
 class AccountID : public Hash160 {
 public:
     using Hash160::Hash160;
-    using Hash160::operator==;
+
+    bool operator==(AccountID const& other) const {
+        return Hash160::operator==(other);
+    }
 
     // Could add r-address encode/decode here later
 };
@@ -105,27 +108,41 @@ public:
 
     int64_t raw() const { return val_; }
 
-    // XFL encoding: sign(1) | exponent(8) | mantissa(54)
-    // Exponent is biased by 97
-    static constexpr int64_t EXPONENT_BIAS = 97;
-    static constexpr int64_t MANTISSA_MASK = (1LL << 54) - 1;
+    // Xahau hook_float: bit 62 clear means negative; int64_t negatives are
+    // invalid encodings rather than signed XFL values.
+    static constexpr std::uint64_t EXPONENT_BIAS = 97;
+    static constexpr std::uint64_t MANTISSA_MASK =
+        (std::uint64_t{1} << 54) - 1;
+    static constexpr std::uint64_t POSITIVE_MASK =
+        std::uint64_t{1} << 62;
 
-    bool is_negative() const { return val_ < 0; }
-    bool is_zero() const { return (val_ & MANTISSA_MASK) == 0; }
+    bool is_negative() const {
+        return val_ != 0 &&
+            (static_cast<std::uint64_t>(val_) & POSITIVE_MASK) == 0;
+    }
+    bool is_zero() const {
+        return (static_cast<std::uint64_t>(val_) & MANTISSA_MASK) == 0;
+    }
 
-    int64_t mantissa() const {
-        return val_ & MANTISSA_MASK;
+    std::uint64_t mantissa() const {
+        return static_cast<std::uint64_t>(val_) & MANTISSA_MASK;
     }
 
     int exponent() const {
-        return (int)((val_ >> 54) & 0xFF) - EXPONENT_BIAS;
+        return static_cast<int>(
+            (static_cast<std::uint64_t>(val_) >> 54) & 0xFF) -
+            static_cast<int>(EXPONENT_BIAS);
     }
 
     static XFL from_components(bool negative, int exponent, int64_t mantissa) {
-        int64_t v = mantissa & MANTISSA_MASK;
-        v |= ((int64_t)(exponent + EXPONENT_BIAS) & 0xFF) << 54;
-        if (negative) v = -v;  // simplified
-        return XFL(v);
+        std::uint64_t v =
+            static_cast<std::uint64_t>(mantissa) & MANTISSA_MASK;
+        v |= (static_cast<std::uint64_t>(
+                  exponent + static_cast<int>(EXPONENT_BIAS)) & 0xFF)
+            << 54;
+        if (!negative && mantissa != 0)
+            v |= POSITIVE_MASK;
+        return XFL(static_cast<std::int64_t>(v));
     }
 
     // Basic arithmetic (simplified — real impl needs proper normalization)

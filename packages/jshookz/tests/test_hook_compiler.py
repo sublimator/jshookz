@@ -21,7 +21,8 @@ def test_public_declarations_are_package_data_and_v1_is_default():
     assert "declare interface STObject" in declarations
     assert "declare namespace ledger" in declarations
     v1 = XAHAU_V1_HOOKS_API_DECLARATIONS.read_text()
-    assert "declare class Hash256" in v1
+    assert "declare interface Hash256" in v1
+    assert "declare const Hash256: Hash256Factory" in v1
     assert "declare function record" not in v1
 
 
@@ -47,6 +48,50 @@ def test_result_moot_is_restricted_to_void_results(tmp_path: Path):
 
     with pytest.raises(RuntimeError, match="Property 'moot' does not exist"):
         compile_hook(source)
+
+
+def test_rollback_require_strips_nullish_result_values(tmp_path: Path):
+    source = tmp_path / "require-nullish.hook.ts"
+    source.write_text(
+        """
+        declare const nullable: Result<string | null | undefined, HostError>;
+        declare const zeroResult: Result<0, HostError>;
+
+        export function main(): never {
+          const present: string = rollback.require(nullable, "required");
+          const zero: 0 = rollback.require(zeroResult, "required");
+          trace(present, zero);
+          return accept();
+        }
+        """
+    )
+
+    assert compile_hook(source).bytecode
+
+
+def test_rich_roots_are_typed_as_factories_not_constructors(tmp_path: Path):
+    source = tmp_path / "factory-roots.hook.ts"
+    source.write_text(
+        """
+        export function main(): never {
+          // @ts-expect-error STBlob is a factory object, not a constructor.
+          const blob = new STBlob();
+          // @ts-expect-error Hash256 is not a base class.
+          class DerivedHash extends Hash256 {}
+          // @ts-expect-error AccountID has no instanceof contract.
+          const account = {} instanceof AccountID;
+          // @ts-expect-error XFL exposes no public prototype.
+          const prototype = XFL.prototype;
+          void blob;
+          void DerivedHash;
+          void account;
+          void prototype;
+          return accept();
+        }
+        """
+    )
+
+    assert compile_hook(source).bytecode
 
 
 @pytest.mark.parametrize(

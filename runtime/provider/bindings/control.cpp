@@ -156,6 +156,10 @@ js_rollback_require(JSContext *ctx, JSValueConst this_val,
         return JS_ThrowTypeError(
             ctx, "rollback.require: expected Result or optional value");
 
+    if (isEffectResult(argv[0]))
+        return JS_ThrowTypeError(
+            ctx, "rollback.require: void-effect Result has no value to require");
+
     if (isResult(argv[0])) {
         int const success =
             get_result_success(ctx, argv[0], "rollback.require");
@@ -163,7 +167,8 @@ js_rollback_require(JSContext *ctx, JSValueConst this_val,
             return JS_EXCEPTION;
         if (success) {
             qjs::OwnedValue value = qjs::property(ctx, argv[0], "value");
-            if (value.isException() || !JS_IsUndefined(value.get()))
+            if (value.isException() ||
+                (!JS_IsUndefined(value.get()) && !JS_IsNull(value.get())))
                 return value.release();
         }
     } else {

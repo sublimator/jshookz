@@ -406,15 +406,8 @@ interface SerializationOptions {
 }
 
 /** @serial Blob */
-declare class STBlob {
+interface STBlob {
   readonly byteLength: number;
-  static from(value: BytesLike): STBlob;
-  /** Decode an even-length hexadecimal literal. */
-  static fromHex(value: HexString): STBlob;
-  static concat(...parts: (BytesLike | STBlob)[]): STBlob;
-  static fromUint8(value: number): STBlob;
-  static fromUint32(value: number, endian?: "big" | "little"): STBlob;
-  static fromUint64(value: bigint | number, endian?: "big" | "little"): STBlob;
   byteAt(index: number): number;
   slice(start: number, end?: number): STBlob;
   toBytes(): Uint8Array;
@@ -436,6 +429,18 @@ declare class STBlob {
   compare(other: BytesLike | STBlob, options?: ByteCompareOptions): -1 | 0 | 1;
   indexOf(needle: BytesLike | STBlob, options?: ByteFindOptions): number | undefined;
 }
+
+interface STBlobFactory {
+  from(value: BytesLike): STBlob;
+  /** Decode an even-length hexadecimal literal. */
+  fromHex(value: HexString): STBlob;
+  concat(...parts: (BytesLike | STBlob)[]): STBlob;
+  fromUint8(value: number): STBlob;
+  fromUint32(value: number, endian?: "big" | "little"): STBlob;
+  fromUint64(value: bigint | number, endian?: "big" | "little"): STBlob;
+}
+
+declare const STBlob: STBlobFactory;
 
 /** @inner-rich-type Hash */
 declare abstract class Hash<Width extends HashWidth = HashWidth> {
@@ -471,18 +476,22 @@ declare class Hash192 extends Hash<24> {
 }
 
 /** @serial Hash256 */
-declare class Hash256 extends Hash<32> {
-  static readonly zero: Hash256;
-  static from(value: BytesLike): Hash256;
-  /** Decode exactly 32 bytes from an even-length hexadecimal literal. */
-  static fromHex(value: HexString): Hash256;
-  static from(value: BytesLike | Hash<32>): Hash256;
-  constructor(value: BytesLike | Hash<32>);
+interface Hash256 extends Hash<32> {
   toHex(): HexString;
   toBytes(): Uint8Array;
   isZero(): boolean;
   equals(other: Hash256): boolean;
 }
+
+interface Hash256Factory {
+  readonly zero: Hash256;
+  from(value: BytesLike): Hash256;
+  /** Decode exactly 32 bytes from an even-length hexadecimal literal. */
+  fromHex(value: HexString): Hash256;
+  from(value: BytesLike | Hash<32>): Hash256;
+}
+
+declare const Hash256: Hash256Factory;
 
 /** @serial Hash384 */
 declare class Hash384 extends Hash<48> {
@@ -508,22 +517,28 @@ interface HashByWidth {
 }
 
 /** @serial AccountID */
-declare class AccountID extends Hash160 {
+interface AccountID extends Hash160 {
   readonly r: string;
-  /** XRP's native-issue account: 20 zero bytes. */
-  static readonly zero: AccountID;
-  /** Ripple's no-account sentinel: integer one as a 20-byte AccountID. */
-  static readonly one: AccountID;
-  static from(value: BytesLike): AccountID;
-  /** Decode exactly 20 bytes from an even-length hexadecimal literal. */
-  static fromHex(value: HexString): AccountID;
-  static from(value: BytesLike | Hash160 | string): AccountID;
-  static fromRAddress(value: string): AccountID;
-  constructor(value: BytesLike | Hash160);
   toString(): string;
   toHex(): HexString;
   toBytes(): Uint8Array;
+  isZero(): boolean;
+  equals(other: AccountID): boolean;
 }
+
+interface AccountIDFactory {
+  /** XRP's native-issue account: 20 zero bytes. */
+  readonly zero: AccountID;
+  /** Ripple's no-account sentinel: integer one as a 20-byte AccountID. */
+  readonly one: AccountID;
+  from(value: BytesLike): AccountID;
+  /** Decode exactly 20 bytes from an even-length hexadecimal literal. */
+  fromHex(value: HexString): AccountID;
+  from(value: BytesLike | Hash160 | string): AccountID;
+  fromRAddress(value: string): AccountID;
+}
+
+declare const AccountID: AccountIDFactory;
 
 /** @serial Currency */
 declare class Currency {
@@ -550,17 +565,9 @@ declare class Issue {
 }
 
 /** @inner-rich-type XFL */
-declare class XFL {
+interface XFL {
   readonly raw: bigint;
-  static readonly zero: XFL;
-  static readonly one: XFL;
-  static fromRaw(raw: bigint | number): XFL;
-  /**
-   * Construct `mantissa × 10^exponent`. The value comes first so ordinary
-   * calls read in the same order as the decimal quantity they express.
-   */
-  static from(mantissa: bigint | number, exponent?: number): HostResult<XFL>;
-  mantissa(): number;
+  mantissa(): bigint;
   exponent(): number;
   isNegative(): boolean;
   isZero(): boolean;
@@ -576,6 +583,19 @@ declare class XFL {
   equals(other: XFL): boolean;
   compare(other: XFL): number;
 }
+
+interface XFLFactory {
+  readonly zero: XFL;
+  readonly one: XFL;
+  fromRaw(raw: bigint): XFL;
+  /**
+   * Construct `mantissa × 10^exponent`. The value comes first so ordinary
+   * calls read in the same order as the decimal quantity they express.
+   */
+  from(mantissa: bigint | number, exponent?: number): HostResult<XFL>;
+}
+
+declare const XFL: XFLFactory;
 
 /** @serial Amount */
 declare class Amount {
@@ -1537,21 +1557,26 @@ declare namespace rollback {
 
   /**
    * Require a successful, present value. A failed result and a successful
-   * `undefined` are both translated into the supplied contract-owned rollback
-   * policy rather than preserving an incidental failure status.
+   * `undefined` or `null` are translated into the supplied contract-owned
+   * rollback policy rather than preserving an incidental failure status.
+   * Other falsy successes (`0`, `0n`, `false`, and `""`) remain valid values.
    */
   function require<T, Error>(
-    result: Result<T | undefined, Error>,
-    message: string | BytesLike | STBlob,
+    result: Result<T, Error>,
+    message: [T] extends [void]
+      ? [void] extends [T]
+        ? never
+        : string | BytesLike | STBlob
+      : string | BytesLike | STBlob,
     code?: number,
-  ): T;
+  ): Exclude<T, null | undefined>;
 
   /**
    * Require a truthy direct value. `false`, `0`, `0n`, `""`, `null`,
    * `undefined`, and `NaN` therefore apply the rollback policy.
    */
   function require<T>(
-    value: T,
+    value: T & { readonly okOr?: never },
     message: string | BytesLike | STBlob,
     code?: number,
   ): Truthy<T>;

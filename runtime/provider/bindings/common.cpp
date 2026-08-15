@@ -218,6 +218,13 @@ isResult(JSValueConst value) noexcept
     return classId == resultClassId || classId == effectResultClassId;
 }
 
+bool
+isEffectResult(JSValueConst value) noexcept
+{
+    return JS_IsObject(value) &&
+        JS_GetClassID(value) == effectResultClassId;
+}
+
 JSValue
 result_success(JSContext *ctx, JSValue value)
 {

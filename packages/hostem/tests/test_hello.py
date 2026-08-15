@@ -137,7 +137,7 @@ def test_rollback_require_collapses_host_failure_and_absence():
           const mode = otxn.type();
           if (!mode.ok) rollback("unexpected type failure", -1);
           if (mode.value === 1) {
-            rollback.require(
+            rollback.onFail(
               state.set("K".repeat(33), new Uint8Array([1])),
               "required operation failed",
               71

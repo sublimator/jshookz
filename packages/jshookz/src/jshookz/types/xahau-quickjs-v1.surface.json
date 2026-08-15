@@ -43,7 +43,7 @@
   },
   "declaration": {
     "path": "packages/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "e0db6f99c217019172d577bbc7c21d7fa3ea462fcaa7af546b790cbe7abcd300"
+    "sha256": "192778c54d029cc7909622669222ab02c8b55496eef4cf2464b9908214d97eb4"
   },
   "globals": {
     "AccountID": "object",
@@ -94,10 +94,14 @@
   "prototypes": {
     "AccountID": {
       "members": {
+        "equals": "function",
+        "isZero": "function",
         "toBytes": "function",
         "toHex": "function"
       },
       "own": [
+        "equals",
+        "isZero",
         "toBytes",
         "toHex"
       ],

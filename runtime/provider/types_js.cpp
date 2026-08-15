@@ -375,10 +375,32 @@ static JSValue js_accountid_to_bytes(JSContext *ctx, JSValueConst this_val,
         ctx, std::span<std::uint8_t const>{a->data(), a->size()});
 }
 
+static JSValue js_accountid_is_zero(JSContext *ctx, JSValueConst this_val,
+                                     int argc, JSValueConst *argv)
+{
+    auto *account =
+        qjs::opaque<AccountID>(ctx, this_val, js_accountid_class_id);
+    if (!account) return JS_EXCEPTION;
+    return JS_NewBool(ctx, account->is_zero());
+}
+
+static JSValue js_accountid_equals(JSContext *ctx, JSValueConst this_val,
+                                    int argc, JSValueConst *argv)
+{
+    auto *left = qjs::opaque<AccountID>(
+        ctx, this_val, js_accountid_class_id);
+    auto *right = qjs::opaque<AccountID>(
+        ctx, argc > 0 ? argv[0] : JS_UNDEFINED, js_accountid_class_id);
+    if (!left || !right) return JS_EXCEPTION;
+    return JS_NewBool(ctx, *left == *right);
+}
+
 //@@impl STAddress
 static const JSCFunctionListEntry js_accountid_proto_funcs[] = {
     JS_CFUNC_DEF("toHex", 0, js_accountid_to_hex),
     JS_CFUNC_DEF("toBytes", 0, js_accountid_to_bytes),
+    JS_CFUNC_DEF("isZero", 0, js_accountid_is_zero),
+    JS_CFUNC_DEF("equals", 1, js_accountid_equals),
 };
 
 //@@impl STAddress static
@@ -407,12 +429,17 @@ static JSValue js_xfl_from_raw(JSContext *ctx, JSValueConst this_val,
 {
     if (argc < 1)
         return JS_ThrowTypeError(ctx, "XFL.fromRaw() expects a value");
+    if (!JS_IsBigInt(ctx, argv[0]))
+        return JS_ThrowTypeError(ctx, "XFL.fromRaw() expects a bigint");
     int64_t raw;
-    if (JS_IsBigInt(ctx, argv[0])) {
-        if (JS_ToBigInt64(ctx, &raw, argv[0])) return JS_EXCEPTION;
-    } else {
-        if (JS_ToInt64(ctx, &raw, argv[0])) return JS_EXCEPTION;
-    }
+    if (JS_ToBigInt64(ctx, &raw, argv[0])) return JS_EXCEPTION;
+    qjs::OwnedValue roundTrip(ctx, JS_NewBigInt64(ctx, raw));
+    int const exact = JS_StrictEq(ctx, argv[0], roundTrip.get());
+    if (exact < 0)
+        return JS_EXCEPTION;
+    if (raw < 0 || !exact)
+        return JS_ThrowRangeError(
+            ctx, "XFL.fromRaw() expects a non-negative int64 encoding");
     return js_xfl_new(ctx, XFL(raw));
 }
 
@@ -467,7 +494,7 @@ static JSValue js_xfl_mantissa(JSContext *ctx, JSValueConst this_val,
 {
     auto *x = qjs::opaque<XFL>(ctx, this_val, js_xfl_class_id);
     if (!x) return JS_EXCEPTION;
-    return JS_NewInt64(ctx, x->mantissa());
+    return JS_NewBigInt64(ctx, static_cast<std::int64_t>(x->mantissa()));
 }
 
 static JSValue js_xfl_exponent(JSContext *ctx, JSValueConst this_val,
