@@ -95,6 +95,68 @@ def _identity(domain: str, manifest: Any) -> str:
     return _sha256(canonical_json_bytes({"domain": domain, "manifest": manifest}))
 
 
+def _selected_artifact(
+    document_path: str | Path,
+    selected: Any,
+    *,
+    override: str | Path | None,
+    packaged_relative: str,
+    packaged_path: Path,
+    label: str,
+) -> Path:
+    """Resolve a profile-selected repository path without ignoring its policy."""
+    if not isinstance(selected, str) or not selected:
+        raise ValueError(f"runtime profile must select a {label} path")
+    relative = Path(selected)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError(f"runtime profile {label} path must be repository-relative")
+    if override is not None:
+        return Path(override)
+
+    document = Path(document_path).resolve()
+    for ancestor in (document.parent, *document.parents):
+        candidate = ancestor / relative
+        if candidate.is_file():
+            return candidate
+    # Canonical package data remains usable when a checked lock is copied away
+    # from its source checkout or loaded from an installed wheel.
+    if selected == packaged_relative and packaged_path.is_file():
+        return packaged_path
+    raise ValueError(f"selected runtime-profile {label} does not exist: {selected}")
+
+
+def _selected_javascript_artifacts(
+    source: dict[str, Any],
+    document_path: str | Path,
+    surface_path: str | Path | None,
+    declaration_path: str | Path | None,
+) -> tuple[Path, Path]:
+    policy = source.get("javascript_surface")
+    if not isinstance(policy, dict) or policy.get("schema") != SURFACE_SCHEMA:
+        raise ValueError(f"runtime-profile source must select {SURFACE_SCHEMA!r}")
+    surface = _selected_artifact(
+        document_path,
+        policy.get("manifest"),
+        override=surface_path,
+        packaged_relative=(
+            "packages/jshookz/src/jshookz/types/xahau-quickjs-v1.surface.json"
+        ),
+        packaged_path=XAHAU_V1_JAVASCRIPT_SURFACE,
+        label="JavaScript surface manifest",
+    )
+    declaration = _selected_artifact(
+        document_path,
+        policy.get("declaration"),
+        override=declaration_path,
+        packaged_relative=(
+            "packages/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts"
+        ),
+        packaged_path=XAHAU_V1_HOOKS_API_DECLARATIONS,
+        label="JavaScript declaration",
+    )
+    return surface, declaration
+
+
 def _javascript_surface(
     source: dict[str, Any],
     surface_path: str | Path,
@@ -132,7 +194,9 @@ def _javascript_surface(
 
     return {
         "schema": SURFACE_SCHEMA,
+        "manifest": policy["manifest"],
         "sha256": _sha256(surface_bytes),
+        "declaration": policy["declaration"],
         "declaration_sha256": declaration_sha256,
     }
 
@@ -180,8 +244,8 @@ def _validate_provider_policy(source: dict[str, Any], provider: dict[str, Any]) 
 def build_runtime_profile_lock(
     source_path: str | Path,
     wasm_path: str | Path,
-    surface_path: str | Path = XAHAU_V1_JAVASCRIPT_SURFACE,
-    declaration_path: str | Path = XAHAU_V1_HOOKS_API_DECLARATIONS,
+    surface_path: str | Path | None = None,
+    declaration_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Resolve a source manifest against an exact provider WASM binary."""
     source = _load_object(source_path)
@@ -192,8 +256,11 @@ def build_runtime_profile_lock(
 
     provider = _wasm_surface(wasm_path)
     _validate_provider_policy(source, provider)
+    selected_surface, selected_declaration = _selected_javascript_artifacts(
+        source, source_path, surface_path, declaration_path
+    )
     javascript_surface = _javascript_surface(
-        source, surface_path, declaration_path
+        source, selected_surface, selected_declaration
     )
 
     bytecode_abi = source.get("bytecode_abi")
@@ -344,8 +411,8 @@ def load_runtime_profile_lock(path: str | Path) -> RuntimeProfileLock:
 def verify_runtime_profile_lock(
     lock_path: str | Path,
     wasm_path: str | Path,
-    surface_path: str | Path = XAHAU_V1_JAVASCRIPT_SURFACE,
-    declaration_path: str | Path = XAHAU_V1_HOOKS_API_DECLARATIONS,
+    surface_path: str | Path | None = None,
+    declaration_path: str | Path | None = None,
 ) -> RuntimeProfileLock:
     """Verify the lock and exact provider, returning its deployment IDs."""
     lock = load_runtime_profile_lock(lock_path)
@@ -361,8 +428,11 @@ def verify_runtime_profile_lock(
             "provider binary/surface does not match the runtime-profile lock"
         )
     _validate_provider_policy(source, provider)
+    selected_surface, selected_declaration = _selected_javascript_artifacts(
+        source, lock_path, surface_path, declaration_path
+    )
     javascript_surface = _javascript_surface(
-        source, surface_path, declaration_path
+        source, selected_surface, selected_declaration
     )
     if javascript_surface != lock.data.get("javascript_surface"):
         raise ValueError(

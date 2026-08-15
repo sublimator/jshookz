@@ -11,6 +11,7 @@ XAHAU_V1_HOOKS_API_DECLARATIONS = (
 XAHAU_V1_JAVASCRIPT_SURFACE = (
     PACKAGE_ROOT / "types" / "xahau-quickjs-v1.surface.json"
 )
+API_ARTIFACT_MANIFEST = PACKAGE_ROOT / "types" / "api-artifacts.json"
 # Backwards-compatible name for consumers asking for the broad public spec.
 HOOKS_API_DECLARATIONS = CANONICAL_HOOKS_API_DECLARATIONS
 

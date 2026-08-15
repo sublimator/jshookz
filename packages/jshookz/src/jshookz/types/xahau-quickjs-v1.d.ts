@@ -1,10 +1,7 @@
 /**
- * Generated from the private annotated hooks-api.source.d.ts by
- * jzhookzdev.declarations.v1.
- *
  * Exact JavaScript surface implemented by the sealed xahau-quickjs-v1
- * provider. Membership is owned only by @publish-v1 annotations in the
- * private canonical declaration. Selected signatures are copied verbatim.
+ * provider. The accompanying API artifact manifest closes this declaration,
+ * its broader specification, and the provider surface manifest by hash.
  */
 
 type HookTypedArray =

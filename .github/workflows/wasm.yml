@@ -83,7 +83,7 @@ jobs:
         run: |
           packages/hostem/.venv/bin/python \
             integrations/xahau/tools/generate_raw_hook_abi.py --check
-          python scripts/check-declaration-projections.py
+          python3 scripts/check-api-artifacts.py
           ./scripts/project-readme-examples.py --check
           tsc -p packages/hostem/tsconfig.xahau-integration.json
 
@@ -122,6 +122,9 @@ jobs:
           uv build --project packages/jshookz --wheel --out-dir build/dist
           unzip -l build/dist/jshookz-*.whl | grep 'jshookz/types/hooks-api.d.ts'
           unzip -l build/dist/jshookz-*.whl | grep 'jshookz/types/xahau-quickjs-v1.d.ts'
+          unzip -l build/dist/jshookz-*.whl | grep 'jshookz/types/xahau-quickjs-v1.surface.json'
+          unzip -l build/dist/jshookz-*.whl | grep 'jshookz/types/api-artifacts.json'
+          unzip -l build/dist/jshookz-*.whl | grep 'jshookz/result_validator.js'
           uv venv "$RUNNER_TEMP/jshookz-wheel-smoke"
           uv pip install --python "$RUNNER_TEMP/jshookz-wheel-smoke/bin/python" \
             build/dist/jshookz-*.whl

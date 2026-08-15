@@ -33,6 +33,14 @@ def cmd_info(args: argparse.Namespace) -> int:
         f"Canonical API:   {paths.CANONICAL_HOOKS_API_DECLARATIONS} "
         f"{'✓' if paths.CANONICAL_HOOKS_API_DECLARATIONS.exists() else '✗'}"
     )
+    print(
+        f"v1 surface:      {paths.XAHAU_V1_JAVASCRIPT_SURFACE} "
+        f"{'✓' if paths.XAHAU_V1_JAVASCRIPT_SURFACE.exists() else '✗'}"
+    )
+    print(
+        f"API artifacts:   {paths.API_ARTIFACT_MANIFEST} "
+        f"{'✓' if paths.API_ARTIFACT_MANIFEST.exists() else '✗'}"
+    )
     print(f"wasi-sdk:      {paths.WASI_SDK_PATH} {'✓' if paths.WASI_SDK_PATH.exists() else '✗'}")
     return 0
 
