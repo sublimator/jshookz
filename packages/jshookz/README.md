@@ -19,5 +19,10 @@ Provider binaries are deliberately not embedded in the wheel. Set
 `JSHOOKZ_PROVIDER_WASM` or pass `--wasm`, or build the sealed provider from a
 source checkout with `jshookz build provider`.
 
+The runtime profile names the native consensus-engine candidate exactly as
+`wasmtime-native-c-api` 47.0.3. This Python package independently pins
+`wasmtime` 47.0.1 as a non-consensus behavioral oracle; a green Python run is
+not a claim that the two engine patch releases are byte-identical.
+
 The project is pre-release and the v1 profile is not activated on a production
 network.

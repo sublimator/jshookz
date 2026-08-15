@@ -79,7 +79,7 @@
     }
   },
   "engine": {
-    "implementation": "wasmtime",
+    "implementation": "wasmtime-native-c-api",
     "version": "47.0.3",
     "module_lifecycle": "compile-once-fresh-store-and-instance-per-invocation",
     "configuration": {
@@ -101,7 +101,18 @@
     "host_work_meter": "base-plus-addressed-byte-v1",
     "host_work_budget": 1000000,
     "host_work_base_per_call": 1,
-    "host_work_per_addressed_byte": 1
+    "host_work_per_addressed_byte": 1,
+    "host_work_addressed_length_indices": {
+      "accept": [1],
+      "emit": [1, 3],
+      "hook_account": [1],
+      "ledger_last_hash": [1],
+      "prepare": [1, 3],
+      "rollback": [1],
+      "state": [1, 3],
+      "state_set": [1, 3],
+      "trace": [1, 3]
+    }
   },
   "execution": {
     "host_adapter_policy": "xahau-raw-hook-host-v1",

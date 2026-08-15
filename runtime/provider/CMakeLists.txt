@@ -67,8 +67,9 @@ set_source_files_properties(${QUICKJS_SOURCES} PROPERTIES
 target_compile_definitions(jshookz_provider PRIVATE
     CONFIG_VERSION="2025-09-13"
     _GNU_SOURCE
-    # Treat as WASI/standalone — disable atomics, stack check etc.
-    EMSCRIPTEN
+    # Standalone WASI needs switch dispatch and no thread-backed Atomics, but
+    # unlike Emscripten it supports the native stack-pointer check.
+    CONFIG_WASM_STANDALONE
 )
 
 if(XAHAU_HOOK_PROVIDER)

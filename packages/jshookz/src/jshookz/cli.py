@@ -94,6 +94,7 @@ def cmd_package_hook(args: argparse.Namespace) -> int:
         hook_api_version=args.hook_api_version,
         bytecode_abi_id=bytecode_abi_id,
         runtime_profile_id=runtime_profile_id,
+        profile_path=args.profile,
         wasm_path=provider,
         declarations=args.declarations or DEFAULT_DECLARATIONS,
         tsc=args.tsc,

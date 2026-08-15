@@ -345,6 +345,7 @@ def package_hook(
     hook_api_version: int,
     bytecode_abi_id: bytes,
     runtime_profile_id: bytes,
+    profile_path: str | Path | None = None,
     wasm_path: str | Path | None = None,
     declarations: str | Path = DEFAULT_DECLARATIONS,
     tsc: str | None = None,
@@ -363,7 +364,11 @@ def package_hook(
         tsc=tsc,
     )
     provider = Path(wasm_path or paths.XAHAU_HOOK_PROVIDER_WASM).resolve()
-    validator = WasmHost(wasm_path=provider)
+    validator = (
+        WasmHost.profiled(wasm_path=provider, profile_path=profile_path)
+        if profile_path is not None
+        else WasmHost(wasm_path=provider)
+    )
     validator.init()
     try:
         validation = validator.validate_hook_bytecode(compiled.bytecode)

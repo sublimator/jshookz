@@ -11,6 +11,7 @@ from typing import Any
 from wasmtime import Engine, FuncType, MemoryType, Module
 
 from .paths import XAHAU_V1_HOOKS_API_DECLARATIONS, XAHAU_V1_JAVASCRIPT_SURFACE
+from .schema import HOOK_API
 
 
 SOURCE_SCHEMA = "xahau.quickjs.runtime-profile-source.v1"
@@ -226,6 +227,102 @@ class RuntimeProfileLock:
     bytecode_abi_id: bytes
     runtime_profile_id: bytes
     data: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ProfileExecutionLimits:
+    """Closed execution-budget projection from a runtime-profile lock."""
+
+    quickjs_heap_bytes: int
+    quickjs_stack_bytes: int
+    initialization_fuel: int
+    invocation_fuel: int
+    host_work_budget: int
+    host_work_base_per_call: int
+    host_work_per_addressed_byte: int
+    host_work_addressed_length_indices: tuple[tuple[str, tuple[int, ...]], ...]
+
+    def addressed_length_indices(self, function_name: str) -> tuple[int, ...]:
+        for name, indices in self.host_work_addressed_length_indices:
+            if name == function_name:
+                return indices
+        return ()
+
+
+def profile_execution_limits(lock: RuntimeProfileLock) -> ProfileExecutionLimits:
+    """Validate and project the executable limits from a verified lock."""
+    try:
+        limits = lock.data["source"]["limits"]
+    except (KeyError, TypeError) as error:
+        raise ValueError("runtime-profile lock has no execution limits") from error
+    if not isinstance(limits, dict):
+        raise ValueError("runtime-profile execution limits must be an object")
+    if limits.get("host_work_meter") != "base-plus-addressed-byte-v1":
+        raise ValueError("unsupported runtime-profile host-work meter")
+
+    integer_names = (
+        "quickjs_heap_bytes",
+        "quickjs_stack_bytes",
+        "wasmtime_fuel_per_initialization",
+        "wasmtime_fuel_per_invocation",
+        "host_work_budget",
+        "host_work_base_per_call",
+        "host_work_per_addressed_byte",
+    )
+    values: dict[str, int] = {}
+    for name in integer_names:
+        value = limits.get(name)
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise ValueError(
+                f"runtime-profile execution limit {name!r} must be positive"
+            )
+        values[name] = value
+
+    raw_indices = limits.get("host_work_addressed_length_indices")
+    if not isinstance(raw_indices, dict):
+        raise ValueError(
+            "runtime-profile host-work addressed-length map must be an object"
+        )
+    addressed: list[tuple[str, tuple[int, ...]]] = []
+    function_arities = {
+        function.name: len(function.wasm_params) for function in HOOK_API.functions
+    }
+    for name, indices in sorted(raw_indices.items()):
+        if not isinstance(name, str) or not name:
+            raise ValueError("host-work function names must be non-empty strings")
+        if name not in function_arities:
+            raise ValueError(f"host-work function {name!r} is not in the raw ABI")
+        if (
+            not isinstance(indices, list)
+            or not indices
+            or any(
+                not isinstance(index, int)
+                or isinstance(index, bool)
+                or index < 0
+                for index in indices
+            )
+            or len(indices) != len(set(indices))
+        ):
+            raise ValueError(
+                f"host-work length indices for {name!r} must be unique "
+                "non-negative integers"
+            )
+        if any(index >= function_arities[name] for index in indices):
+            raise ValueError(
+                f"host-work length index is outside raw function {name!r}"
+            )
+        addressed.append((name, tuple(indices)))
+
+    return ProfileExecutionLimits(
+        quickjs_heap_bytes=values["quickjs_heap_bytes"],
+        quickjs_stack_bytes=values["quickjs_stack_bytes"],
+        initialization_fuel=values["wasmtime_fuel_per_initialization"],
+        invocation_fuel=values["wasmtime_fuel_per_invocation"],
+        host_work_budget=values["host_work_budget"],
+        host_work_base_per_call=values["host_work_base_per_call"],
+        host_work_per_addressed_byte=values["host_work_per_addressed_byte"],
+        host_work_addressed_length_indices=tuple(addressed),
+    )
 
 
 def load_runtime_profile_lock(path: str | Path) -> RuntimeProfileLock:
