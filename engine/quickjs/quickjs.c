@@ -10681,6 +10681,28 @@ BOOL JS_IsFunction(JSContext *ctx, JSValueConst val)
     }
 }
 
+BOOL JS_IsCallable(JSContext *ctx, JSValueConst val)
+{
+    JSObject *p;
+    JSFunctionBytecode *b;
+
+    if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
+        return FALSE;
+    p = JS_VALUE_GET_OBJ(val);
+    switch (p->class_id) {
+    case JS_CLASS_BYTECODE_FUNCTION:
+        b = p->u.func.function_bytecode;
+        return !(p->is_constructor && !b->has_prototype);
+    case JS_CLASS_BOUND_FUNCTION:
+        return JS_IsCallable(ctx, p->u.bound_function->func_obj);
+    case JS_CLASS_PROXY:
+        return !p->u.proxy_data->is_revoked &&
+            JS_IsCallable(ctx, p->u.proxy_data->target);
+    default:
+        return ctx->rt->class_array[p->class_id].call != NULL;
+    }
+}
+
 BOOL JS_IsCFunction(JSContext *ctx, JSValueConst val, JSCFunction *func, int magic)
 {
     JSObject *p;

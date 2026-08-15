@@ -114,6 +114,92 @@ def test_compiler_rejects_discarded_results(tmp_path: Path, statement: str):
         compile_hook(source)
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        "const result = state.get('key');",
+        "const result = state.get('key'); if (result.ok) {}",
+        "(state.get('key'), 1);",
+        "true ? state.get('key') : 1;",
+        "state.get('key').ok;",
+        "const { ok } = state.get('key'); void ok;",
+        "for (const result of [state.get('key')]) { void result.ok; }",
+        (
+            "function ignore(result: HostResult<STBlob | undefined>): void {} "
+            "ignore(state.get('key'));"
+        ),
+        "trace('result', state.get('key'));",
+        (
+            "const result: HostResult<STBlob | undefined> | string = "
+            "state.get('key'); void result;"
+        ),
+        (
+            "const result = state.set('key', [1]); "
+            "if (ledger.sequence > 0) result.moot();"
+        ),
+    ],
+)
+def test_result_dataflow_rejects_unconsumed_shapes(
+    tmp_path: Path,
+    body: str,
+):
+    source = tmp_path / "unconsumed-shape.hook.ts"
+    source.write_text(
+        "export function main(): never { "
+        f"{body} "
+        "return accept(); }"
+    )
+
+    with pytest.raises(RuntimeError, match="six legal exits"):
+        compile_hook(source)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        (
+            "let result: HostResult<STBlob | undefined>; "
+            "result = state.get('key'); "
+            "if (!result.ok) rollback('read failed', result.error.code);"
+        ),
+        (
+            "const first = state.get('key'); const second = first; "
+            "rollback.onFail(second);"
+        ),
+        (
+            "function consume(result: HostResult<STBlob | undefined>): void { "
+            "rollback.onFail(result); } consume(state.get('key'));"
+        ),
+        (
+            "const result = state.set('key', [1]); "
+            "if (ledger.sequence > 0) result.moot(); else result.moot();"
+        ),
+    ],
+)
+def test_result_dataflow_accepts_checked_transfers_and_branches(
+    tmp_path: Path,
+    body: str,
+):
+    source = tmp_path / "consumed-shape.hook.ts"
+    source.write_text(
+        "export function main(): never { "
+        f"{body} "
+        "return accept(); }"
+    )
+
+    assert compile_hook(source).bytecode
+
+
+def test_raw_javascript_uses_the_same_result_dataflow_gate(tmp_path: Path):
+    source = tmp_path / "discarded-result.hook.js"
+    source.write_text(
+        "export function main() { state.get('key'); return accept(); }"
+    )
+
+    with pytest.raises(RuntimeError, match="six legal exits"):
+        compile_hook(source)
+
+
 def test_v1_example_compiles_and_packages(tmp_path: Path):
     source = tmp_path / "v1.hook.ts"
     source.write_text(
@@ -237,6 +323,68 @@ def test_packager_rejects_host_calls_during_module_initialization(
         )
 
 
+def test_compiler_rejects_aliased_host_call_during_module_initialization(
+    tmp_path: Path,
+):
+    source = tmp_path / "aliased-terminal.hook.js"
+    source.write_text(
+        "const terminal = accept; terminal('not an entry', 1); "
+        "export function main() {}"
+    )
+
+    with pytest.raises(RuntimeError, match="unavailable during module initialization"):
+        compile_hook(source)
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        (
+            "function hookMain(): never { return accept(); } "
+            "export { hookMain as main };"
+        ),
+        (
+            "function hookMain(): never { return accept(); } "
+            "export const main = hookMain;"
+        ),
+    ],
+)
+def test_compiler_accepts_live_callable_main_exports(
+    tmp_path: Path,
+    module: str,
+):
+    source = tmp_path / "live-main.hook.ts"
+    source.write_text(module)
+
+    assert compile_hook(source).bytecode
+
+
+@pytest.mark.parametrize(
+    "module,error",
+    [
+        (
+            "export default function main(): never { return accept(); }",
+            "no exported main entry point",
+        ),
+        (
+            "export let main: (() => never) | number = () => accept(); main = 1;",
+            "main entry point is not callable",
+        ),
+        ("export class main {}", "main entry point is not callable"),
+    ],
+)
+def test_compiler_uses_provider_live_export_validation(
+    tmp_path: Path,
+    module: str,
+    error: str,
+):
+    source = tmp_path / "invalid-live-main.hook.ts"
+    source.write_text(module)
+
+    with pytest.raises(RuntimeError, match=error):
+        compile_hook(source)
+
+
 def test_compiler_rejects_top_level_self_invocation(tmp_path: Path):
     source = tmp_path / "self-invoking.hook.ts"
     source.write_text(
@@ -248,7 +396,7 @@ def test_compiler_rejects_top_level_self_invocation(tmp_path: Path):
         """
     )
 
-    with pytest.raises(RuntimeError, match="provider invokes them"):
+    with pytest.raises(RuntimeError, match="not deployable: Error: entry"):
         compile_hook(source)
 
 
@@ -263,7 +411,7 @@ def test_compiler_rejects_top_level_terminal_invocation(tmp_path: Path):
         """
     )
 
-    with pytest.raises(RuntimeError, match="terminal invocation"):
+    with pytest.raises(RuntimeError, match="unavailable during module initialization"):
         compile_hook(source)
 
 
@@ -277,7 +425,7 @@ def test_compiler_refuses_missing_main_export(tmp_path: Path):
         }
         """
     )
-    with pytest.raises(RuntimeError, match="missing exported main entry point"):
+    with pytest.raises(RuntimeError, match="no exported main entry point"):
         compile_hook(source)
 
 

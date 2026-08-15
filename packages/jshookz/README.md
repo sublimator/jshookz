@@ -26,3 +26,11 @@ not a claim that the two engine patch releases are byte-identical.
 
 The project is pre-release and the v1 profile is not activated on a production
 network.
+
+The production compiler accepts TypeScript and JavaScript files. JavaScript is
+not an unchecked escape: it runs through TypeScript `checkJs` and the same
+typed Result ownership/dataflow gate as TypeScript. Every emitted module is
+then initialized and its live `main`/optional `callback` exports validated by
+the provider before `compile_hook` returns; host operations are unavailable
+during that initialization. Low-level `WasmHost.compile_source` remains a
+diagnostic primitive, not a deployability check.
