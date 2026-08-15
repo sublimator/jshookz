@@ -11,10 +11,8 @@ js_emit_prepare(JSContext *ctx, JSValueConst this_val,
 {
     if (argc < 1)
         return JS_ThrowTypeError(ctx, "emit.prepare: expected transaction bytes");
-    auto transaction = qjs::ByteView::get(
-        ctx,
-        argv[0],
-        qjs::BytePolicy::bytesLikeOrSTBlob);
+    auto transaction = qjs::ByteView::getBinding(
+        ctx, argv[0], "emit.prepare", 0, qjs::BytePolicy::bytesLikeOrSTBlob);
     if (!transaction)
         return qjs::pendingOrTypeError(
             ctx, "emit.prepare: invalid transaction bytes");
@@ -70,10 +68,8 @@ js_emit_tx(JSContext *ctx, JSValueConst this_val,
 {
     if (argc < 1)
         return JS_ThrowTypeError(ctx, "emit.tx: expected transaction bytes");
-    auto transaction = qjs::ByteView::get(
-        ctx,
-        argv[0],
-        qjs::BytePolicy::bytesLikeOrSTBlob);
+    auto transaction = qjs::ByteView::getBinding(
+        ctx, argv[0], "emit.tx", 0, qjs::BytePolicy::bytesLikeOrSTBlob);
     if (!transaction)
         return qjs::pendingOrTypeError(
             ctx, "emit.tx: invalid transaction bytes");

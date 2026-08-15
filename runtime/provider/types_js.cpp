@@ -102,8 +102,8 @@ static JSValue js_blob_from(JSContext *ctx, JSValueConst this_val,
 {
     if (argc < 1)
         return JS_ThrowTypeError(ctx, "STBlob.from() expects a byte value");
-    auto bytes = qjs::ByteView::get(
-        ctx, argv[0], qjs::BytePolicy::bytesLike);
+    auto bytes = qjs::ByteView::getBinding(ctx, argv[0], "STBlob.from", 0,
+                                           qjs::BytePolicy::bytesLike);
     if (!bytes)
         return qjs::byteInputTypeError(
             ctx, "STBlob.from()", qjs::BytePolicy::bytesLike);
@@ -115,8 +115,8 @@ static JSValue js_blob_from_hex(JSContext *ctx, JSValueConst this_val,
 {
     if (argc < 1 || !JS_IsString(argv[0]))
         return JS_ThrowTypeError(ctx, "STBlob.fromHex() expects a hex string");
-    auto bytes = qjs::ByteView::get(
-        ctx, argv[0], qjs::BytePolicy::hexString);
+    auto bytes = qjs::ByteView::getBinding(ctx, argv[0], "STBlob.fromHex", 0,
+                                           qjs::BytePolicy::hexString);
     if (!bytes)
         return qjs::byteInputTypeError(
             ctx, "STBlob.fromHex()", qjs::BytePolicy::hexString);
@@ -176,8 +176,8 @@ static JSValue js_blob_equals(JSContext *ctx, JSValueConst this_val,
     auto *blob = qjs::opaque<JSBlob>(ctx, this_val, js_blob_class_id);
     if (!blob) return JS_EXCEPTION;
     if (argc < 1) return JS_FALSE;
-    auto other = qjs::ByteView::get(
-        ctx, argv[0], qjs::BytePolicy::bytesLikeOrSTBlob);
+    auto other = qjs::ByteView::getBinding(ctx, argv[0], "STBlob.equals", 0,
+                                           qjs::BytePolicy::bytesLikeOrSTBlob);
     if (!other)
         return JS_HasException(ctx) ? JS_EXCEPTION : JS_FALSE;
     bool equal = blob->len == other.size() &&
@@ -216,8 +216,8 @@ static JSValue js_hash256_from(JSContext *ctx, JSValueConst this_val,
 {
     if (argc < 1)
         return JS_ThrowTypeError(ctx, "Hash256.from() expects a byte value");
-    auto bytes = qjs::ByteView::get(
-        ctx, argv[0], qjs::BytePolicy::bytesLike);
+    auto bytes = qjs::ByteView::getBinding(ctx, argv[0], "Hash256.from", 0,
+                                           qjs::BytePolicy::bytesLike);
     if (!bytes) {
         return qjs::byteInputTypeError(
             ctx, "Hash256.from()", qjs::BytePolicy::bytesLike);
@@ -238,8 +238,8 @@ static JSValue js_hash256_from_hex(JSContext *ctx, JSValueConst this_val,
 {
     if (argc < 1 || !JS_IsString(argv[0]))
         return JS_ThrowTypeError(ctx, "Hash256.fromHex() expects a hex string");
-    auto bytes = qjs::ByteView::get(
-        ctx, argv[0], qjs::BytePolicy::hexString);
+    auto bytes = qjs::ByteView::getBinding(ctx, argv[0], "Hash256.fromHex", 0,
+                                           qjs::BytePolicy::hexString);
     if (!bytes)
         return qjs::byteInputTypeError(
             ctx, "Hash256.fromHex()", qjs::BytePolicy::hexString);
@@ -320,8 +320,8 @@ static JSValue js_accountid_from(JSContext *ctx, JSValueConst this_val,
 {
     if (argc < 1)
         return JS_ThrowTypeError(ctx, "AccountID.from() expects a byte value");
-    auto bytes = qjs::ByteView::get(
-        ctx, argv[0], qjs::BytePolicy::bytesLike);
+    auto bytes = qjs::ByteView::getBinding(ctx, argv[0], "AccountID.from", 0,
+                                           qjs::BytePolicy::bytesLike);
     if (!bytes) {
         return qjs::byteInputTypeError(
             ctx, "AccountID.from()", qjs::BytePolicy::bytesLike);
@@ -342,8 +342,8 @@ static JSValue js_accountid_from_hex(JSContext *ctx, JSValueConst this_val,
 {
     if (argc < 1 || !JS_IsString(argv[0]))
         return JS_ThrowTypeError(ctx, "AccountID.fromHex() expects a hex string");
-    auto bytes = qjs::ByteView::get(
-        ctx, argv[0], qjs::BytePolicy::hexString);
+    auto bytes = qjs::ByteView::getBinding(ctx, argv[0], "AccountID.fromHex", 0,
+                                           qjs::BytePolicy::hexString);
     if (!bytes)
         return qjs::byteInputTypeError(
             ctx, "AccountID.fromHex()", qjs::BytePolicy::hexString);

@@ -46,6 +46,9 @@ def test_xfl_accessors_match_official_hook_float_vectors():
             "JSON.stringify((() => {"
             "  const positive = XFL.fromRaw(6089866696204910592n);"
             "  const negative = XFL.fromRaw(1478180677777522688n);"
+            "  const hookApiVector = XFL.fromRaw(6270245249190730432n);"
+            "  const hookApiNegativeVector = XFL.fromRaw(1658559230763342528n);"
+            "  const zero = XFL.fromRaw(0n);"
             "  let invalid = false;"
             "  try { XFL.fromRaw(-1n); } catch (error) { invalid = error instanceof RangeError; }"
             "  let oversized = false;"
@@ -53,8 +56,10 @@ def test_xfl_accessors_match_official_hook_float_vectors():
             "  return {"
             "    positive: [positive.mantissa().toString(), positive.exponent(), positive.isNegative()],"
             "    negative: [negative.mantissa().toString(), negative.exponent(), negative.isNegative()],"
+            "    hookApiVector: [hookApiVector.mantissa().toString(), hookApiVector.exponent(), hookApiVector.isNegative()],"
+            "    hookApiNegativeVector: [hookApiNegativeVector.mantissa().toString(), hookApiNegativeVector.exponent(), hookApiNegativeVector.isNegative()],"
             "    mantissaType: typeof positive.mantissa(),"
-            "    zeroNegative: XFL.fromRaw(0n).isNegative(),"
+            "    zero: [zero.mantissa().toString(), zero.exponent(), zero.isNegative()],"
             "    invalid, oversized"
             "  };"
             "})())"
@@ -66,8 +71,10 @@ def test_xfl_accessors_match_official_hook_float_vectors():
     assert json.loads(result.result_value) == {
         "positive": ["1000000000000000", -15, False],
         "negative": ["1000000000000000", -15, True],
+        "hookApiVector": ["1234567891000000", -5, False],
+        "hookApiNegativeVector": ["1234567891000000", -5, True],
         "mantissaType": "bigint",
-        "zeroNegative": False,
+        "zero": ["0", 0, False],
         "invalid": True,
         "oversized": True,
     }

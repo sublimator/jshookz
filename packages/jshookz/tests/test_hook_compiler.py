@@ -200,6 +200,33 @@ def test_raw_javascript_uses_the_same_result_dataflow_gate(tmp_path: Path):
         compile_hook(source)
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        "class Hidden { value = state.get('key'); } void new Hidden();",
+        "class Hidden { static { state.get('key'); } } void Hidden;",
+        "class Hidden { static value = state.get('key'); } void Hidden;",
+        (
+            "function hidden(value = (state.get('key'), 'fallback')) "
+            "{ void value; } hidden();"
+        ),
+    ],
+)
+def test_result_dataflow_rejects_class_and_parameter_initializer_holes(
+    tmp_path: Path,
+    body: str,
+):
+    source = tmp_path / "initializer-result.hook.ts"
+    source.write_text(
+        "export function main(): never { "
+        f"{body} "
+        "return accept(); }"
+    )
+
+    with pytest.raises(RuntimeError, match="six legal exits"):
+        compile_hook(source)
+
+
 def test_v1_example_compiles_and_packages(tmp_path: Path):
     source = tmp_path / "v1.hook.ts"
     source.write_text(

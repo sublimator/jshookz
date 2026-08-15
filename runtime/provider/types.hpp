@@ -129,6 +129,10 @@ public:
     }
 
     int exponent() const {
+        // hook_float::get_exponent defines encoded zero as exponent zero;
+        // it is not the biased-field interpretation of an ordinary value.
+        if (val_ == 0)
+            return 0;
         return static_cast<int>(
             (static_cast<std::uint64_t>(val_) >> 54) & 0xFF) -
             static_cast<int>(EXPONENT_BIAS);

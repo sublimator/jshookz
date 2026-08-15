@@ -161,6 +161,23 @@ public:
         JSValueConst value,
         BytePolicy policy);
 
+    /**
+     * Attach the public binding coordinate to a byte-policy use. The string
+     * and index are compile-time audit data; the inline runtime path remains
+    * the single ByteView::get implementation.
+     */
+    template <std::size_t N>
+    [[nodiscard]] static ByteView
+    getBinding(
+        JSContext *ctx,
+        JSValueConst value,
+        char const (&)[N],
+        std::uint32_t,
+        BytePolicy policy)
+    {
+        return get(ctx, value, policy);
+    }
+
     /** Replace a borrowed view with an engine-owned stable byte snapshot. */
     [[nodiscard]] bool snapshot();
 

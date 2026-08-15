@@ -378,8 +378,12 @@ function analyzeExpression(expression, state, use = { kind: "discard" }) {
     return;
   }
 
-  if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression) ||
-      ts.isClassExpression(expression)) {
+  if (ts.isClassExpression(expression)) {
+    analyzeClass(expression, state);
+    return;
+  }
+
+  if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) {
     return;
   }
 
@@ -430,6 +434,43 @@ function analyzeVariableDeclaration(declaration, state) {
   }
 }
 
+function hasStaticModifier(node) {
+  return !!node.modifiers && node.modifiers.some(
+    modifier => modifier.kind === ts.SyntaxKind.StaticKeyword,
+  );
+}
+
+function analyzeClass(node, state) {
+  for (const clause of node.heritageClauses || []) {
+    for (const type of clause.types) {
+      analyzeExpression(type.expression, state, { kind: "discard" });
+    }
+  }
+
+  for (const member of node.members) {
+    if (member.name && ts.isComputedPropertyName(member.name)) {
+      analyzeExpression(member.name.expression, state, { kind: "discard" });
+    }
+
+    if (ts.isClassStaticBlockDeclaration(member)) {
+      analyzeStatements(member.body.statements, state);
+      continue;
+    }
+
+    if (!ts.isPropertyDeclaration(member) || !member.initializer) continue;
+    if (hasStaticModifier(member)) {
+      analyzeExpression(member.initializer, state, { kind: "discard" });
+      continue;
+    }
+
+    // Instance fields execute later, once per construction, and cannot hand a
+    // live Result owner back to the surrounding class-definition flow.
+    const initializerState = newState();
+    analyzeExpression(member.initializer, initializerState, { kind: "discard" });
+    rejectLive(initializerState, member.initializer);
+  }
+}
+
 function analyzeStatement(statement, state) {
   if (ts.isBlock(statement)) return analyzeStatements(statement.statements, state);
 
@@ -440,7 +481,12 @@ function analyzeStatement(statement, state) {
     return true;
   }
 
-  if (ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) {
+  if (ts.isFunctionDeclaration(statement)) {
+    return true;
+  }
+
+  if (ts.isClassDeclaration(statement)) {
+    analyzeClass(statement, state);
     return true;
   }
 
@@ -570,7 +616,19 @@ function analyzeFunction(node) {
   if (!node.body) return;
   const state = newState();
   for (const parameter of node.parameters || []) {
-    if (!isResult(checker.getTypeAtLocation(parameter))) continue;
+    const parameterIsResult = isResult(checker.getTypeAtLocation(parameter));
+    if (parameter.initializer) {
+      const initializerIsResult = expressionIsResult(parameter.initializer);
+      analyzeExpression(
+        parameter.initializer,
+        state,
+        parameterIsResult && initializerIsResult && ts.isIdentifier(parameter.name)
+          ? { kind: "bind", target: parameter.name }
+          : { kind: "discard" },
+      );
+      if (parameterIsResult && initializerIsResult) continue;
+    }
+    if (!parameterIsResult) continue;
     if (!ts.isIdentifier(parameter.name)) {
       reject(parameter.name, "Result parameter owner must be a plain identifier");
       continue;
