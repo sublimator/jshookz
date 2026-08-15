@@ -8,6 +8,9 @@ CANONICAL_HOOKS_API_DECLARATIONS = PACKAGE_ROOT / "types" / "hooks-api.d.ts"
 XAHAU_V1_HOOKS_API_DECLARATIONS = (
     PACKAGE_ROOT / "types" / "xahau-quickjs-v1.d.ts"
 )
+XAHAU_V1_JAVASCRIPT_SURFACE = (
+    PACKAGE_ROOT / "types" / "xahau-quickjs-v1.surface.json"
+)
 # Backwards-compatible name for consumers asking for the broad public spec.
 HOOKS_API_DECLARATIONS = CANONICAL_HOOKS_API_DECLARATIONS
 

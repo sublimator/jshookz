@@ -1,5 +1,6 @@
 #include "common.hpp"
 #include "hook_imports.hpp"
+#include "../provider_internal.hpp"
 
 namespace jshookz::provider::bindings {
 namespace {
@@ -46,7 +47,7 @@ js_emit_prepare(JSContext *ctx, JSValueConst this_val,
             ctx, "emit.prepare: host returned oversized length %lld",
             (long long)result);
     }
-    JSValue value = rich_from_bytes(ctx, "STBlob", output, (uint32_t)result);
+    JSValue value = makeSTBlob(ctx, output, (uint32_t)result);
     js_free(ctx, output);
     return host_success(ctx, value);
 }
@@ -60,8 +61,8 @@ js_emit_reserve(JSContext *ctx, JSValueConst this_val,
         return JS_ThrowTypeError(ctx, "emit.reserve: expected count");
     int64_t result = hook_etxn_reserve(count);
     return result < 0
-        ? host_failure(ctx, result)
-        : host_success(ctx, JS_UNDEFINED);
+        ? host_effect_failure(ctx, result)
+        : host_effect_success(ctx);
 }
 
 JSValue
@@ -88,22 +89,25 @@ js_emit_tx(JSContext *ctx, JSValueConst this_val,
     if (result != (int64_t)sizeof(hash))
         return JS_ThrowInternalError(
             ctx, "emit.tx: host returned length %lld", (long long)result);
-    return host_success(ctx, rich_from_bytes(ctx, "Hash256", hash, sizeof(hash)));
+    return host_success(ctx, makeHash256(ctx, hash, sizeof(hash)));
 }
 
 }  // namespace
 
-void
+bool
 registerEmission(JSContext *ctx, JSValue global)
 {
-    JSValue emit = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, emit, "reserve",
-        JS_NewCFunction(ctx, js_emit_reserve, "reserve", 1));
-    JS_SetPropertyStr(ctx, emit, "prepare",
-        JS_NewCFunction(ctx, js_emit_prepare, "prepare", 1));
-    JS_SetPropertyStr(ctx, emit, "tx",
-        JS_NewCFunction(ctx, js_emit_tx, "tx", 1));
-    JS_SetPropertyStr(ctx, global, "emit", emit);
+    qjs::OwnedValue emit(ctx, JS_NewObject(ctx));
+    if (emit.isException())
+        return false;
+    if (JS_SetPropertyStr(ctx, emit.get(), "reserve",
+            JS_NewCFunction(ctx, js_emit_reserve, "reserve", 1)) < 0 ||
+        JS_SetPropertyStr(ctx, emit.get(), "prepare",
+            JS_NewCFunction(ctx, js_emit_prepare, "prepare", 1)) < 0 ||
+        JS_SetPropertyStr(ctx, emit.get(), "tx",
+            JS_NewCFunction(ctx, js_emit_tx, "tx", 1)) < 0)
+        return false;
+    return JS_SetPropertyStr(ctx, global, "emit", emit.release()) >= 0;
 }
 
 }  // namespace jshookz::provider::bindings

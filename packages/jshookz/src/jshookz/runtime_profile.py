@@ -10,9 +10,12 @@ from typing import Any
 
 from wasmtime import Engine, FuncType, MemoryType, Module
 
+from .paths import XAHAU_V1_HOOKS_API_DECLARATIONS, XAHAU_V1_JAVASCRIPT_SURFACE
+
 
 SOURCE_SCHEMA = "xahau.quickjs.runtime-profile-source.v1"
 LOCK_SCHEMA = "xahau.quickjs.runtime-profile-lock.v1"
+SURFACE_SCHEMA = "jshookz.javascript-surface.v1"
 
 
 def canonical_json_bytes(value: Any) -> bytes:
@@ -91,6 +94,48 @@ def _identity(domain: str, manifest: Any) -> str:
     return _sha256(canonical_json_bytes({"domain": domain, "manifest": manifest}))
 
 
+def _javascript_surface(
+    source: dict[str, Any],
+    surface_path: str | Path,
+    declaration_path: str | Path,
+) -> dict[str, str]:
+    policy = source.get("javascript_surface")
+    if not isinstance(policy, dict) or policy.get("schema") != SURFACE_SCHEMA:
+        raise ValueError(
+            f"runtime-profile source must select {SURFACE_SCHEMA!r}"
+        )
+
+    surface_bytes = Path(surface_path).read_bytes()
+    surface = json.loads(surface_bytes)
+    if not isinstance(surface, dict):
+        raise ValueError("JavaScript surface must be a JSON object")
+    if surface.get("schema") != SURFACE_SCHEMA:
+        raise ValueError(
+            f"unsupported JavaScript surface schema: {surface.get('schema')!r}"
+        )
+
+    declaration_bytes = Path(declaration_path).read_bytes()
+    declaration = surface.get("declaration")
+    if not isinstance(declaration, dict):
+        raise ValueError("JavaScript surface has no declaration identity")
+    declaration_sha256 = _sha256(declaration_bytes)
+    if declaration.get("sha256") != declaration_sha256:
+        raise ValueError(
+            "JavaScript surface declaration identity does not match the selected "
+            "declaration"
+        )
+    if declaration.get("path") != policy.get("declaration"):
+        raise ValueError(
+            "JavaScript surface declaration path differs from the runtime profile"
+        )
+
+    return {
+        "schema": SURFACE_SCHEMA,
+        "sha256": _sha256(surface_bytes),
+        "declaration_sha256": declaration_sha256,
+    }
+
+
 def _validate_provider_policy(source: dict[str, Any], provider: dict[str, Any]) -> None:
     """Apply the source manifest's provider allow-list and export contract."""
     policy = source.get("provider")
@@ -132,7 +177,10 @@ def _validate_provider_policy(source: dict[str, Any], provider: dict[str, Any]) 
 
 
 def build_runtime_profile_lock(
-    source_path: str | Path, wasm_path: str | Path
+    source_path: str | Path,
+    wasm_path: str | Path,
+    surface_path: str | Path = XAHAU_V1_JAVASCRIPT_SURFACE,
+    declaration_path: str | Path = XAHAU_V1_HOOKS_API_DECLARATIONS,
 ) -> dict[str, Any]:
     """Resolve a source manifest against an exact provider WASM binary."""
     source = _load_object(source_path)
@@ -143,6 +191,9 @@ def build_runtime_profile_lock(
 
     provider = _wasm_surface(wasm_path)
     _validate_provider_policy(source, provider)
+    javascript_surface = _javascript_surface(
+        source, surface_path, declaration_path
+    )
 
     bytecode_abi = source.get("bytecode_abi")
     if not isinstance(bytecode_abi, dict):
@@ -152,6 +203,7 @@ def build_runtime_profile_lock(
     identity_manifest = {
         "source": source,
         "bytecode_abi_id": bytecode_abi_id,
+        "javascript_surface": javascript_surface,
         "provider_wasm_sha256": provider["sha256"],
         "provider_imports": provider["imports"],
         "provider_exports": provider["exports"],
@@ -164,6 +216,7 @@ def build_runtime_profile_lock(
         "bytecode_abi_id": bytecode_abi_id,
         "runtime_profile_id": runtime_profile_id,
         "source": source,
+        "javascript_surface": javascript_surface,
         "provider": provider,
     }
 
@@ -192,7 +245,10 @@ def load_runtime_profile_lock(path: str | Path) -> RuntimeProfileLock:
 
 
 def verify_runtime_profile_lock(
-    lock_path: str | Path, wasm_path: str | Path
+    lock_path: str | Path,
+    wasm_path: str | Path,
+    surface_path: str | Path = XAHAU_V1_JAVASCRIPT_SURFACE,
+    declaration_path: str | Path = XAHAU_V1_HOOKS_API_DECLARATIONS,
 ) -> RuntimeProfileLock:
     """Verify the lock and exact provider, returning its deployment IDs."""
     lock = load_runtime_profile_lock(lock_path)
@@ -208,11 +264,19 @@ def verify_runtime_profile_lock(
             "provider binary/surface does not match the runtime-profile lock"
         )
     _validate_provider_policy(source, provider)
+    javascript_surface = _javascript_surface(
+        source, surface_path, declaration_path
+    )
+    if javascript_surface != lock.data.get("javascript_surface"):
+        raise ValueError(
+            "JavaScript surface does not match the runtime-profile lock"
+        )
 
     bytecode_abi_id = _identity("xahau.quickjs.bytecode-abi.v1", source["bytecode_abi"])
     identity_manifest = {
         "source": source,
         "bytecode_abi_id": bytecode_abi_id,
+        "javascript_surface": javascript_surface,
         "provider_wasm_sha256": provider["sha256"],
         "provider_imports": provider["imports"],
         "provider_exports": provider["exports"],

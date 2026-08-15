@@ -9,6 +9,8 @@ from jshookz.paths import (
     XAHAU_HOOK_PROVIDER_WASM,
     XAHAU_RUNTIME_PROFILE_LOCK,
     XAHAU_RUNTIME_PROFILE_SOURCE,
+    XAHAU_V1_HOOKS_API_DECLARATIONS,
+    XAHAU_V1_JAVASCRIPT_SURFACE,
 )
 from jshookz.build import _validate_native_abi, seal_xahau_hook_provider_bundle
 from jshookz.host import WasmHost
@@ -102,6 +104,7 @@ def test_profile_verification_reapplies_source_policy(tmp_path: Path):
     identity_manifest = {
         "source": lock["source"],
         "bytecode_abi_id": lock["bytecode_abi_id"],
+        "javascript_surface": lock["javascript_surface"],
         "provider_wasm_sha256": lock["provider"]["sha256"],
         "provider_imports": lock["provider"]["imports"],
         "provider_exports": lock["provider"]["exports"],
@@ -119,6 +122,25 @@ def test_profile_verification_reapplies_source_policy(tmp_path: Path):
 
     with pytest.raises(ValueError, match="forbidden imports"):
         verify_runtime_profile_lock(lock_path, XAHAU_HOOK_PROVIDER_WASM)
+
+
+def test_profile_verification_rejects_javascript_surface_drift(tmp_path: Path):
+    lock = build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)
+    lock_path = tmp_path / "profile.lock.json"
+    _write_json(lock_path, lock)
+
+    surface = json.loads(XAHAU_V1_JAVASCRIPT_SURFACE.read_text())
+    surface["globals"]["invented"] = "function"
+    surface_path = tmp_path / "surface.json"
+    _write_json(surface_path, surface)
+
+    with pytest.raises(ValueError, match="JavaScript surface does not match"):
+        verify_runtime_profile_lock(
+            lock_path,
+            XAHAU_HOOK_PROVIDER_WASM,
+            surface_path,
+            XAHAU_V1_HOOKS_API_DECLARATIONS,
+        )
 
 
 def test_load_profile_rejects_short_identity(tmp_path: Path):
@@ -185,6 +207,76 @@ def test_native_projection_rejects_duplicate_provider_import():
 class _LedgerClockHost:
     def ledger_last_time(self) -> int:
         return 123
+
+    def state_set(self, *_args: object) -> int:
+        return 0
+
+
+def _surface_probe_javascript(surface: dict[str, object]) -> str:
+    """Turn the generated surface manifest into one provider-side probe."""
+    encoded = json.dumps(json.dumps(surface, sort_keys=True))
+    return f"""
+JSON.stringify((() => {{
+  const surface = JSON.parse({encoded});
+  const failures = [];
+  const own = (object, name) =>
+    Object.prototype.hasOwnProperty.call(object, name);
+  const checkMembers = (label, receiver, members) => {{
+    for (const [name, kind] of Object.entries(members)) {{
+      if (kind === "function" ? typeof receiver[name] !== "function"
+                              : !(name in receiver))
+        failures.push(`${{label}}.${{name}}: missing ${{kind}}`);
+    }}
+  }};
+
+  for (const [name, kind] of Object.entries(surface.globals))
+    if (typeof globalThis[name] !== kind)
+      failures.push(`global ${{name}}: expected ${{kind}}`);
+
+  for (const group of ["namespaces", "statics"])
+    for (const [name, members] of Object.entries(surface[group]))
+      checkMembers(`${{group.slice(0, -1)}} ${{name}}`, globalThis[name], members);
+
+  for (const [name, profile] of Object.entries(surface.prototypes)) {{
+    const receiver = eval(profile.probe);
+    const prototype = Object.getPrototypeOf(receiver);
+    checkMembers(`prototype ${{name}}`, receiver, profile.members);
+    for (const member of profile.own)
+      if (!own(prototype, member))
+        failures.push(`prototype ${{name}}.${{member}}: not own`);
+    if (profile.frozen && !Object.isFrozen(prototype))
+      failures.push(`prototype ${{name}}: not frozen`);
+    if (name === "Result" && "moot" in receiver)
+      failures.push("prototype Result.moot: unexpectedly present");
+    if (name === "VoidResult" && !Object.isFrozen(Object.getPrototypeOf(prototype)))
+      failures.push("prototype VoidResult: base not frozen");
+  }}
+  for (const name of ["zero", "one"]) {{
+    if (AccountID[name] !== AccountID[name])
+      failures.push(`static AccountID.${{name}}: identity is not stable`);
+    if (!Object.isFrozen(AccountID[name]))
+      failures.push(`static AccountID.${{name}}: value is not frozen`);
+  }}
+  return failures;
+}})())
+""".strip()
+
+
+def test_profile_javascript_api_matches_generated_surface():
+    surface = json.loads(XAHAU_V1_JAVASCRIPT_SURFACE.read_text())
+    host = WasmHost(
+        handler=_LedgerClockHost(),
+        wasm_path=XAHAU_HOOK_PROVIDER_WASM,
+        fuel=50_000_000,
+    )
+    host.init()
+    try:
+        result = host.eval(_surface_probe_javascript(surface))
+    finally:
+        host.destroy()
+
+    assert result.ok, result.error
+    assert json.loads(result.result_value) == []
 
 
 def test_profile_javascript_surface_is_ledger_derived_and_reduced():

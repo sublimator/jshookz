@@ -83,7 +83,7 @@ jobs:
         run: |
           packages/hostem/.venv/bin/python \
             integrations/xahau/tools/generate_raw_hook_abi.py --check
-          ./scripts/project-v1-declarations.py --check
+          python scripts/check-declaration-projections.py
           ./scripts/project-readme-examples.py --check
           tsc -p packages/hostem/tsconfig.xahau-integration.json
 

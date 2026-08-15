@@ -45,7 +45,11 @@ def test_tagged_host_failure_can_drive_javascript_rollback():
     source = """
         export function main(_reserved) {
           const write = state.set("K".repeat(33), new Uint8Array([1]));
-          if (!write.ok) rollback("state failed", write.code);
+          if (write.ok || write.error.domain !== "host" ||
+              Object.isExtensible(write.error)) {
+            rollback("invalid host error envelope", 68);
+          }
+          if (!write.ok) rollback("state failed", write.error.code);
           accept("unexpected");
         }
     """
@@ -101,24 +105,30 @@ def test_rollback_on_fail_accepts_context_without_losing_status_code():
     assert [call.name for call in result.call_log] == ["state_set", "rollback"]
 
 
-def test_rollback_on_fail_applies_policy_to_an_uncoded_result():
+def test_rollback_on_fail_rejects_structural_result_lookalikes():
     source = """
         export function main(_reserved) {
-          rollback.onFail(
-            { ok: false, issue: "wrong-length" },
-            "invalid configuration",
-            137
-          );
-          accept("unexpected");
+          let rejected = false;
+          try {
+            rollback.onFail(
+              { ok: false, issue: "wrong-length" },
+              "invalid configuration",
+              137
+            );
+          } catch (error) {
+            rejected = error instanceof TypeError;
+          }
+          if (!rejected) rollback("structural Result accepted", 136);
+          accept("nominal Result required", 137);
         }
     """
 
     result = HookRunner().run(source)
 
-    assert result.rejected, result.error
+    assert result.accepted, result.error
     assert result.return_code == 137
-    assert result.return_msg == b"invalid configuration"
-    assert [call.name for call in result.call_log] == ["rollback"]
+    assert result.return_msg == b"nominal Result required"
+    assert [call.name for call in result.call_log] == ["accept"]
 
 
 def test_rollback_require_collapses_host_failure_and_absence():
@@ -180,39 +190,133 @@ def test_rollback_require_collapses_host_failure_and_absence():
     ]
 
 
-def test_rollback_on_any_fail_returns_every_value_and_accepts_empty_input():
+def test_results_are_nominal_frozen_values_and_require_returns_truthy_values():
     source = """
-        export function main(_reserved) {
-          const empty = rollback.onAnyFail([]);
-          const values = rollback.onAnyFail([
-            { ok: true, value: "first" },
-            { ok: true, value: undefined },
-            { ok: true, value: "third" }
-          ]);
-          if (empty.length !== 0 || values.length !== 3 ||
-              values[0] !== "first" || values[1] !== undefined ||
-              values[2] !== "third") {
-            rollback("unexpected batch values", 80);
+        export function main() {
+          const result = state.get("MISSING");
+          const ok = Object.getOwnPropertyDescriptor(result, "ok");
+          const value = Object.getOwnPropertyDescriptor(result, "value");
+          const prototype = Object.getPrototypeOf(result);
+          const okMapOr = Object.getOwnPropertyDescriptor(prototype, "okMapOr");
+          if (Object.isExtensible(result) || !ok || ok.writable ||
+              ok.configurable || !value || value.writable ||
+              value.configurable || !Object.isFrozen(prototype) || !okMapOr ||
+              okMapOr.writable || okMapOr.configurable) {
+            rollback("mutable Result", 74);
           }
-          accept("all succeeded", 81);
+          if (result.moot !== undefined) rollback("value Result is mootable", 79);
+
+          const values = [true, 1, 1n, "value", { present: true }];
+          for (const item of values) {
+            if (rollback.require(item, "truthy value missing", 75) !== item) {
+              rollback("truthy value changed", 76);
+            }
+          }
+          accept("nominal and present", 77);
         }
     """
 
     result = HookRunner().run(source)
 
     assert result.accepted, result.error
+    assert result.return_code == 77
+    assert result.return_msg == b"nominal and present"
+    assert [call.name for call in result.call_log] == ["state", "accept"]
+
+
+def test_rollback_require_rejects_direct_falsy_values():
+    for expression in ["false", "0", "0n", '""', "null", "undefined", "NaN"]:
+        source = """
+        export function main() {
+          rollback.require(EXPR, "direct value missing", 78);
+          accept("unexpected");
+        }
+        """.replace("EXPR", expression)
+
+        result = HookRunner().run(source)
+
+        assert result.rejected, (expression, result.error)
+        assert result.return_code == 78
+        assert result.return_msg == b"direct value missing"
+        assert [call.name for call in result.call_log] == ["rollback"]
+
+
+def test_rollback_require_defaults_only_the_explicit_policy_code():
+    result = HookRunner().run(
+        '''
+        export function main() {
+          rollback.require(state.get("MISSING"), "required value missing");
+          accept("unexpected");
+        }
+        '''
+    )
+
+    assert result.rejected, result.error
+    assert result.return_msg == b"required value missing"
+    assert result.return_code == 0
+    assert [call.name for call in result.call_log] == [
+        "state",
+        "rollback",
+    ]
+
+
+def test_rollback_require_rejects_a_missing_contract_policy():
+    result = HookRunner().run(
+        '''
+        export function main() {
+          rollback.require(state.get("MISSING"));
+          accept("unexpected");
+        }
+        '''
+    )
+
+    assert not result.accepted
+    assert not result.rejected
+    assert "rollback.require: expected rollback message" in str(result.error)
+    assert [call.name for call in result.call_log] == ["state"]
+
+
+def test_rollback_on_any_fail_returns_every_value_and_accepts_empty_input():
+    source = """
+        export function main(_reserved) {
+          const empty = rollback.onAnyFail([]);
+          const values = rollback.onAnyFail([
+            state.get("FIRST"),
+            state.get("MISSING"),
+            state.get("THIRD")
+          ]);
+          if (empty.length !== 0 || values.length !== 3 ||
+              values[0].toHex() !== "01" || values[1] !== undefined ||
+              values[2].toHex() !== "03") {
+            rollback("unexpected batch values", 80);
+          }
+          accept("all succeeded", 81);
+        }
+    """
+
+    runner = HookRunner()
+    runner.runtime.state_db[b"FIRST"] = b"\x01"
+    runner.runtime.state_db[b"THIRD"] = b"\x03"
+    result = runner.run(source)
+
+    assert result.accepted, result.error
     assert result.return_code == 81
     assert result.return_msg == b"all succeeded"
-    assert [call.name for call in result.call_log] == ["accept"]
+    assert [call.name for call in result.call_log] == [
+        "state",
+        "state",
+        "state",
+        "accept",
+    ]
 
 
 def test_rollback_on_any_fail_uses_first_failure_in_input_order():
     source = """
         export function main(_reserved) {
           rollback.onAnyFail([
-            { ok: true, value: "before" },
-            { ok: false, code: -31 },
-            { ok: false, code: -32 }
+            state.set("BEFORE", new Uint8Array([1])),
+            state.set("A".repeat(33), new Uint8Array([2])),
+            state.set("B".repeat(33), new Uint8Array([3]))
           ], "first batch failure");
           accept("unexpected");
         }
@@ -221,17 +325,22 @@ def test_rollback_on_any_fail_uses_first_failure_in_input_order():
     result = HookRunner().run(source)
 
     assert result.rejected, result.error
-    assert result.return_code == -31
+    assert result.return_code < 0
     assert result.return_msg == b"first batch failure"
-    assert [call.name for call in result.call_log] == ["rollback"]
+    assert [call.name for call in result.call_log] == [
+        "state_set",
+        "state_set",
+        "state_set",
+        "rollback",
+    ]
 
 
 def test_rollback_on_any_fail_applies_domain_failure_policy():
     source = """
         export function main(_reserved) {
           rollback.onAnyFail([
-            { ok: true, value: "before" },
-            { ok: false, issue: "invalid-value" }
+            state.set("BEFORE", new Uint8Array([1])),
+            state.set("A".repeat(33), new Uint8Array([2]))
           ], "invalid batch value", 137);
           accept("unexpected");
         }
@@ -242,40 +351,53 @@ def test_rollback_on_any_fail_applies_domain_failure_policy():
     assert result.rejected, result.error
     assert result.return_code == 137
     assert result.return_msg == b"invalid batch value"
-    assert [call.name for call in result.call_log] == ["rollback"]
+    assert [call.name for call in result.call_log] == [
+        "state_set",
+        "state_set",
+        "rollback",
+    ]
 
 
 def test_rollback_on_all_fail_returns_successes_in_input_order():
     source = """
         export function main(_reserved) {
           const values = rollback.onAllFail([
-            { ok: false, issue: "invalid-value" },
-            { ok: true, value: "first" },
-            { ok: false, issue: "wrong-length" },
-            { ok: true, value: "second" }
+            state.set("A".repeat(33), new Uint8Array([1])),
+            state.get("FIRST"),
+            state.set("B".repeat(33), new Uint8Array([2])),
+            state.get("SECOND")
           ], "all failed", 91);
-          if (values.length !== 2 || values[0] !== "first" ||
-              values[1] !== "second") {
+          if (values.length !== 2 || values[0].toHex() !== "01" ||
+              values[1].toHex() !== "02") {
             rollback("unexpected successful values", 92);
           }
           accept("partial success", 93);
         }
     """
 
-    result = HookRunner().run(source)
+    runner = HookRunner()
+    runner.runtime.state_db[b"FIRST"] = b"\x01"
+    runner.runtime.state_db[b"SECOND"] = b"\x02"
+    result = runner.run(source)
 
     assert result.accepted, result.error
     assert result.return_code == 93
     assert result.return_msg == b"partial success"
-    assert [call.name for call in result.call_log] == ["accept"]
+    assert [call.name for call in result.call_log] == [
+        "state_set",
+        "state",
+        "state_set",
+        "state",
+        "accept",
+    ]
 
 
 def test_rollback_on_all_fail_applies_policy_to_all_failed_and_empty_batches():
     all_failed = """
         export function main(_reserved) {
           rollback.onAllFail([
-            { ok: false, code: -41 },
-            { ok: false, issue: "invalid-value" }
+            state.set("A".repeat(33), new Uint8Array([1])),
+            state.set("B".repeat(33), new Uint8Array([2]))
           ], "no operation succeeded", 94);
           accept("unexpected");
         }
@@ -293,7 +415,11 @@ def test_rollback_on_all_fail_applies_policy_to_all_failed_and_empty_batches():
     assert failed_result.rejected, failed_result.error
     assert failed_result.return_code == 94
     assert failed_result.return_msg == b"no operation succeeded"
-    assert [call.name for call in failed_result.call_log] == ["rollback"]
+    assert [call.name for call in failed_result.call_log] == [
+        "state_set",
+        "state_set",
+        "rollback",
+    ]
     assert empty_result.rejected, empty_result.error
     assert empty_result.return_code == 95
     assert empty_result.return_msg == b"empty batch"
@@ -326,7 +452,7 @@ def test_javascript_reads_host_state_as_blob_then_replaces_it():
     source = """
         export function main(_reserved) {
           const seeded = state.get("BRIDGE");
-          if (!seeded.ok) rollback("state read failed", seeded.code);
+          if (!seeded.ok) rollback("state read failed", seeded.error.code);
           if (seeded.value === undefined) rollback("state missing", -1);
           const seededHex = seeded.value.toHex();
           trace("js-state-read", seededHex);
@@ -334,7 +460,7 @@ def test_javascript_reads_host_state_as_blob_then_replaces_it():
             rollback(`unexpected state:${seededHex}`, -2);
           }
           const write = state.set("BRIDGE", "from-js");
-          if (!write.ok) rollback("state write failed", write.code);
+          if (!write.ok) rollback("state write failed", write.error.code);
           trace("js-state-write", "from-js");
           accept("state bridged", 84);
         }
@@ -361,6 +487,182 @@ def test_javascript_reads_host_state_as_blob_then_replaces_it():
     ]
 
 
+def test_trace_dispatches_scalars_and_byte_values_without_c_api_variants():
+    source = """
+        export function main() {
+          trace("number", 42n);
+          trace("bytes", STBlob.fromHex("A1B2"));
+          trace("object", { toString() { return "rendered"; } });
+          accept("traced", 84);
+        }
+    """
+    runner = HookRunner()
+
+    result = runner.run(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"traced"
+    assert [entry.tag for entry in runner.runtime.traces] == [
+        "number",
+        "bytes",
+        "object",
+    ]
+    assert [entry.value for entry in runner.runtime.traces] == [
+        "b'42'",
+        "a1b2",
+        "b'rendered'",
+    ]
+    assert [call.name for call in result.call_log] == [
+        "trace",
+        "trace",
+        "trace",
+        "accept",
+    ]
+
+
+def test_bytes_like_accepts_byte_arrays_and_produces_uint8_arrays():
+    source = """
+        export function main() {
+          const blob = STBlob.from([0, 127, 255]);
+          const bytes = blob.toBytes();
+          if (!(bytes instanceof Uint8Array) ||
+              bytes.length !== 3 || bytes[2] !== 255 ||
+              blob.toHex() !== "007FFF") {
+            rollback("byte array mismatch", 85);
+          }
+          bytes[0] = 99;
+          if (blob.toBytes()[0] !== 0)
+            rollback("byte output aliases provider memory", 85);
+          let rejected = false;
+          try { STBlob.from([0, 256]); } catch (error) {
+            rejected = error instanceof TypeError;
+          }
+          if (!rejected) rollback("invalid byte accepted", 86);
+          accept("byte arrays", 87);
+        }
+    """
+
+    result = HookRunner().run(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"byte arrays"
+    assert result.return_code == 87
+
+
+def test_bounded_uint_values_pin_width_arithmetic_and_conversion_policy():
+    source = """
+        export function main() {
+          const byte = rollback.onFail(UInt8.from(255n), "u8 construction", 100);
+          const previous = rollback.onFail(UInt8.from(254n), "u8 comparison", 100);
+          if (byte.bits !== 8 || byte.byteLength !== 1 ||
+              byte.toBigInt() !== 255n || byte.toNumber() !== 255 ||
+              byte.toString() !== "255" || byte.isZero() ||
+              !byte.equals(255n) || byte.compare(previous) !== 1) {
+            rollback("u8 value mismatch", 101);
+          }
+
+          const overflow = byte.add(1);
+          if (overflow.ok || Object.isExtensible(overflow.error) ||
+              overflow.error.domain !== "uint" ||
+              overflow.error.issue !== "overflow" ||
+              overflow.error.bits !== 8) {
+            rollback("overflow result mismatch", 102);
+          }
+          const underflow = UInt8.zero.subtract(1);
+          if (underflow.ok || underflow.error.domain !== "uint" ||
+              underflow.error.issue !== "underflow" ||
+              underflow.error.bits !== 8) {
+            rollback("underflow result mismatch", 103);
+          }
+          if (!byte.saturatingAdd(previous).equals(UInt8.max) ||
+              !UInt8.zero.saturatingSubtract(byte).equals(UInt8.zero)) {
+            rollback("saturating arithmetic mismatch", 104);
+          }
+          let rejectedSaturatingOperand = false;
+          try {
+            byte.saturatingAdd(256);
+          } catch (error) {
+            rejectedSaturatingOperand = error instanceof TypeError;
+          }
+          if (!rejectedSaturatingOperand) {
+            rollback("saturating operand contract mismatch", 105);
+          }
+          let rejectedSaturatingWidth = false;
+          try {
+            byte.saturatingAdd(UInt16.zero);
+          } catch (error) {
+            rejectedSaturatingWidth = error instanceof RangeError;
+          }
+          if (!rejectedSaturatingWidth) {
+            rollback("saturating width contract mismatch", 105);
+          }
+
+          const quotient = rollback.require(
+            UInt64.mulDiv(UInt64.max, UInt64.max, UInt64.max),
+            "mulDiv construction",
+            112
+          );
+          if (!quotient.equals(UInt64.max)) {
+            rollback("mulDiv exact result mismatch", 114);
+          }
+          const floor = rollback.require(
+            UInt8.mulDiv(10, 3, 4),
+            "mulDiv floor",
+            116
+          );
+          if (!floor.equals(7)) rollback("mulDiv floor mismatch", 117);
+          const mulDivOverflow = UInt64.mulDiv(UInt64.max, 2n, 1n);
+          const divisionByZero = UInt64.mulDiv(UInt64.max, 1n, 0n);
+          if (mulDivOverflow.ok ||
+              mulDivOverflow.error.issue !== "overflow" ||
+              divisionByZero.ok ||
+              divisionByZero.error.issue !== "division-by-zero") {
+            rollback("mulDiv failure mismatch", 118);
+          }
+
+          const outOfRange = UInt64.from(18446744073709551616n);
+          const negative = UInt64.from(-1n);
+          const unsafeNumber = UInt64.from(9007199254740992);
+          for (const result of [outOfRange, negative, unsafeNumber]) {
+            if (result.ok || result.error.domain !== "uint" ||
+                result.error.issue !== "out-of-range" ||
+                result.error.bits !== 64) {
+              rollback("range result mismatch", 105);
+            }
+          }
+
+          const safe = rollback.onFail(
+            UInt64.from(9007199254740991n), "u64 construction", 106);
+          const safeNumber = rollback.onFail(
+            safe.toNumber(), "safe conversion", 107);
+          if (safeNumber !== 9007199254740991) {
+            rollback("safe conversion mismatch", 108);
+          }
+          const unsafeConversion = UInt64.max.toNumber();
+          if (unsafeConversion.ok ||
+              unsafeConversion.error.domain !== "uint" ||
+              unsafeConversion.error.issue !== "out-of-range") {
+            rollback("unsafe conversion mismatch", 109);
+          }
+
+          if (Object.isExtensible(byte) || Object.isExtensible(UInt8)) {
+            rollback("UInt values are mutable", 110);
+          }
+          trace("uint", byte);
+          accept("bounded UInt", 111);
+        }
+    """
+    runner = HookRunner()
+
+    result = runner.run(source)
+
+    assert result.accepted, result.error
+    assert result.return_code == 111
+    assert result.return_msg == b"bounded UInt"
+    assert runner.runtime.traces[0].value == "b'255'"
+    assert [call.name for call in result.call_log] == ["trace", "accept"]
+
+
 def test_rich_hook_input_retains_bare_array_buffer_from_to_bytes():
     source = """
         export function main(_reserved) {
@@ -370,7 +672,10 @@ def test_rich_hook_input_retains_bare_array_buffer_from_to_bytes():
             },
           };
           rollback.onFail(state.set("RICH", rich));
-          rollback.onFail(state.set("HEX", { toBytes: () => "0D0E0F" }));
+          let rejected = false;
+          try { state.set("HEX", { toBytes: () => "0D0E0F" }); }
+          catch (error) { rejected = error instanceof TypeError; }
+          if (!rejected) rollback("string bytes accepted", 85);
           accept("rich bytes retained", 85);
         }
     """
@@ -382,9 +687,7 @@ def test_rich_hook_input_retains_bare_array_buffer_from_to_bytes():
     assert result.return_msg == b"rich bytes retained"
     assert result.return_code == 85
     assert runner.runtime.state_db[b"RICH"] == bytes([0xA1, 0xB2, 0xC3])
-    assert runner.runtime.state_db[b"HEX"] == bytes([0x0D, 0x0E, 0x0F])
     assert [call.name for call in result.call_log] == [
-        "state_set",
         "state_set",
         "accept",
     ]
@@ -535,21 +838,18 @@ def test_typescript_public_api_reaches_the_real_host():
           if (previous !== undefined) rollback("state unexpectedly present", 92);
 
           rollback.onAnyFail([
-            state.set("TYPED", STBlob.from("A1B2C3")),
+            state.set("TYPED", STBlob.fromHex("A1B2C3")),
             state.set("TYPED-SECOND", new Uint8Array([4, 5, 6])),
           ]);
-          const selected = rollback.onAllFail<
-            string,
-            ResultFailure & { readonly issue: "missing" }
-          >(
+          const selected = rollback.onAllFail(
             [
-              { ok: false, issue: "missing" },
-              { ok: true, value: "kept" },
+              state.get("X".repeat(33)),
+              state.get("TYPED"),
             ],
             "no typed candidate",
             96,
           );
-          if (selected.length !== 1 || selected[0] !== "kept") {
+          if (selected.length !== 1 || selected[0]?.toHex() !== "A1B2C3") {
             rollback("typed result mismatch", 97);
           }
           const stored = rollback.require(
@@ -575,5 +875,164 @@ def test_typescript_public_api_reaches_the_real_host():
         "state_set",
         "state_set",
         "state",
+        "state",
+        "state",
         "accept",
     ]
+
+
+def test_result_ok_or_uses_fallback_only_for_failure():
+    source = """
+        export function main(): never {
+          const absent = state.get("MISSING").okOr(STBlob.fromHex("AA"));
+          if (absent !== undefined) rollback("absence used fallback", 97);
+
+          const fallback = state.get("X".repeat(33)).okOr(STBlob.fromHex("BB"));
+          if (fallback === undefined || fallback.toHex() !== "BB") {
+            rollback("failure missed fallback", 98);
+          }
+          accept("result fallback ok", 99);
+        }
+    """
+
+    result = HookRunner().run_typescript(source)
+
+    assert result.accepted, result.error
+    assert result.return_code == 99
+    assert result.return_msg == b"result fallback ok"
+
+
+def test_result_ok_or_handle_receives_only_failures():
+    source = """
+        export function main(): never {
+          let handled = 0;
+          const absent = state.get("MISSING").okOrHandle(() => {
+            handled += 1;
+            return STBlob.fromHex("AA");
+          });
+          if (absent !== undefined) rollback("absence invoked handler", 100);
+
+          const fallback = state.get("X".repeat(33)).okOrHandle(error => {
+            handled += 1;
+            if (error.domain !== "host") rollback("wrong error domain", 101);
+            return STBlob.fromHex("CC");
+          });
+          if (handled !== 1 || fallback === undefined || fallback.toHex() !== "CC") {
+            rollback("failure handler mismatch", 102);
+          }
+          accept("result handler ok", 103);
+        }
+    """
+
+    result = HookRunner().run_typescript(source)
+
+    assert result.accepted, result.error
+    assert result.return_code == 103
+    assert result.return_msg == b"result handler ok"
+
+
+def test_result_ok_map_or_transforms_success_and_extracts_a_bare_value():
+    source = '''
+        export function main(): never {
+          let calls = 0;
+          const mapped = state.get("VALUE").okMapOr(value => {
+            calls += 1;
+            return value?.toHex();
+          }, "fallback");
+          if (mapped !== "A1B2") rollback("success mapping failed", 115);
+
+          const absent = state.get("MISSING").okMapOr(
+            value => value === undefined ? "absent" : "present",
+            "failure"
+          );
+          if (absent !== "absent") rollback("undefined success lost", 116);
+
+          const failed = state.get("X".repeat(33)).okMapOr(() => {
+            calls += 1;
+            return "unexpected";
+          }, "fallback");
+          if (failed !== "fallback" || calls !== 1) {
+            rollback("failure extraction failed", 117);
+          }
+          accept("result map-or ok", 118);
+        }
+    '''
+    runner = HookRunner()
+    runner.runtime.state_db[b"VALUE"] = bytes.fromhex("A1B2")
+
+    result = runner.run_typescript(source)
+
+    assert result.accepted, result.error
+    assert result.return_code == 118
+    assert result.return_msg == b"result map-or ok"
+
+
+def test_void_result_moot_declares_failure_irrelevant():
+    result = HookRunner().run_typescript(
+        '''
+        export function main(): never {
+          state.set("TRANSIENT", new Uint8Array([1])).moot();
+          state.set("X".repeat(33), new Uint8Array([2])).moot();
+          accept("result moot", 119);
+        }
+        '''
+    )
+
+    assert result.accepted, result.error
+    assert result.return_code == 119
+    assert result.return_msg == b"result moot"
+    assert [call.name for call in result.call_log] == [
+        "state_set",
+        "state_set",
+        "accept",
+    ]
+
+
+def test_value_result_cannot_be_made_moot_from_javascript():
+    result = HookRunner().run(
+        '''
+        export function main() {
+          const valueResult = state.get("MISSING");
+          if (valueResult.moot !== undefined) {
+            rollback("value Result exposes moot", 121);
+          }
+          const effectResult = state.set("TRANSIENT", new Uint8Array([1]));
+          if (typeof effectResult.moot !== "function" ||
+              !Object.isFrozen(Object.getPrototypeOf(effectResult))) {
+            rollback("void Result lacks frozen moot capability", 122);
+          }
+          try {
+            effectResult.moot.call(valueResult);
+          } catch (error) {
+            if (error instanceof TypeError &&
+                error.message === "Result.moot: expected void-effect Result") {
+              accept("value result protected", 120);
+            }
+          }
+          rollback("borrowed moot accepted value Result", 123);
+        }
+        '''
+    )
+
+    assert result.accepted, result.error
+    assert result.return_code == 120
+    assert result.return_msg == b"value result protected"
+
+
+def test_hook_account_is_the_declared_total_account_id():
+    result = HookRunner().run_typescript(
+        '''
+        export function main(): never {
+          const account: AccountID = hook.account();
+          if (account.toHex().length !== 40 || account.toBytes().length !== 20) {
+            rollback("invalid Hook account", 108);
+          }
+          accept("total Hook account", 109);
+        }
+        '''
+    )
+
+    assert result.accepted, result.error
+    assert result.return_code == 109
+    assert result.return_msg == b"total Hook account"
+    assert [call.name for call in result.call_log] == ["hook_account", "accept"]

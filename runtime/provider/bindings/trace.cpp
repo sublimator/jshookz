@@ -1,8 +1,6 @@
 #include "common.hpp"
 #include "hook_imports.hpp"
 
-#include <climits>
-
 namespace jshookz::provider::bindings {
 namespace {
 
@@ -13,41 +11,52 @@ js_trace(JSContext *ctx, JSValueConst this_val,
     if (argc < 1 || !JS_IsString(argv[0]))
         return JS_ThrowTypeError(ctx, "trace: expected a string label");
 
-    size_t label_len;
-    const char *label = JS_ToCStringLen(ctx, &label_len, argv[0]);
+    auto label = qjs::ByteView::get(
+        ctx, argv[0], qjs::StringBytes::utf8);
     if (!label)
-        return JS_EXCEPTION;
+        return qjs::byteInputTypeError(
+            ctx, "trace label", qjs::StringBytes::utf8);
 
-    JSValue rendered = JS_UNDEFINED;
-    const char *data = "";
-    size_t data_len = 0;
+    qjs::OwnedValue rendered(ctx);
+    qjs::ByteView data = qjs::ByteView::get(
+        ctx, JS_UNDEFINED, qjs::StringBytes::utf8);
+    std::uint32_t asHex = 0;
+
     if (argc > 1 && !JS_IsUndefined(argv[1])) {
-        rendered = JS_ToString(ctx, argv[1]);
-        if (JS_IsException(rendered)) {
-            JS_FreeCString(ctx, label);
-            return rendered;
+        if (JS_IsObject(argv[1])) {
+            data = qjs::ByteView::get(
+                ctx,
+                argv[1],
+                qjs::StringBytes::hex,
+                qjs::RichBytes::callToBytes);
+            if (data) {
+                asHex = 1;
+            } else if (JS_HasException(ctx)) {
+                return JS_EXCEPTION;
+            }
         }
-        data = JS_ToCStringLen(ctx, &data_len, rendered);
+
         if (!data) {
-            JS_FreeValue(ctx, rendered);
-            JS_FreeCString(ctx, label);
-            return JS_EXCEPTION;
+            rendered = qjs::OwnedValue(
+                ctx, JS_ToString(ctx, argv[1]));
+            if (rendered.isException())
+                return rendered.release();
+            data = qjs::ByteView::get(
+                ctx, rendered.get(), qjs::StringBytes::utf8);
+            if (!data)
+                return qjs::byteInputTypeError(
+                    ctx, "trace value", qjs::StringBytes::utf8);
         }
     }
 
-    if (label_len > UINT32_MAX || data_len > UINT32_MAX) {
-        if (data_len != 0) JS_FreeCString(ctx, data);
-        JS_FreeValue(ctx, rendered);
-        JS_FreeCString(ctx, label);
-        return JS_ThrowRangeError(ctx, "trace: label or value is too large");
-    }
-
-    int64_t result = hook_trace(
-        (uint32_t)(uintptr_t)label, (uint32_t)label_len,
-        (uint32_t)(uintptr_t)data, (uint32_t)data_len, 0);
-    if (!JS_IsUndefined(rendered)) JS_FreeCString(ctx, data);
-    JS_FreeValue(ctx, rendered);
-    JS_FreeCString(ctx, label);
+    int64_t const result = hook_trace(
+        static_cast<std::uint32_t>(
+            reinterpret_cast<std::uintptr_t>(label.data())),
+        label.size(),
+        static_cast<std::uint32_t>(
+            reinterpret_cast<std::uintptr_t>(data.data())),
+        data.size(),
+        asHex);
     if (result < 0)
         return JS_ThrowInternalError(
             ctx, "trace: host returned %lld", (long long)result);
@@ -56,11 +65,11 @@ js_trace(JSContext *ctx, JSValueConst this_val,
 
 }  // namespace
 
-void
+bool
 registerTrace(JSContext *ctx, JSValue global)
 {
-    JS_SetPropertyStr(ctx, global, "trace",
-        JS_NewCFunction(ctx, js_trace, "trace", 2));
+    return JS_SetPropertyStr(ctx, global, "trace",
+        JS_NewCFunction(ctx, js_trace, "trace", 2)) >= 0;
 }
 
 }  // namespace jshookz::provider::bindings

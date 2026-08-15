@@ -2,18 +2,20 @@
 
 namespace jshookz::provider {
 
-void
+bool
 registerBindings(JSContext *ctx)
 {
-    JSValue global = JS_GetGlobalObject(ctx);
-    bindings::registerHook(ctx, global);
-    bindings::registerControl(ctx, global);
-    bindings::registerLedger(ctx, global);
-    bindings::registerState(ctx, global);
-    bindings::registerEmission(ctx, global);
-    bindings::registerTrace(ctx, global);
-    bindings::registerLegacy(ctx, global);
-    JS_FreeValue(ctx, global);
+    qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
+    if (global.isException())
+        return false;
+    return bindings::registerResult(ctx) &&
+        bindings::registerHook(ctx, global.get()) &&
+        bindings::registerControl(ctx, global.get()) &&
+        bindings::registerLedger(ctx, global.get()) &&
+        bindings::registerState(ctx, global.get()) &&
+        bindings::registerEmission(ctx, global.get()) &&
+        bindings::registerTrace(ctx, global.get()) &&
+        bindings::registerLegacy(ctx, global.get());
 }
 
 }  // namespace jshookz::provider

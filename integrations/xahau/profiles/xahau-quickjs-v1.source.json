@@ -6,6 +6,11 @@
     "hook_api_version": 1,
     "kind": "quickjs-bytecode"
   },
+  "javascript_surface": {
+    "schema": "jshookz.javascript-surface.v1",
+    "declaration": "packages/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
+    "manifest": "packages/jshookz/src/jshookz/types/xahau-quickjs-v1.surface.json"
+  },
   "bytecode_abi": {
     "quickjs_version": "2025-09-13",
     "quickjs_bytecode_version": 5,
@@ -100,7 +105,7 @@
   },
   "execution": {
     "host_adapter_policy": "xahau-raw-hook-host-v1",
-    "result_failure_policy": "rollback.onFail-preserves-coded-failure;rollback.require-collapses-failure-or-absence-to-explicit-message-and-code",
+    "result_failure_policy": "rollback.onFail-preserves-coded-failure;rollback.require-collapses-failure-or-absence-to-explicit-message-and-optional-code-default-zero",
     "initialization": "finite-cold-qjs-init-budget-before-invocation-fuel-reset",
     "terminals": "record-hook-result-and-uncatchable-wasmtime-trap",
     "ordinary_host_status": "returned-as-i64-never-trapped",
