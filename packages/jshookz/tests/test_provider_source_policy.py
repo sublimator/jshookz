@@ -64,3 +64,62 @@ def test_surface_byte_policies_are_cpp_policy_names():
     implemented = _cpp_byte_policy_names((PROVIDER / "quickjs.hpp").read_text())
 
     assert declared <= implemented
+
+
+_BINDING_POLICY = re.compile(
+    r"ByteView::getBinding\(\s*ctx\s*,\s*[^,]+,\s*"
+    r'"(?P<binding>[^"]+)"\s*,\s*(?P<parameter>\d+)\s*,\s*'
+    r"qjs::BytePolicy::(?P<policy>[A-Za-z][A-Za-z0-9]*)\s*\)",
+    re.DOTALL,
+)
+
+
+def _cpp_binding_byte_policies(sources: dict[str, str]) -> dict[tuple[str, str], str]:
+    policies: dict[tuple[str, str], str] = {}
+    for source in sources.values():
+        for match in _BINDING_POLICY.finditer(source):
+            coordinate = (match["binding"], match["parameter"])
+            assert coordinate not in policies, f"duplicate binding byte policy: {coordinate}"
+            policies[coordinate] = match["policy"]
+    return policies
+
+
+def _surface_binding_byte_policies() -> dict[tuple[str, str], str]:
+    surface = json.loads(SURFACE.read_text())
+    return {
+        (binding, parameter): policy
+        for binding, parameters in surface["byte_policies"].items()
+        for parameter, policy in parameters.items()
+    }
+
+
+def _binding_policy_join(sources: dict[str, str]) -> bool:
+    return _cpp_binding_byte_policies(sources) == _surface_binding_byte_policies()
+
+
+def test_binding_policy_join_detects_a_retargeted_accept():
+    control = (PROVIDER / "bindings" / "control.cpp").read_text()
+    mutated, replacements = re.subn(
+        r'("accept"\s*,\s*0\s*,\s*qjs::BytePolicy::)lifecycleMessage',
+        r"\1bytesLike",
+        control,
+        count=1,
+    )
+    assert replacements == 1
+
+    live_sources = {
+        str(path.relative_to(PROVIDER)): path.read_text()
+        for path in PROVIDER.rglob("*.cpp")
+    }
+    live_sources["bindings/control.cpp"] = mutated
+
+    assert not _binding_policy_join(live_sources)
+
+
+def test_surface_byte_policies_match_cpp_binding_uses_exactly():
+    sources = {
+        str(path.relative_to(PROVIDER)): path.read_text()
+        for path in PROVIDER.rglob("*.cpp")
+    }
+
+    assert _binding_policy_join(sources)

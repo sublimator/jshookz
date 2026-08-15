@@ -22,8 +22,8 @@ js_hook_accept(JSContext *ctx, JSValueConst this_val,
     /* A lifecycle message string is UTF-8 text, not the hex-string shorthand
        accepted by BytesLike APIs. accept deliberately does not invoke an
        arbitrary rich value's toBytes method before terminating execution. */
-    auto message = qjs::ByteView::get(
-        ctx, argv[0], qjs::BytePolicy::lifecycleMessage);
+    auto message = qjs::ByteView::getBinding(ctx, argv[0], "accept", 0,
+                                             qjs::BytePolicy::lifecycleMessage);
     if (!message)
         return qjs::byteInputTypeError(
             ctx, "accept", qjs::BytePolicy::lifecycleMessage);
@@ -43,10 +43,8 @@ js_hook_rollback(JSContext *ctx, JSValueConst this_val,
     if (argc == 0 || JS_IsUndefined(argv[0]))
         return JS_NewInt64(ctx, hook_rollback(0, 0, code));
 
-    auto message = qjs::ByteView::get(
-        ctx,
-        argv[0],
-        qjs::BytePolicy::lifecycleMessage);
+    auto message = qjs::ByteView::getBinding(ctx, argv[0], "rollback", 0,
+                                             qjs::BytePolicy::lifecycleMessage);
     if (!message)
         return qjs::byteInputTypeError(
             ctx, "rollback", qjs::BytePolicy::lifecycleMessage);
