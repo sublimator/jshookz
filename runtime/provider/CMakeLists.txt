@@ -134,6 +134,10 @@ add_custom_command(TARGET jshookz_provider POST_BUILD
     COMMAND "${JSHOOKZ_WASM_OPT}"
         "$<TARGET_FILE:jshookz_provider>"
         -O3
+        # DWARF records checkout and build-environment details. The sealed
+        # provider is byte-pinned, so retaining it makes otherwise equivalent
+        # macOS and Linux builds produce different artifact identities.
+        --strip-debug
         -o "$<TARGET_FILE:jshookz_provider>"
     COMMENT "Optimizing provider with Binaryen ${JSHOOKZ_BINARYEN_VERSION}"
     VERBATIM

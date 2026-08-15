@@ -73,6 +73,10 @@ interface ResultInstance<T, Error> {
   /**
    * Return `.value` whenever `.ok` is true; otherwise invoke `handler` once
    * with `.error` and return the value it produces.
+   *
+   * The compiler rejects handlers whose inferred return type is `never`.
+   * Termination is explicit control flow: use `rollback.onFail` for failure
+   * rollback, or exhaustive `.ok` narrowing for another terminal.
    */
   okOrHandle<Fallback>(handler: (error: Error) => Fallback): T | Fallback;
 
