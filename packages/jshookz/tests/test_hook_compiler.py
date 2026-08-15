@@ -37,6 +37,38 @@ def test_default_v1_declarations_reject_unimplemented_rich_api(tmp_path: Path):
         compile_hook(source)
 
 
+def test_result_moot_is_restricted_to_void_results(tmp_path: Path):
+    source = tmp_path / "moot-value.hook.ts"
+    source.write_text(
+        "export function main(): never { "
+        "state.get('meaningful').moot(); "
+        "return accept(); }"
+    )
+
+    with pytest.raises(RuntimeError, match="Property 'moot' does not exist"):
+        compile_hook(source)
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "state.get('key');",
+        "state.set('key', new Uint8Array([1]));",
+        "void state.set('key', new Uint8Array([1]));",
+    ],
+)
+def test_compiler_rejects_discarded_results(tmp_path: Path, statement: str):
+    source = tmp_path / "discarded-result.hook.ts"
+    source.write_text(
+        "export function main(): never { "
+        f"{statement} "
+        "return accept(); }"
+    )
+
+    with pytest.raises(RuntimeError, match="six legal exits"):
+        compile_hook(source)
+
+
 def test_v1_example_compiles_and_packages(tmp_path: Path):
     source = tmp_path / "v1.hook.ts"
     source.write_text(
@@ -190,7 +222,7 @@ def test_compiler_rejects_top_level_terminal_invocation(tmp_path: Path):
         compile_hook(source)
 
 
-def test_provider_refuses_missing_main_export(tmp_path: Path):
+def test_compiler_refuses_missing_main_export(tmp_path: Path):
     source = tmp_path / "missing-entry.hook.ts"
     source.write_text(
         """
@@ -200,20 +232,17 @@ def test_provider_refuses_missing_main_export(tmp_path: Path):
         }
         """
     )
-    compiled = compile_hook(source)
-
-    host = WasmHost(wasm_path=XAHAU_HOOK_PROVIDER_WASM)
-    host.init()
-    evaluated = host.run_hook_bytecode(compiled.bytecode)
-
-    assert evaluated.exit_code == -1
-    assert evaluated.error == "TypeError: Hook module has no exported main entry point"
+    with pytest.raises(RuntimeError, match="missing exported main entry point"):
+        compile_hook(source)
 
 
 def test_provider_dispatches_callback_export(tmp_path: Path):
     source = tmp_path / "callback.hook.ts"
     source.write_text(
         """
+        export function main(): never {
+          throw new Error("entered main");
+        }
         export function callback(info: CallbackInfo): never {
           throw new Error(`entered callback:${info.failed}:${info.rawFlags}`);
         }

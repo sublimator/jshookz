@@ -1,5 +1,6 @@
 #include "quickjs.hpp"
 
+#include <cmath>
 #include <cstring>
 #include <limits>
 
@@ -85,6 +86,39 @@ ByteView::clear() noexcept
 }
 
 bool
+ByteView::parseArray(JSValueConst value)
+{
+    OwnedValue lengthValue = property(ctx_, value, "length");
+    if (lengthValue.isException())
+        return false;
+    std::uint32_t length = 0;
+    if (JS_ToUint32(ctx_, &length, lengthValue.get()) < 0)
+        return false;
+    if (length != 0) {
+        allocated_ = static_cast<std::uint8_t *>(js_malloc(ctx_, length));
+        if (allocated_ == nullptr)
+            return false;
+    }
+    for (std::uint32_t index = 0; index < length; ++index) {
+        OwnedValue valueAtIndex = element(ctx_, value, index);
+        double number = 0;
+        if (valueAtIndex.isException())
+            return false;
+        if (!JS_IsNumber(valueAtIndex.get()) ||
+            JS_ToFloat64(ctx_, &number, valueAtIndex.get()) < 0)
+            return false;
+        if (!std::isfinite(number) || std::trunc(number) != number ||
+            number < 0 || number > 255)
+            return false;
+        allocated_[index] = static_cast<std::uint8_t>(number);
+    }
+    data_ = allocated_;
+    size_ = length;
+    valid_ = true;
+    return true;
+}
+
+bool
 ByteView::parseBinary(JSValueConst value)
 {
     size_t offset = 0;
@@ -128,6 +162,8 @@ bool
 ByteView::parseString(JSValueConst value, StringBytes strings)
 {
     if (!JS_IsString(value))
+        return false;
+    if (strings == StringBytes::reject)
         return false;
 
     size_t length = 0;
@@ -189,10 +225,7 @@ ByteView::parseRich(JSValueConst value)
         ctx_, JS_Call(ctx_, toBytes.get(), value, 0, nullptr));
     if (bytes.isException())
         return false;
-    /* Rich values normally return a Uint8Array. Preserve the earlier bridge's
-       hex-string fallback for custom toBytes implementations. */
-    return parseBinary(bytes.get()) ||
-        parseString(bytes.get(), StringBytes::hex);
+    return parseBinary(bytes.get());
 }
 
 ByteView
@@ -207,6 +240,13 @@ ByteView::get(
        cleared invalid-class exceptions as routine type probes for them. */
     if (JS_IsString(value)) {
         result.parseString(value, strings);
+        return result;
+    }
+    int const isArray = JS_IsArray(ctx, value);
+    if (isArray < 0)
+        return result;
+    if (isArray) {
+        result.parseArray(value);
         return result;
     }
     if (result.parseBinary(value))
@@ -273,12 +313,18 @@ byteInputTypeError(
     if (strings == StringBytes::hex) {
         return JS_ThrowTypeError(
             ctx,
-            "%s: expected Uint8Array, ArrayBuffer, or hex string",
+            "%s: expected byte array, typed array, ArrayBuffer, or hex string",
+            operation);
+    }
+    if (strings == StringBytes::reject) {
+        return JS_ThrowTypeError(
+            ctx,
+            "%s: expected byte array, typed array, or ArrayBuffer",
             operation);
     }
     return JS_ThrowTypeError(
         ctx,
-        "%s: expected string, Uint8Array, or ArrayBuffer",
+        "%s: expected string, byte array, typed array, or ArrayBuffer",
         operation);
 }
 

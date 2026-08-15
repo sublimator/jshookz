@@ -60,8 +60,9 @@ int
 get_result_success(JSContext *ctx, JSValueConst value,
                    const char *function_name)
 {
-    if (!JS_IsObject(value)) {
-        JS_ThrowTypeError(ctx, "%s: expected Result", function_name);
+    if (!isResult(value)) {
+        JS_ThrowTypeError(
+            ctx, "%s: expected provider Result", function_name);
         return -1;
     }
 
@@ -117,7 +118,10 @@ js_rollback_on_fail(JSContext *ctx, JSValueConst this_val,
             return JS_ThrowTypeError(
                 ctx, "rollback.onFail: expected numeric rollback code");
     } else {
-        qjs::OwnedValue code_value = qjs::property(ctx, argv[0], "code");
+        qjs::OwnedValue error = qjs::property(ctx, argv[0], "error");
+        if (error.isException())
+            return error.release();
+        qjs::OwnedValue code_value = qjs::property(ctx, error.get(), "code");
         if (code_value.isException())
             return code_value.release();
         if (!JS_IsNumber(code_value.get()) ||
@@ -150,23 +154,38 @@ js_rollback_require(JSContext *ctx, JSValueConst this_val,
                     int argc, JSValueConst *argv)
 {
     if (argc < 1)
-        return JS_ThrowTypeError(ctx, "rollback.require: expected Result");
-    int const success =
-        get_result_success(ctx, argv[0], "rollback.require");
-    if (success < 0)
-        return JS_EXCEPTION;
-    if (success) {
-        qjs::OwnedValue value = qjs::property(ctx, argv[0], "value");
-        if (value.isException() || !JS_IsUndefined(value.get()))
-            return value.release();
+        return JS_ThrowTypeError(
+            ctx, "rollback.require: expected Result or optional value");
+
+    if (isResult(argv[0])) {
+        int const success =
+            get_result_success(ctx, argv[0], "rollback.require");
+        if (success < 0)
+            return JS_EXCEPTION;
+        if (success) {
+            qjs::OwnedValue value = qjs::property(ctx, argv[0], "value");
+            if (value.isException() || !JS_IsUndefined(value.get()))
+                return value.release();
+        }
+    } else {
+        int const truthy = JS_ToBool(ctx, argv[0]);
+        if (truthy < 0)
+            return JS_EXCEPTION;
+        if (truthy)
+            return JS_DupValue(ctx, argv[0]);
     }
 
-    if (argc < 3 || JS_IsUndefined(argv[1]) ||
-        !JS_IsNumber(argv[2]))
+    if (argc < 2 || JS_IsUndefined(argv[1]))
         return JS_ThrowTypeError(
-            ctx, "rollback.require: expected message and numeric code");
-    JSValueConst rollback_args[2] = { argv[1], argv[2] };
-    return js_hook_rollback(ctx, this_val, 2, rollback_args);
+            ctx, "rollback.require: expected rollback message");
+
+    JSValueConst rollback_args[2] = {
+        argv[1],
+        argc > 2 ? argv[2] : JS_UNDEFINED,
+    };
+    int const rollback_argc = argc > 2 ? 2 : 1;
+    return js_hook_rollback(
+        ctx, this_val, rollback_argc, rollback_args);
 }
 
 JSValue
@@ -266,21 +285,27 @@ js_rollback_on_all_fail(JSContext *ctx, JSValueConst this_val,
 
 }  // namespace
 
-void
+bool
 registerControl(JSContext *ctx, JSValue global)
 {
-    JS_SetPropertyStr(ctx, global, "accept",
-        JS_NewCFunction(ctx, js_hook_accept, "accept", 2));
-    JSValue rollback = JS_NewCFunction(ctx, js_hook_rollback, "rollback", 2);
-    JS_SetPropertyStr(ctx, rollback, "onFail",
-        JS_NewCFunction(ctx, js_rollback_on_fail, "onFail", 3));
-    JS_SetPropertyStr(ctx, rollback, "require",
-        JS_NewCFunction(ctx, js_rollback_require, "require", 3));
-    JS_SetPropertyStr(ctx, rollback, "onAnyFail",
-        JS_NewCFunction(ctx, js_rollback_on_any_fail, "onAnyFail", 3));
-    JS_SetPropertyStr(ctx, rollback, "onAllFail",
-        JS_NewCFunction(ctx, js_rollback_on_all_fail, "onAllFail", 3));
-    JS_SetPropertyStr(ctx, global, "rollback", rollback);
+    if (JS_SetPropertyStr(ctx, global, "accept",
+            JS_NewCFunction(ctx, js_hook_accept, "accept", 2)) < 0)
+        return false;
+    qjs::OwnedValue rollback(
+        ctx, JS_NewCFunction(ctx, js_hook_rollback, "rollback", 2));
+    if (rollback.isException())
+        return false;
+    if (JS_SetPropertyStr(ctx, rollback.get(), "onFail",
+            JS_NewCFunction(ctx, js_rollback_on_fail, "onFail", 3)) < 0 ||
+        JS_SetPropertyStr(ctx, rollback.get(), "require",
+            JS_NewCFunction(ctx, js_rollback_require, "require", 3)) < 0 ||
+        JS_SetPropertyStr(ctx, rollback.get(), "onAnyFail",
+            JS_NewCFunction(ctx, js_rollback_on_any_fail, "onAnyFail", 3)) < 0 ||
+        JS_SetPropertyStr(ctx, rollback.get(), "onAllFail",
+            JS_NewCFunction(ctx, js_rollback_on_all_fail, "onAllFail", 3)) < 0)
+        return false;
+    return JS_SetPropertyStr(
+        ctx, global, "rollback", rollback.release()) >= 0;
 }
 
 }  // namespace jshookz::provider::bindings

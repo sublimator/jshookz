@@ -22,6 +22,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <new>
+#include <utility>
 
 using namespace hook;
 namespace qjs = jshookz::provider::qjs;
@@ -54,6 +56,24 @@ static JSClassDef js_blob_class = {
     .finalizer = js_blob_finalizer,
 };
 
+template <class T, class... Args>
+static JSValue
+js_native_new(JSContext* ctx, JSClassID class_id, Args&&... args)
+{
+    void* storage = js_mallocz(ctx, sizeof(T));
+    if (!storage)
+        return JS_ThrowOutOfMemory(ctx);
+    T* value = new (storage) T(std::forward<Args>(args)...);
+    JSValue object = JS_NewObjectClass(ctx, class_id);
+    if (JS_IsException(object)) {
+        value->~T();
+        js_free(ctx, storage);
+        return object;
+    }
+    JS_SetOpaque(object, value);
+    return object;
+}
+
 static JSValue js_blob_new(JSContext *ctx, const uint8_t *data, size_t len) {
     auto *blob = (JSBlob *)js_mallocz(ctx, sizeof(JSBlob));
     if (!blob) return JS_ThrowOutOfMemory(ctx);
@@ -83,10 +103,23 @@ static JSValue js_blob_from(JSContext *ctx, JSValueConst this_val,
     if (argc < 1)
         return JS_ThrowTypeError(ctx, "STBlob.from() expects a byte value");
     auto bytes = qjs::ByteView::get(
+        ctx, argv[0], qjs::StringBytes::reject);
+    if (!bytes)
+        return qjs::byteInputTypeError(
+            ctx, "STBlob.from()", qjs::StringBytes::reject);
+    return js_blob_new(ctx, bytes.data(), bytes.size());
+}
+
+static JSValue js_blob_from_hex(JSContext *ctx, JSValueConst this_val,
+                                int argc, JSValueConst *argv)
+{
+    if (argc < 1 || !JS_IsString(argv[0]))
+        return JS_ThrowTypeError(ctx, "STBlob.fromHex() expects a hex string");
+    auto bytes = qjs::ByteView::get(
         ctx, argv[0], qjs::StringBytes::hex);
     if (!bytes)
         return qjs::byteInputTypeError(
-            ctx, "STBlob.from()", qjs::StringBytes::hex);
+            ctx, "STBlob.fromHex()", qjs::StringBytes::hex);
     return js_blob_new(ctx, bytes.data(), bytes.size());
 }
 
@@ -144,7 +177,7 @@ static JSValue js_blob_equals(JSContext *ctx, JSValueConst this_val,
     if (!blob) return JS_EXCEPTION;
     if (argc < 1) return JS_FALSE;
     auto other = qjs::ByteView::get(
-        ctx, argv[0], qjs::StringBytes::hex);
+        ctx, argv[0], qjs::StringBytes::reject);
     if (!other)
         return JS_HasException(ctx) ? JS_EXCEPTION : JS_FALSE;
     bool equal = blob->len == other.size() &&
@@ -163,13 +196,17 @@ static const JSCFunctionListEntry js_blob_proto_funcs[] = {
 
 static const JSCFunctionListEntry js_blob_static_funcs[] = {
     JS_CFUNC_DEF("from", 1, js_blob_from),
+    JS_CFUNC_DEF("fromHex", 1, js_blob_from_hex),
 };
 
 // --- Hash256 ---
 
 static void js_hash256_finalizer(JSRuntime *rt, JSValue val) {
     auto *h = (Hash256 *)JS_GetOpaque(val, js_hash256_class_id);
-    if (h) js_free_rt(rt, h);
+    if (h) {
+        h->~Hash256();
+        js_free_rt(rt, h);
+    }
 }
 
 static JSClassDef js_hash256_class = {
@@ -177,15 +214,17 @@ static JSClassDef js_hash256_class = {
     .finalizer = js_hash256_finalizer,
 };
 
-// Hash256.from(BytesLike) — accepts Uint8Array, ArrayBuffer, or hex string
+// Hash256.from(BytesLike) — shared byte inputs, with strings decoded as hex
 static JSValue js_hash256_from(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv)
 {
+    if (argc < 1)
+        return JS_ThrowTypeError(ctx, "Hash256.from() expects a byte value");
     auto bytes = qjs::ByteView::get(
-        ctx, argv[0], qjs::StringBytes::hex);
+        ctx, argv[0], qjs::StringBytes::reject);
     if (!bytes) {
         return qjs::byteInputTypeError(
-            ctx, "Hash256.from()", qjs::StringBytes::hex);
+            ctx, "Hash256.from()", qjs::StringBytes::reject);
     }
     if (bytes.size() != 32) {
         return JS_ThrowTypeError(
@@ -194,12 +233,25 @@ static JSValue js_hash256_from(JSContext *ctx, JSValueConst this_val,
             bytes.size());
     }
 
-    auto *h = (Hash256 *)js_mallocz(ctx, sizeof(Hash256));
-    new (h) Hash256(bytes.data(), bytes.size());
+    return js_native_new<Hash256>(
+        ctx, js_hash256_class_id, bytes.data(), bytes.size());
+}
 
-    JSValue obj = JS_NewObjectClass(ctx, js_hash256_class_id);
-    JS_SetOpaque(obj, h);
-    return obj;
+static JSValue js_hash256_from_hex(JSContext *ctx, JSValueConst this_val,
+                                   int argc, JSValueConst *argv)
+{
+    if (argc < 1 || !JS_IsString(argv[0]))
+        return JS_ThrowTypeError(ctx, "Hash256.fromHex() expects a hex string");
+    auto bytes = qjs::ByteView::get(ctx, argv[0], qjs::StringBytes::hex);
+    if (!bytes)
+        return qjs::byteInputTypeError(
+            ctx, "Hash256.fromHex()", qjs::StringBytes::hex);
+    if (bytes.size() != 32)
+        return JS_ThrowTypeError(
+            ctx, "Hash256.fromHex() needs exactly 32 bytes (got %u)",
+            bytes.size());
+    return js_native_new<Hash256>(
+        ctx, js_hash256_class_id, bytes.data(), bytes.size());
 }
 
 static JSValue js_hash256_to_hex(JSContext *ctx, JSValueConst this_val,
@@ -251,13 +303,17 @@ static const JSCFunctionListEntry js_hash256_proto_funcs[] = {
 //@@impl STHash static
 static const JSCFunctionListEntry js_hash256_static_funcs[] = {
     JS_CFUNC_DEF("from", 1, js_hash256_from),
+    JS_CFUNC_DEF("fromHex", 1, js_hash256_from_hex),
 };
 
 // --- AccountID (inherits Hash160 behavior) ---
 
 static void js_accountid_finalizer(JSRuntime *rt, JSValue val) {
     auto *a = (AccountID *)JS_GetOpaque(val, js_accountid_class_id);
-    if (a) js_free_rt(rt, a);
+    if (a) {
+        a->~AccountID();
+        js_free_rt(rt, a);
+    }
 }
 
 static JSClassDef js_accountid_class = {
@@ -269,11 +325,13 @@ static JSClassDef js_accountid_class = {
 static JSValue js_accountid_from(JSContext *ctx, JSValueConst this_val,
                                   int argc, JSValueConst *argv)
 {
+    if (argc < 1)
+        return JS_ThrowTypeError(ctx, "AccountID.from() expects a byte value");
     auto bytes = qjs::ByteView::get(
-        ctx, argv[0], qjs::StringBytes::hex);
+        ctx, argv[0], qjs::StringBytes::reject);
     if (!bytes) {
         return qjs::byteInputTypeError(
-            ctx, "AccountID.from()", qjs::StringBytes::hex);
+            ctx, "AccountID.from()", qjs::StringBytes::reject);
     }
     if (bytes.size() != 20) {
         return JS_ThrowTypeError(
@@ -282,12 +340,25 @@ static JSValue js_accountid_from(JSContext *ctx, JSValueConst this_val,
             bytes.size());
     }
 
-    auto *a = (AccountID *)js_mallocz(ctx, sizeof(AccountID));
-    new (a) AccountID(bytes.data(), bytes.size());
+    return js_native_new<AccountID>(
+        ctx, js_accountid_class_id, bytes.data(), bytes.size());
+}
 
-    JSValue obj = JS_NewObjectClass(ctx, js_accountid_class_id);
-    JS_SetOpaque(obj, a);
-    return obj;
+static JSValue js_accountid_from_hex(JSContext *ctx, JSValueConst this_val,
+                                     int argc, JSValueConst *argv)
+{
+    if (argc < 1 || !JS_IsString(argv[0]))
+        return JS_ThrowTypeError(ctx, "AccountID.fromHex() expects a hex string");
+    auto bytes = qjs::ByteView::get(ctx, argv[0], qjs::StringBytes::hex);
+    if (!bytes)
+        return qjs::byteInputTypeError(
+            ctx, "AccountID.fromHex()", qjs::StringBytes::hex);
+    if (bytes.size() != 20)
+        return JS_ThrowTypeError(
+            ctx, "AccountID.fromHex() needs exactly 20 bytes (got %u)",
+            bytes.size());
+    return js_native_new<AccountID>(
+        ctx, js_accountid_class_id, bytes.data(), bytes.size());
 }
 
 static JSValue js_accountid_to_hex(JSContext *ctx, JSValueConst this_val,
@@ -319,13 +390,17 @@ static const JSCFunctionListEntry js_accountid_proto_funcs[] = {
 //@@impl STAddress static
 static const JSCFunctionListEntry js_accountid_static_funcs[] = {
     JS_CFUNC_DEF("from", 1, js_accountid_from),
+    JS_CFUNC_DEF("fromHex", 1, js_accountid_from_hex),
 };
 
 // --- XFL ---
 
 static void js_xfl_finalizer(JSRuntime *rt, JSValue val) {
     auto *x = (XFL *)JS_GetOpaque(val, js_xfl_class_id);
-    if (x) js_free_rt(rt, x);
+    if (x) {
+        x->~XFL();
+        js_free_rt(rt, x);
+    }
 }
 
 static JSClassDef js_xfl_class = {
@@ -334,16 +409,14 @@ static JSClassDef js_xfl_class = {
 };
 
 static JSValue js_xfl_new(JSContext *ctx, const XFL &xfl) {
-    auto *x = (XFL *)js_mallocz(ctx, sizeof(XFL));
-    new (x) XFL(xfl);
-    JSValue obj = JS_NewObjectClass(ctx, js_xfl_class_id);
-    JS_SetOpaque(obj, x);
-    return obj;
+    return js_native_new<XFL>(ctx, js_xfl_class_id, xfl);
 }
 
 static JSValue js_xfl_from_raw(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv)
 {
+    if (argc < 1)
+        return JS_ThrowTypeError(ctx, "XFL.fromRaw() expects a value");
     int64_t raw;
     if (JS_IsBigInt(ctx, argv[0])) {
         if (JS_ToBigInt64(ctx, &raw, argv[0])) return JS_EXCEPTION;
@@ -352,6 +425,45 @@ static JSValue js_xfl_from_raw(JSContext *ctx, JSValueConst this_val,
     }
     return js_xfl_new(ctx, XFL(raw));
 }
+
+namespace jshookz::provider {
+
+JSValue
+makeSTBlob(
+    JSContext* ctx,
+    std::uint8_t const* bytes,
+    std::uint32_t length)
+{
+    return js_blob_new(ctx, bytes, length);
+}
+
+JSValue
+makeHash256(
+    JSContext* ctx,
+    std::uint8_t const* bytes,
+    std::uint32_t length)
+{
+    if (length != 32)
+        return JS_ThrowInternalError(
+            ctx, "Hash256 construction requires 32 bytes");
+    return js_native_new<Hash256>(
+        ctx, js_hash256_class_id, bytes, length);
+}
+
+JSValue
+makeAccountID(
+    JSContext* ctx,
+    std::uint8_t const* bytes,
+    std::uint32_t length)
+{
+    if (length != 20)
+        return JS_ThrowInternalError(
+            ctx, "AccountID construction requires 20 bytes");
+    return js_native_new<AccountID>(
+        ctx, js_accountid_class_id, bytes, length);
+}
+
+}  // namespace jshookz::provider
 
 static JSValue js_xfl_raw(JSContext *ctx, JSValueConst this_val)
 {
@@ -406,60 +518,136 @@ static const JSCFunctionListEntry js_xfl_static_funcs[] = {
     JS_CFUNC_DEF("fromRaw", 1, js_xfl_from_raw),
 };
 
+static bool
+install_account_constants(JSContext* ctx, JSValueConst global)
+{
+    qjs::OwnedValue factory(ctx, JS_GetPropertyStr(ctx, global, "AccountID"));
+    if (factory.isException())
+        return false;
+
+    std::uint8_t zeroBytes[20] = {};
+    std::uint8_t oneBytes[20] = {};
+    oneBytes[19] = 1;
+    qjs::OwnedValue zero(
+        ctx,
+        js_native_new<AccountID>(
+            ctx, js_accountid_class_id, zeroBytes, sizeof(zeroBytes)));
+    qjs::OwnedValue one(
+        ctx,
+        js_native_new<AccountID>(
+            ctx, js_accountid_class_id, oneBytes, sizeof(oneBytes)));
+    if (zero.isException() || one.isException())
+        return false;
+    if (JS_PreventExtensions(ctx, zero.get()) < 0 ||
+        JS_PreventExtensions(ctx, one.get()) < 0)
+        return false;
+    if (JS_DefinePropertyValueStr(
+            ctx,
+            factory.get(),
+            "zero",
+            zero.release(),
+            JS_PROP_ENUMERABLE) < 0 ||
+        JS_DefinePropertyValueStr(
+            ctx,
+            factory.get(),
+            "one",
+            one.release(),
+            JS_PROP_ENUMERABLE) < 0)
+        return false;
+    return JS_PreventExtensions(ctx, factory.get()) >= 0;
+}
+
 // --- Registration function (called from provider.cpp) ---
 
-extern "C" void register_cpp_types(JSContext *ctx)
+static bool
+register_cpp_type(
+    JSContext* ctx,
+    JSValueConst global,
+    char const* name,
+    JSClassID* class_id,
+    JSClassDef const* class_def,
+    JSCFunctionListEntry const* prototype_functions,
+    int prototype_function_count,
+    JSCFunctionListEntry const* static_functions,
+    int static_function_count)
 {
-    JSValue global = JS_GetGlobalObject(ctx);
-    JSValue proto, ctor;
+    JS_NewClassID(class_id);
+    if (JS_NewClass(JS_GetRuntime(ctx), *class_id, class_def) < 0)
+        return false;
 
-    // STBlob
-    JS_NewClassID(&js_blob_class_id);
-    JS_NewClass(JS_GetRuntime(ctx), js_blob_class_id, &js_blob_class);
-    proto = JS_NewObject(ctx);
-    JS_SetPropertyFunctionList(ctx, proto, js_blob_proto_funcs,
-                               sizeof(js_blob_proto_funcs) / sizeof(js_blob_proto_funcs[0]));
-    JS_SetClassProto(ctx, js_blob_class_id, proto);
-    ctor = JS_NewObject(ctx);
-    JS_SetPropertyFunctionList(ctx, ctor, js_blob_static_funcs,
-                               sizeof(js_blob_static_funcs) / sizeof(js_blob_static_funcs[0]));
-    JS_SetPropertyStr(ctx, global, "STBlob", ctor);
+    qjs::OwnedValue prototype(ctx, JS_NewObject(ctx));
+    if (prototype.isException() ||
+        JS_SetPropertyFunctionList(
+            ctx,
+            prototype.get(),
+            prototype_functions,
+            prototype_function_count) < 0)
+        return false;
+    JS_SetClassProto(ctx, *class_id, prototype.release());
 
-    // Hash256
-    JS_NewClassID(&js_hash256_class_id);
-    JS_NewClass(JS_GetRuntime(ctx), js_hash256_class_id, &js_hash256_class);
-    proto = JS_NewObject(ctx);
-    JS_SetPropertyFunctionList(ctx, proto, js_hash256_proto_funcs,
-                               sizeof(js_hash256_proto_funcs) / sizeof(js_hash256_proto_funcs[0]));
-    JS_SetClassProto(ctx, js_hash256_class_id, proto);
-    ctor = JS_NewObject(ctx);
-    JS_SetPropertyFunctionList(ctx, ctor, js_hash256_static_funcs,
-                               sizeof(js_hash256_static_funcs) / sizeof(js_hash256_static_funcs[0]));
-    JS_SetPropertyStr(ctx, global, "Hash256", ctor);
+    qjs::OwnedValue factory(ctx, JS_NewObject(ctx));
+    if (factory.isException() ||
+        JS_SetPropertyFunctionList(
+            ctx,
+            factory.get(),
+            static_functions,
+            static_function_count) < 0)
+        return false;
+    return JS_SetPropertyStr(
+        ctx, global, name, factory.release()) >= 0;
+}
 
-    // AccountID
-    JS_NewClassID(&js_accountid_class_id);
-    JS_NewClass(JS_GetRuntime(ctx), js_accountid_class_id, &js_accountid_class);
-    proto = JS_NewObject(ctx);
-    JS_SetPropertyFunctionList(ctx, proto, js_accountid_proto_funcs,
-                               sizeof(js_accountid_proto_funcs) / sizeof(js_accountid_proto_funcs[0]));
-    JS_SetClassProto(ctx, js_accountid_class_id, proto);
-    ctor = JS_NewObject(ctx);
-    JS_SetPropertyFunctionList(ctx, ctor, js_accountid_static_funcs,
-                               sizeof(js_accountid_static_funcs) / sizeof(js_accountid_static_funcs[0]));
-    JS_SetPropertyStr(ctx, global, "AccountID", ctor);
+extern "C" bool
+register_cpp_types(JSContext *ctx)
+{
+    qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
+    if (global.isException())
+        return false;
 
-    // XFL
-    JS_NewClassID(&js_xfl_class_id);
-    JS_NewClass(JS_GetRuntime(ctx), js_xfl_class_id, &js_xfl_class);
-    proto = JS_NewObject(ctx);
-    JS_SetPropertyFunctionList(ctx, proto, js_xfl_proto_funcs,
-                               sizeof(js_xfl_proto_funcs) / sizeof(js_xfl_proto_funcs[0]));
-    JS_SetClassProto(ctx, js_xfl_class_id, proto);
-    ctor = JS_NewObject(ctx);
-    JS_SetPropertyFunctionList(ctx, ctor, js_xfl_static_funcs,
-                               sizeof(js_xfl_static_funcs) / sizeof(js_xfl_static_funcs[0]));
-    JS_SetPropertyStr(ctx, global, "XFL", ctor);
-
-    JS_FreeValue(ctx, global);
+    if (!register_cpp_type(
+               ctx,
+               global.get(),
+               "STBlob",
+               &js_blob_class_id,
+               &js_blob_class,
+               js_blob_proto_funcs,
+               sizeof(js_blob_proto_funcs) / sizeof(js_blob_proto_funcs[0]),
+               js_blob_static_funcs,
+               sizeof(js_blob_static_funcs) / sizeof(js_blob_static_funcs[0])) ||
+        !register_cpp_type(
+               ctx,
+               global.get(),
+               "Hash256",
+               &js_hash256_class_id,
+               &js_hash256_class,
+               js_hash256_proto_funcs,
+               sizeof(js_hash256_proto_funcs) /
+                   sizeof(js_hash256_proto_funcs[0]),
+               js_hash256_static_funcs,
+               sizeof(js_hash256_static_funcs) /
+                   sizeof(js_hash256_static_funcs[0])) ||
+        !register_cpp_type(
+               ctx,
+               global.get(),
+               "AccountID",
+               &js_accountid_class_id,
+               &js_accountid_class,
+               js_accountid_proto_funcs,
+               sizeof(js_accountid_proto_funcs) /
+                   sizeof(js_accountid_proto_funcs[0]),
+               js_accountid_static_funcs,
+               sizeof(js_accountid_static_funcs) /
+                   sizeof(js_accountid_static_funcs[0])) ||
+        !install_account_constants(ctx, global.get()))
+        return false;
+    return register_cpp_type(
+               ctx,
+               global.get(),
+               "XFL",
+               &js_xfl_class_id,
+               &js_xfl_class,
+               js_xfl_proto_funcs,
+               sizeof(js_xfl_proto_funcs) / sizeof(js_xfl_proto_funcs[0]),
+               js_xfl_static_funcs,
+               sizeof(js_xfl_static_funcs) / sizeof(js_xfl_static_funcs[0]));
 }

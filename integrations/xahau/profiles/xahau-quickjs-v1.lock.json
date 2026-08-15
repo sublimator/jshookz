@@ -1,5 +1,10 @@
 {
   "bytecode_abi_id": "75ea54f357d397c4b33899e495bb385dad975a43b1c4a7a2cead30474327d33e",
+  "javascript_surface": {
+    "declaration_sha256": "e0db6f99c217019172d577bbc7c21d7fa3ea462fcaa7af546b790cbe7abcd300",
+    "schema": "jshookz.javascript-surface.v1",
+    "sha256": "2e175d734630b7616baecae0b6a245e806beee541286412d42451232e0e830c6"
+  },
   "provider": {
     "exports": [
       {
@@ -355,10 +360,10 @@
         ]
       }
     ],
-    "sha256": "01a85217006656c2bff95b9e9552be2754443d68d76a813fd5f54f5e8c7fc6d4",
-    "size": 1007530
+    "sha256": "10ce54df8d2a3b8c313a6cb8c3380b678ae1042b6c7eb106a092b6dda7b301ad",
+    "size": 1026571
   },
-  "runtime_profile_id": "43891c17bc43d4eb683fa77c023e7e3d1164d3ae19c3077c3e1614aa1d61793d",
+  "runtime_profile_id": "74779793cf34000274208efe07b5e9aac393c19c38203c2cd7d678acfbcf706d",
   "schema": "xahau.quickjs.runtime-profile-lock.v1",
   "source": {
     "artifact": {
@@ -402,9 +407,14 @@
       "initialization": "finite-cold-qjs-init-budget-before-invocation-fuel-reset",
       "ordinary_host_status": "returned-as-i64-never-trapped",
       "pending_jobs_after_entry": "not-drained",
-      "result_failure_policy": "rollback.onFail-preserves-coded-failure;rollback.require-collapses-failure-or-absence-to-explicit-message-and-code",
+      "result_failure_policy": "rollback.onFail-preserves-coded-failure;rollback.require-collapses-failure-or-absence-to-explicit-message-and-optional-code-default-zero",
       "sfHookInstructionCount": "initial-wasmtime-invocation-fuel-minus-remaining-fuel",
       "terminals": "record-hook-result-and-uncatchable-wasmtime-trap"
+    },
+    "javascript_surface": {
+      "declaration": "packages/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
+      "manifest": "packages/jshookz/src/jshookz/types/xahau-quickjs-v1.surface.json",
+      "schema": "jshookz.javascript-surface.v1"
     },
     "limits": {
       "host_work_base_per_call": 1,

@@ -134,28 +134,29 @@ js_util_ripemd160(JSContext *ctx, JSValueConst this_val,
 }  // namespace
 #endif
 
-void
+bool
 registerLegacy(JSContext *ctx, JSValue global)
 {
 #ifndef CONFIG_XAHAU_HOOK_PROVIDER
-    JS_SetPropertyStr(ctx, global, "host_log",
-        JS_NewCFunction(ctx, js_host_log, "host_log", 1));
-    JS_SetPropertyStr(ctx, global, "get_balance",
-        JS_NewCFunction(ctx, js_host_get_balance, "get_balance", 1));
-    JS_SetPropertyStr(ctx, global, "get_state",
-        JS_NewCFunction(ctx, js_host_get_state, "get_state", 1));
-    JS_SetPropertyStr(ctx, global, "get_tx_info",
-        JS_NewCFunction(ctx, js_host_get_tx_info, "get_tx_info", 0));
-
-    JS_SetPropertyStr(ctx, global, "util_sha256",
-        JS_NewCFunction(ctx, js_util_sha256, "util_sha256", 1));
-    JS_SetPropertyStr(ctx, global, "util_sha512h",
-        JS_NewCFunction(ctx, js_util_sha512h, "util_sha512h", 1));
-    JS_SetPropertyStr(ctx, global, "util_ripemd160",
-        JS_NewCFunction(ctx, js_util_ripemd160, "util_ripemd160", 1));
+    return
+        JS_SetPropertyStr(ctx, global, "host_log",
+            JS_NewCFunction(ctx, js_host_log, "host_log", 1)) >= 0 &&
+        JS_SetPropertyStr(ctx, global, "get_balance",
+            JS_NewCFunction(ctx, js_host_get_balance, "get_balance", 1)) >= 0 &&
+        JS_SetPropertyStr(ctx, global, "get_state",
+            JS_NewCFunction(ctx, js_host_get_state, "get_state", 1)) >= 0 &&
+        JS_SetPropertyStr(ctx, global, "get_tx_info",
+            JS_NewCFunction(ctx, js_host_get_tx_info, "get_tx_info", 0)) >= 0 &&
+        JS_SetPropertyStr(ctx, global, "util_sha256",
+            JS_NewCFunction(ctx, js_util_sha256, "util_sha256", 1)) >= 0 &&
+        JS_SetPropertyStr(ctx, global, "util_sha512h",
+            JS_NewCFunction(ctx, js_util_sha512h, "util_sha512h", 1)) >= 0 &&
+        JS_SetPropertyStr(ctx, global, "util_ripemd160",
+            JS_NewCFunction(ctx, js_util_ripemd160, "util_ripemd160", 1)) >= 0;
 #else
     (void)ctx;
     (void)global;
+    return true;
 #endif
 }
 

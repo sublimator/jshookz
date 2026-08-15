@@ -31,6 +31,19 @@ static uint8_t module_loader_buf[65536];
 static JSRuntime *rt = NULL;
 static JSContext *ctx = NULL;
 
+static void
+destroy_runtime(void)
+{
+    if (ctx) {
+        JS_FreeContext(ctx);
+        ctx = NULL;
+    }
+    if (rt) {
+        JS_FreeRuntime(rt);
+        rt = NULL;
+    }
+}
+
 static JSValue
 callbackInfo(JSContext *context, uint32_t rawFlags)
 {
@@ -162,6 +175,8 @@ void qjs_init(void)
 {
     if (rt) return; /* already initialized (e.g. by Wizer snapshot) */
     rt = JS_NewRuntime();
+    if (!rt)
+        return;
 #ifdef CONFIG_XAHAU_HOOK_PROVIDER
     ctx = JS_NewContextRaw(rt);
     if (!ctx ||
@@ -181,24 +196,34 @@ void qjs_init(void)
            synchronous modules.  Hook entry points remain synchronous; the
            profile does not drain contract-scheduled jobs after termination. */
         JS_AddIntrinsicPromise(ctx)) {
-        if (ctx) JS_FreeContext(ctx);
-        JS_FreeRuntime(rt);
-        ctx = NULL;
-        rt = NULL;
+        destroy_runtime();
         return;
     }
 #else
     ctx = JS_NewContext(rt);
+    if (!ctx) {
+        destroy_runtime();
+        return;
+    }
 #endif
 #ifndef CONFIG_XAHAU_HOOK_PROVIDER
     JS_SetModuleLoaderFunc(rt, module_normalize, wasm_module_loader, NULL);
 #endif
-    jshookz::provider::registerBindings(ctx);
-    register_cpp_types(ctx);
+    bool initialized =
+        jshookz::provider::registerBindings(ctx) &&
+        register_cpp_types(ctx) &&
+        register_uint_types(ctx);
 #ifdef CONFIG_PROTOCOL_XDATA
-    register_protocol_functions(ctx);
+    if (initialized) {
+        register_protocol_functions(ctx);
+        initialized = !JS_HasException(ctx);
+    }
 #endif
-    jshookz::provider::installDeterministicSandbox(ctx);
+    if (initialized)
+        initialized =
+            jshookz::provider::installDeterministicSandbox(ctx);
+    if (!initialized)
+        destroy_runtime();
 }
 
 #ifdef CONFIG_XAHAU_HOOK_PROVIDER
@@ -657,8 +682,7 @@ __attribute__((export_name("qjs_destroy")))
 void qjs_destroy(void)
 {
     clear_result();
-    if (ctx) { JS_FreeContext(ctx); ctx = NULL; }
-    if (rt) { JS_FreeRuntime(rt); rt = NULL; }
+    destroy_runtime();
 }
 
 /* wasi-sdk reactor CRT provides _initialize automatically */

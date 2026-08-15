@@ -6,33 +6,124 @@
  * statuses are tagged `HostResult` values; exceptions are reserved for hook
  * termination and JavaScript/runtime programming faults.
  *
+ * An uncaught JavaScript exception is an execution error, not an implicit
+ * call to `rollback`. Xahau records `WASM_ERROR`, rejects the transaction, and
+ * discards provisional Hook effects. Use `Result` plus an explicit
+ * `rollback` policy for failures that form part of normal contract control
+ * flow; Hooks should not need `try`/`catch` around ordinary API operations.
+ *
  * This file is the public specification. Runtime profiles may implement a
  * deliberately versioned subset; tooling must not silently widen that subset.
  */
 
-type BytesLike = Uint8Array | ArrayBuffer | ArrayBufferView | string | readonly number[];
+type HookTypedArray =
+  | Int8Array
+  | Uint8Array
+  | Uint8ClampedArray
+  | Int16Array
+  | Uint16Array
+  | Int32Array
+  | Uint32Array
+  | Float32Array
+  | Float64Array
+  | BigInt64Array
+  | BigUint64Array;
+type BytesLike = HookTypedArray | ArrayBuffer | readonly number[];
 type HexString = string;
-type UInt8 = number;
-type UInt16 = number;
-type UInt32 = number;
-type UInt64 = bigint;
+type UIntWidth = 8 | 16 | 32 | 64;
+type UInt8 = UInt<8>;
+type UInt16 = UInt<16>;
+type UInt32 = UInt<32>;
+type UInt64 = UInt<64>;
+type UIntInput<Bits extends UIntWidth = UIntWidth> = UInt<Bits> | bigint | number;
 type Drops = bigint;
 type LedgerSequence = number;
 type RippleTime = number;
 type HashWidth = 16 | 20 | 24 | 32 | 48 | 64;
 type UInt32OrHash = UInt32 | Hash256;
-type BytePart = BytesLike | STBlob | Hash | AccountID | STCurrency | number | bigint;
-type StateKeyLike = BytesLike | string | STBlob | Hash | AccountID | STCurrency;
-type StateValueLike = BytesLike | STBlob | Hash | AccountID | STCurrency | STAmount;
+type Falsy = false | 0 | 0n | "" | null | undefined;
+type Truthy<T> = Exclude<T, Falsy>;
+/** A value with one canonical serialized-ledger byte representation. */
+interface SerializedType {
+  toBytes(options?: SerializationOptions): Uint8Array;
+}
+type BytePart = BytesLike | SerializedType;
+type StateKeyLike = BytesLike | string | SerializedType;
+type StateValueLike = BytesLike | string | SerializedType;
 type BatchKeys = Record<string, StateKeyLike>;
 type BatchValues<T extends Record<string, unknown>> = { readonly [K in keyof T]: STBlob | undefined };
 
-/** Shared discriminated carrier; each domain owns its failure payload. */
-type ResultSuccess<T> = { readonly ok: true; readonly value: T };
-type ResultFailure = { readonly ok: false };
-type Result<T, Failure extends ResultFailure> = ResultSuccess<T> | Failure;
+/**
+ * Type-only surface shared by every nominal provider-produced Result.
+ *
+ * There are six ways to leave a Result; anything else is a bug: `okOr`,
+ * `okOrHandle`, `okMapOr`, `moot`, exhaustive `.ok` narrowing, or a
+ * `rollback.*` consumer.
+ */
+interface ResultInstance<T, Error> {
 
-type HostFailure = ResultFailure & { readonly code: HookReturnCode };
+  /**
+   * Return `.value` whenever `.ok` is true, including a successful
+   * `undefined`; return `fallback` only when `.ok` is false. The fallback
+   * expression is evaluated before this method is called; use `okOrHandle`
+   * when producing it has work or side effects.
+  */
+  okOr<Fallback>(fallback: Fallback): T | Fallback;
+
+  /**
+   * Return `.value` whenever `.ok` is true; otherwise invoke `handler` once
+   * with `.error` and return the value it produces.
+   */
+  okOrHandle<Fallback>(handler: (error: Error) => Fallback): T | Fallback;
+
+  /**
+   * Transform a successful value and return it directly; return `fallback`
+   * when this Result is a failure. The fallback expression is evaluated
+   * before this method is called.
+   *
+   * Use this only when discarding the failure is deliberate. In particular,
+   * malformed persisted state should normally remain loud rather than be
+   * collapsed into the same value used for absent state.
+   */
+  okMapOr<Value, Fallback>(
+    handler: (value: T) => Value,
+    fallback: Fallback,
+  ): Value | Fallback;
+
+}
+
+/** Capability exposed only by Results whose success type is exactly void. */
+interface MootableResultInstance<Error> {
+  /**
+   * Declare the failure of this void Result moot: neither outcome bears on
+   * contract correctness. JavaScript exceptions and provider faults are not
+   * Result failures and are not suppressed.
+   */
+  moot(this: Result<void, Error>): void;
+}
+
+/** Shared discriminated carrier; each domain owns its error payload. */
+type ResultSuccess<T, Error> = ResultInstance<T, Error> & {
+  readonly ok: true;
+  readonly value: T;
+};
+type ResultFailure<T, Error> = ResultInstance<T, Error> & {
+  readonly ok: false;
+  readonly error: Error;
+};
+type Result<T, Error> =
+  ([T] extends [void]
+    ? [void] extends [T]
+      ? MootableResultInstance<Error>
+      : unknown
+    : unknown) &
+  (ResultSuccess<T, Error> | ResultFailure<T, Error>);
+
+
+interface HostError {
+  readonly domain: "host";
+  readonly code: HookReturnCode;
+}
 
 /**
  * The result of an operation governed by Hooks host-status semantics.
@@ -47,23 +138,101 @@ type HostFailure = ResultFailure & { readonly code: HookReturnCode };
  * Provider-side rich facades may return `HostResult` when they enforce the
  * same host rules and preserve the corresponding Hook status exactly.
  */
-type HostResult<T> = Result<T, HostFailure>;
+type HostResult<T> = Result<T, HostError>;
 
 /** A pure binary-codec validation result; no Hooks host call occurred. */
-type ParseFailure =
-  | (ResultFailure & {
+type ParseError =
+  | {
+      readonly domain: "parse";
       readonly issue: "wrong-length";
       readonly expectedLength: number;
       readonly actualLength: number;
-    })
-  | (ResultFailure & {
+    }
+  | {
+      readonly domain: "parse";
       readonly issue: "invalid-value";
-    })
-  | (ResultFailure & {
+    }
+  | {
+      readonly domain: "parse";
       readonly issue: "invalid-field";
       readonly field: string;
-    });
-type ParseResult<T> = Result<T, ParseFailure>;
+    };
+type ParseResult<T> = Result<T, ParseError>;
+
+/**
+ * One-layer result from a schema-aware state read. Failure remains
+ * distinguishable as either the original host status (`code`) or a codec
+ * validation issue (`issue`); successful absence remains `undefined`.
+ *
+ * Canonical triage keeps all three states distinct: first handle `!read.ok`
+ * (preserving a host code or rejecting malformed bytes), then treat
+ * `read.value === undefined` as the absent/default case, and only then use the
+ * decoded value. Persisted malformed bytes must not silently take the absent
+ * default.
+ */
+type StateReadResult<T> = Result<T | undefined, HostError | ParseError>;
+
+/** Failure from constructing or operating on a bounded unsigned integer. */
+interface UIntError {
+  readonly domain: "uint";
+  readonly issue:
+    | "out-of-range"
+    | "overflow"
+    | "underflow"
+    | "division-by-zero";
+  readonly bits: UIntWidth;
+}
+type UIntResult<T> = Result<T, UIntError>;
+
+
+/**
+ * Immutable fixed-width unsigned integer.
+ *
+ * JavaScript operators intentionally remain available through the default
+ * primitive record projections (`u32be`, `u64be`). Choose this value type
+ * when the contract wants its width and overflow policy carried with the
+ * value rather than re-established around every arithmetic expression.
+ */
+interface UInt<Bits extends UIntWidth = UIntWidth> {
+  readonly bits: Bits;
+  readonly byteLength: Bits extends 8 ? 1 : Bits extends 16 ? 2 : Bits extends 32 ? 4 : 8;
+
+  toBigInt(): bigint;
+  toString(): string;
+  /** Conversion is total through 32 bits; UInt64 may exceed JS safe integer. */
+  toNumber(): Bits extends 64 ? UIntResult<number> : number;
+  isZero(): boolean;
+  equals(other: unknown): boolean;
+  compare(other: UInt<Bits>): -1 | 0 | 1;
+  add(other: UIntInput<Bits>): UIntResult<UInt<Bits>>;
+  subtract(other: UIntInput<Bits>): UIntResult<UInt<Bits>>;
+  saturatingAdd(other: UInt<Bits>): UInt<Bits>;
+  saturatingSubtract(other: UInt<Bits>): UInt<Bits>;
+}
+
+
+interface UIntFactory<Bits extends UIntWidth> {
+  readonly zero: UInt<Bits>;
+  readonly max: UInt<Bits>;
+  from(value: bigint | number): UIntResult<UInt<Bits>>;
+  /** Exact floor of `(multiplicand * multiplier) / divisor` through a wider intermediate. */
+  mulDiv(
+    multiplicand: UIntInput<Bits>,
+    multiplier: UIntInput<Bits>,
+    divisor: UIntInput<Bits>,
+  ): UIntResult<UInt<Bits>>;
+}
+
+declare const UInt8: UIntFactory<8>;
+declare const UInt16: UIntFactory<16>;
+declare const UInt32: UIntFactory<32>;
+declare const UInt64: UIntFactory<64>;
+
+/** Structural decoding contract accepted by typed state reads. */
+interface BinarySchema<T> {
+  readonly byteLength: number;
+  safeParse(value: BytesLike | STBlob): ParseResult<T>;
+}
 
 interface RecordField<T, Width extends number = number> {
   readonly kind: string;
@@ -87,7 +256,7 @@ interface ScalarSchema<
   Name extends string,
   T,
   Width extends number,
-> {
+> extends BinarySchema<T> {
   readonly name: Name;
   readonly byteLength: Width;
   safeParse(value: BytesLike | STBlob): ParseResult<T>;
@@ -128,7 +297,7 @@ interface RecordSchema<
   Name extends string,
   Size extends number,
   Shape extends RecordShape,
-> {
+> extends BinarySchema<RecordValue<Shape>> {
   readonly name: Name;
   readonly byteLength: Size;
   readonly fields: Shape;
@@ -180,15 +349,36 @@ declare namespace record {
     readonly coverage?: "complete" | "allow-gaps";
   }
 
-  function u8(offset: number): RecordField<UInt8, 1>;
-  function u16be(offset: number): RecordField<UInt16, 2>;
-  function u16le(offset: number): RecordField<UInt16, 2>;
-  function u32be(offset: number): RecordField<UInt32, 4>;
-  function u32le(offset: number): RecordField<UInt32, 4>;
+  function u8(offset: number): RecordField<number, 1>;
+  namespace u8 {
+    function uint(offset: number): RecordField<UInt8, 1>;
+  }
+  function u16be(offset: number): RecordField<number, 2>;
+  function u16le(offset: number): RecordField<number, 2>;
+  namespace u16be {
+    function uint(offset: number): RecordField<UInt16, 2>;
+  }
+  namespace u16le {
+    function uint(offset: number): RecordField<UInt16, 2>;
+  }
+  function u32be(offset: number): RecordField<number, 4>;
+  function u32le(offset: number): RecordField<number, 4>;
+  namespace u32be {
+    function uint(offset: number): RecordField<UInt32, 4>;
+  }
+  namespace u32le {
+    function uint(offset: number): RecordField<UInt32, 4>;
+  }
   function i32be(offset: number): RecordField<number, 4>;
   function i32le(offset: number): RecordField<number, 4>;
-  function u64be(offset: number): RecordField<UInt64, 8>;
-  function u64le(offset: number): RecordField<UInt64, 8>;
+  function u64be(offset: number): RecordField<bigint, 8>;
+  function u64le(offset: number): RecordField<bigint, 8>;
+  namespace u64be {
+    function uint(offset: number): RecordField<UInt64, 8>;
+  }
+  namespace u64le {
+    function uint(offset: number): RecordField<UInt64, 8>;
+  }
   function i64be(offset: number): RecordField<bigint, 8>;
   function i64le(offset: number): RecordField<bigint, 8>;
   function xflbe(offset: number): RecordField<XFL, 8>;
@@ -196,7 +386,7 @@ declare namespace record {
   function bytes<const Width extends number>(offset: number, byteLength: Width): RecordField<STBlob, Width>;
   function hash<const Width extends HashWidth>(offset: number, byteLength: Width): RecordField<HashByWidth[Width], Width>;
   function accountID(offset: number): RecordField<AccountID, 20>;
-  function currency(offset: number): RecordField<STCurrency, 20>;
+  function currency(offset: number): RecordField<Currency, 20>;
 
   /** A named field that participates in coverage but is omitted from values. */
   function padding<const Width extends number>(offset: number, byteLength: Width): RecordField<never, Width>;
@@ -210,7 +400,7 @@ interface ByteFindOptions extends ByteCompareOptions {
   readonly start?: number;
 }
 
-interface STSerializeOptions {
+interface SerializationOptions {
   readonly field?: string | number;
   readonly includeFieldHeader?: boolean;
 }
@@ -219,6 +409,8 @@ interface STSerializeOptions {
 declare class STBlob {
   readonly byteLength: number;
   static from(value: BytesLike): STBlob;
+  /** Decode an even-length hexadecimal literal. */
+  static fromHex(value: HexString): STBlob;
   static concat(...parts: (BytesLike | STBlob)[]): STBlob;
   static fromUint8(value: number): STBlob;
   static fromUint32(value: number, endian?: "big" | "little"): STBlob;
@@ -232,7 +424,7 @@ declare class STBlob {
   toUint64(endian?: "big" | "little"): bigint;
   toXFL(endian?: "big" | "little"): XFL;
   toAccountID(): AccountID;
-  toCurrency(): STCurrency;
+  toCurrency(): Currency;
   toHash128(): Hash128;
   toHash160(): Hash160;
   toHash192(): Hash192;
@@ -281,8 +473,15 @@ declare class Hash192 extends Hash<24> {
 /** @serial Hash256 */
 declare class Hash256 extends Hash<32> {
   static readonly zero: Hash256;
+  static from(value: BytesLike): Hash256;
+  /** Decode exactly 32 bytes from an even-length hexadecimal literal. */
+  static fromHex(value: HexString): Hash256;
   static from(value: BytesLike | Hash<32>): Hash256;
   constructor(value: BytesLike | Hash<32>);
+  toHex(): HexString;
+  toBytes(): Uint8Array;
+  isZero(): boolean;
+  equals(other: Hash256): boolean;
 }
 
 /** @serial Hash384 */
@@ -311,35 +510,43 @@ interface HashByWidth {
 /** @serial AccountID */
 declare class AccountID extends Hash160 {
   readonly r: string;
+  /** XRP's native-issue account: 20 zero bytes. */
   static readonly zero: AccountID;
+  /** Ripple's no-account sentinel: integer one as a 20-byte AccountID. */
+  static readonly one: AccountID;
+  static from(value: BytesLike): AccountID;
+  /** Decode exactly 20 bytes from an even-length hexadecimal literal. */
+  static fromHex(value: HexString): AccountID;
   static from(value: BytesLike | Hash160 | string): AccountID;
   static fromRAddress(value: string): AccountID;
   constructor(value: BytesLike | Hash160);
   toString(): string;
+  toHex(): HexString;
+  toBytes(): Uint8Array;
 }
 
 /** @serial Currency */
-declare class STCurrency {
+declare class Currency {
   readonly byteLength: 20;
   readonly isNative: boolean;
-  static readonly native: STCurrency;
-  static from(value: BytesLike | string): STCurrency;
+  static readonly native: Currency;
+  static from(value: BytesLike | string): Currency;
   toBytes(): Uint8Array;
   toHex(): HexString;
   toString(): string;
-  equals(other: STCurrency | BytesLike | string): boolean;
+  equals(other: Currency | BytesLike | string): boolean;
 }
 
 /** @serial Issue */
-declare class STIssue {
+declare class Issue {
   readonly kind: "native" | "iou" | "mpt";
-  readonly currency?: STCurrency;
+  readonly currency?: Currency;
   readonly issuer?: AccountID;
   readonly mptIssuanceId?: Hash256;
-  static native(): STIssue;
-  static iou(currency: STCurrency, issuer: AccountID): STIssue;
-  static mpt(mptIssuanceId: Hash256): STIssue;
-  equals(other: STIssue): boolean;
+  static native(): Issue;
+  static iou(currency: Currency, issuer: AccountID): Issue;
+  static mpt(mptIssuanceId: Hash256): Issue;
+  equals(other: Issue): boolean;
 }
 
 /** @inner-rich-type XFL */
@@ -347,13 +554,13 @@ declare class XFL {
   readonly raw: bigint;
   static readonly zero: XFL;
   static readonly one: XFL;
-  static fromRaw(raw: bigint): XFL;
+  static fromRaw(raw: bigint | number): XFL;
   /**
    * Construct `mantissa × 10^exponent`. The value comes first so ordinary
    * calls read in the same order as the decimal quantity they express.
    */
-  static from(mantissa: bigint | number, exponent: number): XFL;
-  mantissa(): bigint;
+  static from(mantissa: bigint | number, exponent?: number): HostResult<XFL>;
+  mantissa(): number;
   exponent(): number;
   isNegative(): boolean;
   isZero(): boolean;
@@ -371,30 +578,30 @@ declare class XFL {
 }
 
 /** @serial Amount */
-declare class STAmount {
+declare class Amount {
   readonly kind: "native" | "iou" | "mpt";
-  readonly issue: STIssue;
-  readonly currency?: STCurrency;
+  readonly issue: Issue;
+  readonly currency?: Currency;
   readonly issuer?: AccountID;
   readonly mptIssuanceId?: Hash256;
   readonly xfl?: XFL;
   readonly drops?: Drops;
   readonly byteLength: 8 | 33 | 48;
-  static from(value: BytesLike | STBlob): STAmount;
-  static drops(value: Drops): STNativeAmount;
-  static iou(value: XFL, currency: STCurrency, issuer: AccountID): STAmount;
-  static mpt(value: XFL, mptIssuanceId: Hash256): STAmount;
-  toBytes(options?: STSerializeOptions): Uint8Array;
+  static from(value: BytesLike | STBlob): Amount;
+  static drops(value: Drops): NativeAmount;
+  static iou(value: XFL, currency: Currency, issuer: AccountID): IOUAmount;
+  static mpt(value: XFL, mptIssuanceId: Hash256): MPTAmount;
+  toBytes(options?: SerializationOptions): Uint8Array;
   toXFL(): XFL;
   toString(): string;
-  isNative(): this is STNativeAmount;
-  isIOU(): this is STIOUAmount;
-  isMPT(): this is STMPTAmount;
-  equals(other: STAmount): boolean;
-  compare(other: STAmount): number;
+  isNative(): this is NativeAmount;
+  isIOU(): this is IOUAmount;
+  isMPT(): this is MPTAmount;
+  equals(other: Amount): boolean;
+  compare(other: Amount): number;
 }
 
-declare interface STNativeAmount extends STAmount {
+declare interface NativeAmount extends Amount {
   readonly kind: "native";
   readonly drops: Drops;
   readonly currency: undefined;
@@ -402,37 +609,37 @@ declare interface STNativeAmount extends STAmount {
   readonly xfl: undefined;
 }
 
-declare interface STIOUAmount extends STAmount {
+declare interface IOUAmount extends Amount {
   readonly kind: "iou";
   readonly drops: undefined;
-  readonly currency: STCurrency;
+  readonly currency: Currency;
   readonly issuer: AccountID;
   readonly xfl: XFL;
 }
 
-declare interface STMPTAmount extends STAmount {
+declare interface MPTAmount extends Amount {
   readonly kind: "mpt";
   readonly drops: undefined;
   readonly mptIssuanceId: Hash256;
   readonly xfl: XFL;
 }
 
-declare interface STPathHop {
+declare interface PathHop {
   readonly account?: AccountID;
-  readonly currency?: STCurrency;
+  readonly currency?: Currency;
   readonly issuer?: AccountID;
 }
 
-declare interface STPath extends Iterable<STPathHop> {
+declare interface Path extends Iterable<PathHop> {
   readonly length: number;
-  at(index: number): STPathHop | undefined;
+  at(index: number): PathHop | undefined;
 }
 
 /** @serial PathSet */
-declare class STPathSet implements Iterable<STPath> {
+declare class PathSet implements Iterable<Path> {
   readonly length: number;
-  at(index: number): STPath | undefined;
-  [Symbol.iterator](): IterableIterator<STPath>;
+  at(index: number): Path | undefined;
+  [Symbol.iterator](): IterableIterator<Path>;
 }
 
 /**
@@ -466,7 +673,7 @@ type ProtocolFieldValue = {
 }[keyof typeof Field];
 
 /** A decoded protocol field value, plus absence for an unset field. */
-type STFieldValue = ProtocolFieldValue | undefined;
+type SerializedValue = ProtocolFieldValue | undefined;
 
 /**
  * Immutable decoded-object view.
@@ -481,11 +688,11 @@ type STFieldValue = ProtocolFieldValue | undefined;
 declare interface STObject {
   has(field: string | SerializedField<unknown>): boolean;
   get<T>(field: SerializedField<T>): T | undefined;
-  get(field: string): STFieldValue;
+  get(field: string): SerializedValue;
   fieldBytes(field: string | number | SerializedField<unknown>): STBlob | undefined;
-  withField(field: string | number | SerializedField<unknown>, value: STFieldValue | BytesLike): STObject;
+  withField(field: string | number | SerializedField<unknown>, value: SerializedValue | BytesLike): STObject;
   withoutField(field: string | number | SerializedField<unknown>): STObject;
-  toBytes(options?: STSerializeOptions): Uint8Array;
+  toBytes(options?: SerializationOptions): Uint8Array;
   toJSON(): unknown;
 }
 
@@ -502,24 +709,24 @@ declare interface STArray<T extends STObject = STObject> {
 }
 
 /** @serial Transaction */
-declare interface STTransaction extends STObject {
+declare interface Tx extends STObject {
   readonly TransactionType: TransactionType;
   readonly Account: AccountID;
   readonly Destination?: AccountID;
-  readonly Amount?: STAmount;
+  readonly Amount?: Amount;
   readonly Amounts?: STArray;
-  readonly Fee?: STAmount;
-  readonly Flags?: UInt32;
+  readonly Fee?: Amount;
+  readonly Flags: UInt32;
   readonly Sequence?: UInt32;
   readonly Blob?: STBlob;
   readonly NFTokenID?: Hash256;
   readonly HookParameters?: STArray;
 }
 
-declare interface STAccountRoot extends STObject {
+declare interface AccountRoot extends STObject {
   readonly LedgerEntryType: "AccountRoot";
   readonly Account: AccountID;
-  readonly Balance: STNativeAmount;
+  readonly Balance: NativeAmount;
   readonly Flags: UInt32;
   readonly ImportSequence?: UInt32;
   readonly RewardAccumulator?: UInt64;
@@ -557,57 +764,57 @@ declare interface STAccountRoot extends STObject {
 }
 
 /** Installed Hook object held inside a Hook ledger entry's `Hooks` array. */
-declare interface STHook extends STObject {
+declare interface InstalledHook extends STObject {
   readonly HookHash?: Hash256;
 }
 
 /** Serialized-array wrapper for one installed Hook object. */
-declare interface STHookArrayEntry extends STObject {
-  readonly Hook: STHook;
+declare interface HookArrayEntry extends STObject {
+  readonly Hook: InstalledHook;
 }
 
 /** Account-level ledger entry containing its fixed-position Hook array. */
-declare interface STHookLedger extends STObject {
+declare interface HookLedger extends STObject {
   readonly LedgerEntryType: "Hook";
-  readonly Hooks: STArray<STHookArrayEntry>;
+  readonly Hooks: STArray<HookArrayEntry>;
 }
 
 /** Ledger entry containing one installed Hook implementation. */
-declare interface STHookDefinition extends STObject {
+declare interface HookDefinition extends STObject {
   readonly LedgerEntryType: "HookDefinition";
   readonly HookHash: Hash256;
 }
 
-declare interface STActiveValidator extends STObject {
+declare interface ActiveValidator extends STObject {
   readonly PublicKey: STBlob;
   readonly Account?: AccountID;
 }
 
-declare interface STActiveValidatorArrayEntry extends STObject {
-  readonly ActiveValidator: STActiveValidator;
+declare interface ActiveValidatorArrayEntry extends STObject {
+  readonly ActiveValidator: ActiveValidator;
 }
 
-declare interface STUNLReport extends STObject {
+declare interface UNLReport extends STObject {
   readonly LedgerEntryType: "UNLReport";
-  readonly ActiveValidators?: STArray<STActiveValidatorArrayEntry>;
+  readonly ActiveValidators?: STArray<ActiveValidatorArrayEntry>;
 }
 
-declare interface STNFToken extends STObject {
+declare interface NFToken extends STObject {
   readonly NFTokenID: Hash256;
   readonly URI?: STBlob;
 }
 
 /** @serial Metadata */
-declare interface STMetadata extends STObject {
+declare interface TxMeta extends STObject {
   readonly TransactionResult: TransactionResult;
 
   /** Find an affected NFToken by ID, including a token removed by a burn. */
-  findNFToken(id: Hash256): STNFToken | undefined;
+  findNFToken(id: Hash256): NFToken | undefined;
 }
 
-declare interface STXPop {
-  readonly transaction: STTransaction;
-  readonly metadata: STMetadata;
+declare interface XPop {
+  readonly transaction: Tx;
+  readonly metadata: TxMeta;
 }
 
 declare const enum TransactionType {
@@ -933,7 +1140,12 @@ declare class LedgerKeylet<T extends STObject = STObject> {
 
 declare namespace otxn {
   function raw(): HostResult<STBlob>;
-  function current(): HostResult<STTransaction>;
+  /**
+   * Materialized originating transaction for this invocation. Its existence
+   * is an execution invariant; provider failure to construct it is a runtime
+   * exception, not a contract-visible host status.
+   */
+  function current(): Tx;
   function object(): HostResult<STObject>;
   function type(): HostResult<TransactionType>;
   function id(flags?: number): HostResult<Hash256>;
@@ -943,7 +1155,7 @@ declare namespace otxn {
   function params(names: readonly StateKeyLike[]): HostResult<readonly (STBlob | undefined)[]>;
   function params<const T extends BatchKeys>(names: T): HostResult<BatchValues<T>>;
   function meta(): HostResult<STObject | undefined>;
-  function xpop(): HostResult<STXPop | undefined>;
+  function xpop(): HostResult<XPop | undefined>;
 }
 
 declare namespace state {
@@ -959,6 +1171,7 @@ declare namespace state {
 
   interface Accessor {
     get(key: StateKeyLike): HostResult<STBlob | undefined>;
+    get<T>(key: StateKeyLike, schema: BinarySchema<T>): StateReadResult<T>;
     getMany(keys: readonly StateKeyLike[]): HostResult<readonly (STBlob | undefined)[]>;
     getMany<const T extends BatchKeys>(keys: T): HostResult<BatchValues<T>>;
     set(key: StateKeyLike, value: StateValueLike): HostResult<void>;
@@ -966,11 +1179,18 @@ declare namespace state {
     setMany(items: readonly Put[]): HostResult<void>;
   }
 
-  function key(part: BytePart, options?: KeyOptions): STBlob;
-  function key(parts: readonly BytePart[], options?: KeyOptions): STBlob;
+  /** String parts are encoded as UTF-8 state-key text. */
+  function key(part: string | BytePart, options?: KeyOptions): STBlob;
+  function key(parts: readonly (string | BytePart)[], options?: KeyOptions): STBlob;
+  function get(key: string | BytesLike | STBlob | Hash256 | AccountID): HostResult<STBlob | undefined>;
   function get(key: StateKeyLike): HostResult<STBlob | undefined>;
+  function get<T>(key: StateKeyLike, schema: BinarySchema<T>): StateReadResult<T>;
   function getMany(keys: readonly StateKeyLike[]): HostResult<readonly (STBlob | undefined)[]>;
   function getMany<const T extends BatchKeys>(keys: T): HostResult<BatchValues<T>>;
+  function set(
+    key: string | BytesLike | STBlob | Hash256 | AccountID,
+    value: string | BytesLike | STBlob | Hash256 | AccountID,
+  ): HostResult<void>;
   function set(key: StateKeyLike, value: StateValueLike): HostResult<void>;
   function del(key: StateKeyLike): HostResult<void>;
   function setMany(items: readonly Put[]): HostResult<void>;
@@ -978,10 +1198,10 @@ declare namespace state {
 }
 
 declare namespace slot {
-  type SlotValue = STObject | STArray | STFieldValue;
+  type SlotValue = STObject | STArray | SerializedValue;
   function fromLedger<T extends STObject>(keylet: LedgerKeylet<T>): HostResult<T | undefined>;
   function meta(): HostResult<STObject | undefined>;
-  function xpop(): HostResult<STXPop | undefined>;
+  function xpop(): HostResult<XPop | undefined>;
   function clear(value: SlotValue): HostResult<void>;
 }
 
@@ -995,7 +1215,7 @@ declare namespace emit {
   type BuildStage = "details" | "fee";
   type BuildResult = Result<
     EmittedTransaction,
-    HostFailure & { readonly stage: BuildStage }
+    HostError & { readonly stage: BuildStage }
   >;
 
   interface HookParameter {
@@ -1027,21 +1247,21 @@ declare namespace emit {
 
     interface PaymentOptions {
       readonly destination: AccountID;
-      readonly amount: STAmount;
+      readonly amount: Amount;
       readonly sourceTag?: UInt32;
       readonly destinationTag?: UInt32;
       readonly flags?: UInt32;
       readonly invoiceId?: Hash256;
-      readonly sendMax?: STAmount;
-      readonly deliverMin?: STAmount;
+      readonly sendMax?: Amount;
+      readonly deliverMin?: Amount;
       readonly hookParameters?: readonly HookParameter[];
     }
 
     /** Build an OfferCreate for direct DEX placement. */
     interface OfferCreateOptions {
       readonly account?: AccountID;
-      readonly takerPays: STAmount;
-      readonly takerGets: STAmount;
+      readonly takerPays: Amount;
+      readonly takerGets: Amount;
       readonly expiration?: RippleTime;
       readonly flags?: UInt32;
       readonly hookParameters?: readonly HookParameter[];
@@ -1050,7 +1270,7 @@ declare namespace emit {
     /** Build a TrustSet for trustline limits, qualities, and flags. */
     interface TrustSetOptions {
       readonly account?: AccountID;
-      readonly limitAmount?: STAmount;
+      readonly limitAmount?: Amount;
       readonly qualityIn?: UInt32;
       readonly qualityOut?: UInt32;
       readonly flags?: UInt32;
@@ -1060,7 +1280,7 @@ declare namespace emit {
     interface RemitOptions {
       readonly destination: AccountID;
       readonly uri?: StateValueLike;
-      readonly amounts?: readonly STAmount[];
+      readonly amounts?: readonly Amount[];
       readonly sourceTag?: UInt32;
       readonly destinationTag?: UInt32;
       readonly flags?: UInt32;
@@ -1091,7 +1311,7 @@ declare namespace emit {
       readonly account?: AccountID;
       readonly destination?: AccountID;
       readonly uri: StateValueLike;
-      readonly amount?: STAmount;
+      readonly amount?: Amount;
       readonly digest?: Hash256;
       readonly flags?: UInt32;
       readonly hookParameters?: readonly HookParameter[];
@@ -1105,7 +1325,7 @@ declare namespace emit {
 
     interface GenesisMintEntry {
       readonly account: AccountID;
-      readonly amount: STNativeAmount | Drops;
+      readonly amount: NativeAmount | Drops;
     }
 
     interface GenesisMintRawOptions extends GenesisMintBaseOptions {
@@ -1134,6 +1354,7 @@ declare namespace emit {
   }
 
   function reserve(count: number): HostResult<void>;
+  function tx(transaction: BytesLike | STBlob): HostResult<Hash256>;
   function tx(transaction: BytesLike | STBlob | EmittedTransaction): HostResult<Hash256>;
   /**
    * Attempt every transaction in input order and retain each individual host
@@ -1143,6 +1364,7 @@ declare namespace emit {
   function txMany(
     transactions: readonly (BytesLike | STBlob | EmittedTransaction)[],
   ): readonly HostResult<Hash256>[];
+  function prepare(partial: BytesLike | STBlob): HostResult<STBlob>;
   function prepare(partial: BytesLike | STBlob | STObject): HostResult<STBlob>;
   function details(): HostResult<STBlob>;
   function feeBase(transaction: BytesLike | STBlob | EmittedTransaction): HostResult<Drops>;
@@ -1153,13 +1375,13 @@ declare namespace emit {
 
 declare namespace util {
   namespace keylet {
-    function account(account: AccountID): LedgerKeylet<STAccountRoot>;
-    function hook(account: AccountID): LedgerKeylet<STHookLedger>;
-    function hookDefinition(hash: Hash256): LedgerKeylet<STHookDefinition>;
+    function account(account: AccountID): LedgerKeylet<AccountRoot>;
+    function hook(account: AccountID): LedgerKeylet<HookLedger>;
+    function hookDefinition(hash: Hash256): LedgerKeylet<HookDefinition>;
     function hookState(account: AccountID, key: Hash256, namespace: Hash256): LedgerKeylet;
     function hookStateDir(account: AccountID, namespace: Hash256): LedgerKeylet;
     /** Account order is normalized by the host when deriving the trust-line key. */
-    function line(accountA: AccountID, accountB: AccountID, currency: STCurrency): LedgerKeylet;
+    function line(accountA: AccountID, accountB: AccountID, currency: Currency): LedgerKeylet;
     function ownerDir(account: AccountID): LedgerKeylet;
     function signers(account: AccountID): LedgerKeylet;
     function did(account: AccountID): LedgerKeylet;
@@ -1181,12 +1403,13 @@ declare namespace util {
     function fees(): LedgerKeylet;
     function negativeUNL(): LedgerKeylet;
     function emittedDir(): LedgerKeylet;
-    function amm(left: STIssue, right: STIssue): LedgerKeylet;
+    function amm(left: Issue, right: Issue): LedgerKeylet;
   }
 
   function sha512h(data: BytesLike | STBlob): Hash256;
   function verify(publicKey: BytesLike, signature: BytesLike, message: BytesLike | STBlob): boolean;
-  function bytes(...parts: readonly BytePart[]): STBlob;
+  /** Concatenate byte parts; string parts are encoded as UTF-8 text. */
+  function bytes(...parts: readonly (string | BytePart)[]): STBlob;
   function toRAddress(account: AccountID | BytesLike): string;
   function fromRAddress(account: string): AccountID;
   function encodeObject(value: STObject): STBlob;
@@ -1209,7 +1432,7 @@ declare namespace float {
   function mantissa(value: XFL): HostResult<bigint>;
   function log(value: XFL): HostResult<XFL>;
   function root(value: XFL, degree: number): HostResult<XFL>;
-  function amount(value: XFL, issue?: STIssue): HostResult<STAmount>;
+  function amount(value: XFL, issue?: Issue): HostResult<Amount>;
 }
 
 declare namespace ledger {
@@ -1218,8 +1441,8 @@ declare namespace ledger {
   const lastHash: Hash256;
   const feeBase: Drops;
   function nonce(): HostResult<Hash256>;
-  function accountRoot(account: AccountID): HostResult<STAccountRoot | undefined>;
-  function unlReport(): HostResult<STUNLReport | undefined>;
+  function accountRoot(account: AccountID): HostResult<AccountRoot | undefined>;
+  function unlReport(): HostResult<UNLReport | undefined>;
   function lookup<T extends STObject>(locator: LedgerKeylet<T>): HostResult<T | undefined>;
   function lookup(locator: Hash256): HostResult<STObject | undefined>;
   function lookupMany(locators: readonly (LedgerKeylet | Hash256)[]): HostResult<readonly (STObject | undefined)[]>;
@@ -1248,7 +1471,8 @@ declare namespace guard {
 
 /** Metadata and configuration for the currently executing Hook. */
 declare namespace hook {
-  function account(): HostResult<AccountID>;
+  /** Hook account for this invocation; provider construction is total. */
+  function account(): AccountID;
   function hash(): HostResult<Hash256>;
   function position(): HostResult<number>;
   function mode(): HostResult<HookExecutionMode>;
@@ -1284,6 +1508,8 @@ declare function accept(message?: string | BytesLike | STBlob, code?: number): n
 /**
  * Reject, atomically roll back, and terminate this hook execution. Like
  * `accept`, the host unwinds the Wasm invocation and this call never returns.
+ * Its `never` return is intentionally usable in expression positions such as
+ * `value ?? rollback("value is required")`.
  */
 declare function rollback(message?: string | BytesLike | STBlob, code?: number): never;
 
@@ -1303,8 +1529,8 @@ declare namespace rollback {
    * Apply a contract-owned terminal policy to a result whose failure does not
    * already carry a Hook status.
    */
-  function onFail<T, Failure extends ResultFailure>(
-    result: Result<T, Failure>,
+  function onFail<T, Error>(
+    result: Result<T, Error>,
     message: string | BytesLike | STBlob,
     code: number,
   ): T;
@@ -1314,15 +1540,27 @@ declare namespace rollback {
    * `undefined` are both translated into the supplied contract-owned rollback
    * policy rather than preserving an incidental failure status.
    */
-  function require<T, Failure extends ResultFailure>(
-    result: Result<T | undefined, Failure>,
+  function require<T, Error>(
+    result: Result<T | undefined, Error>,
     message: string | BytesLike | STBlob,
-    code: number,
+    code?: number,
   ): T;
 
   /**
+   * Require a truthy direct value. `false`, `0`, `0n`, `""`, `null`,
+   * `undefined`, and `NaN` therefore apply the rollback policy.
+   */
+  function require<T>(
+    value: T,
+    message: string | BytesLike | STBlob,
+    code?: number,
+  ): Truthy<T>;
+
+  /**
    * Return every value when every host operation succeeded. If any failed,
-   * roll back with the first failure's host code, in input order.
+   * roll back with the first failure's host code, in input order. JavaScript
+   * evaluates every array element before this helper runs; use sequential
+   * checks when later host calls must be conditional on earlier success.
    */
   function onAnyFail<T>(
     results: readonly HostResult<T>[],
@@ -1330,8 +1568,8 @@ declare namespace rollback {
   ): readonly T[];
 
   /** Apply a contract-owned rollback policy when any domain result failed. */
-  function onAnyFail<T, Failure extends ResultFailure>(
-    results: readonly Result<T, Failure>[],
+  function onAnyFail<T, Error>(
+    results: readonly Result<T, Error>[],
     message: string | BytesLike | STBlob,
     code: number,
   ): readonly T[];
@@ -1340,22 +1578,22 @@ declare namespace rollback {
    * Return the successful values in input order when at least one operation
    * succeeded. If all operations failed, apply the supplied contract-owned
    * rollback policy. This accepts `ParseResult` and other result domains as
-   * well as host results. An empty input therefore rolls back.
+   * well as host results. An empty input therefore rolls back. All array
+   * elements are evaluated before this helper inspects their Results.
    */
-  function onAllFail<T, Failure extends ResultFailure>(
-    results: readonly Result<T, Failure>[],
+  function onAllFail<T, Error>(
+    results: readonly Result<T, Error>[],
     message: string | BytesLike | STBlob,
     code: number,
   ): readonly T[];
 }
 
-/** Trace a value; callable namespace members provide explicit encodings. */
+/**
+ * Trace a diagnostic value. The provider renders scalar values and emits
+ * byte-bearing values as hexadecimal without requiring encoding-specific
+ * contract calls.
+ */
 declare function trace(label: string, value?: unknown): void;
-
-declare namespace trace {
-  function hex(label: string, value: BytesLike | STBlob | Hash | AccountID | STCurrency): void;
-  function number(label: string, value: number | bigint | XFL): void;
-}
 /**
  * Serialized types with no declaration of their own, recorded so coverage over
  * definitions.json is total rather than silently partial.
@@ -1570,25 +1808,25 @@ declare const Field: {
   readonly EmittedTxnID: SerializedField<Hash256, 327777, 5, 97>;
   readonly GovernanceMarks: SerializedField<Hash256, 327778, 5, 98>;
   readonly GovernanceFlags: SerializedField<Hash256, 327779, 5, 99>;
-  readonly Amount: SerializedField<STAmount, 393217, 6, 1>;
-  readonly Balance: SerializedField<STAmount, 393218, 6, 2>;
-  readonly LimitAmount: SerializedField<STAmount, 393219, 6, 3>;
-  readonly TakerPays: SerializedField<STAmount, 393220, 6, 4>;
-  readonly TakerGets: SerializedField<STAmount, 393221, 6, 5>;
-  readonly LowLimit: SerializedField<STAmount, 393222, 6, 6>;
-  readonly HighLimit: SerializedField<STAmount, 393223, 6, 7>;
-  readonly Fee: SerializedField<STAmount, 393224, 6, 8>;
-  readonly SendMax: SerializedField<STAmount, 393225, 6, 9>;
-  readonly DeliverMin: SerializedField<STAmount, 393226, 6, 10>;
-  readonly MinimumOffer: SerializedField<STAmount, 393232, 6, 16>;
-  readonly RippleEscrow: SerializedField<STAmount, 393233, 6, 17>;
-  readonly DeliveredAmount: SerializedField<STAmount, 393234, 6, 18>;
-  readonly NFTokenBrokerFee: SerializedField<STAmount, 393235, 6, 19>;
-  readonly HookCallbackFee: SerializedField<STAmount, 393236, 6, 20>;
-  readonly LockedBalance: SerializedField<STAmount, 393237, 6, 21>;
-  readonly BaseFeeDrops: SerializedField<STAmount, 393238, 6, 22>;
-  readonly ReserveBaseDrops: SerializedField<STAmount, 393239, 6, 23>;
-  readonly ReserveIncrementDrops: SerializedField<STAmount, 393240, 6, 24>;
+  readonly Amount: SerializedField<Amount, 393217, 6, 1>;
+  readonly Balance: SerializedField<Amount, 393218, 6, 2>;
+  readonly LimitAmount: SerializedField<Amount, 393219, 6, 3>;
+  readonly TakerPays: SerializedField<Amount, 393220, 6, 4>;
+  readonly TakerGets: SerializedField<Amount, 393221, 6, 5>;
+  readonly LowLimit: SerializedField<Amount, 393222, 6, 6>;
+  readonly HighLimit: SerializedField<Amount, 393223, 6, 7>;
+  readonly Fee: SerializedField<Amount, 393224, 6, 8>;
+  readonly SendMax: SerializedField<Amount, 393225, 6, 9>;
+  readonly DeliverMin: SerializedField<Amount, 393226, 6, 10>;
+  readonly MinimumOffer: SerializedField<Amount, 393232, 6, 16>;
+  readonly RippleEscrow: SerializedField<Amount, 393233, 6, 17>;
+  readonly DeliveredAmount: SerializedField<Amount, 393234, 6, 18>;
+  readonly NFTokenBrokerFee: SerializedField<Amount, 393235, 6, 19>;
+  readonly HookCallbackFee: SerializedField<Amount, 393236, 6, 20>;
+  readonly LockedBalance: SerializedField<Amount, 393237, 6, 21>;
+  readonly BaseFeeDrops: SerializedField<Amount, 393238, 6, 22>;
+  readonly ReserveBaseDrops: SerializedField<Amount, 393239, 6, 23>;
+  readonly ReserveIncrementDrops: SerializedField<Amount, 393240, 6, 24>;
   readonly PublicKey: SerializedField<STBlob, 458753, 7, 1>;
   readonly MessageKey: SerializedField<STBlob, 458754, 7, 2>;
   readonly SigningPubKey: SerializedField<STBlob, 458755, 7, 3>;
@@ -1684,7 +1922,7 @@ declare const Field: {
   readonly TakerPaysIssuer: SerializedField<Hash160, 1114114, 17, 2>;
   readonly TakerGetsCurrency: SerializedField<Hash160, 1114115, 17, 3>;
   readonly TakerGetsIssuer: SerializedField<Hash160, 1114116, 17, 4>;
-  readonly Paths: SerializedField<STPathSet, 1179649, 18, 1>;
+  readonly Paths: SerializedField<PathSet, 1179649, 18, 1>;
   readonly Indexes: SerializedField<unknown, 1245185, 19, 1>;
   readonly Hashes: SerializedField<unknown, 1245186, 19, 2>;
   readonly Amendments: SerializedField<unknown, 1245187, 19, 3>;
@@ -1710,17 +1948,17 @@ declare const Field: {
   readonly DomainID: SerializedField<Hash256, 327717, 5, 37>;
   readonly HookOnOutgoing: SerializedField<Hash256, 327773, 5, 93>;
   readonly HookOnIncoming: SerializedField<Hash256, 327774, 5, 94>;
-  readonly Amount2: SerializedField<STAmount, 393227, 6, 11>;
-  readonly BidMin: SerializedField<STAmount, 393228, 6, 12>;
-  readonly BidMax: SerializedField<STAmount, 393229, 6, 13>;
-  readonly LPTokenOut: SerializedField<STAmount, 393241, 6, 25>;
-  readonly LPTokenIn: SerializedField<STAmount, 393242, 6, 26>;
-  readonly EPrice: SerializedField<STAmount, 393243, 6, 27>;
-  readonly Price: SerializedField<STAmount, 393244, 6, 28>;
-  readonly SignatureReward: SerializedField<STAmount, 393245, 6, 29>;
-  readonly MinAccountCreateAmount: SerializedField<STAmount, 393246, 6, 30>;
-  readonly LPTokenBalance: SerializedField<STAmount, 393247, 6, 31>;
-  readonly TrustLineRewardAccumulator: SerializedField<STAmount, 393315, 6, 99>;
+  readonly Amount2: SerializedField<Amount, 393227, 6, 11>;
+  readonly BidMin: SerializedField<Amount, 393228, 6, 12>;
+  readonly BidMax: SerializedField<Amount, 393229, 6, 13>;
+  readonly LPTokenOut: SerializedField<Amount, 393241, 6, 25>;
+  readonly LPTokenIn: SerializedField<Amount, 393242, 6, 26>;
+  readonly EPrice: SerializedField<Amount, 393243, 6, 27>;
+  readonly Price: SerializedField<Amount, 393244, 6, 28>;
+  readonly SignatureReward: SerializedField<Amount, 393245, 6, 29>;
+  readonly MinAccountCreateAmount: SerializedField<Amount, 393246, 6, 30>;
+  readonly LPTokenBalance: SerializedField<Amount, 393247, 6, 31>;
+  readonly TrustLineRewardAccumulator: SerializedField<Amount, 393315, 6, 99>;
   readonly DIDDocument: SerializedField<STBlob, 458779, 7, 27>;
   readonly Data: SerializedField<STBlob, 458780, 7, 28>;
   readonly AssetClass: SerializedField<STBlob, 458781, 7, 29>;
@@ -1761,12 +1999,12 @@ declare const Field: {
   readonly WasLockingChainSend: SerializedField<UInt8, 1048595, 16, 19>;
   readonly CredentialIDs: SerializedField<unknown, 1245190, 19, 6>;
   readonly MPTokenIssuanceID: SerializedField<Hash192, 1376257, 21, 1>;
-  readonly LockingChainIssue: SerializedField<STIssue, 1572865, 24, 1>;
-  readonly IssuingChainIssue: SerializedField<STIssue, 1572866, 24, 2>;
-  readonly Asset: SerializedField<STIssue, 1572867, 24, 3>;
-  readonly Asset2: SerializedField<STIssue, 1572868, 24, 4>;
-  readonly ClaimCurrency: SerializedField<STIssue, 1572869, 24, 5>;
+  readonly LockingChainIssue: SerializedField<Issue, 1572865, 24, 1>;
+  readonly IssuingChainIssue: SerializedField<Issue, 1572866, 24, 2>;
+  readonly Asset: SerializedField<Issue, 1572867, 24, 3>;
+  readonly Asset2: SerializedField<Issue, 1572868, 24, 4>;
+  readonly ClaimCurrency: SerializedField<Issue, 1572869, 24, 5>;
   readonly XChainBridge: SerializedField<unknown, 1638401, 25, 1>;
-  readonly BaseAsset: SerializedField<STCurrency, 1703937, 26, 1>;
-  readonly QuoteAsset: SerializedField<STCurrency, 1703938, 26, 2>;
+  readonly BaseAsset: SerializedField<Currency, 1703937, 26, 1>;
+  readonly QuoteAsset: SerializedField<Currency, 1703938, 26, 2>;
 };

@@ -1,4 +1,5 @@
 #include "provider_internal.hpp"
+#include "quickjs.hpp"
 
 #include <math.h>
 #include <string.h>
@@ -36,19 +37,29 @@ js_prng_random(JSContext *ctx, JSValueConst this_val,
     return JS_NewFloat64(ctx, (double)prng_seed / 2147483647.0);
 }
 
-static void
+static bool
 sandbox_make_deterministic(JSContext *ctx)
 {
+    using qjs::OwnedValue;
+
 #ifdef CONFIG_XAHAU_HOOK_PROVIDER
     /* The underlying Date intrinsic reads the previous ledger close time and
        is UTC.  Do not wrap it: wrapping leaves constructor escapes and breaks
        ordinary explicit Date arguments. */
-    JSValue global = JS_GetGlobalObject(ctx);
-    JSValue math = JS_GetPropertyStr(ctx, global, "Math");
+    OwnedValue global(ctx, JS_GetGlobalObject(ctx));
+    if (global.isException())
+        return false;
+    OwnedValue math(ctx, JS_GetPropertyStr(ctx, global.get(), "Math"));
+    if (math.isException())
+        return false;
     JSAtom random = JS_NewAtom(ctx, "random");
-    JS_DeleteProperty(ctx, math, random, 0);
+    if (random == JS_ATOM_NULL)
+        return false;
+    int const random_deleted =
+        JS_DeleteProperty(ctx, math.get(), random, 0);
     JS_FreeAtom(ctx, random);
-    JS_FreeValue(ctx, math);
+    if (random_deleted < 0)
+        return false;
 
     /* The v1 Hook profile has no shared memory, Atomics, weak references, or
        finalizer scheduling.  WeakRef intrinsics are never installed; remove
@@ -58,10 +69,15 @@ sandbox_make_deterministic(JSContext *ctx)
         "SharedArrayBuffer", "Atomics"};
     for (size_t i = 0; i < sizeof(disabled) / sizeof(disabled[0]); ++i) {
         JSAtom atom = JS_NewAtom(ctx, disabled[i]);
-        JS_DeleteProperty(ctx, global, atom, 0);
+        if (atom == JS_ATOM_NULL)
+            return false;
+        int const deleted =
+            JS_DeleteProperty(ctx, global.get(), atom, 0);
         JS_FreeAtom(ctx, atom);
+        if (deleted < 0)
+            return false;
     }
-    JS_FreeValue(ctx, global);
+    return !JS_HasException(ctx);
 #else
     /* Installed exactly once, from qjs_init. Anything non-deterministic that
        can be replaced in JS goes in this patch; Math.random is installed
@@ -83,16 +99,26 @@ sandbox_make_deterministic(JSContext *ctx)
         "  })(Date);"
         "})();";
 
-    JSValue r = JS_Eval(ctx, patch, strlen(patch), "<sandbox>", JS_EVAL_TYPE_GLOBAL);
-    JS_FreeValue(ctx, r);
+    OwnedValue result(
+        ctx,
+        JS_Eval(
+            ctx,
+            patch,
+            strlen(patch),
+            "<sandbox>",
+            JS_EVAL_TYPE_GLOBAL));
+    if (result.isException())
+        return false;
 
     /* Math.random is native and reads the seed cell — installed once. */
-    JSValue global = JS_GetGlobalObject(ctx);
-    JSValue math = JS_GetPropertyStr(ctx, global, "Math");
-    JS_SetPropertyStr(ctx, math, "random",
-        JS_NewCFunction(ctx, js_prng_random, "random", 0));
-    JS_FreeValue(ctx, math);
-    JS_FreeValue(ctx, global);
+    OwnedValue global(ctx, JS_GetGlobalObject(ctx));
+    if (global.isException())
+        return false;
+    OwnedValue math(ctx, JS_GetPropertyStr(ctx, global.get(), "Math"));
+    if (math.isException())
+        return false;
+    return JS_SetPropertyStr(ctx, math.get(), "random",
+        JS_NewCFunction(ctx, js_prng_random, "random", 0)) >= 0;
 #endif
 }
 
@@ -121,10 +147,10 @@ coverage_interrupt_handler(JSRuntime *rt, void *opaque)
 
 }  // namespace
 
-void
+bool
 installDeterministicSandbox(JSContext *ctx)
 {
-    sandbox_make_deterministic(ctx);
+    return sandbox_make_deterministic(ctx);
 }
 
 void

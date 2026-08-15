@@ -74,6 +74,7 @@ public:
 
 enum class StringBytes : std::uint8_t
 {
+    reject,
     hex,
     utf8,
 };
@@ -102,6 +103,7 @@ class ByteView
 
     explicit ByteView(JSContext *ctx) noexcept;
     void clear() noexcept;
+    bool parseArray(JSValueConst value);
     bool parseBinary(JSValueConst value);
     bool parseString(JSValueConst value, StringBytes strings);
     bool parseRich(JSValueConst value);

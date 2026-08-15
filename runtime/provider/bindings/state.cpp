@@ -1,5 +1,6 @@
 #include "common.hpp"
 #include "hook_imports.hpp"
+#include "../provider_internal.hpp"
 
 namespace jshookz::provider::bindings {
 namespace {
@@ -34,8 +35,7 @@ js_state_get(JSContext *ctx, JSValueConst this_val,
         return JS_ThrowInternalError(
             ctx, "state.get: host returned oversized length %lld",
             (long long)result);
-    return host_success(
-        ctx, rich_from_bytes(ctx, "STBlob", value, (uint32_t)result));
+    return host_success(ctx, makeSTBlob(ctx, value, (uint32_t)result));
 }
 
 JSValue
@@ -68,21 +68,24 @@ js_state_set(JSContext *ctx, JSValueConst this_val,
         (uint32_t)(uintptr_t)value.data(), value.size(),
         (uint32_t)(uintptr_t)key.data(), key.size());
     return result < 0
-        ? host_failure(ctx, result)
-        : host_success(ctx, JS_UNDEFINED);
+        ? host_effect_failure(ctx, result)
+        : host_effect_success(ctx);
 }
 
 }  // namespace
 
-void
+bool
 registerState(JSContext *ctx, JSValue global)
 {
-    JSValue state = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, state, "get",
-        JS_NewCFunction(ctx, js_state_get, "get", 1));
-    JS_SetPropertyStr(ctx, state, "set",
-        JS_NewCFunction(ctx, js_state_set, "set", 2));
-    JS_SetPropertyStr(ctx, global, "state", state);
+    qjs::OwnedValue state(ctx, JS_NewObject(ctx));
+    if (state.isException())
+        return false;
+    if (JS_SetPropertyStr(ctx, state.get(), "get",
+            JS_NewCFunction(ctx, js_state_get, "get", 1)) < 0 ||
+        JS_SetPropertyStr(ctx, state.get(), "set",
+            JS_NewCFunction(ctx, js_state_set, "set", 2)) < 0)
+        return false;
+    return JS_SetPropertyStr(ctx, global, "state", state.release()) >= 0;
 }
 
 }  // namespace jshookz::provider::bindings

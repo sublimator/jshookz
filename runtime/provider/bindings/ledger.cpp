@@ -1,5 +1,6 @@
 #include "common.hpp"
 #include "hook_imports.hpp"
+#include "../provider_internal.hpp"
 
 namespace jshookz::provider::bindings {
 namespace {
@@ -26,7 +27,7 @@ js_ledger_last_hash(JSContext *ctx, JSValueConst this_val)
         return JS_ThrowInternalError(
             ctx, "ledger.lastHash: host returned %lld, expected 32",
             (long long)result);
-    return rich_from_bytes(ctx, "Hash256", bytes, sizeof(bytes));
+    return makeHash256(ctx, bytes, sizeof(bytes));
 }
 
 JSValue
@@ -47,13 +48,13 @@ js_hook_account(JSContext *ctx, JSValueConst this_val,
     int64_t result = hook_hook_account(
         (uint32_t)(uintptr_t)bytes, sizeof(bytes));
     if (result < 0)
-        return host_failure(ctx, result);
+        return JS_ThrowInternalError(
+            ctx, "hook.account: host returned %lld", (long long)result);
     if (result != (int64_t)sizeof(bytes))
         return JS_ThrowInternalError(
             ctx, "hook.account: host returned %lld, expected 20",
             (long long)result);
-    return host_success(ctx,
-        rich_from_bytes(ctx, "AccountID", bytes, sizeof(bytes)));
+    return makeAccountID(ctx, bytes, sizeof(bytes));
 }
 
 JSCFunctionListEntry const js_ledger_properties[] = {
@@ -64,30 +65,39 @@ JSCFunctionListEntry const js_ledger_properties[] = {
 
 }  // namespace
 
-void
+bool
 registerHook(JSContext *ctx, JSValue global)
 {
-    JSValue hook = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, hook, "account",
-        JS_NewCFunction(ctx, js_hook_account, "account", 0));
-    JS_SetPropertyStr(ctx, global, "hook", hook);
+    qjs::OwnedValue hook(ctx, JS_NewObject(ctx));
+    if (hook.isException())
+        return false;
+    if (JS_SetPropertyStr(ctx, hook.get(), "account",
+            JS_NewCFunction(ctx, js_hook_account, "account", 0)) < 0)
+        return false;
+    return JS_SetPropertyStr(ctx, global, "hook", hook.release()) >= 0;
 }
 
-void
+bool
 registerLedger(JSContext *ctx, JSValue global)
 {
-    JSValue ledger = JS_NewObject(ctx);
-    JS_SetPropertyFunctionList(
+    qjs::OwnedValue ledger(ctx, JS_NewObject(ctx));
+    if (ledger.isException())
+        return false;
+    if (JS_SetPropertyFunctionList(
         ctx,
-        ledger,
+        ledger.get(),
         js_ledger_properties,
-        sizeof(js_ledger_properties) / sizeof(js_ledger_properties[0]));
-    JS_SetPropertyStr(ctx, global, "ledger", ledger);
+        sizeof(js_ledger_properties) / sizeof(js_ledger_properties[0])) < 0 ||
+        JS_SetPropertyStr(ctx, global, "ledger", ledger.release()) < 0)
+        return false;
 
-    JSValue otxn = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, otxn, "type",
-        JS_NewCFunction(ctx, js_otxn_type, "type", 0));
-    JS_SetPropertyStr(ctx, global, "otxn", otxn);
+    qjs::OwnedValue otxn(ctx, JS_NewObject(ctx));
+    if (otxn.isException())
+        return false;
+    if (JS_SetPropertyStr(ctx, otxn.get(), "type",
+            JS_NewCFunction(ctx, js_otxn_type, "type", 0)) < 0)
+        return false;
+    return JS_SetPropertyStr(ctx, global, "otxn", otxn.release()) >= 0;
 }
 
 }  // namespace jshookz::provider::bindings

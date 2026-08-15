@@ -149,8 +149,8 @@ def test_v1_bytes_accepts_typed_arrays_array_buffer_and_hex():
         "STBlob.from(new Uint16Array([258])).toHex(),"
         "STBlob.from(new Uint8Array(new Uint8Array([0,160,255,0]).buffer,1,2)).toHex(),"
         "STBlob.from(new ArrayBuffer(2)).byteLength,"
-        "STBlob.from('A0FF').toHex(),"
-        "STBlob.from('').byteLength"
+        "STBlob.fromHex('A0FF').toHex(),"
+        "STBlob.fromHex('').byteLength"
         "]);"
     )
 
@@ -158,16 +158,35 @@ def test_v1_bytes_accepts_typed_arrays_array_buffer_and_hex():
     assert result.result_value == '["0201","A0FF",2,"A0FF",0]'
 
 
-def test_v1_bytes_rejects_plain_arrays_and_data_view():
+def test_v1_bytes_accepts_strict_byte_arrays_and_rejects_ambiguous_inputs():
     result = evaluate(
         "JSON.stringify(["
-        "(() => { try { STBlob.from([1, 2]); return false; } catch { return true; } })(),"
+        "STBlob.from([1, 2, 255]).toHex(),"
+        "(() => { try { STBlob.from([256]); return false; } catch { return true; } })(),"
+        "(() => { try { STBlob.from([1.5]); return false; } catch { return true; } })(),"
         "(() => { try { STBlob.from(new DataView(new ArrayBuffer(2))); "
         "return false; } catch { return true; } })(),"
-        "(() => { try { STBlob.from('ABC'); return false; } catch { return true; } })(),"
-        "(() => { try { STBlob.from('GG'); return false; } catch { return true; } })()"
+        "(() => { try { STBlob.from('A0'); return false; } catch { return true; } })(),"
+        "(() => { try { STBlob.fromHex('ABC'); return false; } catch { return true; } })(),"
+        "(() => { try { STBlob.fromHex('GG'); return false; } catch { return true; } })()"
         "]);"
     )
 
     assert result.exit_code == 0
-    assert result.result_value == "[true,true,true,true]"
+    assert result.result_value == '["0102FF",true,true,true,true,true,true]'
+
+
+def test_account_id_protocol_constants_have_exact_read_only_values():
+    result = evaluate(
+        "JSON.stringify(["
+        "AccountID.zero.toHex(),"
+        "AccountID.one.toHex(),"
+        "Object.getOwnPropertyDescriptor(AccountID, 'zero').writable,"
+        "Object.getOwnPropertyDescriptor(AccountID, 'one').writable"
+        "]);"
+    )
+
+    assert result.exit_code == 0
+    assert result.result_value == (
+        '["' + "00" * 20 + '","' + "00" * 19 + '01",false,false]'
+    )

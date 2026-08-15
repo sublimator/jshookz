@@ -30,10 +30,41 @@ const file = ts.createSourceFile(
   ts.ScriptKind.JS,
 );
 const violations = [];
+const entries = new Map();
 
 function unparenthesize(node) {
   while (ts.isParenthesizedExpression(node)) node = node.expression;
   return node;
+}
+
+function isExported(node) {
+  return (ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Export) !== 0;
+}
+
+for (const statement of file.statements) {
+  if (ts.isFunctionDeclaration(statement) && statement.name && isExported(statement)) {
+    entries.set(statement.name.text, true);
+  } else if (ts.isVariableStatement(statement) && isExported(statement)) {
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name)) continue;
+      const value = declaration.initializer && unparenthesize(declaration.initializer);
+      entries.set(
+        declaration.name.text,
+        !!value && (ts.isArrowFunction(value) || ts.isFunctionExpression(value)),
+      );
+    }
+  } else if (isExported(statement) && statement.name && ts.isIdentifier(statement.name)) {
+    entries.set(statement.name.text, false);
+  }
+}
+
+if (!entries.has("main")) {
+  violations.push("missing exported main entry point");
+} else if (!entries.get("main")) {
+  violations.push("exported main entry point is not callable");
+}
+if (entries.has("callback") && !entries.get("callback")) {
+  violations.push("exported callback entry point is not callable");
 }
 
 function visit(node) {
@@ -58,6 +89,63 @@ function visit(node) {
 for (const statement of file.statements) visit(statement);
 if (violations.length) {
   console.error(violations.join(", "));
+  process.exit(2);
+}
+"""
+
+_RESULT_CONSUMPTION_VALIDATOR = r"""
+const ts = require(process.argv[1]);
+const configPath = process.argv[2];
+const sourcePath = process.argv[3];
+const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
+if (configFile.error) {
+  console.error(ts.flattenDiagnosticMessageText(configFile.error.messageText, "\n"));
+  process.exit(2);
+}
+const parsed = ts.parseJsonConfigFileContent(
+  configFile.config,
+  ts.sys,
+  require("path").dirname(configPath),
+);
+const program = ts.createProgram(parsed.fileNames, parsed.options);
+const checker = program.getTypeChecker();
+const source = program.getSourceFile(sourcePath);
+if (!source) {
+  console.error(`source file is absent from TypeScript program: ${sourcePath}`);
+  process.exit(2);
+}
+const resultMembers = ["ok", "okOr", "okOrHandle", "okMapOr"];
+const violations = [];
+
+function isResult(type) {
+  if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return false;
+  const apparent = checker.getApparentType(type);
+  return resultMembers.every(name => checker.getPropertyOfType(apparent, name));
+}
+
+function reject(node, detail) {
+  const position = source.getLineAndCharacterOfPosition(node.getStart(source));
+  violations.push(`${position.line + 1}:${position.character + 1}: ${detail}`);
+}
+
+function visit(node) {
+  if (
+    ts.isVoidExpression(node) &&
+    isResult(checker.getTypeAtLocation(node.expression))
+  ) {
+    reject(node, "void cannot discard a Result");
+  } else if (
+    ts.isExpressionStatement(node) &&
+    isResult(checker.getTypeAtLocation(node.expression))
+  ) {
+    reject(node, "Result reaches the end of a statement without a legal exit");
+  }
+  ts.forEachChild(node, visit);
+}
+
+visit(source);
+if (violations.length) {
+  console.error(violations.join("\n"));
   process.exit(2);
 }
 """
@@ -114,6 +202,43 @@ def _validate_no_top_level_entry_invocation(
         )
 
 
+def _validate_result_consumption(
+    source: Path,
+    config: Path,
+    *,
+    tsc: str | None,
+) -> None:
+    """Reject direct or ``void``-laundered Result expression statements."""
+    executable = _typescript_executable(tsc)
+    resolved_tsc = Path(executable).resolve()
+    typescript = resolved_tsc.parent.parent / "lib" / "typescript.js"
+    if not typescript.is_file():
+        raise RuntimeError(
+            "Cannot locate the TypeScript parser beside tsc: " f"{resolved_tsc}"
+        )
+    node = shutil.which("node")
+    if not node:
+        raise RuntimeError("Node.js not found; it is required beside tsc")
+
+    completed = subprocess.run(
+        [
+            node,
+            "-e",
+            _RESULT_CONSUMPTION_VALIDATOR,
+            str(typescript),
+            str(config),
+            str(source),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode:
+        detail = completed.stderr.strip() or "unconsumed Result"
+        raise RuntimeError(
+            "Hook Result must use one of its six legal exits:\n" f"{detail}"
+        )
+
+
 def _typescript_to_javascript(
     source: Path,
     *,
@@ -159,6 +284,8 @@ def _typescript_to_javascript(
                 if part.strip()
             )
             raise RuntimeError(f"TypeScript compilation failed:\n{detail}")
+
+        _validate_result_consumption(source, config, tsc=tsc)
 
         emitted = out_dir / source.with_suffix(".js").name
         if not emitted.is_file():
