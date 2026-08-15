@@ -589,13 +589,13 @@ static int32_t qjs_invoke_bytecode_export(
                 "TypeError: Hook module has no exported main entry point");
         return -1;
     }
-    if (!JS_IsFunction(ctx, entry.get())) {
+    if (!JS_IsCallable(ctx, entry.get())) {
         if (std::strcmp(export_name, "callback") == 0)
             store_static_result(
-                "TypeError: exported callback entry point is not a function");
+                "TypeError: exported callback entry point is not callable");
         else
             store_static_result(
-                "TypeError: exported main entry point is not a function");
+                "TypeError: exported main entry point is not callable");
         return -1;
     }
 
@@ -684,15 +684,15 @@ int32_t qjs_validate_hook_module(const uint8_t *buf, uint32_t buf_len)
             "TypeError: Hook module has no exported main entry point");
         return -1;
     }
-    if (!JS_IsFunction(ctx, mainEntry.get())) {
+    if (!JS_IsCallable(ctx, mainEntry.get())) {
         store_static_result(
-            "TypeError: exported main entry point is not a function");
+            "TypeError: exported main entry point is not callable");
         return -1;
     }
     if (!JS_IsUndefined(callback.get()) &&
-        !JS_IsFunction(ctx, callback.get())) {
+        !JS_IsCallable(ctx, callback.get())) {
         store_static_result(
-            "TypeError: exported callback entry point is not a function");
+            "TypeError: exported callback entry point is not callable");
         return -1;
     }
     return 1 | (!JS_IsUndefined(callback.get()) ? 2 : 0);

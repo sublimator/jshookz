@@ -57,10 +57,13 @@ class HookRunner:
 
     def run_file(self, path: str | Path) -> HookResult:
         source = Path(path)
-        if source.suffix.lower() == ".ts":
+        if source.suffix.lower() in {".ts", ".js", ".mjs"}:
             compiled = compile_hook(source, wasm_path=self.wasm_path)
             return self._run_bytecode(compiled.bytecode, label=str(source))
-        return self.run(source.read_text(), label=str(source))
+        raise ValueError(
+            f"unsupported Hook source extension {source.suffix!r}; "
+            "expected .ts, .js, or .mjs"
+        )
 
     def run_typescript(
         self,
@@ -76,6 +79,7 @@ class HookRunner:
         return self._run_bytecode(compiled.bytecode, label=label)
 
     def run(self, source: str, *, label: str = "<hook>") -> HookResult:
+        """Run an unchecked JavaScript string as a low-level runtime diagnostic."""
         provider = _HookzProvider(self.runtime)
         compiler = WasmHost.profiled(handler=provider, wasm_path=self.wasm_path)
         compiler.init()

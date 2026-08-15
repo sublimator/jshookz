@@ -67,7 +67,7 @@ def test_rejects_non_callable_main_export():
     result = validate(bytecode)
 
     assert not result.valid
-    assert result.error == "TypeError: exported main entry point is not a function"
+    assert result.error == "TypeError: exported main entry point is not callable"
 
 
 def test_rejects_non_callable_callback_export():
@@ -78,7 +78,19 @@ def test_rejects_non_callable_callback_export():
     result = validate(bytecode)
 
     assert not result.valid
-    assert result.error == "TypeError: exported callback entry point is not a function"
+    assert result.error == "TypeError: exported callback entry point is not callable"
+
+
+def test_rejects_class_entry_points_even_through_wrappers():
+    for source in (
+        "export class main {}",
+        "class Entry {}\nexport const main = Entry.bind(null);",
+        "class Entry {}\nexport const main = new Proxy(Entry, {});",
+    ):
+        result = validate(compile_bytecode(source))
+
+        assert not result.valid
+        assert result.error == "TypeError: exported main entry point is not callable"
 
 
 def test_rejects_non_module_bytecode():
