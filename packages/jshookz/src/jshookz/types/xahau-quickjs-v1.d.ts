@@ -191,50 +191,72 @@ declare const UInt32: UIntFactory<32>;
 declare const UInt64: UIntFactory<64>;
 
 /** @serial Blob */
-declare class STBlob {
+declare interface STBlob {
   readonly byteLength: number;
-  static from(value: BytesLike): STBlob;
-  /** Decode an even-length hexadecimal literal. */
-  static fromHex(value: HexString): STBlob;
   byteAt(index: number): number;
   toBytes(): Uint8Array;
   toHex(): HexString;
   equals(other: BytesLike | STBlob): boolean;
 }
 
+declare interface STBlobFactory {
+  from(value: BytesLike): STBlob;
+  /** Decode an even-length hexadecimal literal. */
+  fromHex(value: HexString): STBlob;
+}
+
+declare const STBlob: STBlobFactory;
+
 /** @serial Hash256 */
-declare class Hash256 {
-  static from(value: BytesLike): Hash256;
-  /** Decode exactly 32 bytes from an even-length hexadecimal literal. */
-  static fromHex(value: HexString): Hash256;
+declare interface Hash256 {
   toHex(): HexString;
   toBytes(): Uint8Array;
   isZero(): boolean;
   equals(other: Hash256): boolean;
 }
 
-/** @serial AccountID */
-declare class AccountID {
-  /** XRP's native-issue account: 20 zero bytes. */
-  static readonly zero: AccountID;
-  /** Ripple's no-account sentinel: integer one as a 20-byte AccountID. */
-  static readonly one: AccountID;
-  static from(value: BytesLike): AccountID;
-  /** Decode exactly 20 bytes from an even-length hexadecimal literal. */
-  static fromHex(value: HexString): AccountID;
-  toHex(): HexString;
-  toBytes(): Uint8Array;
+declare interface Hash256Factory {
+  from(value: BytesLike): Hash256;
+  /** Decode exactly 32 bytes from an even-length hexadecimal literal. */
+  fromHex(value: HexString): Hash256;
 }
 
+declare const Hash256: Hash256Factory;
+
+/** @serial AccountID */
+declare interface AccountID {
+  toHex(): HexString;
+  toBytes(): Uint8Array;
+  isZero(): boolean;
+  equals(other: AccountID): boolean;
+}
+
+declare interface AccountIDFactory {
+  /** XRP's native-issue account: 20 zero bytes. */
+  readonly zero: AccountID;
+  /** Ripple's no-account sentinel: integer one as a 20-byte AccountID. */
+  readonly one: AccountID;
+  from(value: BytesLike): AccountID;
+  /** Decode exactly 20 bytes from an even-length hexadecimal literal. */
+  fromHex(value: HexString): AccountID;
+}
+
+declare const AccountID: AccountIDFactory;
+
 /** @inner-rich-type XFL */
-declare class XFL {
+declare interface XFL {
   readonly raw: bigint;
-  static fromRaw(raw: bigint | number): XFL;
-  mantissa(): number;
+  mantissa(): bigint;
   exponent(): number;
   isNegative(): boolean;
   isZero(): boolean;
 }
+
+declare interface XFLFactory {
+  fromRaw(raw: bigint): XFL;
+}
+
+declare const XFL: XFLFactory;
 
 declare const enum TransactionType {
   Payment = 0,
@@ -407,20 +429,25 @@ declare namespace rollback {
   ): T;
   /**
    * Require a successful, present value. A failed result and a successful
-   * `undefined` are both translated into the supplied contract-owned rollback
-   * policy rather than preserving an incidental failure status.
+   * `undefined` or `null` are translated into the supplied contract-owned
+   * rollback policy rather than preserving an incidental failure status.
+   * Other falsy successes (`0`, `0n`, `false`, and `""`) remain valid values.
    */
   function require<T, Error>(
-    result: Result<T | undefined, Error>,
-    message: string | BytesLike | STBlob,
+    result: Result<T, Error>,
+    message: [T] extends [void]
+      ? [void] extends [T]
+        ? never
+        : string | BytesLike | STBlob
+      : string | BytesLike | STBlob,
     code?: number,
-  ): T;
+  ): Exclude<T, null | undefined>;
   /**
    * Require a truthy direct value. `false`, `0`, `0n`, `""`, `null`,
    * `undefined`, and `NaN` therefore apply the rollback policy.
    */
   function require<T>(
-    value: T,
+    value: T & { readonly okOr?: never },
     message: string | BytesLike | STBlob,
     code?: number,
   ): Truthy<T>;
