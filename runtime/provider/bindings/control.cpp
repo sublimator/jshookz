@@ -23,10 +23,10 @@ js_hook_accept(JSContext *ctx, JSValueConst this_val,
        accepted by BytesLike APIs. accept deliberately does not invoke an
        arbitrary rich value's toBytes method before terminating execution. */
     auto message = qjs::ByteView::get(
-        ctx, argv[0], qjs::StringBytes::utf8);
+        ctx, argv[0], qjs::BytePolicy::lifecycleMessage);
     if (!message)
         return qjs::byteInputTypeError(
-            ctx, "accept", qjs::StringBytes::utf8);
+            ctx, "accept", qjs::BytePolicy::lifecycleMessage);
     int64_t result = hook_accept(
         (uint32_t)(uintptr_t)message.data(), message.size(), code);
     return JS_NewInt64(ctx, result);
@@ -46,11 +46,10 @@ js_hook_rollback(JSContext *ctx, JSValueConst this_val,
     auto message = qjs::ByteView::get(
         ctx,
         argv[0],
-        qjs::StringBytes::utf8,
-        qjs::RichBytes::callToBytes);
+        qjs::BytePolicy::lifecycleMessage);
     if (!message)
         return qjs::byteInputTypeError(
-            ctx, "rollback", qjs::StringBytes::utf8);
+            ctx, "rollback", qjs::BytePolicy::lifecycleMessage);
     int64_t result = hook_rollback(
         (uint32_t)(uintptr_t)message.data(), message.size(), code);
     return JS_NewInt64(ctx, result);

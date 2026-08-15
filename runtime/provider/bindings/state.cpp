@@ -14,8 +14,7 @@ js_state_get(JSContext *ctx, JSValueConst this_val,
     auto key = qjs::ByteView::get(
         ctx,
         argv[0],
-        qjs::StringBytes::utf8,
-        qjs::RichBytes::callToBytes);
+        qjs::BytePolicy::stateKeyLike);
     if (!key)
         return qjs::pendingOrTypeError(ctx, "state.get: invalid key");
 
@@ -47,8 +46,7 @@ js_state_set(JSContext *ctx, JSValueConst this_val,
     auto key = qjs::ByteView::get(
         ctx,
         argv[0],
-        qjs::StringBytes::utf8,
-        qjs::RichBytes::callToBytes);
+        qjs::BytePolicy::stateKeyLike);
     if (!key)
         return qjs::pendingOrTypeError(ctx, "state.set: invalid key");
     /* Parsing a rich value executes its toBytes method. Snapshot the key so
@@ -59,8 +57,7 @@ js_state_set(JSContext *ctx, JSValueConst this_val,
     auto value = qjs::ByteView::get(
         ctx,
         argv[1],
-        qjs::StringBytes::utf8,
-        qjs::RichBytes::callToBytes);
+        qjs::BytePolicy::stateValueLike);
     if (!value)
         return qjs::pendingOrTypeError(ctx, "state.set: invalid value");
 

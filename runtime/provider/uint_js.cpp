@@ -488,7 +488,7 @@ newFactory(JSContext* ctx, std::uint8_t bits)
                 JS_CFUNC_generic_magic,
                 bits),
             JS_PROP_ENUMERABLE) < 0 ||
-        JS_PreventExtensions(ctx, factory.get()) < 0)
+        !jshookz::provider::qjs::freezeObject(ctx, factory.get()))
         return JS_EXCEPTION;
     return factory.release();
 }
@@ -505,11 +505,10 @@ register_uint_types(JSContext* ctx)
     OwnedValue prototype(ctx, JS_NewObject(ctx));
     if (prototype.isException())
         return false;
-    if (JS_SetPropertyFunctionList(
-        ctx,
-        prototype.get(),
-        uintPrototypeFunctions,
-        sizeof(uintPrototypeFunctions) / sizeof(uintPrototypeFunctions[0])) < 0)
+    if (!jshookz::provider::qjs::installFunctions(
+            ctx, prototype.get(), uintPrototypeFunctions))
+        return false;
+    if (!jshookz::provider::qjs::freezeObject(ctx, prototype.get()))
         return false;
     JS_SetClassProto(ctx, uintClassId, prototype.release());
 

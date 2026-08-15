@@ -6,7 +6,7 @@
 
 namespace jshookz::provider::bindings {
 
-bool registerResult(JSContext* ctx);
+[[nodiscard]] bool registerResult(JSContext* ctx);
 bool isResult(JSValueConst value) noexcept;
 JSValue result_success(JSContext* ctx, JSValue value);
 JSValue uint_failure(
@@ -17,12 +17,12 @@ JSValue host_success(JSContext* ctx, JSValue value);
 JSValue host_failure(JSContext* ctx, std::int64_t code);
 JSValue host_effect_success(JSContext* ctx);
 JSValue host_effect_failure(JSContext* ctx, std::int64_t code);
-bool registerControl(JSContext* ctx, JSValue global);
-bool registerHook(JSContext* ctx, JSValue global);
-bool registerLedger(JSContext* ctx, JSValue global);
-bool registerTrace(JSContext* ctx, JSValue global);
-bool registerState(JSContext* ctx, JSValue global);
-bool registerEmission(JSContext* ctx, JSValue global);
-bool registerLegacy(JSContext* ctx, JSValue global);
+[[nodiscard]] bool registerControl(JSContext* ctx, JSValue global);
+[[nodiscard]] bool registerHook(JSContext* ctx, JSValue global);
+[[nodiscard]] bool registerLedger(JSContext* ctx, JSValue global);
+[[nodiscard]] bool registerTrace(JSContext* ctx, JSValue global);
+[[nodiscard]] bool registerState(JSContext* ctx, JSValue global);
+[[nodiscard]] bool registerEmission(JSContext* ctx, JSValue global);
+[[nodiscard]] bool registerLegacy(JSContext* ctx, JSValue global);
 
 }  // namespace jshookz::provider::bindings

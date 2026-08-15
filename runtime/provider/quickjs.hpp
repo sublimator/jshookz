@@ -63,7 +63,7 @@ public:
         return JS_IsException(value_);
     }
 
-    JSValue
+    [[nodiscard]] JSValue
     release() noexcept
     {
         JSValue value = value_;
@@ -72,18 +72,57 @@ public:
     }
 };
 
-enum class StringBytes : std::uint8_t
+enum class BytePolicy : std::uint8_t
 {
-    reject,
-    hex,
-    utf8,
+    bytesLike,
+    hexString,
+    bytesLikeOrSTBlob,
+    lifecycleMessage,
+    stateKeyLike,
+    stateValueLike,
+    traceLabel,
+    traceValue,
+    legacyHexInput,
 };
 
-enum class RichBytes : std::uint8_t
+enum class ByteClassFamily : std::uint8_t
 {
-    reject,
-    callToBytes,
+    none,
+    stBlob,
+    serializedType,
 };
+
+/** Reset and populate the nominal byte-bearing class registry at startup. */
+void
+resetByteClassRegistry() noexcept;
+
+[[nodiscard]] bool
+registerByteClass(
+    JSClassID classId,
+    ByteClassFamily family,
+    JSCFunction *toBytes) noexcept;
+
+/** Apply JavaScript Object.freeze and preserve any pending exception. */
+[[nodiscard]] bool
+freezeObject(JSContext *ctx, JSValueConst value);
+
+template <class T>
+T *
+opaque(JSContext *ctx, JSValueConst value, JSClassID classId) noexcept
+{
+    return static_cast<T *>(JS_GetOpaque2(ctx, value, classId));
+}
+
+template <class T>
+void
+destroyOpaque(JSRuntime *rt, JSValueConst value, JSClassID classId) noexcept
+{
+    auto *native = static_cast<T *>(JS_GetOpaque(value, classId));
+    if (native == nullptr)
+        return;
+    native->~T();
+    js_free_rt(rt, native);
+}
 
 /**
  * Borrowed bytes whose QuickJS backing values and temporary conversions stay
@@ -105,8 +144,8 @@ class ByteView
     void clear() noexcept;
     bool parseArray(JSValueConst value);
     bool parseBinary(JSValueConst value);
-    bool parseString(JSValueConst value, StringBytes strings);
-    bool parseRich(JSValueConst value);
+    bool parseString(JSValueConst value, BytePolicy policy);
+    bool parseRich(JSValueConst value, BytePolicy policy);
 
 public:
     ~ByteView();
@@ -116,15 +155,14 @@ public:
     ByteView(ByteView&& other) noexcept;
     ByteView& operator=(ByteView&& other) noexcept;
 
-    static ByteView
+    [[nodiscard]] static ByteView
     get(
         JSContext *ctx,
         JSValueConst value,
-        StringBytes strings,
-        RichBytes rich = RichBytes::reject);
+        BytePolicy policy);
 
     /** Replace a borrowed view with an engine-owned stable byte snapshot. */
-    bool snapshot();
+    [[nodiscard]] bool snapshot();
 
     explicit operator bool() const noexcept
     {
@@ -162,6 +200,19 @@ element(JSContext *ctx, JSValueConst array, std::uint32_t index)
     return OwnedValue(ctx, JS_GetPropertyUint32(ctx, array, index));
 }
 
+[[nodiscard]] inline bool
+installFunctions(
+    JSContext *ctx,
+    JSValueConst object,
+    std::span<JSCFunctionListEntry const> functions)
+{
+    return JS_SetPropertyFunctionList(
+        ctx,
+        object,
+        functions.data(),
+        static_cast<int>(functions.size())) >= 0;
+}
+
 /** Copy bytes into a new JavaScript Uint8Array. */
 JSValue
 uint8Array(JSContext *ctx, std::span<std::uint8_t const> bytes);
@@ -175,7 +226,7 @@ JSValue
 byteInputTypeError(
     JSContext *ctx,
     char const *operation,
-    StringBytes strings);
+    BytePolicy policy);
 
 /** Sequential array construction with explicit ownership transfer to JS. */
 class ArrayBuilder

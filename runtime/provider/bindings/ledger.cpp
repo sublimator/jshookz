@@ -83,11 +83,7 @@ registerLedger(JSContext *ctx, JSValue global)
     qjs::OwnedValue ledger(ctx, JS_NewObject(ctx));
     if (ledger.isException())
         return false;
-    if (JS_SetPropertyFunctionList(
-        ctx,
-        ledger.get(),
-        js_ledger_properties,
-        sizeof(js_ledger_properties) / sizeof(js_ledger_properties[0])) < 0 ||
+    if (!qjs::installFunctions(ctx, ledger.get(), js_ledger_properties) ||
         JS_SetPropertyStr(ctx, global, "ledger", ledger.release()) < 0)
         return false;
 

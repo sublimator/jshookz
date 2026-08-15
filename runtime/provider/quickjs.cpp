@@ -1,11 +1,107 @@
 #include "quickjs.hpp"
 
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <limits>
 
 namespace jshookz::provider::qjs {
 namespace {
+
+enum class StringMode : std::uint8_t
+{
+    reject,
+    hex,
+    utf8,
+};
+
+enum class RichMode : std::uint8_t
+{
+    reject,
+    stBlob,
+    serializedType,
+};
+
+struct BytePolicySpec
+{
+    StringMode strings;
+    RichMode rich;
+    char const *expected;
+};
+
+constexpr BytePolicySpec
+policySpec(BytePolicy policy) noexcept
+{
+    switch (policy) {
+        case BytePolicy::bytesLike:
+            return {
+                StringMode::reject,
+                RichMode::reject,
+                "byte array, declared typed array, or ArrayBuffer"};
+        case BytePolicy::hexString:
+        case BytePolicy::legacyHexInput:
+            return {
+                StringMode::hex,
+                RichMode::reject,
+                "byte array, declared typed array, ArrayBuffer, or hex string"};
+        case BytePolicy::bytesLikeOrSTBlob:
+            return {
+                StringMode::reject,
+                RichMode::stBlob,
+                "BytesLike or STBlob"};
+        case BytePolicy::lifecycleMessage:
+            return {
+                StringMode::utf8,
+                RichMode::stBlob,
+                "string, BytesLike, or STBlob"};
+        case BytePolicy::stateKeyLike:
+            return {
+                StringMode::utf8,
+                RichMode::serializedType,
+                "StateKeyLike"};
+        case BytePolicy::stateValueLike:
+            return {
+                StringMode::utf8,
+                RichMode::serializedType,
+                "StateValueLike"};
+        case BytePolicy::traceLabel:
+            return {StringMode::utf8, RichMode::reject, "string"};
+        case BytePolicy::traceValue:
+            return {
+                StringMode::reject,
+                RichMode::serializedType,
+                "byte-bearing provider value"};
+    }
+    return {StringMode::reject, RichMode::reject, "byte input"};
+}
+
+struct ByteClassEntry
+{
+    JSClassID classId = JS_INVALID_CLASS_ID;
+    ByteClassFamily family = ByteClassFamily::serializedType;
+    JSCFunction *toBytes = nullptr;
+};
+
+std::array<ByteClassEntry, 32> byteClasses{};
+std::size_t byteClassCount = 0;
+
+ByteClassEntry const *
+richClassEntry(JSValueConst value, RichMode mode) noexcept
+{
+    if (mode == RichMode::reject || !JS_IsObject(value))
+        return nullptr;
+    JSClassID const classId = JS_GetClassID(value);
+    for (std::size_t index = 0; index < byteClassCount; ++index) {
+        auto const &entry = byteClasses[index];
+        if (entry.classId != classId)
+            continue;
+        if (mode == RichMode::serializedType ||
+            entry.family == ByteClassFamily::stBlob)
+            return &entry;
+        return nullptr;
+    }
+    return nullptr;
+}
 
 int
 hexNibble(char value) noexcept
@@ -20,6 +116,46 @@ hexNibble(char value) noexcept
 }
 
 }  // namespace
+
+void
+resetByteClassRegistry() noexcept
+{
+    byteClassCount = 0;
+}
+
+bool
+registerByteClass(
+    JSClassID classId,
+    ByteClassFamily family,
+    JSCFunction *toBytes) noexcept
+{
+    if (family == ByteClassFamily::none)
+        return true;
+    if (classId == JS_INVALID_CLASS_ID ||
+        toBytes == nullptr ||
+        byteClassCount == byteClasses.size())
+        return false;
+    byteClasses[byteClassCount++] = {classId, family, toBytes};
+    return true;
+}
+
+bool
+freezeObject(JSContext *ctx, JSValueConst value)
+{
+    OwnedValue global(ctx, JS_GetGlobalObject(ctx));
+    if (global.isException())
+        return false;
+    OwnedValue object = property(ctx, global.get(), "Object");
+    if (object.isException())
+        return false;
+    OwnedValue freeze = property(ctx, object.get(), "freeze");
+    if (freeze.isException() || !JS_IsFunction(ctx, freeze.get()))
+        return false;
+    JSValueConst arguments[] = {value};
+    OwnedValue result(
+        ctx, JS_Call(ctx, freeze.get(), object.get(), 1, arguments));
+    return !result.isException();
+}
 
 ByteView::ByteView(JSContext *ctx) noexcept
     : ctx_(ctx), backing_(ctx)
@@ -124,13 +260,17 @@ ByteView::parseBinary(JSValueConst value)
     size_t offset = 0;
     size_t byteLength = 0;
     size_t bufferSize = 0;
-    OwnedValue buffer(
-        ctx_,
-        JS_GetTypedArrayBuffer(
-            ctx_, value, &offset, &byteLength, nullptr));
-    if (!buffer.isException()) {
+    int const typedArrayType = JS_GetTypedArrayType(value);
+    if (typedArrayType >= 0 &&
+        typedArrayType != JS_TYPED_ARRAY_FLOAT16) {
+        OwnedValue buffer(
+            ctx_,
+            JS_GetTypedArrayBuffer(
+                ctx_, value, &offset, &byteLength, nullptr));
+        if (buffer.isException())
+            return false;
         auto *data = JS_GetArrayBuffer(ctx_, &bufferSize, buffer.get());
-        if (data != nullptr &&
+        if ((data != nullptr || !JS_HasException(ctx_)) &&
             offset <= bufferSize &&
             byteLength <= bufferSize - offset &&
             byteLength <= std::numeric_limits<std::uint32_t>::max()) {
@@ -140,12 +280,11 @@ ByteView::parseBinary(JSValueConst value)
             valid_ = true;
             return true;
         }
-    } else {
-        OwnedValue exception(ctx_, JS_GetException(ctx_));
+        return false;
     }
 
     auto *data = JS_GetArrayBuffer(ctx_, &bufferSize, value);
-    if (data == nullptr) {
+    if (data == nullptr && JS_HasException(ctx_)) {
         OwnedValue exception(ctx_, JS_GetException(ctx_));
         return false;
     }
@@ -159,11 +298,12 @@ ByteView::parseBinary(JSValueConst value)
 }
 
 bool
-ByteView::parseString(JSValueConst value, StringBytes strings)
+ByteView::parseString(JSValueConst value, BytePolicy policy)
 {
+    StringMode const strings = policySpec(policy).strings;
     if (!JS_IsString(value))
         return false;
-    if (strings == StringBytes::reject)
+    if (strings == StringMode::reject)
         return false;
 
     size_t length = 0;
@@ -175,7 +315,7 @@ ByteView::parseString(JSValueConst value, StringBytes strings)
         return false;
     }
 
-    if (strings == StringBytes::utf8) {
+    if (strings == StringMode::utf8) {
         string_ = text;
         data_ = reinterpret_cast<std::uint8_t const *>(text);
         size_ = static_cast<std::uint32_t>(length);
@@ -216,13 +356,13 @@ ByteView::parseString(JSValueConst value, StringBytes strings)
 }
 
 bool
-ByteView::parseRich(JSValueConst value)
+ByteView::parseRich(JSValueConst value, BytePolicy policy)
 {
-    OwnedValue toBytes = property(ctx_, value, "toBytes");
-    if (toBytes.isException() || !JS_IsFunction(ctx_, toBytes.get()))
+    auto const *entry = richClassEntry(value, policySpec(policy).rich);
+    if (entry == nullptr)
         return false;
     OwnedValue bytes(
-        ctx_, JS_Call(ctx_, toBytes.get(), value, 0, nullptr));
+        ctx_, entry->toBytes(ctx_, value, 0, nullptr));
     if (bytes.isException())
         return false;
     return parseBinary(bytes.get());
@@ -232,14 +372,13 @@ ByteView
 ByteView::get(
     JSContext *ctx,
     JSValueConst value,
-    StringBytes strings,
-    RichBytes rich)
+    BytePolicy policy)
 {
     ByteView result(ctx);
     /* Strings dominate Hook keys and messages. Avoid using two thrown and
        cleared invalid-class exceptions as routine type probes for them. */
     if (JS_IsString(value)) {
-        result.parseString(value, strings);
+        result.parseString(value, policy);
         return result;
     }
     int const isArray = JS_IsArray(ctx, value);
@@ -253,8 +392,7 @@ ByteView::get(
         return result;
     if (JS_HasException(ctx))
         return result;
-    if (rich == RichBytes::callToBytes)
-        result.parseRich(value);
+    result.parseRich(value, policy);
     return result;
 }
 
@@ -306,26 +444,12 @@ JSValue
 byteInputTypeError(
     JSContext *ctx,
     char const *operation,
-    StringBytes strings)
+    BytePolicy policy)
 {
     if (JS_HasException(ctx))
         return JS_EXCEPTION;
-    if (strings == StringBytes::hex) {
-        return JS_ThrowTypeError(
-            ctx,
-            "%s: expected byte array, typed array, ArrayBuffer, or hex string",
-            operation);
-    }
-    if (strings == StringBytes::reject) {
-        return JS_ThrowTypeError(
-            ctx,
-            "%s: expected byte array, typed array, or ArrayBuffer",
-            operation);
-    }
     return JS_ThrowTypeError(
-        ctx,
-        "%s: expected string, byte array, typed array, or ArrayBuffer",
-        operation);
+        ctx, "%s: expected %s", operation, policySpec(policy).expected);
 }
 
 }  // namespace jshookz::provider::qjs

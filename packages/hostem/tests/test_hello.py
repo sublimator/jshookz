@@ -549,6 +549,69 @@ def test_bytes_like_accepts_byte_arrays_and_produces_uint8_arrays():
     assert result.return_code == 87
 
 
+def test_lifecycle_messages_accept_declared_stblob_values():
+    source = """
+        export function main() {
+          accept(STBlob.fromHex("A1B2"), 88);
+        }
+    """
+
+    result = HookRunner().run(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == bytes.fromhex("A1B2")
+    assert result.return_code == 88
+
+
+def test_emit_bytes_reject_undeclared_strings_before_crossing_the_host():
+    source = """
+        export function main() {
+          let prepareRejected = false;
+          let txRejected = false;
+          try { emit.prepare("A1B2"); } catch (error) {
+            prepareRejected = error instanceof TypeError;
+          }
+          try { emit.tx("A1B2"); } catch (error) {
+            txRejected = error instanceof TypeError;
+          }
+          if (!prepareRejected || !txRejected)
+            rollback("emit accepted string bytes", 89);
+          accept("emit byte policy", 90);
+        }
+    """
+
+    result = HookRunner().run(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"emit byte policy"
+    assert [call.name for call in result.call_log] == ["accept"]
+
+
+def test_rich_byte_coercion_requires_a_provider_registered_class():
+    source = """
+        export function main() {
+          const counterfeit = { toBytes() { return new Uint8Array([1]); } };
+          let stateRejected = false;
+          let emitRejected = false;
+          try { state.set("COUNTERFEIT", counterfeit); } catch (error) {
+            stateRejected = error instanceof TypeError;
+          }
+          try { emit.tx(counterfeit); } catch (error) {
+            emitRejected = error instanceof TypeError;
+          }
+          if (!stateRejected || !emitRejected)
+            rollback("counterfeit byte type accepted", 91);
+          accept("nominal byte policy", 92);
+        }
+    """
+
+    result = HookRunner().run(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"nominal byte policy"
+    assert [call.name for call in result.call_log] == ["accept"]
+
+
 def test_bounded_uint_values_pin_width_arithmetic_and_conversion_policy():
     source = """
         export function main() {
@@ -663,19 +726,12 @@ def test_bounded_uint_values_pin_width_arithmetic_and_conversion_policy():
     assert [call.name for call in result.call_log] == ["trace", "accept"]
 
 
-def test_rich_hook_input_retains_bare_array_buffer_from_to_bytes():
+def test_state_accepts_provider_registered_serialized_types():
     source = """
         export function main(_reserved) {
-          const rich = {
-            toBytes() {
-              return new Uint8Array([0xA1, 0xB2, 0xC3]).buffer;
-            },
-          };
-          rollback.onFail(state.set("RICH", rich));
-          let rejected = false;
-          try { state.set("HEX", { toBytes: () => "0D0E0F" }); }
-          catch (error) { rejected = error instanceof TypeError; }
-          if (!rejected) rollback("string bytes accepted", 85);
+          rollback.onFail(state.set("RICH", STBlob.fromHex("A1B2C3")));
+          rollback.onFail(state.set("HASH", Hash256.from(new Uint8Array(32))));
+          rollback.onFail(state.set("ACCT", AccountID.one));
           accept("rich bytes retained", 85);
         }
     """
@@ -687,47 +743,53 @@ def test_rich_hook_input_retains_bare_array_buffer_from_to_bytes():
     assert result.return_msg == b"rich bytes retained"
     assert result.return_code == 85
     assert runner.runtime.state_db[b"RICH"] == bytes([0xA1, 0xB2, 0xC3])
+    assert runner.runtime.state_db[b"HASH"] == bytes(32)
+    assert runner.runtime.state_db[b"ACCT"] == bytes(19) + b"\x01"
     assert [call.name for call in result.call_log] == [
+        "state_set",
+        "state_set",
         "state_set",
         "accept",
     ]
 
 
-def test_rich_hook_input_preserves_to_bytes_exception():
+def test_counterfeit_rich_input_is_rejected_without_executing_to_bytes():
     source = """
         export function main(_reserved) {
-          let message = "missing exception";
+          let called = false;
+          let rejected = false;
           try {
             state.set("KEY", {
-              toBytes() { throw new Error("sentinel"); },
+              toBytes() { called = true; throw new Error("sentinel"); },
             });
           } catch (error) {
-            message = error.message;
+            rejected = error instanceof TypeError;
           }
-          if (message !== "sentinel") rollback(`unexpected:${message}`, 86);
-          accept("exception preserved", 87);
+          if (!rejected || called) rollback("counterfeit executed", 86);
+          accept("counterfeit rejected", 87);
         }
     """
 
     result = HookRunner().run(source)
 
     assert result.accepted, result.error
-    assert result.return_msg == b"exception preserved"
+    assert result.return_msg == b"counterfeit rejected"
     assert result.return_code == 87
     assert [call.name for call in result.call_log] == ["accept"]
 
 
-def test_later_rich_input_cannot_detach_earlier_key_view():
+def test_registered_rich_input_uses_native_converter_not_shadowed_method():
     source = """
         export function main(_reserved) {
           const keyBuffer = new Uint8Array([75, 69, 89, 33]).buffer;
           const key = new Uint8Array(keyBuffer);
-          const value = {
-            toBytes() {
+          const value = STBlob.from([1, 2, 3]);
+          Object.defineProperty(value, "toBytes", {
+            value() {
               keyBuffer.transfer(0);
-              return new Uint8Array([1, 2, 3]);
+              return new Uint8Array([9]);
             },
-          };
+          });
           rollback.onFail(state.set(key, value));
           accept("detachment safe", 88);
         }

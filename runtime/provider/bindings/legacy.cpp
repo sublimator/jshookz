@@ -91,10 +91,10 @@ js_util_sha256(JSContext *ctx, JSValueConst this_val,
                int argc, JSValueConst *argv)
 {
     auto in = qjs::ByteView::get(
-        ctx, argv[0], qjs::StringBytes::hex);
+        ctx, argv[0], qjs::BytePolicy::legacyHexInput);
     if (!in)
         return qjs::byteInputTypeError(
-            ctx, "util_sha256", qjs::StringBytes::hex);
+            ctx, "util_sha256", qjs::BytePolicy::legacyHexInput);
 
     uint8_t hash[32];
     host_util_sha256(in.data(), in.size(), hash, 32);
@@ -106,10 +106,10 @@ js_util_sha512h(JSContext *ctx, JSValueConst this_val,
                 int argc, JSValueConst *argv)
 {
     auto in = qjs::ByteView::get(
-        ctx, argv[0], qjs::StringBytes::hex);
+        ctx, argv[0], qjs::BytePolicy::legacyHexInput);
     if (!in)
         return qjs::byteInputTypeError(
-            ctx, "util_sha512h", qjs::StringBytes::hex);
+            ctx, "util_sha512h", qjs::BytePolicy::legacyHexInput);
 
     uint8_t hash[32];
     host_util_sha512h(in.data(), in.size(), hash, 32);
@@ -121,10 +121,10 @@ js_util_ripemd160(JSContext *ctx, JSValueConst this_val,
                   int argc, JSValueConst *argv)
 {
     auto in = qjs::ByteView::get(
-        ctx, argv[0], qjs::StringBytes::hex);
+        ctx, argv[0], qjs::BytePolicy::legacyHexInput);
     if (!in)
         return qjs::byteInputTypeError(
-            ctx, "util_ripemd160", qjs::StringBytes::hex);
+            ctx, "util_ripemd160", qjs::BytePolicy::legacyHexInput);
 
     uint8_t hash[20];
     host_util_ripemd160(in.data(), in.size(), hash, 20);

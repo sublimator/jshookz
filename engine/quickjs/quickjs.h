@@ -891,6 +891,8 @@ typedef enum JSTypedArrayEnum {
 
 JSValue JS_NewTypedArray(JSContext *ctx, int argc, JSValueConst *argv,
                          JSTypedArrayEnum array_type);
+/* Return the JSTypedArrayEnum value, or -1 when obj is not a typed array. */
+int JS_GetTypedArrayType(JSValueConst obj);
 JSValue JS_GetTypedArrayBuffer(JSContext *ctx, JSValueConst obj,
                                size_t *pbyte_offset,
                                size_t *pbyte_length,
