@@ -360,10 +360,10 @@
         ]
       }
     ],
-    "sha256": "2f8bb3aa7fc2cfd78d7edb9f0a804f64831e0eec4b75244b51ad1444d2302cff",
-    "size": 1029054
+    "sha256": "97477631a39c7865614bdcab5a9a28178662568a32697d305fb4097b3ffdfcd6",
+    "size": 1030722
   },
-  "runtime_profile_id": "f431f7b971ca64c593df899650063cab210a9c43e2cb70c03f48e93929300672",
+  "runtime_profile_id": "1d252bebaff5c21e34faf4f46307910c18ba803e5addd946b47f404730ac22cd",
   "schema": "xahau.quickjs.runtime-profile-lock.v1",
   "source": {
     "artifact": {
@@ -397,7 +397,7 @@
         "wasm_tail_call": false,
         "wasm_threads": false
       },
-      "implementation": "wasmtime",
+      "implementation": "wasmtime-native-c-api",
       "module_lifecycle": "compile-once-fresh-store-and-instance-per-invocation",
       "version": "47.0.3"
     },
@@ -417,6 +417,40 @@
       "schema": "jshookz.javascript-surface.v1"
     },
     "limits": {
+      "host_work_addressed_length_indices": {
+        "accept": [
+          1
+        ],
+        "emit": [
+          1,
+          3
+        ],
+        "hook_account": [
+          1
+        ],
+        "ledger_last_hash": [
+          1
+        ],
+        "prepare": [
+          1,
+          3
+        ],
+        "rollback": [
+          1
+        ],
+        "state": [
+          1,
+          3
+        ],
+        "state_set": [
+          1,
+          3
+        ],
+        "trace": [
+          1,
+          3
+        ]
+      },
       "host_work_base_per_call": 1,
       "host_work_budget": 1000000,
       "host_work_meter": "base-plus-addressed-byte-v1",

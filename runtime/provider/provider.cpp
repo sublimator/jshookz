@@ -30,6 +30,8 @@ static uint8_t module_loader_buf[65536];
 
 static JSRuntime *rt = NULL;
 static JSContext *ctx = NULL;
+static uint32_t configuredMemoryLimit = 0;
+static uint32_t configuredStackLimit = 0;
 
 static void
 destroy_runtime(void)
@@ -235,6 +237,12 @@ void qjs_init(void)
     rt = JS_NewRuntime();
     if (!rt)
         return;
+    if (configuredMemoryLimit != 0)
+        JS_SetMemoryLimit(rt, configuredMemoryLimit);
+    /* The native QuickJS 1 MiB default exceeds this provider's 128 KiB wasm
+       stack. The low-level unprofiled host therefore disables the check;
+       profile-bound execution sets its explicit limit before qjs_init. */
+    JS_SetMaxStackSize(rt, configuredStackLimit);
 #ifdef CONFIG_XAHAU_HOOK_PROVIDER
     ctx = JS_NewContextRaw(rt);
     if (!ctx ||
@@ -317,13 +325,17 @@ void qjs_set_seed(uint32_t seed)
 __attribute__((export_name("qjs_set_memory_limit")))
 void qjs_set_memory_limit(uint32_t limit_bytes)
 {
-    JS_SetMemoryLimit(rt, limit_bytes);
+    configuredMemoryLimit = limit_bytes;
+    if (rt)
+        JS_SetMemoryLimit(rt, limit_bytes);
 }
 
 __attribute__((export_name("qjs_set_max_stack_size")))
 void qjs_set_max_stack_size(uint32_t stack_bytes)
 {
-    JS_SetMaxStackSize(rt, stack_bytes);
+    configuredStackLimit = stack_bytes;
+    if (rt)
+        JS_SetMaxStackSize(rt, stack_bytes);
 }
 
 __attribute__((export_name("qjs_enable_coverage")))

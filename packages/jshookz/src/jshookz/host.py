@@ -7,12 +7,17 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from wasmtime import (
-    Config, Engine, Func, FuncType, Linker, Memory, Module, Store, ValType,
+    Config, Engine, Func, FuncType, Linker, Module, Store, Trap, ValType,
 )
 from wasmtime import _ffi as wasmtime_ffi
 
 from . import paths
+from .runtime_profile import ProfileExecutionLimits
 from .schema import HOOK_API, HostAPI, HostFunction, WasmType
+
+
+_CLEANUP_FUEL = 5_000_000
+_HOST_WORK_EXHAUSTED = "host work budget exhausted"
 
 
 class HostHandler(Protocol):
@@ -29,6 +34,7 @@ class ContractResult:
     exit_code: int
     result_value: str | None = None
     gas_used: int = 0
+    host_work_used: int = 0
     error: str | None = None
     logs: list[str] = field(default_factory=list)
 
@@ -66,7 +72,11 @@ class UnavailableHookHost:
 
 
 class WasmHost:
-    """Python host that loads jshookz_provider.wasm via wasmtime."""
+    """Low-level Wasmtime diagnostic host for jshookz_provider.wasm.
+
+    Contract execution must use :meth:`profiled`; plain construction is
+    deliberately unprofiled unless an explicit diagnostic fuel value is given.
+    """
 
     def __init__(
         self,
@@ -74,14 +84,52 @@ class WasmHost:
         wasm_path: Path | None = None,
         api: HostAPI = HOOK_API,
         fuel: int = 0,
+        execution_limits: ProfileExecutionLimits | None = None,
     ):
+        if fuel > 0 and execution_limits is not None:
+            raise ValueError("fuel and execution_limits are mutually exclusive")
         self.handler = handler or UnavailableHookHost()
         self.wasm_path = wasm_path or paths.XAHAU_HOOK_PROVIDER_WASM
         self.api = api
         self.fuel = fuel
+        self.execution_limits = execution_limits
         self._validating_hook = False
+        self._metered = fuel > 0 or execution_limits is not None
+        self._active_fuel_budget = (
+            execution_limits.initialization_fuel
+            if execution_limits is not None
+            else fuel
+        )
+        self._host_work_remaining = (
+            execution_limits.host_work_budget
+            if execution_limits is not None
+            else None
+        )
 
         self._setup_engine()
+
+    @classmethod
+    def profiled(
+        cls,
+        handler: Any = None,
+        *,
+        wasm_path: str | Path | None = None,
+        profile_path: str | Path | None = None,
+    ) -> WasmHost:
+        """Create a host bound byte-for-byte to one verified runtime profile."""
+        from .runtime_profile import (
+            profile_execution_limits,
+            verify_runtime_profile_lock,
+        )
+
+        provider = Path(wasm_path or paths.XAHAU_HOOK_PROVIDER_WASM).resolve()
+        profile = Path(profile_path or paths.XAHAU_RUNTIME_PROFILE_LOCK).resolve()
+        lock = verify_runtime_profile_lock(profile, provider)
+        return cls(
+            handler=handler,
+            wasm_path=provider,
+            execution_limits=profile_execution_limits(lock),
+        )
 
     def _setup_engine(self):
         config = Config()
@@ -96,14 +144,14 @@ class WasmHost:
         config.wasm_memory64 = False
         config.wasm_multi_memory = False
         config.wasm_tail_call = False
-        if self.fuel > 0:
+        if self._metered:
             config.consume_fuel = True
 
         self.engine = Engine(config)
         self.store = Store(self.engine)
 
-        if self.fuel > 0:
-            self.store.set_fuel(self.fuel)
+        if self._metered:
+            self.store.set_fuel(self._active_fuel_budget)
 
         self.linker = Linker(self.engine)
 
@@ -143,6 +191,58 @@ class WasmHost:
     def _wasm_free(self, ptr: int):
         free_fn = self.instance.exports(self.store)["free"]
         free_fn(self.store, ptr)
+
+    def _safe_wasm_free(self, ptr: int) -> None:
+        if self._metered and self.store.get_fuel() < _CLEANUP_FUEL:
+            self.store.set_fuel(_CLEANUP_FUEL)
+        self._wasm_free(ptr)
+
+    @staticmethod
+    def _is_fuel_exhaustion(error: BaseException) -> bool:
+        message = str(error).lower()
+        return "fuel" in message or "all fuel" in message
+
+    @staticmethod
+    def _is_host_work_exhaustion(error: BaseException) -> bool:
+        current: BaseException | None = error
+        seen: set[int] = set()
+        while current is not None and id(current) not in seen:
+            if _HOST_WORK_EXHAUSTED in str(current).lower():
+                return True
+            seen.add(id(current))
+            current = current.__cause__ or current.__context__
+        return False
+
+    def _fuel_used_since(self, fuel_before: int) -> int:
+        if not self._metered:
+            return 0
+        return fuel_before - self.store.get_fuel()
+
+    def _host_work_used(self) -> int:
+        if self.execution_limits is None or self._host_work_remaining is None:
+            return 0
+        return self.execution_limits.host_work_budget - self._host_work_remaining
+
+    def _charge_host_work(self, fn: HostFunction, wasm_args: tuple) -> None:
+        limits = self.execution_limits
+        if limits is None or self._host_work_remaining is None:
+            return
+
+        addressed_bytes = 0
+        for index in limits.addressed_length_indices(fn.name):
+            if index >= len(wasm_args):
+                raise RuntimeError(
+                    f"host-work length index {index} is outside {fn.name!r}"
+                )
+            addressed_bytes += int(wasm_args[index]) & 0xFFFFFFFF
+        charge = (
+            limits.host_work_base_per_call
+            + addressed_bytes * limits.host_work_per_addressed_byte
+        )
+        if charge > self._host_work_remaining:
+            self._host_work_remaining = 0
+            raise Trap(_HOST_WORK_EXHAUSTED)
+        self._host_work_remaining -= charge
 
     def _write_string_to_wasm(self, s: str) -> tuple[int, int]:
         data = s.encode("utf-8")
@@ -187,6 +287,7 @@ class WasmHost:
             raise RuntimeError(
                 "Hook host calls are unavailable during module initialization"
             )
+        self._charge_host_work(fn, wasm_args)
 
         # Unmarshal WASM args to Python args
         py_args = []
@@ -240,8 +341,22 @@ class WasmHost:
         Note: init costs ~1.4M fuel. If using fuel metering, ensure
         enough fuel is available or add fuel before init.
         """
+        if self.execution_limits is not None:
+            self.set_memory_limit(self.execution_limits.quickjs_heap_bytes)
+            self.set_max_stack_size(self.execution_limits.quickjs_stack_bytes)
         qjs_init = self.instance.exports(self.store)["qjs_init"]
-        qjs_init(self.store)
+        try:
+            qjs_init(self.store)
+        except Exception as error:
+            if self._is_fuel_exhaustion(error):
+                raise RuntimeError(
+                    "runtime-profile initialization fuel exhausted"
+                ) from error
+            raise
+        if self.execution_limits is not None:
+            self._active_fuel_budget = self.execution_limits.invocation_fuel
+            self.store.set_fuel(self._active_fuel_budget)
+            self._host_work_remaining = self.execution_limits.host_work_budget
 
     def add_fuel(self, amount: int):
         """Add more fuel to the store."""
@@ -255,28 +370,39 @@ class WasmHost:
         fn = self.instance.exports(self.store)["qjs_set_memory_limit"]
         fn(self.store, limit)
 
+    def set_max_stack_size(self, limit: int):
+        fn = self.instance.exports(self.store)["qjs_set_max_stack_size"]
+        fn(self.store, limit)
+
     def _eval_common(self, code: str, func_name: str = "qjs_eval") -> ContractResult:
         """Common eval logic for both global and module modes."""
+        fuel_before = self.store.get_fuel() if self._metered else 0
         ptr, length = self._write_string_to_wasm(code)
-
-        if self.fuel > 0:
-            fuel_before = self.store.get_fuel()
+        gas_used = 0
 
         try:
             qjs_fn = self.instance.exports(self.store)[func_name]
             exit_code = qjs_fn(self.store, ptr, length)
+            gas_used = self._fuel_used_since(fuel_before)
         except Exception as e:
-            if "fuel" in str(e).lower() or "all fuel" in str(e).lower():
-                return ContractResult(exit_code=-1, error="out of gas",
-                                      gas_used=self.fuel)
+            gas_used = self._fuel_used_since(fuel_before)
+            if self._is_fuel_exhaustion(e):
+                return ContractResult(
+                    exit_code=-1,
+                    error="out of gas",
+                    gas_used=gas_used,
+                    host_work_used=self._host_work_used(),
+                )
+            if self._is_host_work_exhaustion(e):
+                return ContractResult(
+                    exit_code=-1,
+                    error=_HOST_WORK_EXHAUSTED,
+                    gas_used=gas_used,
+                    host_work_used=self._host_work_used(),
+                )
             raise
         finally:
-            self._wasm_free(ptr)
-
-        gas_used = 0
-        if self.fuel > 0:
-            fuel_after = self.store.get_fuel()
-            gas_used = fuel_before - fuel_after
+            self._safe_wasm_free(ptr)
 
         # Read result
         get_ptr = self.instance.exports(self.store)["qjs_get_result_ptr"]
@@ -296,6 +422,7 @@ class WasmHost:
             exit_code=exit_code,
             result_value=result_value,
             gas_used=gas_used,
+            host_work_used=self._host_work_used(),
             error=result_value if exit_code != 0 else None,
             logs=logs,
         )
@@ -310,27 +437,34 @@ class WasmHost:
 
     def eval_bytecode(self, bytecode: bytes) -> ContractResult:
         """Evaluate precompiled bytecode."""
+        fuel_before = self.store.get_fuel() if self._metered else 0
         ptr = self._wasm_malloc(len(bytecode))
         self._write_wasm_memory(ptr, bytecode)
-
-        if self.fuel > 0:
-            fuel_before = self.store.get_fuel()
+        gas_used = 0
 
         try:
             qjs_eval_bc = self.instance.exports(self.store)["qjs_eval_bytecode"]
             exit_code = qjs_eval_bc(self.store, ptr, len(bytecode))
+            gas_used = self._fuel_used_since(fuel_before)
         except Exception as e:
-            if "fuel" in str(e).lower():
-                return ContractResult(exit_code=-1, error="out of gas",
-                                      gas_used=self.fuel)
+            gas_used = self._fuel_used_since(fuel_before)
+            if self._is_fuel_exhaustion(e):
+                return ContractResult(
+                    exit_code=-1,
+                    error="out of gas",
+                    gas_used=gas_used,
+                    host_work_used=self._host_work_used(),
+                )
+            if self._is_host_work_exhaustion(e):
+                return ContractResult(
+                    exit_code=-1,
+                    error=_HOST_WORK_EXHAUSTED,
+                    gas_used=gas_used,
+                    host_work_used=self._host_work_used(),
+                )
             raise
         finally:
-            self._wasm_free(ptr)
-
-        gas_used = 0
-        if self.fuel > 0:
-            fuel_after = self.store.get_fuel()
-            gas_used = fuel_before - fuel_after
+            self._safe_wasm_free(ptr)
 
         get_ptr = self.instance.exports(self.store)["qjs_get_result_ptr"]
         get_len = self.instance.exports(self.store)["qjs_get_result_len"]
@@ -345,6 +479,7 @@ class WasmHost:
             exit_code=exit_code,
             result_value=result_value,
             gas_used=gas_used,
+            host_work_used=self._host_work_used(),
             error=result_value if exit_code != 0 else None,
         )
 
@@ -359,29 +494,34 @@ class WasmHost:
         if export not in {"hook", "cbak"}:
             raise ValueError("Hook export must be 'hook' or 'cbak'")
 
+        fuel_before = self.store.get_fuel() if self._metered else 0
         ptr = self._wasm_malloc(len(bytecode))
         self._write_wasm_memory(ptr, bytecode)
-
-        if self.fuel > 0:
-            fuel_before = self.store.get_fuel()
+        gas_used = 0
 
         try:
             invoke = self.instance.exports(self.store)[f"qjs_{export}"]
             exit_code = invoke(self.store, ptr, len(bytecode), reserved)
+            gas_used = self._fuel_used_since(fuel_before)
         except Exception as error:
-            if "fuel" in str(error).lower():
+            gas_used = self._fuel_used_since(fuel_before)
+            if self._is_fuel_exhaustion(error):
                 return ContractResult(
                     exit_code=-1,
                     error="out of gas",
-                    gas_used=self.fuel,
+                    gas_used=gas_used,
+                    host_work_used=self._host_work_used(),
+                )
+            if self._is_host_work_exhaustion(error):
+                return ContractResult(
+                    exit_code=-1,
+                    error=_HOST_WORK_EXHAUSTED,
+                    gas_used=gas_used,
+                    host_work_used=self._host_work_used(),
                 )
             raise
         finally:
-            self._wasm_free(ptr)
-
-        gas_used = 0
-        if self.fuel > 0:
-            gas_used = fuel_before - self.store.get_fuel()
+            self._safe_wasm_free(ptr)
 
         get_ptr = self.instance.exports(self.store)["qjs_get_result_ptr"]
         get_len = self.instance.exports(self.store)["qjs_get_result_len"]
@@ -397,6 +537,7 @@ class WasmHost:
             exit_code=exit_code,
             result_value=result_value,
             gas_used=gas_used,
+            host_work_used=self._host_work_used(),
             error=result_value if exit_code != 0 else None,
         )
 
@@ -419,7 +560,7 @@ class WasmHost:
             return HookModuleValidation(valid=False, error=str(error))
         finally:
             self._validating_hook = False
-            self._wasm_free(ptr)
+            self._safe_wasm_free(ptr)
 
         if flags in {1, 3}:
             return HookModuleValidation(
@@ -471,9 +612,11 @@ class WasmHost:
             data = self.memory.data_ptr(self.store)
             return bytes(data[bytecode_ptr : bytecode_ptr + bytecode_len])
         finally:
-            self._wasm_free(ptr)
+            self._safe_wasm_free(ptr)
 
     def destroy(self):
         """Clean up QuickJS context."""
+        if self._metered and self.store.get_fuel() < _CLEANUP_FUEL:
+            self.store.set_fuel(_CLEANUP_FUEL)
         qjs_destroy = self.instance.exports(self.store)["qjs_destroy"]
         qjs_destroy(self.store)

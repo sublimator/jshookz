@@ -77,7 +77,7 @@ class HookRunner:
 
     def run(self, source: str, *, label: str = "<hook>") -> HookResult:
         provider = _HookzProvider(self.runtime)
-        compiler = WasmHost(handler=provider, wasm_path=self.wasm_path)
+        compiler = WasmHost.profiled(handler=provider, wasm_path=self.wasm_path)
         compiler.init()
         try:
             bytecode = compiler.compile_source(source, module=True)
@@ -97,7 +97,7 @@ class HookRunner:
         journal_mark = len(rt.state_journal)
 
         provider = _HookzProvider(rt)
-        host = WasmHost(handler=provider, wasm_path=self.wasm_path)
+        host = WasmHost.profiled(handler=provider, wasm_path=self.wasm_path)
 
         try:
             with rt.bind_memory(host.memory, host.store):

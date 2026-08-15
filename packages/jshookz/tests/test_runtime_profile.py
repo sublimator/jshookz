@@ -1,6 +1,8 @@
 import copy
 import hashlib
+import importlib.metadata
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -33,6 +35,18 @@ def _write_json(path: Path, value: object) -> None:
 def test_checked_profile_lock_is_fresh():
     expected = build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)
     assert json.loads(CHECKED_LOCK.read_text()) == expected
+
+
+def test_native_engine_and_python_oracle_versions_are_named_separately():
+    source = json.loads(SOURCE.read_text())
+    project = tomllib.loads(
+        (SOURCE.parents[3] / "packages/jshookz/pyproject.toml").read_text()
+    )["project"]
+
+    assert source["engine"]["implementation"] == "wasmtime-native-c-api"
+    assert source["engine"]["version"] == "47.0.3"
+    assert "wasmtime==47.0.1" in project["dependencies"]
+    assert importlib.metadata.version("wasmtime") == "47.0.1"
 
 
 def test_profile_lock_pins_provider_and_has_no_wasi(tmp_path: Path):
@@ -264,10 +278,9 @@ JSON.stringify((() => {{
 
 def test_profile_javascript_api_matches_generated_surface():
     surface = json.loads(XAHAU_V1_JAVASCRIPT_SURFACE.read_text())
-    host = WasmHost(
+    host = WasmHost.profiled(
         handler=_LedgerClockHost(),
         wasm_path=XAHAU_HOOK_PROVIDER_WASM,
-        fuel=50_000_000,
     )
     host.init()
     try:
@@ -280,10 +293,9 @@ def test_profile_javascript_api_matches_generated_surface():
 
 
 def test_profile_javascript_surface_is_ledger_derived_and_reduced():
-    host = WasmHost(
+    host = WasmHost.profiled(
         handler=_LedgerClockHost(),
         wasm_path=XAHAU_HOOK_PROVIDER_WASM,
-        fuel=50_000_000,
     )
     host.init()
     try:
