@@ -33,13 +33,17 @@ The embedded definitions are content-pinned inputs from XRPL/Xahau
 
 | File | SHA-256 | Embedded protocol hash |
 |---|---|---|
-| `codec/xrpl/x-data/definitions/xahau_definitions.json` | `fd18b4a77127573a598602332afe206137b822de7d258fcf7cfb4f513f164025` | `9601A39F3AB4E7D5F7891E031900E8FD4C27D8B0EB76F394166A6FD1746E5A97` |
+| `codec/xrpl/x-data/definitions/xahau_definitions.json` | `9934e49481656ff0c8880c7b8ce7b85ac7d4f08ddbeeeeb2394e6223415e0c96` | `DCED6D8E6D66EA2AA216341482C30E2BA66C31088836B9C8CA27D181BA5B8B12` |
 | `codec/xrpl/x-data/definitions/xrpl_definitions.json` | `96d73f79bf4d83b13ac22d9ff58744cfab90a557dbbb82328a62504a8a323dd8` | recorded in the JSON |
 
-The exact Xahau source commit that emitted the current JSON was not recorded
-when it was captured. That provenance gap is stated rather than guessed; a
-future definitions refresh must record repository, commit, command, content
-hash, and generated-header hash together.
+Xahau JSON refresh, 2026-08-16:
+
+- repository: `https://github.com/Xahau/xahaud` (local checkout `xahaud-hookz-test-vectors`)
+- commit: `f7e01c799e12baf4821a1da97301484873516241`
+- command: `build/rippled --definitions`
+- content SHA-256: `9934e49481656ff0c8880c7b8ce7b85ac7d4f08ddbeeeeb2394e6223415e0c96`
+- generated header SHA-256: `6a055a756eb61b93442db2caefe6ff3c95a405d950eadc268a6b4788fc4b9290`
+- generated header also records the JSON SHA-256 in its `// SHA-256:` line
 
 ## Xahau Hook ABI
 
