@@ -1123,6 +1123,151 @@ declare const enum TransactionResult {
   telLOCAL_ERROR = -399,
 }
 
+/**
+ * Bit flags for transaction `Flags` (`tf*` / `hsf*`).
+ *
+ * Flattened across types. Shared names are the same bit; different names
+ * often share a value (`tfRequireDestTag` and `tfLPToken` are both 65536).
+ * The name is only meaningful for the object you are inspecting. `Flags`
+ * stays `UInt32` — do not type that field as this enum.
+ */
+declare const enum TransactionFlag {
+  tfTestSuite = 2147483648,
+  tfFullyCanonicalSig = 2147483648,
+  tfTwoAssetIfEmpty = 8388608,
+  tfClearDeepFreeze = 8388608,
+  tfLimitLPToken = 4194304,
+  tfSetDeepFreeze = 4194304,
+  tfOneAssetLPToken = 2097152,
+  tfAllowXRP = 2097152,
+  tfClearFreeze = 2097152,
+  tfTwoAsset = 1048576,
+  tfDisallowXRP = 1048576,
+  tfSetFreeze = 1048576,
+  tfSingleAsset = 524288,
+  tfOptionalAuth = 524288,
+  tfSell = 524288,
+  tfOneAssetWithdrawAll = 262144,
+  tfRequireAuth = 262144,
+  tfFillOrKill = 262144,
+  tfLimitQuality = 262144,
+  tfClearNoRipple = 262144,
+  tfWithdrawAll = 131072,
+  tfOptionalDestTag = 131072,
+  tfLostMajority = 131072,
+  tfImmediateOrCancel = 131072,
+  tfPartialPayment = 131072,
+  tfClose = 131072,
+  tfSetNoRipple = 131072,
+  tfLPToken = 65536,
+  tfRequireDestTag = 65536,
+  tfGotMajority = 65536,
+  tfPassive = 65536,
+  tfNoRippleDirect = 65536,
+  tfRenew = 65536,
+  tfSetfAuth = 65536,
+  tfClearAccountCreateAmount = 65536,
+  tfStrongTSH = 32768,
+  tfMPTCanClawback = 64,
+  tfMPTCanTransfer = 32,
+  tfMPTCanTrade = 16,
+  tfMutable = 16,
+  tfMPTCanEscrow = 8,
+  tfTransferable = 8,
+  tfMPTRequireAuth = 4,
+  tfTrustLine = 4,
+  hsfCOLLECT = 4,
+  tfMPTCanLock = 2,
+  tfMPTUnlock = 2,
+  tfOnlyXRP = 2,
+  hsfNSDELETE = 2,
+  tfClawTwoAssets = 1,
+  tfOptOut = 1,
+  tfCronUnset = 1,
+  tfMPTUnauthorize = 1,
+  tfMPTLock = 1,
+  tfSellNFToken = 1,
+  tfBurnable = 1,
+  hsfOVERRIDE = 1,
+  tfImmutable = 1,
+}
+
+/**
+ * Bit flags for ledger-entry `Flags` (`lsf*`).
+ *
+ * Flattened across entry types. Shared names are the same bit; different
+ * names often share a value. The name is only meaningful for the object
+ * you are inspecting. `Flags` stays `UInt32`.
+ */
+declare const enum LedgerFlag {
+  lsfDisallowIncomingRemit = 2147483648,
+  lsfURITokenIssuer = 1073741824,
+  lsfDisallowIncomingTrustline = 536870912,
+  lsfDisallowIncomingPayChan = 268435456,
+  lsfDisallowIncomingCheck = 134217728,
+  lsfDisallowIncomingNFTokenOffer = 67108864,
+  lsfHighDeepFreeze = 67108864,
+  lsfTshCollect = 33554432,
+  lsfLowDeepFreeze = 33554432,
+  lsfDepositAuth = 16777216,
+  lsfAMMNode = 16777216,
+  lsfDefaultRipple = 8388608,
+  lsfHighFreeze = 8388608,
+  lsfGlobalFreeze = 4194304,
+  lsfLowFreeze = 4194304,
+  lsfNoFreeze = 2097152,
+  lsfHighNoRipple = 2097152,
+  lsfDisableMaster = 1048576,
+  lsfLowNoRipple = 1048576,
+  lsfDisallowXRP = 524288,
+  lsfHighAuth = 524288,
+  lsfRequireAuth = 262144,
+  lsfLowAuth = 262144,
+  lsfRequireDestTag = 131072,
+  lsfSell = 131072,
+  lsfHighReserve = 131072,
+  lsfPasswordSpent = 65536,
+  lsfAccepted = 65536,
+  lsfPassive = 65536,
+  lsfLowReserve = 65536,
+  lsfOneOwnerCount = 65536,
+  lsfAllowTrustLineClawback = 4096,
+  lsfMPTCanClawback = 64,
+  lsfMPTCanTransfer = 32,
+  lsfMPTCanTrade = 16,
+  lsfMPTCanEscrow = 8,
+  lsfEmittedDir = 4,
+  lsfMPTRequireAuth = 4,
+  lsfNFTokenSellOffers = 2,
+  lsfMPTAuthorized = 2,
+  lsfMPTCanLock = 2,
+  lsfNFTokenBuyOffers = 1,
+  lsfMPTLocked = 1,
+  lsfSellNFToken = 1,
+  lsfBurnable = 1,
+}
+
+/** AccountSet `SetFlag` / `ClearFlag` ordinals (`asf*`). These are not bitmasks. */
+declare const enum AccountSetFlag {
+  asfAllowTrustLineClawback = 17,
+  asfDisallowIncomingRemit = 16,
+  asfDisallowIncomingTrustline = 15,
+  asfDisallowIncomingPayChan = 14,
+  asfDisallowIncomingCheck = 13,
+  asfDisallowIncomingNFTokenOffer = 12,
+  asfTshCollect = 11,
+  asfAuthorizedNFTokenMinter = 10,
+  asfDepositAuth = 9,
+  asfDefaultRipple = 8,
+  asfGlobalFreeze = 7,
+  asfNoFreeze = 6,
+  asfAccountTxnID = 5,
+  asfDisableMaster = 4,
+  asfDisallowXRP = 3,
+  asfRequireAuth = 2,
+  asfRequireDest = 1,
+}
+
 declare const enum HookExecutionMode {
   /** Strong pre-apply execution. */
   Strong = "strong",
