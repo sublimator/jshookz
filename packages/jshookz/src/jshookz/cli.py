@@ -57,6 +57,7 @@ def cmd_compile_hook(args: argparse.Namespace) -> int:
         wasm_path=args.wasm,
         declarations=args.declarations or DEFAULT_DECLARATIONS,
         tsc=args.tsc,
+        allow_malformed=args.allow_malformed,
     )
     output.write_bytes(result.bytecode)
     if args.emit_js:
@@ -178,6 +179,15 @@ def main() -> None:
     p_compile_hook.add_argument("--tsc", help="TypeScript compiler executable")
     p_compile_hook.add_argument(
         "--emit-js", help="Also write the intermediate JavaScript to this path"
+    )
+    p_compile_hook.add_argument(
+        "--allow-malformed",
+        action="store_true",
+        help=(
+            "Emit bytecode even when provider module validation fails. "
+            "For test fixtures that SetHook must still reject as temMALFORMED. "
+            "A whole-line //@jshookz-allow-malformed comment is the same hatch."
+        ),
     )
     p_compile_hook.set_defaults(func=cmd_compile_hook)
 

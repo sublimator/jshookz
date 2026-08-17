@@ -1,3 +1,5 @@
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -500,6 +502,223 @@ def test_compiler_refuses_missing_main_export(tmp_path: Path):
     )
     with pytest.raises(RuntimeError, match="no exported main entry point"):
         compile_hook(source)
+
+
+def test_compiler_rejects_numeric_callback_parameter(tmp_path: Path):
+    source = tmp_path / "old-callback.hook.ts"
+    source.write_text(
+        """
+        export function main(): never {
+          accept("ok");
+        }
+        export function callback(_reserved: number): never {
+          accept("cb", _reserved);
+        }
+        """
+    )
+
+    with pytest.raises(RuntimeError, match="CallbackInfo"):
+        compile_hook(source)
+
+
+def test_compiler_accepts_callback_info_parameter(tmp_path: Path):
+    source = tmp_path / "callback-info.hook.ts"
+    source.write_text(
+        """
+        export function main(): never {
+          accept("ok");
+        }
+        export function callback(info: CallbackInfo): never {
+          if (info.failed) rollback("emitted failed", info.rawFlags);
+          accept("cb");
+        }
+        """
+    )
+
+    assert compile_hook(source).bytecode
+
+
+def test_compiler_driver_creates_one_program(tmp_path: Path):
+    from jshookz.hook_compiler import _frontend_driver_js, _typescript_library
+
+    source = tmp_path / "one-program.hook.ts"
+    source.write_text("export function main(): never { return accept(); }")
+    config = tmp_path / "tsconfig.json"
+    config.write_text(
+        __import__("json").dumps(
+            {
+                "compilerOptions": {
+                    "lib": ["ES2023"],
+                    "module": "ESNext",
+                    "noEmit": True,
+                    "strict": True,
+                    "target": "ES2023",
+                },
+                "files": [str(DEFAULT_DECLARATIONS), str(source)],
+            }
+        )
+    )
+    env = os.environ.copy()
+    env["JSHOOKZ_COUNT_PROGRAM"] = "1"
+    completed = subprocess.run(
+        [
+            "node",
+            str(_frontend_driver_js(None)),
+            str(_typescript_library(None)),
+            str(config),
+            str(source),
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "createProgram=1" in completed.stderr
+    assert "kind=ok" in completed.stderr
+
+
+def test_compiler_frontend_typechecks():
+    from jshookz.hook_compiler import (
+        _FRONTEND_TSCONFIG,
+        _typescript_executable,
+    )
+
+    completed = subprocess.run(
+        [_typescript_executable(None), "--noEmit", "-p", str(_FRONTEND_TSCONFIG)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_compiler_rejects_helper_import(tmp_path: Path):
+    helper = tmp_path / "helper.ts"
+    helper.write_text("export function helper(): number { return 1; }\n")
+    source = tmp_path / "imports.hook.ts"
+    source.write_text(
+        """
+        import { helper } from "./helper";
+        export function main(): never {
+          accept(String(helper()));
+        }
+        """
+    )
+    with pytest.raises(RuntimeError, match="must not import helpers"):
+        compile_hook(source)
+
+
+def test_compiler_rejects_rest_number_callback(tmp_path: Path):
+    source = tmp_path / "rest-callback.hook.ts"
+    source.write_text(
+        """
+        export function main(): never { accept("ok"); }
+        export function callback(...reserved: number[]): never {
+          accept("cb", reserved[0]);
+        }
+        """
+    )
+    with pytest.raises(RuntimeError, match="CallbackInfo"):
+        compile_hook(source)
+
+
+def test_compiler_rejects_function_typed_callback(tmp_path: Path):
+    source = tmp_path / "function-callback.hook.ts"
+    source.write_text(
+        """
+        export function main(): never { accept("ok"); }
+        export const callback: Function = (n: number) => accept("cb", n);
+        """
+    )
+    with pytest.raises(RuntimeError, match="CallbackInfo"):
+        compile_hook(source)
+
+
+def test_compiler_emits_noncallable_entries_when_flagged(tmp_path: Path):
+    source = tmp_path / "noncallable.hook.ts"
+    source.write_text(
+        """
+        // @jshookz-allow-malformed
+        export const main = 1;
+        export const callback = 2;
+        """
+    )
+    compiled = compile_hook(source)
+    assert compiled.bytecode
+
+
+def test_compiler_emits_malformed_bytecode_when_flagged(tmp_path: Path):
+    source = tmp_path / "missing-main.hook.ts"
+    source.write_text(
+        """
+        export function callback(info: CallbackInfo): never {
+          void info;
+          accept("callback only", 1);
+        }
+        """
+    )
+
+    with pytest.raises(RuntimeError, match="no exported main entry point"):
+        compile_hook(source)
+
+    compiled = compile_hook(source, allow_malformed=True)
+    assert compiled.bytecode
+
+
+def test_allow_malformed_directive_ignores_string_and_block_comment(
+    tmp_path: Path,
+):
+    source = tmp_path / "false-hatch.hook.ts"
+    source.write_text(
+        """
+        /* // @jshookz-allow-malformed */
+        export function main(): never {
+          void "// @jshookz-allow-malformed";
+          accept("ok");
+        }
+        void ledger.sequence;
+        """
+    )
+    with pytest.raises(RuntimeError, match="not deployable"):
+        compile_hook(source)
+
+
+def test_compiler_emits_malformed_bytecode_for_source_directive(tmp_path: Path):
+    source = tmp_path / "host-init.hook.ts"
+    source.write_text(
+        """
+        // @jshookz-allow-malformed
+        export function main(_reserved: number): never {
+          accept("entry", _reserved);
+        }
+        void ledger.sequence;
+        """
+    )
+
+    compiled = compile_hook(source)
+    assert compiled.bytecode
+
+
+def test_packager_still_rejects_malformed_directive(tmp_path: Path):
+    source = tmp_path / "packaged-malformed.hook.ts"
+    source.write_text(
+        """
+        // @jshookz-allow-malformed
+        export function callback(info: CallbackInfo): never {
+          void info;
+          accept("callback only", 1);
+        }
+        """
+    )
+
+    with pytest.raises(RuntimeError, match="not deployable"):
+        package_hook(
+            source,
+            hook_api_version=1,
+            bytecode_abi_id=bytes(range(32)),
+            runtime_profile_id=bytes(range(32, 64)),
+        )
 
 
 def test_provider_dispatches_callback_export(tmp_path: Path):
