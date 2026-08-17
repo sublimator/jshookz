@@ -130,6 +130,7 @@ target_link_options(jshookz_provider PRIVATE
 )
 
 set_target_properties(jshookz_provider PROPERTIES
+    OUTPUT_NAME "jshookz_provider.unwizered"
     SUFFIX ".wasm"
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
