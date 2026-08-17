@@ -39,6 +39,10 @@ endif()
 
 add_executable(jshookz_codec_host main.cpp)
 target_link_libraries(jshookz_codec_host PRIVATE wasmtime::wasmtime)
+if(WASMTIME_ROOT)
+    set_property(TARGET jshookz_codec_host APPEND PROPERTY
+        BUILD_RPATH "${WASMTIME_ROOT}/lib")
+endif()
 
 add_executable(jshookz_codec_bench bench.cpp)
 target_link_libraries(jshookz_codec_bench PRIVATE wasmtime::wasmtime)

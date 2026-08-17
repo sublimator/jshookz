@@ -43,6 +43,18 @@ def _boost_include() -> Path | None:
     return None
 
 
+def _no_boost_includes() -> list[str]:
+    # Do not put engine/quickjs on -I: its VERSION file shadows <version>.
+    return [
+        f"-I{CODEC}",
+        f"-I{XDATA / 'includes'}",
+        f"-I{XDATA / 'core/includes'}",
+        f"-I{XDATA / 'base58/includes'}",
+        f"-I{XDATA / 'generated'}",
+        f"-I{CODEC / 'stubs'}",
+    ]
+
+
 def test_wasm_headers_do_not_include_boost_json(tmp_path: Path) -> None:
     compiler = shutil.which("c++") or shutil.which("clang++")
     if compiler is None:
@@ -50,23 +62,48 @@ def test_wasm_headers_do_not_include_boost_json(tmp_path: Path) -> None:
 
     probe = CODEC / "tests" / "no_boost_json_probe.cpp"
     out = tmp_path / "no_boost_json_probe.o"
-    # Do not put engine/quickjs on -I: its VERSION file shadows <version>.
     cmd = [
         compiler,
         "-std=c++23",
         "-c",
         "-o",
         str(out),
-        f"-I{CODEC}",
-        f"-I{XDATA / 'includes'}",
-        f"-I{XDATA / 'core/includes'}",
-        f"-I{XDATA / 'base58/includes'}",
-        f"-I{XDATA / 'generated'}",
-        f"-I{CODEC / 'stubs'}",
+        *_no_boost_includes(),
         str(probe),
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     assert proc.returncode == 0, proc.stderr + proc.stdout
+
+
+def test_wasm_tus_compile_without_boost_json(tmp_path: Path) -> None:
+    """Compile the wasm C++ TUs with the flag and no Boost -I."""
+    compiler = shutil.which("c++") or shutil.which("clang++")
+    if compiler is None:
+        pytest.skip("host c++ required for no-boost TU probe")
+
+    tus = [
+        XDATA / "src" / "protocol.cpp",
+        XDATA / "src" / "embedded_protocol.cpp",
+        XDATA / "base58" / "src" / "base58.cpp",
+        XDATA / "core" / "src" / "types.cpp",
+        CODEC / "stubs" / "digest_stub.cpp",
+        CODEC / "bridge_xdata.cpp",
+    ]
+    for src in tus:
+        out = tmp_path / (src.name + ".o")
+        cmd = [
+            compiler,
+            "-std=c++23",
+            "-c",
+            "-o",
+            str(out),
+            "-DCATL_XDATA_NO_BOOST_JSON",
+            "-DCODEC_BACKEND_XDATA",
+            *_no_boost_includes(),
+            str(src),
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        assert proc.returncode == 0, f"{src.name}\n{proc.stderr}{proc.stdout}"
 
 
 def test_embedded_tables_match_json_load(tmp_path: Path) -> None:

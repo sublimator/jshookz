@@ -4,6 +4,7 @@
 
 # Build and generated local artifacts.
 build/
+.tools/
 dist/
 /qjsc
 *.wasm
