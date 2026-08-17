@@ -89,19 +89,19 @@ Prerequisites: wasi-sdk 32, Binaryen 128, CMake, Ninja, Python 3.10+, `uv`,
 Node.js, and TypeScript.
 
 ```bash
-uv sync --project packages/jshookz --locked --group dev
-packages/jshookz/.venv/bin/jshookz build provider
-packages/jshookz/.venv/bin/pytest -q packages/jshookz/tests
+uv sync --project python/jshookz --locked --group dev
+python/jshookz/.venv/bin/jshookz build provider
+python/jshookz/.venv/bin/pytest -q python/jshookz/tests
 ```
 
-Xahau Env tests that should compile into `rippled` live in [`env-tests/`](env-tests/). Point xahaud at that directory with `-DHOOKS_TEST_DIR` or `HOOKS_TEST_DIR`.
+Xahau Env tests that should compile into `rippled` live in [`xahau/env-tests/`](xahau/env-tests/). Point xahaud at that directory with `-DHOOKS_TEST_DIR` or `HOOKS_TEST_DIR`.
 
 Compile and package a Hook:
 
 ```bash
-packages/jshookz/.venv/bin/jshookz compile-hook hook.ts -o hook.qjsc
-packages/jshookz/.venv/bin/jshookz package-hook hook.ts \
-  --profile integrations/xahau/profiles/xahau-quickjs-v1.lock.json \
+python/jshookz/.venv/bin/jshookz compile-hook hook.ts -o hook.qjsc
+python/jshookz/.venv/bin/jshookz package-hook hook.ts \
+  --profile xahau/profiles/xahau-quickjs-v1.lock.json \
   -o hook.xqjs
 ```
 
@@ -110,15 +110,14 @@ packages/jshookz/.venv/bin/jshookz package-hook hook.ts \
 The v1 runtime exposes 13 existing Hook host functions, including ledger
 reads, tracing, state, emission, accept, and rollback. Its exact TypeScript
 surface is generated from the canonical API and checked in CI:
-[`xahau-quickjs-v1.d.ts`](packages/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts).
+[`xahau-quickjs-v1.d.ts`](python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts).
 
-The broader [`hooks-api.d.ts`](packages/jshookz/src/jshookz/types/hooks-api.d.ts)
+The broader [`hooks-api.d.ts`](python/jshookz/src/jshookz/types/hooks-api.d.ts)
 is the API we are growing toward, not a claim that everything is implemented
 in v1.
 
-QuickJS lives under `engine/quickjs`, the Wasm provider under
-`runtime/provider`, and the Xahau integration inputs under
-`integrations/xahau`.
+C++ lives under `cpp/` (QuickJS, provider, x-data, codec). Python products
+live under `python/`. Xahau pins live under `xahau/`.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full build and
 [VENDOR.md](VENDOR.md) for provenance.

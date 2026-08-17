@@ -18,9 +18,9 @@ change.
 ## Hook provider
 
 ```bash
-uv sync --project packages/jshookz --locked --group dev
-packages/jshookz/.venv/bin/jshookz build provider
-packages/jshookz/.venv/bin/pytest -q packages/jshookz/tests
+uv sync --project python/jshookz --locked --group dev
+python/jshookz/.venv/bin/jshookz build provider
+python/jshookz/.venv/bin/pytest -q python/jshookz/tests
 ```
 
 `jshookz build provider` verifies the checked runtime-profile lock and emits
@@ -30,11 +30,11 @@ profile decision; do not update the lock merely to make the check pass.
 ## Raw Hook ABI and hostem
 
 ```bash
-uv sync --project packages/hostem --locked --group dev
-packages/hostem/.venv/bin/python \
-  integrations/xahau/tools/generate_raw_hook_abi.py --check
-tsc -p packages/hostem/tsconfig.xahau-integration.json
-packages/hostem/.venv/bin/pytest -q packages/hostem/tests
+uv sync --project python/hostem --locked --group dev
+python/hostem/.venv/bin/python \
+  xahau/tools/generate_raw_hook_abi.py --check
+tsc -p python/hostem/tsconfig.xahau-integration.json
+python/hostem/.venv/bin/pytest -q python/hostem/tests
 ```
 
 Edit the policy or generator, not generated output. The source of truth is the
@@ -45,26 +45,27 @@ pinned public Xahau `hook_api.macro`, parsed by hookz.
 Set `WASI_SDK_PATH` and `BOOST_INCLUDE_DIR`, then:
 
 ```bash
-cmake -S codec/xrpl -B build/codec -G Ninja \
+cmake -S cpp/x-data-quickjs -B build/codec -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$WASI_SDK_PATH/share/cmake/wasi-sdk.cmake" \
   -DCMAKE_BUILD_TYPE=Release -DBOOST_INCLUDE_DIR="$BOOST_INCLUDE_DIR"
 cmake --build build/codec
 
-cmake -S codec/xrpl/fixture-provider -B build/codec-fixture -G Ninja \
+cmake -S cpp/provider/fixture -B build/codec-fixture -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$WASI_SDK_PATH/share/cmake/wasi-sdk.cmake" \
   -DCMAKE_BUILD_TYPE=Release -DBOOST_INCLUDE_DIR="$BOOST_INCLUDE_DIR"
 cmake --build build/codec-fixture
 scripts/check-generated-definitions.sh
 ```
 
-Configure `codec/xrpl/host` with either the Conan-generated Wasmtime CMake
+Configure `cpp/codec-host` with either the Conan-generated Wasmtime CMake
 package or `-DWASMTIME_ROOT` pointing at an official C-API archive, install
-the locked differential dependency, then run the suite:
+the locked differential dependency, then run the suite. Existing `build/*`
+trees cache absolute source paths: reconfigure after a layout change.
 
 ```bash
-npm ci --prefix codec/xrpl/differential --ignore-scripts
-uv sync --project codec/xrpl --locked
-codec/xrpl/.venv/bin/pytest -q codec/xrpl/tests
+npm ci --prefix cpp/x-data-quickjs/differential --ignore-scripts
+uv sync --project cpp/x-data-quickjs --locked
+cpp/x-data-quickjs/.venv/bin/pytest -q cpp/x-data-quickjs/tests
 scripts/check-wasm-stack.sh
 ```
 

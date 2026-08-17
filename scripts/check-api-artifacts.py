@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "packages/jshookz/src"))
+sys.path.insert(0, str(ROOT / "python/jshookz/src"))
 
 from jshookz.api_artifacts import (
     REQUIRED_ARTIFACTS,

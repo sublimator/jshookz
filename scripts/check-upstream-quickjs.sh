@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # check-upstream-quickjs.sh — how far has this fork drifted from bellard/quickjs?
 #
-# QuickJS is kept under engine/quickjs. This script compares that subtree with
+# QuickJS is kept under cpp/quickjs. This script compares that subtree with
 # the recorded Bellard upstream rather than treating the product root as an
 # upstream QuickJS checkout.
 #
@@ -29,6 +29,6 @@ git log --oneline "$QUICKJS_FORK_POINT".."$QUICKJS_REF"
 echo
 
 echo "== local modifications to upstream-tracked files =="
-git diff --stat "$QUICKJS_FORK_POINT" HEAD:engine/quickjs
+git diff --stat "$QUICKJS_FORK_POINT" HEAD:cpp/quickjs
 echo
-echo "Tip: git diff $QUICKJS_FORK_POINT HEAD:engine/quickjs -- quickjs.c"
+echo "Tip: git diff $QUICKJS_FORK_POINT HEAD:cpp/quickjs -- quickjs.c"

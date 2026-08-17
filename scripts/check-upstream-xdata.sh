@@ -2,7 +2,7 @@
 # check-upstream-xdata.sh — compare the vendored catl::xdata tree against
 # its catalogue-tools upstream checkout.
 #
-# codec/xrpl/x-data/ was vendored from catalogue-tools at
+# cpp/x-data/ was vendored from catalogue-tools at
 # commit 298b81f (2026-03-29), copied in on 2026-04-03 (commit 5aeb1bd here).
 # Several files were then locally modified for WASM (heap lookup table,
 # precomputed header_size, sha256 injection, and related WASM adaptations).
@@ -28,7 +28,7 @@ VENDOR_POINT="${VENDOR_POINT:-298b81f}"   # catalogue-tools commit of the vendor
 VERBOSE="${1:-}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-V="$REPO_ROOT/codec/xrpl/x-data"
+V="$REPO_ROOT/cpp/x-data"
 
 if [ -z "$UPSTREAM" ] || [ ! -d "$UPSTREAM/.git" ]; then
     echo "error: set CATALOGUE_TOOLS to a catalogue-tools Git checkout" >&2

@@ -30,7 +30,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: codec/xrpl/differential/package-lock.json
+          cache-dependency-path: cpp/x-data-quickjs/differential/package-lock.json
 
       - name: Install build tools
         run: |
@@ -73,30 +73,30 @@ jobs:
 
       - name: Install locked test environments
         run: |
-          uv sync --project packages/jshookz --locked --group dev
-          uv sync --project packages/hostem --locked --group dev
-          uv sync --project codec/xrpl --locked
-          npm ci --prefix codec/xrpl/differential --ignore-scripts
-          npm audit --prefix codec/xrpl/differential --audit-level=high
+          uv sync --project python/jshookz --locked --group dev
+          uv sync --project python/hostem --locked --group dev
+          uv sync --project cpp/x-data-quickjs --locked
+          npm ci --prefix cpp/x-data-quickjs/differential --ignore-scripts
+          npm audit --prefix cpp/x-data-quickjs/differential --audit-level=high
 
       - name: Verify generated Hook ABI and TypeScript API
         run: |
-          packages/hostem/.venv/bin/python \
-            integrations/xahau/tools/generate_raw_hook_abi.py --check
+          python/hostem/.venv/bin/python \
+            xahau/tools/generate_raw_hook_abi.py --check
           python3 scripts/check-api-artifacts.py
           ./scripts/project-readme-examples.py --check
-          tsc -p packages/hostem/tsconfig.xahau-integration.json
+          tsc -p python/hostem/tsconfig.xahau-integration.json
 
       - name: Build and seal Xahau provider
-        run: packages/jshookz/.venv/bin/jshookz build provider
+        run: python/jshookz/.venv/bin/jshookz build provider
 
       - name: Build codec and combined fixture
         run: |
-          cmake -S codec/xrpl -B build/codec -G Ninja \
+          cmake -S cpp/x-data-quickjs -B build/codec -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$WASI_SDK_PATH/share/cmake/wasi-sdk.cmake" \
             -DCMAKE_BUILD_TYPE=Release -DBOOST_INCLUDE_DIR="$BOOST_INCLUDE_DIR"
           cmake --build build/codec
-          cmake -S codec/xrpl/fixture-provider -B build/codec-fixture -G Ninja \
+          cmake -S cpp/provider/fixture -B build/codec-fixture -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$WASI_SDK_PATH/share/cmake/wasi-sdk.cmake" \
             -DCMAKE_BUILD_TYPE=Release -DBOOST_INCLUDE_DIR="$BOOST_INCLUDE_DIR"
           cmake --build build/codec-fixture
@@ -104,7 +104,7 @@ jobs:
 
       - name: Build codec fixture host
         run: |
-          cmake -S codec/xrpl/host -B build/codec-host -G Ninja \
+          cmake -S cpp/codec-host -B build/codec-host -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DWASMTIME_ROOT="$WASMTIME_HOME"
           cmake --build build/codec-host
 
@@ -112,14 +112,14 @@ jobs:
         env:
           XAHAUD_PROPERTY_MAX_EXAMPLES: "8"
         run: |
-          packages/jshookz/.venv/bin/pytest -q packages/jshookz/tests
-          packages/hostem/.venv/bin/pytest -q packages/hostem/tests
-          codec/xrpl/.venv/bin/pytest -q codec/xrpl/tests
+          python/jshookz/.venv/bin/pytest -q python/jshookz/tests
+          python/hostem/.venv/bin/pytest -q python/hostem/tests
+          cpp/x-data-quickjs/.venv/bin/pytest -q cpp/x-data-quickjs/tests
           scripts/check-wasm-stack.sh
 
       - name: Verify wheel contents
         run: |
-          uv build --project packages/jshookz --wheel --out-dir build/dist
+          uv build --project python/jshookz --wheel --out-dir build/dist
           unzip -l build/dist/jshookz-*.whl | grep 'jshookz/types/hooks-api.d.ts'
           unzip -l build/dist/jshookz-*.whl | grep 'jshookz/types/xahau-quickjs-v1.d.ts'
           unzip -l build/dist/jshookz-*.whl | grep 'jshookz/types/xahau-quickjs-v1.surface.json'
@@ -133,12 +133,12 @@ jobs:
             "$RUNNER_TEMP/jshookz-wheel-smoke/bin/jshookz" info
           JSHOOKZ_PROVIDER_WASM="$GITHUB_WORKSPACE/build/xahau-provider/jshookz_provider.wasm" \
             "$RUNNER_TEMP/jshookz-wheel-smoke/bin/jshookz" compile-hook \
-            "$GITHUB_WORKSPACE/packages/hostem/examples/xahau-accept.hook.ts" \
+            "$GITHUB_WORKSPACE/python/hostem/examples/xahau-accept.hook.ts" \
             -o smoke.qjsc
           JSHOOKZ_PROVIDER_WASM="$GITHUB_WORKSPACE/build/xahau-provider/jshookz_provider.wasm" \
             "$RUNNER_TEMP/jshookz-wheel-smoke/bin/jshookz" package-hook \
-            "$GITHUB_WORKSPACE/packages/hostem/examples/xahau-accept.hook.ts" \
-            --profile "$GITHUB_WORKSPACE/integrations/xahau/profiles/xahau-quickjs-v1.lock.json" \
+            "$GITHUB_WORKSPACE/python/hostem/examples/xahau-accept.hook.ts" \
+            --profile "$GITHUB_WORKSPACE/xahau/profiles/xahau-quickjs-v1.lock.json" \
             -o smoke.xqjs
           test -s smoke.qjsc
           test -s smoke.xqjs
@@ -148,7 +148,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build and test vendored QuickJS
-        working-directory: engine/quickjs
+        working-directory: cpp/quickjs
         run: |
           make -j"$(getconf _NPROCESSORS_ONLN)" CONFIG_WERROR=y
           make test

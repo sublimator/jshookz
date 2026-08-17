@@ -22,7 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
-TSCONFIG = ROOT / "packages/hostem/tsconfig.xahau-integration.json"
+TSCONFIG = ROOT / "python/hostem/tsconfig.xahau-integration.json"
 
 
 @dataclass(frozen=True)
@@ -35,17 +35,17 @@ class Projection:
 PROJECTIONS = (
     Projection(
         "xahau-accept.hook.ts",
-        ROOT / "packages/hostem/examples/xahau-accept.hook.ts",
+        ROOT / "python/hostem/examples/xahau-accept.hook.ts",
         "ts",
     ),
     Projection(
         "xahau-state.hook.ts",
-        ROOT / "packages/hostem/examples/xahau-state.hook.ts",
+        ROOT / "python/hostem/examples/xahau-state.hook.ts",
         "ts",
     ),
     Projection(
         "xahau-state-batch.hook.ts",
-        ROOT / "packages/hostem/examples/xahau-state-batch.hook.ts",
+        ROOT / "python/hostem/examples/xahau-state-batch.hook.ts",
         "ts",
     ),
 )
