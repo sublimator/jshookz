@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -25,6 +26,56 @@ def _validate_native_abi(provider_imports: list[dict]) -> dict:
             "sealed provider imports differ from the pinned raw Hook ABI snapshot"
         )
     return raw_abi
+
+
+def wizer_executable() -> Path:
+    """Resolve the Wizer binary. Env `WIZER` wins, then PATH, then cargo bin."""
+    configured = os.environ.get("WIZER")
+    if configured:
+        path = Path(configured).expanduser()
+        if not path.is_file():
+            raise RuntimeError(f"WIZER={configured} is not a file")
+        return path
+    found = shutil.which("wizer")
+    if found:
+        return Path(found)
+    cargo = Path.home() / ".cargo" / "bin" / "wizer"
+    if cargo.is_file():
+        return cargo
+    raise RuntimeError(
+        "wizer not found. Install bytecodealliance/wizer 10 and put it on PATH "
+        "or set WIZER=/path/to/wizer"
+    )
+
+
+def wizer_provider(src: Path, dest: Path) -> Path:
+    """Cold provider.wasm → preinitialized provider.wasm.
+
+    `wizer.initialize` already calls `qjs_init`. After snapshot, rename that
+    export to `_initialize` so xahaud's reactor call stays a no-op (`qjs_init`
+    is idempotent). The selected lock still seals the cold bytes.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    run(
+        [
+            wizer_executable(),
+            "--keep-init-func",
+            "true",
+            "--rename-func",
+            "_initialize=wizer.initialize",
+            "-o",
+            dest,
+            src,
+        ]
+    )
+    if not dest.is_file():
+        raise RuntimeError(f"wizer produced no output at {dest}")
+    if dest.stat().st_size <= src.stat().st_size:
+        raise RuntimeError(
+            f"wizer output is not larger than the cold wasm "
+            f"({dest.stat().st_size} <= {src.stat().st_size}); snapshot looks vacuous"
+        )
+    return dest
 
 
 def run(cmd: list[str | Path], **kwargs) -> subprocess.CompletedProcess:
@@ -114,6 +165,12 @@ def build_xahau_hook_provider() -> Path:
         raise RuntimeError(
             f"Xahau Hook provider not found at {paths.XAHAU_HOOK_PROVIDER_WASM}"
         )
+    wizered = wizer_provider(
+        paths.XAHAU_HOOK_PROVIDER_WASM,
+        paths.XAHAU_HOOK_PROVIDER_WIZERED_WASM,
+    )
+    wizered_mb = wizered.stat().st_size / (1024 * 1024)
+    print(f"✓ Wizered {wizered} ({wizered_mb:.1f} MB)")
     seal_xahau_hook_provider_bundle()
     size_mb = paths.XAHAU_HOOK_PROVIDER_WASM.stat().st_size / (1024 * 1024)
     print(f"\n✓ Built {paths.XAHAU_HOOK_PROVIDER_WASM} ({size_mb:.1f} MB)")
