@@ -1,0 +1,262 @@
+{
+  "byte_policies": {
+    "AccountID.from": {
+      "0": "bytesLike"
+    },
+    "AccountID.fromHex": {
+      "0": "hexString"
+    },
+    "Hash256.from": {
+      "0": "bytesLike"
+    },
+    "Hash256.fromHex": {
+      "0": "hexString"
+    },
+    "STBlob.equals": {
+      "0": "bytesLikeOrSTBlob"
+    },
+    "STBlob.from": {
+      "0": "bytesLike"
+    },
+    "STBlob.fromHex": {
+      "0": "hexString"
+    },
+    "accept": {
+      "0": "lifecycleMessage"
+    },
+    "emit.prepare": {
+      "0": "bytesLikeOrSTBlob"
+    },
+    "emit.tx": {
+      "0": "bytesLikeOrSTBlob"
+    },
+    "rollback": {
+      "0": "lifecycleMessage"
+    },
+    "state.get": {
+      "0": "stateKeyLike"
+    },
+    "state.set": {
+      "0": "stateKeyLike",
+      "1": "stateValueLike"
+    }
+  },
+  "declaration": {
+    "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
+    "sha256": "376121ca3f04376fff8af79897bf688bf4121349379c6537d1fda8c167772513"
+  },
+  "globals": {
+    "AccountID": "object",
+    "Hash256": "object",
+    "STBlob": "object",
+    "UInt16": "object",
+    "UInt32": "object",
+    "UInt64": "object",
+    "UInt8": "object",
+    "XFL": "object",
+    "accept": "function",
+    "emit": "object",
+    "hook": "object",
+    "ledger": "object",
+    "otxn": "object",
+    "rollback": "function",
+    "state": "object",
+    "trace": "function"
+  },
+  "namespaces": {
+    "emit": {
+      "prepare": "function",
+      "reserve": "function",
+      "tx": "function"
+    },
+    "hook": {
+      "account": "function"
+    },
+    "ledger": {
+      "lastHash": "value",
+      "lastTime": "value",
+      "sequence": "value"
+    },
+    "otxn": {
+      "type": "function"
+    },
+    "rollback": {
+      "onAllFail": "function",
+      "onAnyFail": "function",
+      "onFail": "function",
+      "require": "function"
+    },
+    "state": {
+      "get": "function",
+      "set": "function"
+    }
+  },
+  "prototypes": {
+    "AccountID": {
+      "members": {
+        "equals": "function",
+        "isZero": "function",
+        "toBytes": "function",
+        "toHex": "function"
+      },
+      "own": [
+        "equals",
+        "isZero",
+        "toBytes",
+        "toHex"
+      ],
+      "probe": "AccountID.from(new Uint8Array(20))"
+    },
+    "Hash256": {
+      "members": {
+        "equals": "function",
+        "isZero": "function",
+        "toBytes": "function",
+        "toHex": "function"
+      },
+      "own": [
+        "equals",
+        "isZero",
+        "toBytes",
+        "toHex"
+      ],
+      "probe": "Hash256.from(new Uint8Array(32))"
+    },
+    "Result": {
+      "frozen": true,
+      "members": {
+        "okMapOr": "function",
+        "okOr": "function",
+        "okOrHandle": "function"
+      },
+      "own": [
+        "okMapOr",
+        "okOr",
+        "okOrHandle"
+      ],
+      "probe": "UInt64.from(0n)"
+    },
+    "STBlob": {
+      "members": {
+        "byteAt": "function",
+        "byteLength": "value",
+        "equals": "function",
+        "toBytes": "function",
+        "toHex": "function"
+      },
+      "own": [
+        "byteAt",
+        "byteLength",
+        "equals",
+        "toBytes",
+        "toHex"
+      ],
+      "probe": "STBlob.from(new Uint8Array(0))"
+    },
+    "UInt": {
+      "members": {
+        "add": "function",
+        "bits": "value",
+        "byteLength": "value",
+        "compare": "function",
+        "equals": "function",
+        "isZero": "function",
+        "saturatingAdd": "function",
+        "saturatingSubtract": "function",
+        "subtract": "function",
+        "toBigInt": "function",
+        "toNumber": "function",
+        "toString": "function"
+      },
+      "own": [
+        "add",
+        "bits",
+        "byteLength",
+        "compare",
+        "equals",
+        "isZero",
+        "saturatingAdd",
+        "saturatingSubtract",
+        "subtract",
+        "toBigInt",
+        "toNumber",
+        "toString"
+      ],
+      "probe": "UInt8.zero"
+    },
+    "VoidResult": {
+      "frozen": true,
+      "members": {
+        "moot": "function",
+        "okMapOr": "function",
+        "okOr": "function",
+        "okOrHandle": "function"
+      },
+      "own": [
+        "moot"
+      ],
+      "probe": "state.set('surface-probe', new Uint8Array(0))"
+    },
+    "XFL": {
+      "members": {
+        "exponent": "function",
+        "isNegative": "function",
+        "isZero": "function",
+        "mantissa": "function",
+        "raw": "value"
+      },
+      "own": [
+        "exponent",
+        "isNegative",
+        "isZero",
+        "mantissa",
+        "raw"
+      ],
+      "probe": "XFL.fromRaw(0n)"
+    }
+  },
+  "schema": "jshookz.javascript-surface.v1",
+  "statics": {
+    "AccountID": {
+      "from": "function",
+      "fromHex": "function",
+      "one": "value",
+      "zero": "value"
+    },
+    "Hash256": {
+      "from": "function",
+      "fromHex": "function"
+    },
+    "STBlob": {
+      "from": "function",
+      "fromHex": "function"
+    },
+    "UInt16": {
+      "from": "function",
+      "max": "value",
+      "mulDiv": "function",
+      "zero": "value"
+    },
+    "UInt32": {
+      "from": "function",
+      "max": "value",
+      "mulDiv": "function",
+      "zero": "value"
+    },
+    "UInt64": {
+      "from": "function",
+      "max": "value",
+      "mulDiv": "function",
+      "zero": "value"
+    },
+    "UInt8": {
+      "from": "function",
+      "max": "value",
+      "mulDiv": "function",
+      "zero": "value"
+    },
+    "XFL": {
+      "fromRaw": "function"
+    }
+  }
+}
