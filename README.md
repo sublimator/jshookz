@@ -17,6 +17,10 @@ narrow host: state, emit, ledger, terminals
 Fees have to price that in-guest work (fuel), not pretend every JS op is a
 C Hook host call.
 
+The sealed provider is Wizered. Env JSHooks, 50 cold sessions: initialize
+**1 µs** (was ~145 µs). Fuel for that leftover `_initialize`/`qjs_init` is
+still ~279k — wall time is done; the meter is not.
+
 Pre-release. End-to-end in tests. Not on a production network.
 
 ## Examples
