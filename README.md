@@ -17,12 +17,17 @@ narrow host: state, emit, ledger, terminals
 Fees have to price that in-guest work (fuel), not pretend every JS op is a
 C Hook host call.
 
-Build Wizers the provider (QuickJS already up in the image). Xahau
-AOT-compiles that wasm once per process, then instantiates it. Env
-JSHooks, 50 thrown-away sessions (mean / min µs): **create 43 / 36**
-(new instance of the AOT module), **initialize 1 / 0** (Wizered boot;
-was ~145 µs), **validate 7 / 5** (admit bytecode, not `main()`). Fuel
-still lands on initialize (~279k) and validate (~49k). `qjs_hook` is later.
+Wizer runs at **build** time, unmetered. It does not replay at runtime.
+Xahau AOT-compiles that wasm once per process. A session then:
+
+- **create** — instantiate the snapshotted module (43 / 36 µs)
+- **initialize** — leftover `_initialize` / `qjs_init` / limits (1 / 0 µs;
+  was ~145 µs). Fuel here is 5M − remaining after create+initialize:
+  **278k**, down from ~1.8M. That is wasm still executed, not the Wizer
+  cache. Clock is ~1 µs; the meter still sees those ops.
+- **validate** — admit bytecode, not `main()` (7 / 5 µs, ~49k fuel)
+
+`qjs_hook` (run the TypeScript hook) is later.
 
 Pre-release. End-to-end in tests. Not on a production network.
 
