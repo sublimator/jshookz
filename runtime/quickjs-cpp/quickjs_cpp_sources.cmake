@@ -1,0 +1,5 @@
+# JSValue RAII only. No protocol. No hooks.
+set(JSHOOKZ_QJS_CPP_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/include)
+set(JSHOOKZ_QJS_CPP_SOURCES
+    ${CMAKE_CURRENT_LIST_DIR}/qjs.cpp
+)

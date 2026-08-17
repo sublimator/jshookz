@@ -8,10 +8,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 set(QUICKJS_DIR "${REPO_ROOT}/engine/quickjs")
 set(XDATA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/x-data")
+set(XDATA_QJS_DIR "${REPO_ROOT}/codec/x-data-quickjs")
+set(QJS_CPP_DIR "${REPO_ROOT}/runtime/quickjs-cpp")
 set(BOOST_INCLUDE_DIR "" CACHE PATH "Path to Boost include directory")
 
 # Keep the embedded Xahau definitions in step with their JSON source.
 include(${XDATA_DIR}/definitions.cmake)
+include(${XDATA_DIR}/xdata_wasm_sources.cmake)
+include(${XDATA_QJS_DIR}/xdata_qjs_sources.cmake)
+include(${QJS_CPP_DIR}/quickjs_cpp_sources.cmake)
 
 set(QUICKJS_SOURCES
     ${QUICKJS_DIR}/quickjs.c
@@ -21,22 +26,16 @@ set(QUICKJS_SOURCES
     ${QUICKJS_DIR}/libunicode.c
 )
 
-set(XDATA_SOURCES
-    ${XDATA_DIR}/src/protocol.cpp
-    ${XDATA_DIR}/src/embedded_protocol.cpp
-    ${XDATA_DIR}/base58/src/base58.cpp
-    ${XDATA_DIR}/core/src/types.cpp
-)
-
 set(CODEC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/standalone_wasm_bindings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs/digest_stub.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/bridge_xdata.cpp
+    ${JSHOOKZ_XDATA_QJS_SOURCES}
+    ${JSHOOKZ_QJS_CPP_SOURCES}
 )
 
 add_executable(jshookz_xrpl_codec
     ${QUICKJS_SOURCES}
-    ${XDATA_SOURCES}
+    ${JSHOOKZ_XDATA_WASM_SOURCES}
     ${CODEC_SOURCES}
 )
 
@@ -61,9 +60,10 @@ set_source_files_properties(
 )
 
 set_source_files_properties(
-    ${XDATA_SOURCES}
+    ${JSHOOKZ_XDATA_WASM_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs/digest_stub.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/bridge_xdata.cpp
+    ${JSHOOKZ_XDATA_QJS_SOURCES}
+    ${JSHOOKZ_QJS_CPP_SOURCES}
     PROPERTIES
     COMPILE_FLAGS "-O2 -Wno-c99-designator -mllvm -wasm-enable-sjlj"
 )
@@ -71,10 +71,9 @@ set_source_files_properties(
 target_include_directories(jshookz_xrpl_codec PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${XDATA_DIR}/includes
-    ${XDATA_DIR}/core/includes
-    ${XDATA_DIR}/base58/includes
-    ${XDATA_DIR}/generated
+    ${JSHOOKZ_XDATA_QJS_INCLUDE_DIR}
+    ${JSHOOKZ_QJS_CPP_INCLUDE_DIR}
+    ${JSHOOKZ_XDATA_INCLUDE_DIRS}
 )
 
 target_compile_options(jshookz_xrpl_codec PRIVATE -Wno-deprecated)

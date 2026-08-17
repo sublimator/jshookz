@@ -13,7 +13,10 @@ from pathlib import Path
 import pytest
 
 CODEC = Path(__file__).resolve().parent.parent
+REPO = CODEC.parent.parent
 XDATA = CODEC / "x-data"
+XDATA_QJS = REPO / "codec" / "x-data-quickjs"
+QJS_CPP = REPO / "runtime" / "quickjs-cpp"
 SRC = CODEC / "tests" / "protocol_table_eq.cpp"
 SCRIPT = CODEC / "scripts" / "generate_definitions.py"
 
@@ -47,6 +50,8 @@ def _no_boost_includes() -> list[str]:
     # Do not put engine/quickjs on -I: its VERSION file shadows <version>.
     return [
         f"-I{CODEC}",
+        f"-I{XDATA_QJS}",
+        f"-I{QJS_CPP / 'include'}",
         f"-I{XDATA / 'includes'}",
         f"-I{XDATA / 'core/includes'}",
         f"-I{XDATA / 'base58/includes'}",
@@ -87,7 +92,8 @@ def test_wasm_tus_compile_without_boost_json(tmp_path: Path) -> None:
         XDATA / "base58" / "src" / "base58.cpp",
         XDATA / "core" / "src" / "types.cpp",
         CODEC / "stubs" / "digest_stub.cpp",
-        CODEC / "bridge_xdata.cpp",
+        XDATA_QJS / "bridge_xdata.cpp",
+        QJS_CPP / "qjs.cpp",
     ]
     for src in tus:
         out = tmp_path / (src.name + ".o")

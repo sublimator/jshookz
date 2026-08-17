@@ -16,12 +16,15 @@ add_link_options(-Wno-deprecated)
 set(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 set(CODEC_DIR "${REPO_ROOT}/codec/xrpl")
 set(XDATA_DIR "${CODEC_DIR}/x-data")
+set(XDATA_QJS_DIR "${REPO_ROOT}/codec/x-data-quickjs")
 set(QUICKJS_DIR "${REPO_ROOT}/engine/quickjs")
 set(BOOST_INCLUDE_DIR "" CACHE PATH "Path to boost include directory")
 
 # Keeps generated/embedded_xahau_definitions.h in step with its JSON.
 # Without this a definitions refresh silently does not reach the build.
 include(${XDATA_DIR}/definitions.cmake)
+include(${XDATA_DIR}/xdata_wasm_sources.cmake)
+include(${XDATA_QJS_DIR}/xdata_qjs_sources.cmake)
 
 set(QUICKJS_SOURCES
     ${QUICKJS_DIR}/quickjs.c
@@ -33,26 +36,14 @@ set(QUICKJS_SOURCES
 
 include(${REPO_ROOT}/runtime/provider/provider_sources.cmake)
 
-# Pinned xdata backend source set: keep in sync with the xdata branch of
-# codec/xrpl/CMakeLists.txt, not with the whole vendor tree.
-set(XDATA_SOURCES
-    ${XDATA_DIR}/src/protocol.cpp
-    ${XDATA_DIR}/src/embedded_protocol.cpp
-    ${XDATA_DIR}/base58/src/base58.cpp
-    ${XDATA_DIR}/core/src/types.cpp
-)
-
-set(BRIDGE_SOURCE ${CODEC_DIR}/bridge_xdata.cpp)
 set(DIGEST_STUB_SOURCE ${CODEC_DIR}/stubs/digest_stub.cpp)
 
 add_executable(jshookz_codec_fixture
     ${QUICKJS_SOURCES}
     ${JSHOOKZ_PROVIDER_CPP_SOURCES}
     ${DIGEST_STUB_SOURCE}
-    ${XDATA_SOURCES}
-    ${BRIDGE_SOURCE}
-    ${CODEC_DIR}/qjs_visitor.h
-    ${CODEC_DIR}/qjs_encode.h
+    ${JSHOOKZ_XDATA_WASM_SOURCES}
+    ${JSHOOKZ_XDATA_QJS_SOURCES}
 )
 
 if(TARGET generate_xdata_definitions)
@@ -79,8 +70,8 @@ set_source_files_properties(${QUICKJS_SOURCES}
 set(PROVIDER_CXX_SOURCES
     ${JSHOOKZ_PROVIDER_CPP_SOURCES}
     ${DIGEST_STUB_SOURCE}
-    ${XDATA_SOURCES}
-    ${BRIDGE_SOURCE}
+    ${JSHOOKZ_XDATA_WASM_SOURCES}
+    ${JSHOOKZ_XDATA_QJS_SOURCES}
 )
 
 set_source_files_properties(${PROVIDER_CXX_SOURCES}
@@ -91,10 +82,9 @@ set_source_files_properties(${PROVIDER_CXX_SOURCES}
 target_include_directories(jshookz_codec_fixture PRIVATE
     ${CODEC_DIR}/stubs
     ${CODEC_DIR}
-    ${XDATA_DIR}/includes
-    ${XDATA_DIR}/core/includes
-    ${XDATA_DIR}/base58/includes
-    ${XDATA_DIR}/generated
+    ${JSHOOKZ_XDATA_QJS_INCLUDE_DIR}
+    ${JSHOOKZ_QJS_CPP_INCLUDE_DIR}
+    ${JSHOOKZ_XDATA_INCLUDE_DIRS}
 )
 
 target_link_options(jshookz_codec_fixture PRIVATE
