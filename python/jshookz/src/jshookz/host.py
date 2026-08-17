@@ -338,8 +338,8 @@ class WasmHost:
     def init(self):
         """Initialize QuickJS inside the WASM module.
 
-        Note: init costs ~1.4M fuel. If using fuel metering, ensure
-        enough fuel is available or add fuel before init.
+        Note: the sealed provider is Wizered, so qjs_init is a no-op.
+        Cold cmake output (--no-wizer) still costs ~1.4M fuel.
         """
         if self.execution_limits is not None:
             self.set_memory_limit(self.execution_limits.quickjs_heap_bytes)

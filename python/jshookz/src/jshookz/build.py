@@ -48,14 +48,10 @@ def wizer_executable() -> Path:
     )
 
 
-def wizer_provider(src: Path, dest: Path) -> Path:
-    """Cold provider.wasm → preinitialized provider.wasm.
-
-    `wizer.initialize` already calls `qjs_init`. After snapshot, rename that
-    export to `_initialize` so xahaud's reactor call stays a no-op (`qjs_init`
-    is idempotent). The selected lock still seals the cold bytes.
-    """
-    dest.parent.mkdir(parents=True, exist_ok=True)
+def wizer_provider(src: Path, dest: Path | None = None) -> Path:
+    """Replace a cold provider.wasm with the Wizered bytes (one file)."""
+    dest = dest or src
+    tmp = dest.with_name(dest.name + ".wizer-tmp")
     run(
         [
             wizer_executable(),
@@ -64,17 +60,19 @@ def wizer_provider(src: Path, dest: Path) -> Path:
             "--rename-func",
             "_initialize=wizer.initialize",
             "-o",
-            dest,
+            tmp,
             src,
         ]
     )
-    if not dest.is_file():
-        raise RuntimeError(f"wizer produced no output at {dest}")
-    if dest.stat().st_size <= src.stat().st_size:
+    if not tmp.is_file():
+        raise RuntimeError(f"wizer produced no output at {tmp}")
+    if tmp.stat().st_size <= src.stat().st_size:
+        tmp.unlink(missing_ok=True)
         raise RuntimeError(
-            f"wizer output is not larger than the cold wasm "
-            f"({dest.stat().st_size} <= {src.stat().st_size}); snapshot looks vacuous"
+            f"wizer output is not larger than the input "
+            f"({tmp.stat().st_size} <= {src.stat().st_size}); snapshot looks vacuous"
         )
+    tmp.replace(dest)
     return dest
 
 
@@ -137,7 +135,7 @@ def seal_xahau_hook_provider_bundle(
     return manifest_path
 
 
-def build_xahau_hook_provider() -> Path:
+def build_xahau_hook_provider(*, wizer: bool = True) -> Path:
     """Build and seal the deterministic Xahau QuickJS provider bundle."""
     paths.require_source_checkout()
     if not paths.WASI_SDK_PATH.exists():
@@ -161,17 +159,14 @@ def build_xahau_hook_provider() -> Path:
     )
     run(["cmake", "--build", build_dir])
 
-    if not paths.XAHAU_HOOK_PROVIDER_WASM.exists():
-        raise RuntimeError(
-            f"Xahau Hook provider not found at {paths.XAHAU_HOOK_PROVIDER_WASM}"
-        )
-    wizered = wizer_provider(
-        paths.XAHAU_HOOK_PROVIDER_WASM,
-        paths.XAHAU_HOOK_PROVIDER_WIZERED_WASM,
-    )
-    wizered_mb = wizered.stat().st_size / (1024 * 1024)
-    print(f"✓ Wizered {wizered} ({wizered_mb:.1f} MB)")
+    wasm = paths.XAHAU_HOOK_PROVIDER_WASM
+    if not wasm.exists():
+        raise RuntimeError(f"Xahau Hook provider not found at {wasm}")
+    if wizer:
+        wizer_provider(wasm)
+        print(f"✓ Wizered {wasm} ({wasm.stat().st_size / (1024 * 1024):.1f} MB)")
+    else:
+        print("✓ Skipped Wizer (--no-wizer)")
     seal_xahau_hook_provider_bundle()
-    size_mb = paths.XAHAU_HOOK_PROVIDER_WASM.stat().st_size / (1024 * 1024)
-    print(f"\n✓ Built {paths.XAHAU_HOOK_PROVIDER_WASM} ({size_mb:.1f} MB)")
-    return paths.XAHAU_HOOK_PROVIDER_WASM
+    print(f"\n✓ Built {wasm} ({wasm.stat().st_size / (1024 * 1024):.1f} MB)")
+    return wasm

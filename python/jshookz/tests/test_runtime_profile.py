@@ -67,7 +67,7 @@ def test_profile_lock_pins_provider_and_has_no_wasi(tmp_path: Path):
     assert memory == {
         "name": "memory",
         "kind": "memory",
-        "minimum_pages": 4,
+        "minimum_pages": 6,
         "maximum_pages": 512,
         "memory64": False,
         "shared": False,

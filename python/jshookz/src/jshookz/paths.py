@@ -58,9 +58,6 @@ XAHAU_HOOK_PROVIDER_WASM = Path(
         XAHAU_PROVIDER_BUILD_DIR / "jshookz_provider.wasm",
     )
 )
-XAHAU_HOOK_PROVIDER_WIZERED_WASM = XAHAU_PROVIDER_BUILD_DIR / (
-    "jshookz_provider.wizered.wasm"
-)
 XAHAU_HOOK_PROVIDER_MANIFEST = (
     XAHAU_PROVIDER_BUILD_DIR / "jshookz_provider.manifest.json"
 )

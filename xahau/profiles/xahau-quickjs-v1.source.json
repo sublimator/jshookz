@@ -49,7 +49,7 @@
       {"module": "env", "name": "trace", "params": ["i32", "i32", "i32", "i32", "i32"], "results": ["i64"]}
     ],
     "required_exports": [
-      {"name": "memory", "kind": "memory", "minimum_pages": 4, "maximum_pages": 512, "memory64": false, "shared": false},
+      {"name": "memory", "kind": "memory", "minimum_pages": 6, "maximum_pages": 512, "memory64": false, "shared": false},
       {"name": "_initialize", "kind": "function", "params": [], "results": []},
       {"name": "malloc", "kind": "function", "params": ["i32"], "results": ["i32"]},
       {"name": "free", "kind": "function", "params": ["i32"], "results": []},

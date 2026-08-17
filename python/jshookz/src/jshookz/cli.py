@@ -8,7 +8,7 @@ from . import build, paths
 
 
 def cmd_build(args: argparse.Namespace) -> int:
-    build.build_xahau_hook_provider()
+    build.build_xahau_hook_provider(wizer=not args.no_wizer)
     return 0
 
 
@@ -155,6 +155,11 @@ def main() -> None:
         choices=["provider"],
         default="provider",
         nargs="?",
+    )
+    p_build.add_argument(
+        "--no-wizer",
+        action="store_true",
+        help="leave the cmake wasm cold (debug only)",
     )
     p_build.set_defaults(func=cmd_build)
 
