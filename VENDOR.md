@@ -42,8 +42,9 @@ Xahau JSON refresh, 2026-08-16:
 - commit: `f7e01c799e12baf4821a1da97301484873516241`
 - command: `build/rippled --definitions`
 - content SHA-256: `9934e49481656ff0c8880c7b8ce7b85ac7d4f08ddbeeeeb2394e6223415e0c96`
-- generated header SHA-256: `6a055a756eb61b93442db2caefe6ff3c95a405d950eadc268a6b4788fc4b9290`
+- generated header SHA-256: `e4d79c92cbabe292cc14b9606cad9b5e0b99ee720246605ae89882224a804d7d`
 - generated header also records the JSON SHA-256 in its `// SHA-256:` line
+- 2026-08-17: header is native Protocol tables, not an embedded JSON blob
 
 ## Xahau Hook ABI
 

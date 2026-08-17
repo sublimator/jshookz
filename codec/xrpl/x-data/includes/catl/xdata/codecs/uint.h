@@ -2,7 +2,9 @@
 
 #include "catl/xdata/codec-error.h"
 #include "catl/xdata/serializer.h"
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
 #include <string>
 
 namespace catl::xdata::codecs {
@@ -11,11 +13,13 @@ struct UInt8Codec
 {
     static constexpr size_t fixed_size = 1;
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
     static size_t
     encoded_size(boost::json::value const&)
     {
         return 1;
     }
+#endif
 
     template <ByteSink Sink>
     static void
@@ -24,6 +28,7 @@ struct UInt8Codec
         s.add_u8(v);
     }
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
     template <ByteSink Sink>
     static void
     encode(Serializer<Sink>& s, boost::json::value const& v)
@@ -38,17 +43,20 @@ struct UInt8Codec
     {
         return static_cast<std::uint64_t>(data.data()[0]);
     }
+#endif
 };
 
 struct UInt16Codec
 {
     static constexpr size_t fixed_size = 2;
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
     static size_t
     encoded_size(boost::json::value const&)
     {
         return 2;
     }
+#endif
 
     template <ByteSink Sink>
     static void
@@ -57,6 +65,7 @@ struct UInt16Codec
         s.add_u16(v);
     }
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
     template <ByteSink Sink>
     static void
     encode(Serializer<Sink>& s, boost::json::value const& v)
@@ -65,6 +74,7 @@ struct UInt16Codec
             v.is_uint64() ? v.as_uint64()
                           : static_cast<uint64_t>(v.as_int64())));
     }
+#endif
 
     // Decode to raw uint16. Enum resolution (TransactionType etc.) is
     // handled by the dispatch layer which has Protocol access.
@@ -75,22 +85,26 @@ struct UInt16Codec
             static_cast<uint16_t>(data.data()[1]);
     }
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
     static boost::json::value
     decode(Slice const& data)
     {
         return static_cast<std::uint64_t>(decode_raw(data));
     }
+#endif
 };
 
 struct UInt32Codec
 {
     static constexpr size_t fixed_size = 4;
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
     static size_t
     encoded_size(boost::json::value const&)
     {
         return 4;
     }
+#endif
 
     template <ByteSink Sink>
     static void
@@ -99,6 +113,7 @@ struct UInt32Codec
         s.add_u32(v);
     }
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
     template <ByteSink Sink>
     static void
     encode(Serializer<Sink>& s, boost::json::value const& v)
@@ -117,17 +132,20 @@ struct UInt32Codec
             static_cast<uint32_t>(data.data()[3]);
         return static_cast<std::uint64_t>(v);
     }
+#endif
 };
 
 struct UInt64Codec
 {
     static constexpr size_t fixed_size = 8;
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
     static size_t
     encoded_size(boost::json::value const&)
     {
         return 8;
     }
+#endif
 
     template <ByteSink Sink>
     static void
@@ -144,12 +162,14 @@ struct UInt64Codec
     // error code and never that the whole string was consumed, so "1234GG"
     // silently encoded as 0x1234 and a 17-char "00000000000000001" as 0x1,
     // while the JS path rejected both (issue 0010).
+#ifndef CATL_XDATA_NO_BOOST_JSON
     template <ByteSink Sink>
     static void
     encode(Serializer<Sink>& s, boost::json::value const& v)
     {
         encode_hex(s, std::string_view(v.as_string()));
     }
+#endif
 
     // From hex string (errors-as-values core)
     template <ByteSink Sink>
@@ -180,6 +200,7 @@ struct UInt64Codec
     }
 
     // Decode to hex string (matching xrpl-py/xrpl.js)
+#ifndef CATL_XDATA_NO_BOOST_JSON
     static boost::json::value
     decode(Slice const& data)
     {
@@ -188,12 +209,12 @@ struct UInt64Codec
         {
             v = (v << 8) | data.data()[i];
         }
-        // Return uppercase hex, zero-padded to 16 chars
         char buf[17];
         std::snprintf(
             buf, sizeof(buf), "%016llX", static_cast<unsigned long long>(v));
         return boost::json::string(buf);
     }
+#endif
 };
 
 }  // namespace catl::xdata::codecs

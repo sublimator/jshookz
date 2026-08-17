@@ -15,9 +15,13 @@ extern "C" {
 }
 
 #include "catl/xdata/codecs/codecs.h"
+#include "catl/xdata/hex.h"
 #include "catl/xdata/protocol.h"
 #include "catl/xdata/parser.h"
 #include "catl/xdata/slice-visitor.h"
+#include "catl/xdata/types/issue.h"
+#include "catl/xdata/types/number.h"
+#include <cstring>
 #include <expected>
 #include <stack>
 #include <utility>
@@ -1330,21 +1334,37 @@ decode_field_value_js(
 {
     auto const& t = field.meta.type;
 
-    // Enum fields — reuse existing codecs that have name lookup tables.
-    // Returns boost::json::value, we extract the string. These are a small
-    // fraction of fields; the hot path types below are all native JSValue.
-    if (field.code == codecs::EnumFieldCodes::TransactionType ||
-        field.code == codecs::EnumFieldCodes::LedgerEntryType ||
-        field.code == codecs::EnumFieldCodes::TransactionResult ||
-        field.code == codecs::EnumFieldCodes::PermissionValue) {
-        auto bjv = codecs::decode_field_value(field, data, protocol);
-        if (bjv.is_string()) {
-            auto sv = bjv.as_string();
-            return JS_NewStringLen(ctx, sv.data(), sv.size());
+    if (field.code == codecs::EnumFieldCodes::TransactionType) {
+        uint16_t raw = codecs::UInt16Codec::decode_raw(data);
+        if (auto name = protocol.get_transaction_type_name(raw))
+            return JS_NewStringLen(ctx, name->data(), name->size());
+        return JS_NewUint32(ctx, raw);
+    }
+    if (field.code == codecs::EnumFieldCodes::LedgerEntryType) {
+        uint16_t raw = codecs::UInt16Codec::decode_raw(data);
+        if (auto name = protocol.get_ledger_entry_type_name(raw))
+            return JS_NewStringLen(ctx, name->data(), name->size());
+        return JS_NewUint32(ctx, raw);
+    }
+    if (field.code == codecs::EnumFieldCodes::TransactionResult) {
+        uint8_t raw = data.data()[0];
+        int32_t code = static_cast<int32_t>(raw);
+        for (auto const& [name, c] : protocol.transactionResults()) {
+            if (c == code)
+                return JS_NewStringLen(ctx, name.data(), name.size());
         }
-        if (bjv.is_int64()) return JS_NewInt32(ctx, (int32_t)bjv.as_int64());
-        if (bjv.is_uint64()) return JS_NewUint32(ctx, (uint32_t)bjv.as_uint64());
-        return JS_NewInt32(ctx, 0);
+        return JS_NewInt32(ctx, code);
+    }
+    if (field.code == codecs::EnumFieldCodes::PermissionValue) {
+        uint32_t raw = (static_cast<uint32_t>(data.data()[0]) << 24) |
+                       (static_cast<uint32_t>(data.data()[1]) << 16) |
+                       (static_cast<uint32_t>(data.data()[2]) << 8) |
+                       static_cast<uint32_t>(data.data()[3]);
+        for (auto const& [name, code] : protocol.permissions()) {
+            if (code == raw)
+                return JS_NewStringLen(ctx, name.data(), name.size());
+        }
+        return JS_NewUint32(ctx, raw);
     }
 
     // Integer types → JS number
@@ -1389,9 +1409,8 @@ decode_field_value_js(
             Slice currency_slice = get_currency_raw(data);
             std::string issuer = base58::encode_account_id(data.data() + 28, 20);
 
-            // Decode currency
-            auto currency_json = codecs::CurrencyCodec::decode(currency_slice);
-            std::string currency_str(currency_json.as_string());
+            std::string currency_str =
+                codecs::CurrencyCodec::decode_string(currency_slice);
 
             JSValue obj = JS_NewObject(ctx);
             JS_SetPropertyStr(ctx, obj, "currency",
@@ -1421,35 +1440,61 @@ decode_field_value_js(
 
     // AccountID → base58 string
     if (t == FieldTypes::AccountID) {
-        auto decoded_result = codecs::AccountIDCodec::decode_expected(data);
+        auto decoded_result = codecs::AccountIDCodec::decode_string_expected(data);
         if (!decoded_result) {
             return JS_ThrowTypeError(
                 ctx,
                 "decode_object failed: %s",
                 decoded_result.error().message.c_str());
         }
-        auto decoded = std::move(*decoded_result);
-        std::string s(decoded.as_string());
+        auto const& s = *decoded_result;
         return JS_NewStringLen(ctx, s.c_str(), s.size());
     }
 
-    //@@start leaf-via-boost
-    // Currency → string
     if (t == FieldTypes::Currency) {
-        auto decoded = codecs::CurrencyCodec::decode(data);
-        std::string s(decoded.as_string());
+        std::string s = codecs::CurrencyCodec::decode_string(data);
         return JS_NewStringLen(ctx, s.c_str(), s.size());
     }
-    //@@end leaf-via-boost
 
-    // Issue → string or object
     if (t == FieldTypes::Issue) {
-        auto decoded = codecs::IssueCodec::decode(data);
-        if (decoded.is_string()) {
-            std::string s(decoded.as_string());
+        if (data.size() < 20) {
+            std::string hex = hex_encode(data);
+            return JS_NewStringLen(ctx, hex.c_str(), hex.size());
+        }
+        Slice first20(data.data(), 20);
+        if (is_xrp_currency(first20) || data.size() < 40) {
+            std::string s = codecs::CurrencyCodec::decode_string(first20);
             return JS_NewStringLen(ctx, s.c_str(), s.size());
         }
-        // Fall through to JSON serialization for complex issues
+        Slice second20(data.data() + 20, 20);
+        if (std::memcmp(second20.data(), codecs::NO_ACCOUNT, 20) == 0 &&
+            data.size() >= 44)
+        {
+            uint32_t seq_be = (static_cast<uint32_t>(data.data()[40]) << 24) |
+                              (static_cast<uint32_t>(data.data()[41]) << 16) |
+                              (static_cast<uint32_t>(data.data()[42]) << 8) |
+                              static_cast<uint32_t>(data.data()[43]);
+            uint8_t mptid[24];
+            std::memcpy(mptid, &seq_be, 4);
+            std::memcpy(mptid + 4, data.data(), 20);
+            std::string hex = hex_encode(mptid, 24);
+            JSValue obj = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, obj, "mpt_issuance_id",
+                JS_NewStringLen(ctx, hex.c_str(), hex.size()));
+            return obj;
+        }
+        std::string currency = codecs::CurrencyCodec::decode_string(first20);
+        auto issuer = codecs::AccountIDCodec::decode_string_expected(second20);
+        if (!issuer) {
+            return JS_ThrowTypeError(
+                ctx, "decode_object failed: %s", issuer.error().message.c_str());
+        }
+        JSValue obj = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, obj, "currency",
+            JS_NewStringLen(ctx, currency.c_str(), currency.size()));
+        JS_SetPropertyStr(ctx, obj, "issuer",
+            JS_NewStringLen(ctx, issuer->c_str(), issuer->size()));
+        return obj;
     }
 
     // Blob → hex string
@@ -1458,11 +1503,140 @@ decode_field_value_js(
         return JS_NewStringLen(ctx, hex.c_str(), hex.size());
     }
 
-    // Number → string
     if (t == FieldTypes::Number) {
-        auto decoded = codecs::NumberCodec::decode(data);
-        std::string s(decoded.as_string());
+        std::string s = parse_number(data).to_string();
         return JS_NewStringLen(ctx, s.c_str(), s.size());
+    }
+
+    if (t == FieldTypes::Int32) {
+        int32_t v = static_cast<int32_t>(
+            (static_cast<uint32_t>(data.data()[0]) << 24) |
+            (static_cast<uint32_t>(data.data()[1]) << 16) |
+            (static_cast<uint32_t>(data.data()[2]) << 8) |
+            static_cast<uint32_t>(data.data()[3]));
+        return JS_NewInt32(ctx, v);
+    }
+    if (t == FieldTypes::Int64) {
+        uint64_t u = 0;
+        for (int i = 0; i < 8; ++i)
+            u = (u << 8) | data.data()[i];
+        return JS_NewInt64(ctx, static_cast<int64_t>(u));
+    }
+
+    if (t == FieldTypes::PathSet) {
+        JSValue paths = JS_NewArray(ctx);
+        uint32_t path_i = 0;
+        JSValue current = JS_NewArray(ctx);
+        uint32_t hop_i = 0;
+        size_t pos = 0;
+        while (pos < data.size()) {
+            uint8_t type_byte = data.data()[pos++];
+            if (type_byte == PathSet::END_BYTE) {
+                if (hop_i > 0)
+                    JS_SetPropertyUint32(ctx, paths, path_i++, current);
+                else
+                    JS_FreeValue(ctx, current);
+                return paths;
+            }
+            if (type_byte == PathSet::PATH_SEPARATOR) {
+                if (hop_i > 0) {
+                    JS_SetPropertyUint32(ctx, paths, path_i++, current);
+                    current = JS_NewArray(ctx);
+                    hop_i = 0;
+                }
+                continue;
+            }
+            JSValue hop = JS_NewObject(ctx);
+            bool any = false;
+            if ((type_byte & PathSet::TYPE_ACCOUNT) && pos + 20 <= data.size()) {
+                auto acc = codecs::AccountIDCodec::decode_string_expected(
+                    Slice(data.data() + pos, 20));
+                pos += 20;
+                if (acc) {
+                    JS_SetPropertyStr(ctx, hop, "account",
+                        JS_NewStringLen(ctx, acc->c_str(), acc->size()));
+                    any = true;
+                }
+            }
+            if ((type_byte & PathSet::TYPE_CURRENCY) && pos + 20 <= data.size()) {
+                std::string cur = codecs::CurrencyCodec::decode_string(
+                    Slice(data.data() + pos, 20));
+                pos += 20;
+                JS_SetPropertyStr(ctx, hop, "currency",
+                    JS_NewStringLen(ctx, cur.c_str(), cur.size()));
+                any = true;
+            }
+            if ((type_byte & PathSet::TYPE_ISSUER) && pos + 20 <= data.size()) {
+                auto iss = codecs::AccountIDCodec::decode_string_expected(
+                    Slice(data.data() + pos, 20));
+                pos += 20;
+                if (iss) {
+                    JS_SetPropertyStr(ctx, hop, "issuer",
+                        JS_NewStringLen(ctx, iss->c_str(), iss->size()));
+                    any = true;
+                }
+            }
+            if (any)
+                JS_SetPropertyUint32(ctx, current, hop_i++, hop);
+            else
+                JS_FreeValue(ctx, hop);
+        }
+        if (hop_i > 0)
+            JS_SetPropertyUint32(ctx, paths, path_i, current);
+        else
+            JS_FreeValue(ctx, current);
+        return paths;
+    }
+
+    if (t == FieldTypes::XChainBridge) {
+        size_t pos = 0;
+        auto take_account = [&](JSValue obj, char const* key) {
+            if (pos >= data.size())
+                return;
+            size_t vl = data.data()[pos++];
+            if (pos + vl > data.size())
+                return;
+            auto acc = codecs::AccountIDCodec::decode_string_expected(
+                Slice(data.data() + pos, vl));
+            pos += vl;
+            if (acc)
+                JS_SetPropertyStr(ctx, obj, key,
+                    JS_NewStringLen(ctx, acc->c_str(), acc->size()));
+        };
+        JSValue obj = JS_NewObject(ctx);
+        take_account(obj, "LockingChainDoor");
+        {
+            size_t issue_size = 0;
+            std::string error;
+            if (issue_size_checked(
+                    data.data(), data.size(), pos, issue_size, error))
+            {
+                FieldDef issue_field = field;
+                issue_field.meta.type = FieldTypes::Issue;
+                JSValue issue = decode_field_value_js(
+                    ctx, issue_field,
+                    Slice(data.data() + pos, issue_size), protocol);
+                pos += issue_size;
+                JS_SetPropertyStr(ctx, obj, "LockingChainIssue", issue);
+            }
+        }
+        take_account(obj, "IssuingChainDoor");
+        {
+            size_t issue_size = 0;
+            std::string error;
+            if (issue_size_checked(
+                    data.data(), data.size(), pos, issue_size, error))
+            {
+                FieldDef issue_field = field;
+                issue_field.meta.type = FieldTypes::Issue;
+                JSValue issue = decode_field_value_js(
+                    ctx, issue_field,
+                    Slice(data.data() + pos, issue_size), protocol);
+                pos += issue_size;
+                JS_SetPropertyStr(ctx, obj, "IssuingChainIssue", issue);
+            }
+        }
+        return obj;
     }
 
     // Vector256 → array of hex strings
@@ -1477,15 +1651,8 @@ decode_field_value_js(
         return arr;
     }
 
-    //@@start boost-fallback
-    // PathSet, XChainBridge, Int32/Int64 — fall back to boost::json → string → parse
-    // (rare types, not worth hand-coding yet)
-    {
-        auto bjv = codecs::decode_field_value(field, data, protocol);
-        std::string json_str = boost::json::serialize(bjv);
-        return JS_ParseJSON(ctx, json_str.c_str(), json_str.size(), "<field>");
-    }
-    //@@end boost-fallback
+    std::string hex = hex_encode(data);
+    return JS_NewStringLen(ctx, hex.c_str(), hex.size());
 }
 
 // ---- QjsVisitor: builds JSValue tree directly ----

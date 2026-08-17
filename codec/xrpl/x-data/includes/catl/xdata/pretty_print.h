@@ -1,7 +1,9 @@
 #pragma once
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json/serialize.hpp>
 #include <boost/json/value.hpp>
+#endif
 #include <ostream>
 #include <string>
 

@@ -24,8 +24,6 @@ set(QUICKJS_SOURCES
 set(XDATA_SOURCES
     ${XDATA_DIR}/src/protocol.cpp
     ${XDATA_DIR}/src/embedded_protocol.cpp
-    ${XDATA_DIR}/src/parse_leaf.cpp
-    ${XDATA_DIR}/boost_json_src.cpp
     ${XDATA_DIR}/base58/src/base58.cpp
     ${XDATA_DIR}/core/src/types.cpp
 )
@@ -51,6 +49,7 @@ target_compile_definitions(jshookz_xrpl_codec PRIVATE
     _GNU_SOURCE
     EMSCRIPTEN
     CODEC_BACKEND_XDATA
+    CATL_XDATA_NO_BOOST_JSON
 )
 
 set_source_files_properties(
@@ -76,7 +75,6 @@ target_include_directories(jshookz_xrpl_codec PRIVATE
     ${XDATA_DIR}/core/includes
     ${XDATA_DIR}/base58/includes
     ${XDATA_DIR}/generated
-    ${BOOST_INCLUDE_DIR}
 )
 
 target_compile_options(jshookz_xrpl_codec PRIVATE -Wno-deprecated)

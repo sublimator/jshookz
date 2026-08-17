@@ -5,11 +5,14 @@
 #include "catl/xdata/protocol.h"
 #include "catl/xdata/serializer.h"
 #include <algorithm>
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
 #include <vector>
 
 namespace catl::xdata::codecs {
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
 // Forward declaration — defined in codecs.h after all codecs are available
 template <ByteSink Sink>
 void
@@ -217,5 +220,6 @@ struct STObjectCodec
         }
     }
 };
+#endif
 
 }  // namespace catl::xdata::codecs

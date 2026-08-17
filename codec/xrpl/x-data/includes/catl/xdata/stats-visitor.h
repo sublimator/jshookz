@@ -11,7 +11,9 @@
 #include "catl/xdata/types/iou-value.h"
 #include <algorithm>
 #include <array>
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
 #include <chrono>
 #include <cstdint>
 #include <cstring>  // for std::memcpy

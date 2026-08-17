@@ -38,21 +38,17 @@ include(${REPO_ROOT}/runtime/provider/provider_sources.cmake)
 set(XDATA_SOURCES
     ${XDATA_DIR}/src/protocol.cpp
     ${XDATA_DIR}/src/embedded_protocol.cpp
-    ${XDATA_DIR}/src/parse_leaf.cpp
-    ${XDATA_DIR}/boost_json_src.cpp
     ${XDATA_DIR}/base58/src/base58.cpp
     ${XDATA_DIR}/core/src/types.cpp
 )
 
 set(BRIDGE_SOURCE ${CODEC_DIR}/bridge_xdata.cpp)
 set(DIGEST_STUB_SOURCE ${CODEC_DIR}/stubs/digest_stub.cpp)
-set(BOOST_NO_EXCEPTIONS_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/boost_no_exceptions.cpp)
 
 add_executable(jshookz_codec_fixture
     ${QUICKJS_SOURCES}
     ${JSHOOKZ_PROVIDER_CPP_SOURCES}
     ${DIGEST_STUB_SOURCE}
-    ${BOOST_NO_EXCEPTIONS_SOURCE}
     ${XDATA_SOURCES}
     ${BRIDGE_SOURCE}
     ${CODEC_DIR}/qjs_visitor.h
@@ -69,7 +65,7 @@ target_compile_definitions(jshookz_codec_fixture PRIVATE
     EMSCRIPTEN
     CODEC_BACKEND_XDATA
     CONFIG_PROTOCOL_XDATA
-    BOOST_NO_EXCEPTIONS
+    CATL_XDATA_NO_BOOST_JSON
 )
 
 # Only C files get the QuickJS repo include dir. C++ files include quickjs.h
@@ -83,7 +79,6 @@ set_source_files_properties(${QUICKJS_SOURCES}
 set(PROVIDER_CXX_SOURCES
     ${JSHOOKZ_PROVIDER_CPP_SOURCES}
     ${DIGEST_STUB_SOURCE}
-    ${BOOST_NO_EXCEPTIONS_SOURCE}
     ${XDATA_SOURCES}
     ${BRIDGE_SOURCE}
 )
@@ -100,7 +95,6 @@ target_include_directories(jshookz_codec_fixture PRIVATE
     ${XDATA_DIR}/core/includes
     ${XDATA_DIR}/base58/includes
     ${XDATA_DIR}/generated
-    ${BOOST_INCLUDE_DIR}
 )
 
 target_link_options(jshookz_codec_fixture PRIVATE

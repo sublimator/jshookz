@@ -897,13 +897,10 @@ encode_field_value_js(
     if (t == FieldTypes::Number)
     {
         if (JS_IsString(v)) {
-            // Use boost::json path for string parsing — NumberCodec::encode
-            // handles full decimal + scientific notation parsing
             JsCString str(ctx, v);
             XDATA_TRY(validate_iou_decimal_string_js(
                 str.sv(), "Number", path));
-            boost::json::value bjv(boost::json::string(str.sv()));
-            XDATA_TRY(NumberCodec::encode_expected(s, bjv));
+            XDATA_TRY(NumberCodec::encode_expected(s, str.sv()));
             return {};
         }
         // JS number → int64 mantissa with exponent 0

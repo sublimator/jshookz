@@ -3,7 +3,10 @@
 #include "catl/xdata/codec-error.h"
 #include "catl/xdata/serializer.h"
 #include "catl/xdata/types/number.h"
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
+#include <string_view>
 
 namespace catl::xdata::codecs {
 
@@ -18,11 +21,13 @@ struct NumberCodec
     static constexpr uint64_t MAX_MANTISSA =
         9'999'999'999'999'999'999ULL;  // 1e19-1
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
     static size_t
     encoded_size(boost::json::value const&)
     {
         return 12;
     }
+#endif
 
     // Normalize and write mantissa + exponent
     template <ByteSink Sink>
@@ -102,29 +107,10 @@ struct NumberCodec
         encode_normalized(s, negative, abs_mantissa, exponent);
     }
 
-    // From JSON string (decimal or scientific notation, throwing facade)
-    template <ByteSink Sink>
-    static void
-    encode(Serializer<Sink>& s, boost::json::value const& v)
-    {
-        encode_or_throw(encode_expected(s, v));
-    }
-
-    // From JSON string (decimal or scientific notation, errors-as-values core)
     template <ByteSink Sink>
     static std::expected<void, CodecErrorValue>
-    encode_expected(Serializer<Sink>& s, boost::json::value const& v)
+    encode_expected(Serializer<Sink>& s, std::string_view sv)
     {
-        if (v.is_int64() || v.is_uint64())
-        {
-            int64_t val = v.is_int64() ? v.as_int64()
-                                       : static_cast<int64_t>(v.as_uint64());
-            encode(s, val, 0);
-            return {};
-        }
-
-        auto sv = std::string_view(v.as_string());
-
         bool negative = false;
         if (!sv.empty() && sv.front() == '-')
         {
@@ -199,12 +185,34 @@ struct NumberCodec
         return {};
     }
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
+    template <ByteSink Sink>
+    static void
+    encode(Serializer<Sink>& s, boost::json::value const& v)
+    {
+        encode_or_throw(encode_expected(s, v));
+    }
+
+    template <ByteSink Sink>
+    static std::expected<void, CodecErrorValue>
+    encode_expected(Serializer<Sink>& s, boost::json::value const& v)
+    {
+        if (v.is_int64() || v.is_uint64())
+        {
+            int64_t val = v.is_int64() ? v.as_int64()
+                                       : static_cast<int64_t>(v.as_uint64());
+            encode(s, val, 0);
+            return {};
+        }
+        return encode_expected(s, std::string_view(v.as_string()));
+    }
+
     static boost::json::value
     decode(Slice const& data)
     {
-        STNumber number = parse_number(data);
-        return boost::json::string(number.to_string());
+        return boost::json::string(parse_number(data).to_string());
     }
+#endif
 };
 
 }  // namespace catl::xdata::codecs

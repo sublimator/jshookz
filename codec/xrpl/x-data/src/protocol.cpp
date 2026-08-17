@@ -1,214 +1,79 @@
 #include "catl/xdata/protocol.h"
 #include "catl/xdata/exception_policy.h"
-#include "catl/xdata/parser.h"
-#include <boost/json.hpp>
 #include <cstring>  // for std::memset
-#include <fstream>
 #include <iostream>  // for logging
-#include <sstream>
 #include <stdexcept>
-
-namespace json = boost::json;
 
 namespace catl::xdata {
 
-Protocol
-Protocol::load_from_file(const std::string& path, const ProtocolOptions& opts)
+void
+Protocol::apply_load_options(const ProtocolOptions& opts)
 {
-    // Read the entire file
-    std::ifstream file(path);
-    if (!file.is_open())
-    {
-        CATL_XDATA_THROW(std::runtime_error(
-            "Failed to open protocol file: " + path));
-    }
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string content = buffer.str();
-
-    // Parse JSON
-    boost::system::error_code ec;
-    json::value jv = json::parse(content, ec);
-    if (ec)
-    {
-        CATL_XDATA_THROW(std::runtime_error(
-            "Failed to parse JSON: " + ec.message()));
-    }
-
-    return load_from_json_value(jv, opts);
-}
-
-Protocol
-Protocol::load_from_json_value(
-    const json::value& jv,
-    const ProtocolOptions& opts)
-{
-    json::value json_value = jv;  // Make a copy to handle wrapped format
-
-    // Handle wrapped result format
-    if (json_value.is_object() && json_value.as_object().contains("result"))
-    {
-        json_value = json_value.at("result");
-    }
-
-    if (!json_value.is_object())
-    {
-        CATL_XDATA_THROW(std::runtime_error(
-            "Protocol JSON must be an object"));
-    }
-
-    Protocol protocol;
-    // Translate network variants to base network immediately at API surface
-    protocol.network_id_ = opts.network_id.has_value()
+    network_id_ = opts.network_id.has_value()
         ? std::optional<uint32_t>(
               Networks::find_base_network_id(opts.network_id.value()))
         : std::nullopt;
-    protocol.expand_xaddresses_ = opts.expand_xaddresses;
-    const auto& obj = json_value.as_object();
+    expand_xaddresses_ = opts.expand_xaddresses;
+}
 
-    // Parse TYPES mapping first (but don't validate yet)
-    if (obj.contains("TYPES"))
+void
+Protocol::add_table_field(
+    std::string name,
+    std::string_view type_name,
+    std::int32_t nth,
+    bool is_serialized,
+    bool is_signing_field,
+    bool is_vl_encoded)
+{
+    FieldDef def;
+    def.name = std::move(name);
+    def.meta.is_serialized = is_serialized;
+    def.meta.is_signing_field = is_signing_field;
+    def.meta.is_vl_encoded = is_vl_encoded;
+    def.meta.nth = static_cast<uint16_t>(nth);
+
+    if (auto ft = FieldTypes::from_name(type_name))
     {
-        const auto& types = obj.at("TYPES").as_object();
-        for (const auto& [key, value] : types)
-        {
-            uint16_t code = static_cast<uint16_t>(value.as_int64());
-            std::string name(key);
-            protocol.types_[name] = code;
-            protocol.typeCodeToName_[code] = name;
-        }
+        def.meta.type = *ft;
     }
-
-    // Parse FIELDS array (required)
-    if (!obj.contains("FIELDS"))
+    else
     {
-        CATL_XDATA_THROW(std::runtime_error(
-            "Protocol JSON must contain FIELDS array"));
-    }
-
-    const auto& fields = obj.at("FIELDS").as_array();
-
-    for (const auto& field : fields)
-    {
-        const auto& fieldArray = field.as_array();
-        if (fieldArray.size() != 2)
+        auto typeCode = get_type_code(std::string(type_name));
+        if (typeCode)
         {
-            CATL_XDATA_THROW(std::runtime_error(
-                "Field definition must be a 2-element array"));
-        }
-
-        FieldDef def;
-        def.name = fieldArray[0].as_string().c_str();
-
-        const auto& metadata = fieldArray[1].as_object();
-        def.meta.is_serialized = metadata.at("isSerialized").as_bool();
-        def.meta.is_signing_field = metadata.at("isSigningField").as_bool();
-        def.meta.is_vl_encoded = metadata.at("isVLEncoded").as_bool();
-        def.meta.nth = static_cast<uint16_t>(metadata.at("nth").as_int64());
-
-        // Look up the FieldType from the type name
-        auto typeName = metadata.at("type").as_string();
-        if (auto ft = FieldTypes::from_name(typeName))
-        {
-            def.meta.type = *ft;
+            def.meta.type = FieldType{type_name, *typeCode};
         }
         else
         {
-            // Unknown type - get its code from TYPES mapping
-            auto typeCode = protocol.get_type_code(std::string(typeName));
-            if (typeCode)
-            {
-                // Create a temporary FieldType for unknown types
-                // We'll validate it later after all fields are loaded
-                def.meta.type = FieldType{typeName, *typeCode};
-            }
-            else
-            {
-                CATL_XDATA_THROW(std::runtime_error(
-                    "Field references unknown type: " + std::string(typeName) +
-                    " (not in TYPES mapping)"));
-            }
+            CATL_XDATA_THROW(std::runtime_error(
+                "Field references unknown type: " + std::string(type_name) +
+                " (not in TYPES mapping)"));
         }
-
-        // Add to protocol
-        protocol.fieldNameIndex_[def.name] = protocol.fields_.size();
-
-        // Set the field code.
-        // First writer wins — later duplicates with the same wire code
-        // (e.g. "hash" nth=1 vs "LedgerHash" nth=1) must not overwrite.
-        def.code = make_field_code(def.meta.type.code, def.meta.nth);
-        def.compute_header_size();
-        protocol.fieldCodeIndex_.try_emplace(
-            def.code, protocol.fields_.size());
-
-        protocol.fields_.push_back(std::move(def));
     }
 
-    // Build the fast lookup table
-    protocol.build_fast_lookup();
+    fieldNameIndex_[def.name] = fields_.size();
+    def.code = make_field_code(def.meta.type.code, def.meta.nth);
+    def.compute_header_size();
+    fieldCodeIndex_.try_emplace(def.code, fields_.size());
+    fields_.push_back(std::move(def));
+}
 
-    // Now validate all types after fields are loaded
-    // Use normalized opts with base network_id
+void
+Protocol::finish_table_load(const ProtocolOptions& opts)
+{
+    build_fast_lookup();
+
     ProtocolOptions normalized_opts = opts;
-    normalized_opts.network_id = protocol.network_id_;
-
-    for (const auto& [code, name] : protocol.typeCodeToName_)
+    normalized_opts.network_id = network_id_;
+    for (const auto& [code, name] : typeCodeToName_)
     {
-        protocol.validate_type(code, normalized_opts);
+        validate_type(code, normalized_opts);
     }
 
-    // Parse LEDGER_ENTRY_TYPES mapping
-    if (obj.contains("LEDGER_ENTRY_TYPES"))
+    for (const auto& [name, code] : transactionTypes_)
     {
-        const auto& types = obj.at("LEDGER_ENTRY_TYPES").as_object();
-        for (const auto& [key, value] : types)
-        {
-            protocol.ledgerEntryTypes_[std::string(key)] =
-                static_cast<uint16_t>(value.as_int64());
-        }
+        permissions_[name] = static_cast<uint32_t>(code) + 1;
     }
-
-    // Parse TRANSACTION_TYPES mapping
-    if (obj.contains("TRANSACTION_TYPES"))
-    {
-        const auto& types = obj.at("TRANSACTION_TYPES").as_object();
-        for (const auto& [key, value] : types)
-        {
-            protocol.transactionTypes_[std::string(key)] =
-                static_cast<uint16_t>(value.as_int64());
-        }
-    }
-
-    // Parse TRANSACTION_RESULTS mapping
-    if (obj.contains("TRANSACTION_RESULTS"))
-    {
-        const auto& results = obj.at("TRANSACTION_RESULTS").as_object();
-        for (const auto& [key, value] : results)
-        {
-            protocol.transactionResults_[std::string(key)] =
-                static_cast<int32_t>(value.as_int64());
-        }
-    }
-
-    // Parse PERMISSIONS mapping (granular permission values)
-    if (obj.contains("PERMISSIONS"))
-    {
-        const auto& perms = obj.at("PERMISSIONS").as_object();
-        for (const auto& [key, value] : perms)
-        {
-            protocol.permissions_[std::string(key)] =
-                static_cast<uint32_t>(value.as_int64());
-        }
-    }
-
-    // Also generate tx-level permission values (tx type code + 1)
-    for (const auto& [name, code] : protocol.transactionTypes_)
-    {
-        protocol.permissions_[name] = static_cast<uint32_t>(code) + 1;
-    }
-
-    return protocol;
 }
 
 void
@@ -237,7 +102,7 @@ Protocol::validate_type(uint16_t type_code, const ProtocolOptions& opts)
     {
         // Known type - verify network compatibility
         // Note: network_id is already normalized to base in
-        // load_from_json_value
+        // apply_load_options
         if (!known_type->matches_network(opts.network_id.value()))
         {
             CATL_XDATA_THROW(std::runtime_error(

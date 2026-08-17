@@ -6,7 +6,9 @@
 #include "catl/xdata/serializer.h"
 #include "catl/xdata/types/amount.h"
 #include "catl/xdata/types/iou-value.h"
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
 
 namespace catl::xdata::codecs {
 
@@ -16,6 +18,7 @@ struct AmountCodec
     static constexpr size_t iou_size = 48;
     static constexpr size_t mpt_size = 33;
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
     static size_t
     encoded_size(boost::json::value const& v)
     {
@@ -26,6 +29,7 @@ struct AmountCodec
             return mpt_size;
         return iou_size;
     }
+#endif
 
     // -- Native amount from integer drops --
     template <ByteSink Sink>
@@ -157,7 +161,7 @@ struct AmountCodec
         encode_or_throw(encode_mpt_expected(s, value, mpt_issuance_id, path));
     }
 
-    // -- From JSON: string → native, object → IOU or MPT --
+#ifndef CATL_XDATA_NO_BOOST_JSON
     template <ByteSink Sink>
     static void
     encode(
@@ -256,6 +260,7 @@ struct AmountCodec
         // Fallback
         return boost::json::string(hex_encode(data));
     }
+#endif
 
 private:
     static constexpr uint64_t IOU_BIT = 0x8000000000000000ULL;

@@ -3,10 +3,13 @@
 #include "catl/xdata/codecs/stobject.h"
 #include "catl/xdata/protocol.h"
 #include "catl/xdata/serializer.h"
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
 
 namespace catl::xdata::codecs {
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
 struct STArrayCodec
 {
     static size_t
@@ -66,5 +69,6 @@ struct STArrayCodec
         }
     }
 };
+#endif
 
 }  // namespace catl::xdata::codecs

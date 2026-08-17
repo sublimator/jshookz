@@ -4,7 +4,9 @@
 #include "catl/xdata/codecs/issue.h"
 #include "catl/xdata/serializer.h"
 #include "catl/xdata/types/issue.h"
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
 
 namespace catl::xdata::codecs {
 
@@ -15,6 +17,7 @@ namespace catl::xdata::codecs {
 //   IssuingChainIssue (Issue, 20 or 40 bytes)
 struct XChainBridgeCodec
 {
+#ifndef CATL_XDATA_NO_BOOST_JSON
     static size_t
     encoded_size(boost::json::value const& v)
     {
@@ -83,6 +86,7 @@ struct XChainBridgeCodec
             Slice(data.data() + pos, data.size() - pos));
         return obj;
     }
+#endif
 
     /// Get the total wire size by peeking at the data.
     static size_t

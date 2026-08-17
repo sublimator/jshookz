@@ -4,7 +4,9 @@
 #include "catl/xdata/codecs/codecs.h"
 #include "catl/xdata/protocol.h"
 #include "catl/xdata/slice-visitor.h"
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
 #include <stack>
 #include <string>
 
