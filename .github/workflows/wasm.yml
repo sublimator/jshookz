@@ -101,7 +101,7 @@ jobs:
           unzip -l build/dist/jshookz-*.whl | grep 'jshookz/types/xahau-quickjs-v1.d.ts'
           unzip -l build/dist/jshookz-*.whl | grep 'jshookz/types/xahau-quickjs-v1.surface.json'
           unzip -l build/dist/jshookz-*.whl | grep 'jshookz/types/api-artifacts.json'
-          unzip -l build/dist/jshookz-*.whl | grep 'jshookz/result_validator.js'
+          unzip -l build/dist/jshookz-*.whl | grep 'jshookz/result_validator.ts'
           uv venv "$RUNNER_TEMP/jshookz-wheel-smoke"
           uv pip install --python "$RUNNER_TEMP/jshookz-wheel-smoke/bin/python" \
             build/dist/jshookz-*.whl
