@@ -94,6 +94,8 @@ packages/jshookz/.venv/bin/jshookz build provider
 packages/jshookz/.venv/bin/pytest -q packages/jshookz/tests
 ```
 
+Xahau Env tests that should compile into `rippled` live in [`env-tests/`](env-tests/). Point xahaud at that directory with `-DHOOKS_TEST_DIR` or `HOOKS_TEST_DIR`.
+
 Compile and package a Hook:
 
 ```bash
