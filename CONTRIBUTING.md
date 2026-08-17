@@ -9,11 +9,9 @@ change.
 - CMake and Ninja
 - wasi-sdk 32
 - Binaryen 128
-- Boost headers
-- Wasmtime C API 47.0.3
+- Boost headers (native x-data table probe)
 - Python 3.10+ and `uv`
 - Node.js 22 and TypeScript 6.0.3
-- OpenSSL development headers on non-macOS hosts
 
 ## Hook provider
 
@@ -40,40 +38,17 @@ python/hostem/.venv/bin/pytest -q python/hostem/tests
 Edit the policy or generator, not generated output. The source of truth is the
 pinned public Xahau `hook_api.macro`, parsed by hookz.
 
-## Codec and combined fixture
-
-Set `WASI_SDK_PATH` and `BOOST_INCLUDE_DIR`, then:
+## x-data-quickjs (native)
 
 ```bash
-cmake -S cpp/x-data-quickjs -B build/codec -G Ninja \
-  -DCMAKE_TOOLCHAIN_FILE="$WASI_SDK_PATH/share/cmake/wasi-sdk.cmake" \
-  -DCMAKE_BUILD_TYPE=Release -DBOOST_INCLUDE_DIR="$BOOST_INCLUDE_DIR"
-cmake --build build/codec
-
-cmake -S cpp/provider/fixture -B build/codec-fixture -G Ninja \
-  -DCMAKE_TOOLCHAIN_FILE="$WASI_SDK_PATH/share/cmake/wasi-sdk.cmake" \
-  -DCMAKE_BUILD_TYPE=Release -DBOOST_INCLUDE_DIR="$BOOST_INCLUDE_DIR"
-cmake --build build/codec-fixture
-scripts/check-generated-definitions.sh
-```
-
-Configure `cpp/codec-host` with either the Conan-generated Wasmtime CMake
-package or `-DWASMTIME_ROOT` pointing at an official C-API archive, install
-the locked differential dependency, then run the suite. Existing `build/*`
-trees cache absolute source paths: reconfigure after a layout change.
-
-```bash
-npm ci --prefix cpp/x-data-quickjs/differential --ignore-scripts
 uv sync --project cpp/x-data-quickjs --locked
 cpp/x-data-quickjs/.venv/bin/pytest -q cpp/x-data-quickjs/tests
+scripts/check-generated-definitions.sh
 scripts/check-wasm-stack.sh
 ```
 
-The combined target is a test fixture, not a deployable Hook provider: it
-retains generic embedding imports and its native host supplies WASI. Required
-build artifacts fail tests when absent. Optional Wizer coverage may
-skip when `wizer` is unavailable; other unexpected skips should be treated as
-a broken release lane.
+Existing `build/*` trees cache absolute source paths: reconfigure after
+a layout change.
 
 ## Pull requests
 

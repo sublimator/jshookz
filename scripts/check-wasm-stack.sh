@@ -5,9 +5,7 @@ expected="${EXPECTED_STACK_POINTER:-131072}"
 
 if [ "$#" -eq 0 ]; then
     set -- \
-        "build/xahau-provider/jshookz_provider.wasm" \
-        "build/codec/jshookz_xrpl_codec.wasm" \
-        "build/codec-fixture/jshookz_codec_fixture.wasm"
+        "build/xahau-provider/jshookz_provider.wasm"
 fi
 
 python3 - "$expected" "$@" <<'PY'

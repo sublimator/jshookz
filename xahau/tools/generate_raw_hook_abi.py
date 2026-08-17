@@ -22,7 +22,6 @@ MACRO_REL = Path("include/xrpl/hook/hook_api.macro")
 OUTPUTS = {
     ROOT / "python" / "jshookz" / "src" / "jshookz" / "generated_hook_raw.py": "python",
     ROOT / "cpp" / "provider" / "generated" / "hook_raw_imports.inc": "c",
-    ROOT / "cpp" / "codec-host" / "generated" / "hook_raw_stubs.inc": "wasmtime",
     ROOT / "xahau" / "generated" / "raw-hook-abi.json": "json",
 }
 
@@ -67,32 +66,6 @@ def _c(selected) -> str:
     return "\n".join(lines)
 
 
-def _wasmtime_kind(ctype: str) -> str:
-    return {"int32_t": "WASM_I32", "uint32_t": "WASM_I32", "int64_t": "WASM_I64"}[ctype]
-
-
-def _wasmtime(selected) -> str:
-    lines = [_banner("//").rstrip(), ""]
-    for fn in selected:
-        params = ", ".join(_wasmtime_kind(t) for t in fn.param_types)
-        returns = "" if fn.return_type == "void_t" else _wasmtime_kind(fn.return_type)
-        try:
-            handler = {
-                "int32_t": "raw_hook_unavailable_i32_fn",
-                "int64_t": "raw_hook_unavailable_i64_fn",
-            }[fn.return_type]
-        except KeyError:
-            raise SystemExit(
-                f"legacy Wasmtime fallback needs an explicit {fn.return_type} "
-                f"policy before selecting {fn.name}"
-            ) from None
-        lines.append(
-            f'reg(linker, "{fn.name}", {handler}, '
-            f'{{{params}}}, {{{returns}}});'
-        )
-    return "\n".join(lines) + "\n"
-
-
 def _json(all_functions, selected) -> str:
     payload = {
         "source": {
@@ -123,7 +96,6 @@ def main() -> int:
     renderers = {
         "python": lambda: _python(selected),
         "c": lambda: _c(selected),
-        "wasmtime": lambda: _wasmtime(selected),
         "json": lambda: _json(all_functions, selected),
     }
 
