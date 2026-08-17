@@ -1347,8 +1347,7 @@ decode_field_value_js(
         return JS_NewUint32(ctx, raw);
     }
     if (field.code == codecs::EnumFieldCodes::TransactionResult) {
-        uint8_t raw = data.data()[0];
-        int32_t code = static_cast<int32_t>(raw);
+        int32_t code = static_cast<int32_t>(codecs::UInt8Codec::decode_raw(data));
         for (auto const& [name, c] : protocol.transactionResults()) {
             if (c == code)
                 return JS_NewStringLen(ctx, name.data(), name.size());
@@ -1356,10 +1355,7 @@ decode_field_value_js(
         return JS_NewInt32(ctx, code);
     }
     if (field.code == codecs::EnumFieldCodes::PermissionValue) {
-        uint32_t raw = (static_cast<uint32_t>(data.data()[0]) << 24) |
-                       (static_cast<uint32_t>(data.data()[1]) << 16) |
-                       (static_cast<uint32_t>(data.data()[2]) << 8) |
-                       static_cast<uint32_t>(data.data()[3]);
+        uint32_t raw = codecs::UInt32Codec::decode_raw(data);
         for (auto const& [name, code] : protocol.permissions()) {
             if (code == raw)
                 return JS_NewStringLen(ctx, name.data(), name.size());
@@ -1369,16 +1365,11 @@ decode_field_value_js(
 
     // Integer types → JS number
     if (t == FieldTypes::UInt8)
-        return JS_NewInt32(ctx, data.data()[0]);
-    if (t == FieldTypes::UInt16) {
-        uint16_t v = (uint16_t(data.data()[0]) << 8) | data.data()[1];
-        return JS_NewInt32(ctx, v);
-    }
-    if (t == FieldTypes::UInt32) {
-        uint32_t v = (uint32_t(data.data()[0]) << 24) | (uint32_t(data.data()[1]) << 16) |
-                     (uint32_t(data.data()[2]) << 8) | data.data()[3];
-        return JS_NewUint32(ctx, v);
-    }
+        return JS_NewInt32(ctx, codecs::UInt8Codec::decode_raw(data));
+    if (t == FieldTypes::UInt16)
+        return JS_NewInt32(ctx, codecs::UInt16Codec::decode_raw(data));
+    if (t == FieldTypes::UInt32)
+        return JS_NewUint32(ctx, codecs::UInt32Codec::decode_raw(data));
     if (t == FieldTypes::UInt64) {
         // UInt64 → hex string (too large for JS number)
         uint64_t v = 0;
@@ -1508,20 +1499,10 @@ decode_field_value_js(
         return JS_NewStringLen(ctx, s.c_str(), s.size());
     }
 
-    if (t == FieldTypes::Int32) {
-        int32_t v = static_cast<int32_t>(
-            (static_cast<uint32_t>(data.data()[0]) << 24) |
-            (static_cast<uint32_t>(data.data()[1]) << 16) |
-            (static_cast<uint32_t>(data.data()[2]) << 8) |
-            static_cast<uint32_t>(data.data()[3]));
-        return JS_NewInt32(ctx, v);
-    }
-    if (t == FieldTypes::Int64) {
-        uint64_t u = 0;
-        for (int i = 0; i < 8; ++i)
-            u = (u << 8) | data.data()[i];
-        return JS_NewInt64(ctx, static_cast<int64_t>(u));
-    }
+    if (t == FieldTypes::Int32)
+        return JS_NewInt32(ctx, codecs::Int32Codec::decode_raw(data));
+    if (t == FieldTypes::Int64)
+        return JS_NewInt64(ctx, codecs::Int64Codec::decode_raw(data));
 
     if (t == FieldTypes::PathSet) {
         JSValue paths = JS_NewArray(ctx);
@@ -1590,52 +1571,69 @@ decode_field_value_js(
 
     if (t == FieldTypes::XChainBridge) {
         size_t pos = 0;
-        auto take_account = [&](JSValue obj, char const* key) {
-            if (pos >= data.size())
-                return;
+        JSValue obj = JS_NewObject(ctx);
+
+        auto take_account = [&](char const* key) -> bool {
+            if (pos >= data.size() ||
+                pos + 1 + data.data()[pos] > data.size())
+            {
+                JS_FreeValue(ctx, obj);
+                JS_ThrowTypeError(
+                    ctx,
+                    "decode_object failed: truncated XChainBridge %s",
+                    key);
+                return false;
+            }
             size_t vl = data.data()[pos++];
-            if (pos + vl > data.size())
-                return;
             auto acc = codecs::AccountIDCodec::decode_string_expected(
                 Slice(data.data() + pos, vl));
             pos += vl;
-            if (acc)
-                JS_SetPropertyStr(ctx, obj, key,
-                    JS_NewStringLen(ctx, acc->c_str(), acc->size()));
+            if (!acc) {
+                JS_FreeValue(ctx, obj);
+                JS_ThrowTypeError(
+                    ctx,
+                    "decode_object failed: %s",
+                    acc.error().message.c_str());
+                return false;
+            }
+            JS_SetPropertyStr(ctx, obj, key,
+                JS_NewStringLen(ctx, acc->c_str(), acc->size()));
+            return true;
         };
-        JSValue obj = JS_NewObject(ctx);
-        take_account(obj, "LockingChainDoor");
-        {
+
+        auto take_issue = [&](char const* key) -> bool {
             size_t issue_size = 0;
             std::string error;
-            if (issue_size_checked(
+            if (!issue_size_checked(
                     data.data(), data.size(), pos, issue_size, error))
             {
-                FieldDef issue_field = field;
-                issue_field.meta.type = FieldTypes::Issue;
-                JSValue issue = decode_field_value_js(
-                    ctx, issue_field,
-                    Slice(data.data() + pos, issue_size), protocol);
-                pos += issue_size;
-                JS_SetPropertyStr(ctx, obj, "LockingChainIssue", issue);
+                JS_FreeValue(ctx, obj);
+                JS_ThrowTypeError(
+                    ctx, "decode_object failed: %s", error.c_str());
+                return false;
             }
-        }
-        take_account(obj, "IssuingChainDoor");
-        {
-            size_t issue_size = 0;
-            std::string error;
-            if (issue_size_checked(
-                    data.data(), data.size(), pos, issue_size, error))
-            {
-                FieldDef issue_field = field;
-                issue_field.meta.type = FieldTypes::Issue;
-                JSValue issue = decode_field_value_js(
-                    ctx, issue_field,
-                    Slice(data.data() + pos, issue_size), protocol);
-                pos += issue_size;
-                JS_SetPropertyStr(ctx, obj, "IssuingChainIssue", issue);
+            FieldDef issue_field = field;
+            issue_field.meta.type = FieldTypes::Issue;
+            JSValue issue = decode_field_value_js(
+                ctx, issue_field,
+                Slice(data.data() + pos, issue_size), protocol);
+            if (JS_IsException(issue)) {
+                JS_FreeValue(ctx, obj);
+                return false;
             }
-        }
+            pos += issue_size;
+            JS_SetPropertyStr(ctx, obj, key, issue);
+            return true;
+        };
+
+        if (!take_account("LockingChainDoor"))
+            return JS_EXCEPTION;
+        if (!take_issue("LockingChainIssue"))
+            return JS_EXCEPTION;
+        if (!take_account("IssuingChainDoor"))
+            return JS_EXCEPTION;
+        if (!take_issue("IssuingChainIssue"))
+            return JS_EXCEPTION;
         return obj;
     }
 

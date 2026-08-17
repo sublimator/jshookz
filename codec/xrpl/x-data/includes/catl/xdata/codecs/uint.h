@@ -28,6 +28,12 @@ struct UInt8Codec
         s.add_u8(v);
     }
 
+    static uint8_t
+    decode_raw(Slice const& data)
+    {
+        return data.data()[0];
+    }
+
 #ifndef CATL_XDATA_NO_BOOST_JSON
     template <ByteSink Sink>
     static void
@@ -41,7 +47,7 @@ struct UInt8Codec
     static boost::json::value
     decode(Slice const& data)
     {
-        return static_cast<std::uint64_t>(data.data()[0]);
+        return static_cast<std::uint64_t>(decode_raw(data));
     }
 #endif
 };
@@ -113,6 +119,15 @@ struct UInt32Codec
         s.add_u32(v);
     }
 
+    static uint32_t
+    decode_raw(Slice const& data)
+    {
+        return (static_cast<uint32_t>(data.data()[0]) << 24) |
+            (static_cast<uint32_t>(data.data()[1]) << 16) |
+            (static_cast<uint32_t>(data.data()[2]) << 8) |
+            static_cast<uint32_t>(data.data()[3]);
+    }
+
 #ifndef CATL_XDATA_NO_BOOST_JSON
     template <ByteSink Sink>
     static void
@@ -126,11 +141,7 @@ struct UInt32Codec
     static boost::json::value
     decode(Slice const& data)
     {
-        uint32_t v = (static_cast<uint32_t>(data.data()[0]) << 24) |
-            (static_cast<uint32_t>(data.data()[1]) << 16) |
-            (static_cast<uint32_t>(data.data()[2]) << 8) |
-            static_cast<uint32_t>(data.data()[3]);
-        return static_cast<std::uint64_t>(v);
+        return static_cast<std::uint64_t>(decode_raw(data));
     }
 #endif
 };

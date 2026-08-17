@@ -586,3 +586,28 @@ class TestMalformedFieldHeader:
         """)
         data = json.loads(r["result"])
         assert data["threw"], "non-canonical field byte decoded without error"
+
+
+class TestShortXChainBridge:
+    """A VL-complete but internally short XChainBridge must TypeError.
+
+    Type 25 / field 1 is VL-encoded, so the object scan accepts whatever
+    length the VL prefix claims. Accessing the field used to omit keys.
+    `011901FF` is header + VL(1) + one byte.
+    """
+
+    HEX = "011901FF"
+
+    def test_short_bridge_throws_on_access(self, js_runner):
+        r = js_runner(f"""
+            try {{
+                var o = decode_object("{self.HEX}");
+                var b = o.XChainBridge;
+                JSON.stringify({{threw: false, keys: Object.keys(b)}});
+            }} catch (e) {{
+                JSON.stringify({{threw: true, msg: String(e)}});
+            }}
+        """)
+        data = json.loads(r["result"])
+        assert data["threw"], "short XChainBridge decoded without error"
+        assert "decode_object failed" in data["msg"], data["msg"]
