@@ -60,12 +60,7 @@ slice. Generated files carry the same pin and are freshness-checked.
   CI checksum-verifies its official release archive; the build rejects a
   missing or different `wasm-opt` version so provider bytes never depend on
   ambient `PATH` contents.
-- Wasmtime C API 47.0.3 is downloaded through `conan/wasmtime/` or CI from
-  checksummed official release archives; it is Apache-2.0 with LLVM exception.
-- `wasmtime-py` is pinned to its separately published 47.0.1 package. Both
-  embeddings are Wasmtime major 47; the projects do not publish identical
-  patch numbers.
+- `wasmtime-py` is pinned to 47.0.1 as the Python host oracle. The sealed
+  provider does not embed Wasmtime.
 - hostem pins hookz to public commit
   `299a812d9badb5baf66da9fe73e7b1f740298822`.
-- The differential test pins `ripple-binary-codec` 2.4.1 and overrides its
-  transitive `ws` dependency to patched 8.21.0.
