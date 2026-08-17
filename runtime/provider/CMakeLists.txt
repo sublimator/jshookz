@@ -33,7 +33,8 @@ option(
 )
 
 set(CMAKE_C_STANDARD 99)
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # wasi-sdk 32 uses --target=wasm32-wasi but the compiler prefers wasm32-wasip1
 add_compile_options(-Wno-deprecated)
@@ -55,6 +56,10 @@ include(provider_sources.cmake)
 add_executable(jshookz_provider
     ${QUICKJS_SOURCES}
     ${JSHOOKZ_PROVIDER_CPP_SOURCES}
+)
+
+target_include_directories(jshookz_provider PRIVATE
+    ${JSHOOKZ_QJS_CPP_INCLUDE_DIR}
 )
 
 # Only C files need the quickjs parent include (for quickjs.h etc.)
