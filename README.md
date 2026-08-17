@@ -17,9 +17,12 @@ narrow host: state, emit, ledger, terminals
 Fees have to price that in-guest work (fuel), not pretend every JS op is a
 C Hook host call.
 
-The sealed provider is Wizered. Env JSHooks, 50 cold sessions: initialize
-**1 µs** (was ~145 µs). Fuel for that leftover `_initialize`/`qjs_init` is
-still ~279k — wall time is done; the meter is not.
+Build Wizers the provider (QuickJS already up in the image). Xahau
+AOT-compiles that wasm once per process, then instantiates it. Env
+JSHooks, 50 thrown-away sessions (mean / min µs): **create 43 / 36**
+(new instance of the AOT module), **initialize 1 / 0** (Wizered boot;
+was ~145 µs), **validate 7 / 5** (admit bytecode, not `main()`). Fuel
+still lands on initialize (~279k) and validate (~49k). `qjs_hook` is later.
 
 Pre-release. End-to-end in tests. Not on a production network.
 
