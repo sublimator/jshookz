@@ -18,8 +18,14 @@ from .host import WasmHost
 CANONICAL_DECLARATIONS = paths.CANONICAL_HOOKS_API_DECLARATIONS
 DEFAULT_DECLARATIONS = paths.XAHAU_V1_HOOKS_API_DECLARATIONS
 
-_RESULT_CONSUMPTION_VALIDATOR_PATH = Path(__file__).with_name(
-    "result_validator.js"
+_FRONTEND_DIR = Path(__file__).resolve().parent
+_FRONTEND_TSCONFIG = _FRONTEND_DIR / "tsconfig.frontend.json"
+_FRONTEND_SOURCES = (
+    _FRONTEND_DIR / "compiler_driver.ts",
+    _FRONTEND_DIR / "entry_policy.ts",
+    _FRONTEND_DIR / "result_validator.ts",
+    _FRONTEND_DIR / "node-shim.d.ts",
+    _FRONTEND_TSCONFIG,
 )
 
 
@@ -43,20 +49,76 @@ def _typescript_executable(tsc: str | None) -> str:
     return executable
 
 
-def _validate_result_consumption(
+def _typescript_library(tsc: str | None) -> Path:
+    executable = Path(_typescript_executable(tsc)).resolve()
+    typescript = executable.parent.parent / "lib" / "typescript.js"
+    if not typescript.is_file():
+        raise RuntimeError(
+            "Cannot locate the TypeScript parser beside tsc: " f"{executable}"
+        )
+    return typescript
+
+
+def _frontend_driver_js(tsc: str | None) -> Path:
+    """Emit the TypeScript frontend to a mtime-keyed cache, then run that JS."""
+    missing = [path for path in _FRONTEND_SOURCES if not path.is_file()]
+    if missing:
+        raise RuntimeError(f"compiler frontend source missing: {missing[0]}")
+    stamp = ":".join(
+        f"{path.name}={path.stat().st_mtime_ns}" for path in _FRONTEND_SOURCES
+    )
+    cache = Path(tempfile.gettempdir()) / "jshookz-frontend"
+    cache.mkdir(parents=True, exist_ok=True)
+    marker = cache / "stamp"
+    driver = cache / "compiler_driver.js"
+    if driver.is_file() and marker.is_file() and marker.read_text() == stamp:
+        return driver
+    compiled = subprocess.run(
+        [
+            _typescript_executable(tsc),
+            "-p",
+            str(_FRONTEND_TSCONFIG),
+            "--noEmit",
+            "false",
+            "--outDir",
+            str(cache),
+            "--declaration",
+            "false",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if compiled.returncode != 0 or not driver.is_file():
+        detail = "\n".join(
+            part.strip()
+            for part in (compiled.stdout, compiled.stderr)
+            if part.strip()
+        ) or "frontend tsc failed"
+        raise RuntimeError(f"compiler frontend failed to emit:\n{detail}")
+    marker.write_text(stamp)
+    return driver
+
+
+def _parse_driver_meta(stderr: str) -> tuple[str, bool]:
+    kind = "typescript"
+    allow_malformed = False
+    for line in stderr.splitlines():
+        if line.startswith("kind="):
+            kind = line.split("=", 1)[1].strip()
+        elif line.startswith("allowMalformed="):
+            allow_malformed = line.split("=", 1)[1].strip() == "1"
+    return kind, allow_malformed
+
+
+def _run_compiler_driver(
     source: Path,
     config: Path,
     *,
     tsc: str | None,
-) -> None:
-    """Enforce the typed Result ownership/dataflow contract."""
-    executable = _typescript_executable(tsc)
-    resolved_tsc = Path(executable).resolve()
-    typescript = resolved_tsc.parent.parent / "lib" / "typescript.js"
-    if not typescript.is_file():
-        raise RuntimeError(
-            "Cannot locate the TypeScript parser beside tsc: " f"{resolved_tsc}"
-        )
+    failure_label: str,
+) -> bool:
+    """One TypeScript Program: diagnostics, Result policy, entry types, emit."""
     node = shutil.which("node")
     if not node:
         raise RuntimeError("Node.js not found; it is required beside tsc")
@@ -64,8 +126,8 @@ def _validate_result_consumption(
     completed = subprocess.run(
         [
             node,
-            str(_RESULT_CONSUMPTION_VALIDATOR_PATH),
-            str(typescript),
+            str(_frontend_driver_js(tsc)),
+            str(_typescript_library(tsc)),
             str(config),
             str(source),
         ],
@@ -73,11 +135,26 @@ def _validate_result_consumption(
         check=False,
         text=True,
     )
-    if completed.returncode:
-        detail = completed.stderr.strip() or "unconsumed Result"
+    kind, allow_malformed = _parse_driver_meta(completed.stderr)
+    if completed.returncode == 0:
+        return allow_malformed
+    body_lines = [
+        line
+        for line in completed.stderr.splitlines()
+        if not line.startswith(("kind=", "allowMalformed=", "createProgram="))
+    ]
+    detail = "\n".join(
+        part
+        for part in (*body_lines, completed.stdout.strip())
+        if part.strip()
+    ) or "compiler driver failed"
+    if kind == "entry":
+        raise RuntimeError(f"Hook entry signature is invalid:\n{detail}")
+    if kind == "result":
         raise RuntimeError(
             "Hook Result must use one of its six legal exits:\n" f"{detail}"
         )
+    raise RuntimeError(f"{failure_label}:\n{detail}")
 
 
 def _typescript_to_javascript(
@@ -85,8 +162,7 @@ def _typescript_to_javascript(
     *,
     declarations: Path,
     tsc: str | None = None,
-) -> str:
-    executable = _typescript_executable(tsc)
+) -> tuple[str, bool]:
     if not declarations.is_file():
         raise FileNotFoundError(f"Hook API declarations not found: {declarations}")
 
@@ -113,26 +189,17 @@ def _typescript_to_javascript(
                 indent=2,
             )
         )
-        completed = subprocess.run(
-            [executable, "-p", str(config)],
-            capture_output=True,
-            check=False,
-            text=True,
+        source_allows = _run_compiler_driver(
+            source,
+            config,
+            tsc=tsc,
+            failure_label="TypeScript compilation failed",
         )
-        if completed.returncode:
-            detail = "\n".join(
-                part.strip()
-                for part in (completed.stdout, completed.stderr)
-                if part.strip()
-            )
-            raise RuntimeError(f"TypeScript compilation failed:\n{detail}")
-
-        _validate_result_consumption(source, config, tsc=tsc)
 
         emitted = out_dir / source.with_suffix(".js").name
         if not emitted.is_file():
             raise RuntimeError(f"TypeScript emitted no JavaScript at {emitted}")
-        return emitted.read_text()
+        return emitted.read_text(), source_allows
 
 
 def _check_javascript(
@@ -140,9 +207,8 @@ def _check_javascript(
     *,
     declarations: Path,
     tsc: str | None = None,
-) -> str:
+) -> tuple[str, bool]:
     """Type-check raw JavaScript and apply the same Result ownership law."""
-    executable = _typescript_executable(tsc)
     declarations = declarations.resolve()
     if not declarations.is_file():
         raise FileNotFoundError(f"Hook API declarations not found: {declarations}")
@@ -167,21 +233,13 @@ def _check_javascript(
                 indent=2,
             )
         )
-        completed = subprocess.run(
-            [executable, "-p", str(config)],
-            capture_output=True,
-            check=False,
-            text=True,
+        source_allows = _run_compiler_driver(
+            source,
+            config,
+            tsc=tsc,
+            failure_label="JavaScript checking failed",
         )
-        if completed.returncode:
-            detail = "\n".join(
-                part.strip()
-                for part in (completed.stdout, completed.stderr)
-                if part.strip()
-            )
-            raise RuntimeError(f"JavaScript checking failed:\n{detail}")
-        _validate_result_consumption(source, config, tsc=tsc)
-    return source.read_text()
+    return source.read_text(), source_allows
 
 
 def compile_hook(
@@ -190,18 +248,20 @@ def compile_hook(
     wasm_path: str | Path | None = None,
     declarations: str | Path = DEFAULT_DECLARATIONS,
     tsc: str | None = None,
+    allow_malformed: bool = False,
 ) -> CompiledHook:
     """Compile a .ts/.js Hook to provider-compatible QuickJS bytecode."""
     source_path = Path(source).resolve()
     suffix = source_path.suffix.lower()
+    source_allows = False
     if suffix == ".ts":
-        javascript = _typescript_to_javascript(
+        javascript, source_allows = _typescript_to_javascript(
             source_path,
             declarations=Path(declarations),
             tsc=tsc,
         )
     elif suffix in {".js", ".mjs"}:
-        javascript = _check_javascript(
+        javascript, source_allows = _check_javascript(
             source_path,
             declarations=Path(declarations),
             tsc=tsc,
@@ -223,14 +283,19 @@ def compile_hook(
             f"{guidance}"
         )
 
+    emit_malformed = allow_malformed or source_allows
     host = WasmHost(wasm_path=provider)
     host.init()
     try:
         bytecode = host.compile_source(javascript, module=True)
-        validation = host.validate_hook_bytecode(bytecode)
+        validation = (
+            None
+            if emit_malformed
+            else host.validate_hook_bytecode(bytecode)
+        )
     finally:
         host.destroy()
-    if not validation.valid:
+    if validation is not None and not validation.valid:
         raise RuntimeError(
             "QuickJS Hook is not deployable: "
             f"{validation.error or 'provider validation failed'}"

@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": false,
+    "module": "commonjs",
+    "target": "ES2022",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "files": [
+    "compiler_driver.ts",
+    "entry_policy.ts",
+    "result_validator.ts",
+    "node-shim.d.ts"
+  ]
+}

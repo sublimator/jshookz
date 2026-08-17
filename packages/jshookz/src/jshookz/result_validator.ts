@@ -1,35 +1,34 @@
-/* Typed ownership/dataflow check for the closed Hook Result exit set.
- *
- * Invoked by hook_compiler.py with:
- *   node result_validator.js <typescript.js> <tsconfig.json> <source>
- */
-"use strict";
+/* Result ownership/dataflow. */
 
-const ts = require(process.argv[2]);
-const path = require("path");
-const configPath = process.argv[3];
-const sourcePath = path.resolve(process.argv[4]);
-
-const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
-if (configFile.error) {
-  console.error(ts.flattenDiagnosticMessageText(configFile.error.messageText, "\n"));
-  process.exit(2);
-}
-const parsed = ts.parseJsonConfigFileContent(
-  configFile.config,
-  ts.sys,
-  path.dirname(configPath),
-);
-const program = ts.createProgram(parsed.fileNames, parsed.options);
-const checker = program.getTypeChecker();
-const source = program.getSourceFile(sourcePath);
-if (!source) {
-  console.error(`source file is absent from TypeScript program: ${sourcePath}`);
-  process.exit(2);
-}
+type TS = any;
 
 const EXIT_METHODS = new Set(["okOr", "okOrHandle", "okMapOr", "moot"]);
-const violations = new Map();
+
+let ts: TS;
+let checker: TS;
+let source: TS;
+let violations: Map<string, string>;
+
+export function checkResultOwnership(
+  tsApi: TS,
+  program: TS,
+  sourceFile: TS,
+): string[] {
+  ts = tsApi;
+  checker = program.getTypeChecker();
+  source = sourceFile;
+  violations = new Map();
+
+  const topLevel = newState();
+  if (analyzeStatements(source.statements, topLevel)) rejectLive(topLevel, source);
+  visitFunctions(source);
+  return [...violations.values()];
+}
+
+function visitFunctions(node) {
+  if (ts.isFunctionLike(node) && node.body) analyzeFunction(node);
+  ts.forEachChild(node, visitFunctions);
+}
 
 function unwrap(node) {
   while (
@@ -58,12 +57,19 @@ function expressionIsResult(node) {
 }
 
 function reject(node, detail) {
-  const position = source.getLineAndCharacterOfPosition(node.getStart(source));
-  const message = `${position.line + 1}:${position.character + 1}: ${detail}`;
+  const file = node.getSourceFile ? node.getSourceFile() : source;
+  const position = file.getLineAndCharacterOfPosition(node.getStart(file));
+  const message =
+    `${file.fileName}(${position.line + 1},${position.character + 1}): ${detail}`;
   violations.set(message, message);
 }
 
-function newState() {
+type FlowState = {
+  live: Set<any>;
+  owners: Map<any, Set<any>>;
+};
+
+function newState(): FlowState {
   return { live: new Set(), owners: new Map() };
 }
 
@@ -81,13 +87,15 @@ function replaceState(target, sourceState) {
   target.owners = sourceState.owners;
 }
 
-function mergeStates(states) {
+function mergeStates(states: FlowState[]): FlowState {
   const merged = newState();
   for (const state of states) {
     for (const token of state.live) merged.live.add(token);
     for (const [symbol, tokens] of state.owners) {
       if (!merged.owners.has(symbol)) merged.owners.set(symbol, new Set());
-      for (const token of tokens) merged.owners.get(symbol).add(token);
+      const owned = merged.owners.get(symbol);
+      if (!owned) continue;
+      for (const token of tokens) owned.add(token);
     }
   }
   return merged;
@@ -130,7 +138,7 @@ function bind(tokens, identifier, state) {
   state.owners.set(symbol, new Set(tokens));
 }
 
-function applyResultUse(node, state, use) {
+function applyResultUse(node, state, use: { kind: string; target?: any }) {
   const tokens = tokensForValue(node, state);
   if (use.kind === "bind") {
     bind(tokens, use.target, state);
@@ -262,7 +270,7 @@ function analyzeCallInputs(call, state) {
   }
 }
 
-function okTests(node, state, negated = false, tests = []) {
+function okTests(node, state, negated = false, tests: { tokens: Set<any>; failureWhenTrue: boolean }[] = []) {
   node = unwrap(node);
   if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken) {
     return okTests(node.operand, state, !negated, tests);
@@ -323,7 +331,7 @@ function analyzeConditional(expression, state, use) {
   if (resultTyped) applyResultUse(expression, state, use);
 }
 
-function analyzeExpression(expression, state, use = { kind: "discard" }) {
+function analyzeExpression(expression, state, use: { kind: string; target?: any } = { kind: "discard" }) {
   expression = unwrap(expression);
 
   if (ts.isBinaryExpression(expression) &&
@@ -559,7 +567,7 @@ function analyzeStatement(statement, state) {
     const falseReachable = statement.elseStatement
       ? analyzeStatement(statement.elseStatement, whenFalse)
       : true;
-    const reachableStates = [];
+    const reachableStates: FlowState[] = [];
     if (trueReachable) reachableStates.push(whenTrue);
     if (falseReachable) reachableStates.push(whenFalse);
     replaceState(state, mergeStates(reachableStates));
@@ -603,7 +611,7 @@ function analyzeStatement(statement, state) {
   }
 
   if (ts.isTryStatement(statement)) {
-    const paths = [];
+    const paths: FlowState[] = [];
     const tried = cloneState(state);
     if (analyzeStatement(statement.tryBlock, tried)) paths.push(tried);
     if (statement.catchClause) {
@@ -666,18 +674,4 @@ function analyzeFunction(node) {
         expressionIsResult(node.body) ? { kind: "transfer" } : { kind: "discard" },
       ), true);
   if (reachable) rejectLive(state, node.body);
-}
-
-const topLevel = newState();
-if (analyzeStatements(source.statements, topLevel)) rejectLive(topLevel, source);
-
-function visitFunctions(node) {
-  if (ts.isFunctionLike(node) && node.body) analyzeFunction(node);
-  ts.forEachChild(node, visitFunctions);
-}
-visitFunctions(source);
-
-if (violations.size) {
-  console.error([...violations.values()].join("\n"));
-  process.exit(2);
 }
