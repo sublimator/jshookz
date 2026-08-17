@@ -2,9 +2,13 @@
 
 #include "catl/xdata/fields.h"
 #include "catl/xdata/types.h"
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
+#include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -23,6 +27,7 @@ struct ProtocolOptions
 class Protocol
 {
 public:
+#ifndef CATL_XDATA_NO_BOOST_JSON
     // Load definitions from JSON file with options
     static Protocol
     load_from_file(const std::string& path, const ProtocolOptions& opts = {});
@@ -32,6 +37,7 @@ public:
     load_from_json_value(
         const boost::json::value& jv,
         const ProtocolOptions& opts = {});
+#endif
 
     // Load embedded Xahau protocol definitions
     static Protocol
@@ -175,6 +181,21 @@ private:
     // Field lookup indices for performance
     std::unordered_map<std::string, size_t> fieldNameIndex_;
     std::unordered_map<uint32_t, size_t> fieldCodeIndex_;  // key: field code
+
+    void
+    apply_load_options(const ProtocolOptions& opts);
+
+    void
+    add_table_field(
+        std::string name,
+        std::string_view type_name,
+        std::int32_t nth,
+        bool is_serialized,
+        bool is_signing_field,
+        bool is_vl_encoded);
+
+    void
+    finish_table_load(const ProtocolOptions& opts);
 
     // Build the fast lookup table after loading
     void

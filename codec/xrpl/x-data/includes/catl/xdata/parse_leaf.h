@@ -3,7 +3,9 @@
 #include "catl/core/types.h"
 #include "catl/xdata/json-visitor.h"
 #include "catl/xdata/protocol.h"
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
 
 namespace catl::xdata {
 

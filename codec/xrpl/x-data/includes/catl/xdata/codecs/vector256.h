@@ -2,18 +2,22 @@
 
 #include "catl/xdata/hex.h"
 #include "catl/xdata/serializer.h"
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
 
 namespace catl::xdata::codecs {
 
 struct Vector256Codec
 {
     // Size from JSON array of hex strings (each 64 chars = 32 bytes)
+#ifndef CATL_XDATA_NO_BOOST_JSON
     static size_t
     encoded_size(boost::json::value const& v)
     {
         return v.as_array().size() * 32;
     }
+#endif
 
     // From span of Hash256
     template <ByteSink Sink>
@@ -27,6 +31,7 @@ struct Vector256Codec
     }
 
     // From JSON array of hex strings — streams each hash directly
+#ifndef CATL_XDATA_NO_BOOST_JSON
     template <ByteSink Sink>
     static void
     encode(Serializer<Sink>& s, boost::json::value const& v)
@@ -49,6 +54,7 @@ struct Vector256Codec
         }
         return arr;
     }
+#endif
 };
 
 }  // namespace catl::xdata::codecs

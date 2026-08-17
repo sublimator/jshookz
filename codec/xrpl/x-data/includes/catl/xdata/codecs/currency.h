@@ -3,7 +3,9 @@
 #include "catl/xdata/codec-error.h"
 #include "catl/xdata/hex.h"
 #include "catl/xdata/serializer.h"
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
 #include <cstring>
 
 namespace catl::xdata::codecs {
@@ -12,11 +14,13 @@ struct CurrencyCodec
 {
     static constexpr size_t fixed_size = 20;
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
     static size_t
     encoded_size(boost::json::value const&)
     {
         return 20;
     }
+#endif
 
     // From raw 20 bytes
     template <ByteSink Sink>
@@ -76,7 +80,7 @@ struct CurrencyCodec
         encode_or_throw(encode_expected(s, currency, path));
     }
 
-    // From JSON string
+#ifndef CATL_XDATA_NO_BOOST_JSON
     template <ByteSink Sink>
     static void
     encode(
@@ -94,8 +98,61 @@ struct CurrencyCodec
         }
         encode(s, std::string_view(v.as_string()), path);
     }
+#endif
 
-    // Decode 20-byte currency to JSON string
+    static std::string
+    decode_string(Slice const& data)
+    {
+        if (data.size() != 20)
+            return hex_encode(data);
+
+        bool all_zeros = true;
+        for (size_t i = 0; i < 20; ++i)
+        {
+            if (data.data()[i] != 0)
+            {
+                all_zeros = false;
+                break;
+            }
+        }
+        if (all_zeros)
+            return "XRP";
+
+        bool standard = true;
+        for (size_t i = 0; i < 12; ++i)
+        {
+            if (data.data()[i] != 0)
+            {
+                standard = false;
+                break;
+            }
+        }
+        if (standard)
+        {
+            for (size_t i = 15; i < 20; ++i)
+            {
+                if (data.data()[i] != 0)
+                {
+                    standard = false;
+                    break;
+                }
+            }
+        }
+        if (standard)
+        {
+            std::string code;
+            for (size_t i = 12; i < 15; ++i)
+            {
+                if (data.data()[i] != 0)
+                    code += static_cast<char>(data.data()[i]);
+            }
+            return code;
+        }
+
+        return hex_encode(data);
+    }
+
+#ifndef CATL_XDATA_NO_BOOST_JSON
     static boost::json::value
     decode(Slice const& data)
     {
@@ -149,6 +206,7 @@ struct CurrencyCodec
 
         return boost::json::string(hex_encode(data));
     }
+#endif
 };
 
 }  // namespace catl::xdata::codecs

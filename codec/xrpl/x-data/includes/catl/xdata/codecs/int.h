@@ -1,7 +1,9 @@
 #pragma once
 
 #include "catl/xdata/serializer.h"
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
 
 namespace catl::xdata::codecs {
 
@@ -9,11 +11,13 @@ struct Int32Codec
 {
     static constexpr size_t fixed_size = 4;
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
     static size_t
     encoded_size(boost::json::value const&)
     {
         return 4;
     }
+#endif
 
     template <ByteSink Sink>
     static void
@@ -22,6 +26,7 @@ struct Int32Codec
         s.add_u32(static_cast<uint32_t>(v));
     }
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
     template <ByteSink Sink>
     static void
     encode(Serializer<Sink>& s, boost::json::value const& v)
@@ -39,17 +44,20 @@ struct Int32Codec
             static_cast<uint32_t>(data.data()[3]));
         return static_cast<std::int64_t>(v);
     }
+#endif
 };
 
 struct Int64Codec
 {
     static constexpr size_t fixed_size = 8;
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
     static size_t
     encoded_size(boost::json::value const&)
     {
         return 8;
     }
+#endif
 
     template <ByteSink Sink>
     static void
@@ -58,6 +66,7 @@ struct Int64Codec
         s.add_u64(static_cast<uint64_t>(v));
     }
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
     template <ByteSink Sink>
     static void
     encode(Serializer<Sink>& s, boost::json::value const& v)
@@ -75,6 +84,7 @@ struct Int64Codec
         }
         return static_cast<std::int64_t>(u);
     }
+#endif
 };
 
 }  // namespace catl::xdata::codecs

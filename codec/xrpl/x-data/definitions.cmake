@@ -16,10 +16,11 @@
 # (DomainID) failed to encode while the rest of the suite stayed green.
 #
 # Do not point this at the catalogue-tools generator. That one emits
-# `inline const std::string` built from chunks, which allocates during static
+# `inline const std::string` JSON chunks, which allocates during static
 # init -- wrong for wasm, where _initialize must not fragment the heap -- and
 # it skips clean_definitions(), which drops duplicate `hash`/`index` fields and
-# strips the ~86-entry `features` block the codec never reads.
+# strips the ~86-entry `features` block the codec never reads. The local
+# generator emits native Protocol tables (issue 0064), not a JSON blob.
 #
 # Output goes to the source tree, not the binary dir, because `generated/` is
 # already on the include path of both consumers and the header is committed.

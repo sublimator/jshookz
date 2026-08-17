@@ -3,7 +3,9 @@
 #include "catl/base58/base58.h"
 #include "catl/xdata/codec-error.h"
 #include "catl/xdata/serializer.h"
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
 
 namespace catl::xdata::codecs {
 
@@ -14,6 +16,7 @@ struct AccountIDCodec
     static constexpr std::string_view ZERO_ACCOUNT_B58 =
         "rrrrrrrrrrrrrrrrrrrrrhoLvTp";
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
     static size_t
     encoded_size(boost::json::value const& v)
     {
@@ -21,6 +24,7 @@ struct AccountIDCodec
             return 0;
         return 20;
     }
+#endif
 
     // From raw 20 bytes
     template <ByteSink Sink>
@@ -82,7 +86,7 @@ struct AccountIDCodec
         encode_or_throw(encode_expected(s, base58_addr, path));
     }
 
-    // From JSON (base58 string)
+#ifndef CATL_XDATA_NO_BOOST_JSON
     template <ByteSink Sink>
     static void
     encode(
@@ -100,16 +104,15 @@ struct AccountIDCodec
         }
         encode(s, std::string_view(v.as_string()), path);
     }
+#endif
 
-    static std::expected<boost::json::value, CodecErrorValue>
-    decode_expected(Slice const& data)
+    static std::expected<std::string, CodecErrorValue>
+    decode_string_expected(Slice const& data)
     {
-        // Empty VL = zero/default account (e.g. pseudo-transactions)
         if (data.empty())
         {
             static const uint8_t zeros[20] = {};
-            return boost::json::string(
-                base58::encode_account_id(zeros, 20));
+            return base58::encode_account_id(zeros, 20);
         }
         if (data.size() != fixed_size)
         {
@@ -118,8 +121,17 @@ struct AccountIDCodec
                 "AccountID",
                 "expected 20 bytes, got " + std::to_string(data.size()));
         }
-        return boost::json::string(
-            base58::encode_account_id(data.data(), data.size()));
+        return base58::encode_account_id(data.data(), data.size());
+    }
+
+#ifndef CATL_XDATA_NO_BOOST_JSON
+    static std::expected<boost::json::value, CodecErrorValue>
+    decode_expected(Slice const& data)
+    {
+        auto decoded = decode_string_expected(data);
+        if (!decoded)
+            return std::unexpected(std::move(decoded.error()));
+        return boost::json::string(*decoded);
     }
 
     static boost::json::value
@@ -127,6 +139,7 @@ struct AccountIDCodec
     {
         return decode_or_throw(decode_expected(data));
     }
+#endif
 };
 
 }  // namespace catl::xdata::codecs

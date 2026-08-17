@@ -4,7 +4,9 @@
 #include "catl/xdata/codecs/uint.h"
 #include "catl/xdata/protocol.h"
 #include "catl/xdata/serializer.h"
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
 
 namespace catl::xdata::codecs {
 
@@ -25,6 +27,7 @@ is_enum_field(uint32_t field_code)
            field_code == EnumFieldCodes::TransactionResult;
 }
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
 // Codec for fields that are numeric on the wire but string enums in JSON.
 // TransactionType (UInt16), LedgerEntryType (UInt16), TransactionResult (UInt8).
 
@@ -234,5 +237,6 @@ struct PermissionValueCodec
         return static_cast<std::uint64_t>(raw);
     }
 };
+#endif
 
 }  // namespace catl::xdata::codecs

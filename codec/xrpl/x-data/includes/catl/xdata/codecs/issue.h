@@ -6,7 +6,9 @@
 #include "catl/xdata/hex.h"
 #include "catl/xdata/serializer.h"
 #include "catl/xdata/types/issue.h"
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
 
 namespace catl::xdata::codecs {
 
@@ -18,6 +20,7 @@ inline constexpr uint8_t NO_ACCOUNT[20] = {
 struct IssueCodec
 {
     // Size: XRP=20, IOU=40, MPT=44
+#ifndef CATL_XDATA_NO_BOOST_JSON
     static size_t
     encoded_size(boost::json::value const& v)
     {
@@ -30,6 +33,7 @@ struct IssueCodec
             return 20;  // native
         return 40;      // IOU: currency(20) + issuer(20)
     }
+#endif
 
     template <ByteSink Sink>
     static void
@@ -111,8 +115,7 @@ struct IssueCodec
         encode_or_throw(encode_mpt_expected(s, mpt_issuance_id, path));
     }
 
-    // From JSON: string "XRP" → native, object with currency/issuer → IOU,
-    // object with mpt_issuance_id → MPT
+#ifndef CATL_XDATA_NO_BOOST_JSON
     template <ByteSink Sink>
     static void
     encode(
@@ -227,6 +230,7 @@ struct IssueCodec
         // Just currency, no issuer (native variant)
         return CurrencyCodec::decode(first20);
     }
+#endif
 };
 
 }  // namespace catl::xdata::codecs

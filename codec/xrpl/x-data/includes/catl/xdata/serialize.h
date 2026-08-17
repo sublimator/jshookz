@@ -2,7 +2,9 @@
 
 #include "catl/xdata/codecs/codecs.h"
 #include "catl/xdata/protocol.h"
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
 #include <vector>
 
 namespace catl::xdata {

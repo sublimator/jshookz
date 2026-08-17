@@ -4,10 +4,13 @@
 #include "catl/xdata/codecs/currency.h"
 #include "catl/xdata/serializer.h"
 #include "catl/xdata/types/pathset.h"
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
 
 namespace catl::xdata::codecs {
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
 struct PathSetCodec
 {
     // Size requires walking the JSON to count hops
@@ -157,5 +160,6 @@ struct PathSetCodec
         return paths;
     }
 };
+#endif
 
 }  // namespace catl::xdata::codecs

@@ -2,7 +2,9 @@
 
 #include "catl/xdata/hex.h"
 #include "catl/xdata/serializer.h"
+#ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
+#endif
 
 namespace catl::xdata::codecs {
 
@@ -14,11 +16,13 @@ struct FixedHashCodec
 {
     static constexpr size_t fixed_size = N;
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
     static size_t
     encoded_size(boost::json::value const&)
     {
         return N;
     }
+#endif
 
     // From raw bytes
     template <ByteSink Sink>
@@ -37,6 +41,7 @@ struct FixedHashCodec
     }
 
     // From JSON (hex string)
+#ifndef CATL_XDATA_NO_BOOST_JSON
     template <ByteSink Sink>
     static void
     encode(Serializer<Sink>& s, boost::json::value const& v)
@@ -49,6 +54,7 @@ struct FixedHashCodec
     {
         return boost::json::string(hex_encode(data));
     }
+#endif
 };
 
 // Concrete type aliases

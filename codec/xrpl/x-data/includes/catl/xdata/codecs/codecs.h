@@ -27,6 +27,7 @@ namespace catl::xdata::codecs {
 // Type dispatch: FieldType → codec encoded_size / encode
 // ---------------------------------------------------------------------------
 
+#ifndef CATL_XDATA_NO_BOOST_JSON
 // Compute encoded size for a field value (value bytes only, no header/VL)
 inline size_t
 field_value_encoded_size(
@@ -330,5 +331,6 @@ serialize_object(
 
     return buf;
 }
+#endif
 
 }  // namespace catl::xdata::codecs
