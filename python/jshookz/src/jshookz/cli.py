@@ -159,7 +159,7 @@ def main() -> None:
     p_build.add_argument(
         "--no-wizer",
         action="store_true",
-        help="leave the cmake wasm cold (debug only)",
+        help="copy the unwizered cmake wasm to the sealed path (debug only)",
     )
     p_build.set_defaults(func=cmd_build)
 

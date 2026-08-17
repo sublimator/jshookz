@@ -58,6 +58,11 @@ XAHAU_HOOK_PROVIDER_WASM = Path(
         XAHAU_PROVIDER_BUILD_DIR / "jshookz_provider.wasm",
     )
 )
+# CMake output. Not locked. Wizer reads this every build so a no-op cmake
+# cannot feed an already-snapshotted wasm back into wizer.
+XAHAU_HOOK_PROVIDER_UNWIZERED_WASM = (
+    XAHAU_PROVIDER_BUILD_DIR / "jshookz_provider.unwizered.wasm"
+)
 XAHAU_HOOK_PROVIDER_MANIFEST = (
     XAHAU_PROVIDER_BUILD_DIR / "jshookz_provider.manifest.json"
 )

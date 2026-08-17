@@ -48,9 +48,11 @@ def wizer_executable() -> Path:
     )
 
 
-def wizer_provider(src: Path, dest: Path | None = None) -> Path:
-    """Replace a cold provider.wasm with the Wizered bytes (one file)."""
-    dest = dest or src
+def wizer_provider(src: Path, dest: Path) -> Path:
+    """Cold wasm → sealed wasm. `src` is left alone."""
+    if src.resolve() == dest.resolve():
+        raise RuntimeError("wizer src and dest must differ; do not snapshot in place")
+    dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".wizer-tmp")
     run(
         [
@@ -159,14 +161,16 @@ def build_xahau_hook_provider(*, wizer: bool = True) -> Path:
     )
     run(["cmake", "--build", build_dir])
 
+    cold = paths.XAHAU_HOOK_PROVIDER_UNWIZERED_WASM
     wasm = paths.XAHAU_HOOK_PROVIDER_WASM
-    if not wasm.exists():
-        raise RuntimeError(f"Xahau Hook provider not found at {wasm}")
+    if not cold.exists():
+        raise RuntimeError(f"Xahau Hook provider not found at {cold}")
     if wizer:
-        wizer_provider(wasm)
+        wizer_provider(cold, wasm)
         print(f"✓ Wizered {wasm} ({wasm.stat().st_size / (1024 * 1024):.1f} MB)")
+        seal_xahau_hook_provider_bundle()
     else:
-        print("✓ Skipped Wizer (--no-wizer)")
-    seal_xahau_hook_provider_bundle()
+        shutil.copyfile(cold, wasm)
+        print(f"✓ Skipped Wizer (--no-wizer); copied {cold.name}")
     print(f"\n✓ Built {wasm} ({wasm.stat().st_size / (1024 * 1024):.1f} MB)")
     return wasm
