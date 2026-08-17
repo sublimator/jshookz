@@ -1,28 +1,23 @@
 # jshookz
 
-Compile QuickJS to WebAssembly so JavaScript Hooks can be metered. Translate
-JavaScript calls to the existing host functions used by C Hooks.
+A sealed QuickJS-in-Wasm **rich guest** for Xahau Hooks: Ripple types, codecs,
+and math run inside the meter. Host calls are only for ledger I/O and effects
+(`state`, `emit`, accept/rollback) — not a trampoline for every `float_*`.
 
 ```text
 TypeScript / JavaScript
         ↓
 QuickJS bytecode
         ↓
-metered QuickJS-in-Wasm
+Wizered, AOT-ready provider (types + codec + local math)
         ↓
-existing Xahau Hook host functions
+narrow host: state, emit, ledger, terminals
 ```
 
-The aim is simple: add JavaScript Hooks without building a second Hook API or
-replacing C Hooks.
+Fees have to price that in-guest work (fuel), not pretend every JS op is a
+C Hook host call.
 
-This is pre-release software. The integration works end to end in tests, but
-the QuickJS runtime is not activated on a production network.
-
-Wasmtime is the intended execution engine: its AOT support and performance are
-well suited to the relatively large QuickJS Wasm provider. Xahau needs only a
-small dual-runtime seam—engine-neutral guest memory and result handling plus a
-Wasmtime dispatcher—while reusing the existing C Hook host implementations.
+Pre-release. End-to-end in tests. Not on a production network.
 
 ## Examples
 
