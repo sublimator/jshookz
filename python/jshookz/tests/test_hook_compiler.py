@@ -593,6 +593,49 @@ def test_compiler_frontend_typechecks():
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
+def test_frontend_emit_publishes_complete_entry_policy():
+    from jshookz.hook_compiler import _frontend_driver_js
+
+    driver = _frontend_driver_js(None)
+    policy = driver.parent / "entry_policy.js"
+    assert policy.is_file()
+    completed = subprocess.run(
+        [
+            "node",
+            "-e",
+            "const m = require(process.argv[1]);"
+            " if (typeof m.checkHookImports !== 'function')"
+            " process.exit(2)",
+            str(policy),
+        ],
+        check=False,
+    )
+    assert completed.returncode == 0
+
+
+def test_frontend_emit_survives_parallel_workers():
+    import shutil
+    import tempfile
+    from concurrent.futures import ThreadPoolExecutor
+
+    from jshookz.hook_compiler import _frontend_driver_js
+
+    cache = Path(tempfile.gettempdir()) / "jshookz-frontend"
+    if cache.is_dir():
+        shutil.rmtree(cache)
+
+    def one(_: int) -> Path:
+        driver = _frontend_driver_js(None)
+        policy = driver.parent / "entry_policy.js"
+        assert driver.is_file() and policy.is_file()
+        assert "exports.checkHookImports" in policy.read_text()
+        return driver
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        paths = list(pool.map(one, range(8)))
+    assert len(set(paths)) == 1
+
+
 def test_compiler_rejects_helper_import(tmp_path: Path):
     helper = tmp_path / "helper.ts"
     helper.write_text("export function helper(): number { return 1; }\n")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -60,44 +61,68 @@ def _typescript_library(tsc: str | None) -> Path:
 
 
 def _frontend_driver_js(tsc: str | None) -> Path:
-    """Emit the TypeScript frontend to a mtime-keyed cache, then run that JS."""
+    """Emit the TypeScript frontend to a mtime-keyed cache, then run that JS.
+
+    Publish into a stamp-keyed directory after tsc finishes. Parallel
+    compile-hook workers (hookz uses one process per fixture) used to
+    share /tmp/jshookz-frontend and exec a half-written entry_policy.js.
+    """
     missing = [path for path in _FRONTEND_SOURCES if not path.is_file()]
     if missing:
         raise RuntimeError(f"compiler frontend source missing: {missing[0]}")
     stamp = ":".join(
         f"{path.name}={path.stat().st_mtime_ns}" for path in _FRONTEND_SOURCES
     )
-    cache = Path(tempfile.gettempdir()) / "jshookz-frontend"
-    cache.mkdir(parents=True, exist_ok=True)
-    marker = cache / "stamp"
-    driver = cache / "compiler_driver.js"
-    if driver.is_file() and marker.is_file() and marker.read_text() == stamp:
+    cache_root = Path(tempfile.gettempdir()) / "jshookz-frontend"
+    cache_root.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha256(stamp.encode()).hexdigest()[:16]
+    outdir = cache_root / key
+    driver = outdir / "compiler_driver.js"
+    policy = outdir / "entry_policy.js"
+    if driver.is_file() and policy.is_file():
         return driver
-    compiled = subprocess.run(
-        [
-            _typescript_executable(tsc),
-            "-p",
-            str(_FRONTEND_TSCONFIG),
-            "--noEmit",
-            "false",
-            "--outDir",
-            str(cache),
-            "--declaration",
-            "false",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if compiled.returncode != 0 or not driver.is_file():
-        detail = "\n".join(
-            part.strip()
-            for part in (compiled.stdout, compiled.stderr)
-            if part.strip()
-        ) or "frontend tsc failed"
-        raise RuntimeError(f"compiler frontend failed to emit:\n{detail}")
-    marker.write_text(stamp)
-    return driver
+
+    staging = Path(tempfile.mkdtemp(prefix=f"{key}-", dir=cache_root))
+    try:
+        compiled = subprocess.run(
+            [
+                _typescript_executable(tsc),
+                "-p",
+                str(_FRONTEND_TSCONFIG),
+                "--noEmit",
+                "false",
+                "--outDir",
+                str(staging),
+                "--declaration",
+                "false",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        emitted = staging / "compiler_driver.js"
+        if compiled.returncode != 0 or not emitted.is_file():
+            detail = "\n".join(
+                part.strip()
+                for part in (compiled.stdout, compiled.stderr)
+                if part.strip()
+            ) or "frontend tsc failed"
+            raise RuntimeError(f"compiler frontend failed to emit:\n{detail}")
+        if not (staging / "entry_policy.js").is_file():
+            raise RuntimeError("compiler frontend emit missed entry_policy.js")
+        (staging / "stamp").write_text(stamp)
+        try:
+            staging.rename(outdir)
+        except OSError:
+            shutil.rmtree(staging, ignore_errors=True)
+            if not driver.is_file() or not policy.is_file():
+                raise RuntimeError(
+                    "compiler frontend cache vanished after a parallel emit"
+                )
+        return driver
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
 
 
 def _parse_driver_meta(stderr: str) -> tuple[str, bool]:
