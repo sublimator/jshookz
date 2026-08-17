@@ -1,22 +1,19 @@
-from pathlib import Path
-
-from jshookz.build import wizer_provider
 from jshookz.host import WasmHost
 from jshookz.paths import XAHAU_HOOK_PROVIDER_WASM
 
 
-def test_wizer_is_a_nonvacuous_reproducible_wasm_to_wasm_step(tmp_path: Path):
+def test_sealed_provider_is_wizered():
     assert XAHAU_HOOK_PROVIDER_WASM.is_file()
-    first = tmp_path / "a.wasm"
-    second = tmp_path / "b.wasm"
-    wizer_provider(XAHAU_HOOK_PROVIDER_WASM, first)
-    wizer_provider(XAHAU_HOOK_PROVIDER_WASM, second)
-    assert first.read_bytes() == second.read_bytes()
-    assert first.stat().st_size > XAHAU_HOOK_PROVIDER_WASM.stat().st_size
-
-    host = WasmHost(wasm_path=first)
+    host = WasmHost(wasm_path=XAHAU_HOOK_PROVIDER_WASM)
+    exports = host.instance.exports(host.store)
+    assert exports["_initialize"] is not None
     try:
-        assert "_initialize" in host.instance.exports(host.store)
+        exports["wizer.initialize"]
+    except KeyError:
+        pass
+    else:
+        raise AssertionError("wizer.initialize must not remain on the sealed wasm")
+    try:
         host.init()
         result = host.eval("1 + 1")
     finally:

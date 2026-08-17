@@ -50,18 +50,14 @@ def test_quickjs_heap_limit_counts_cumulative_allocations():
     assert "out of memory" in (result.error or "").lower()
 
 
-def test_profile_bounds_cold_initialization_fuel():
+def test_preinitialized_init_fits_a_small_fuel_budget():
     limits = replace(_limits(), initialization_fuel=1_000_000)
     host = WasmHost(
         wasm_path=XAHAU_HOOK_PROVIDER_WASM,
         execution_limits=limits,
     )
     try:
-        with pytest.raises(
-            RuntimeError,
-            match="runtime-profile initialization fuel exhausted",
-        ):
-            host.init()
+        host.init()
     finally:
         host.destroy()
 
