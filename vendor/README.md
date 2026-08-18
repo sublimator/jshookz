@@ -43,19 +43,36 @@ Deliberately **not** taken:
 
 - `870ff8c` / `6e3c99e` canonical protocol definitions. Upstream's
   `xahau_definitions.json` carries `EntropyCount`, `RandomData`,
-  `RandomDigests`, `Validator` and the `Entropy`/`Shuffle` transaction types,
-  which are Xahau **feature-branch** fields. Our copy is the later pin with
-  recorded provenance (see below) and taking upstream's would regress it.
+  `RandomDigests`, `LastRandomData`, `NextRandomDigest`, `RandomDigestEntry`,
+  `Validator`, the `Entropy`/`Shuffle` transaction types, and an `STObject`
+  field `HookDefinition` at nth=22. All are Xahau **feature-branch**
+  artifacts: none appears in the `sfields.macro` of the pinned xahaud
+  (`f7e01c79`) nor of `latest-dev`. Note we *do* carry `HookDefinition` as a
+  ledger entry type (code 68), which is the real protocol object; only the
+  inner-object field is feature-branch.
+  Taking upstream's file would also **lose** 78 FIELDS, 32 TRANSACTION_TYPES,
+  10 LEDGER_ENTRY_TYPES and 22 TRANSACTION_RESULTS that ours has and theirs
+  does not — ours is the later pin with recorded provenance (see below).
 - `1119fdd` duplicate field-code fix — already present here.
 - `64f4bb8`, `ad3b4b8`, `1e12e7a` — stats visitor, CMake codegen and logger
   diagnostics, none of which this tree builds.
+- `16daee1` (`<cstring>` for `strncmp` in `core/logger.h`) and `0db3e5f`
+  (logger scoped overrides). Both touch vendored files, neither is in any
+  build target here.
 
 The exception policy is the standing adaptation to re-apply on any future
-pull: `cpp/provider/CMakeLists.txt` builds `-fno-exceptions`, and
-`exception_policy.h` degrades a throw to `__builtin_trap()`. An in-module C++
-throw cannot be caught here at all, so the depth cap aborts the instance
-rather than raising — still strictly better than the stack-exhaustion SIGSEGV
-it replaces, but not a recoverable error.
+pull: `exception_policy.h` degrades a throw to `__builtin_trap()` when built
+without exceptions, and `cpp/provider/CMakeLists.txt` builds
+`-fno-exceptions`.
+
+Be precise about what that does and does not mean today. **No parser or codec
+TU is in any wasm target**: `cpp/provider/provider_sources.cmake` does not
+link `jshookz_xdata`, and `xdata_wasm_sources.cmake` lists only
+`protocol.cpp`, `embedded_protocol.cpp`, `base58.cpp` and `types.cpp`. So the
+shipped provider contains no x-data parser, and the depth cap and base58 cap
+currently protect host builds only — where exceptions are on and both raise
+normally. The trap behaviour becomes real only if and when the codec is
+linked into the module.
 
 ## Protocol definitions
 
