@@ -1,6 +1,6 @@
 #include "common.hpp"
+#include "quickjs.hpp"
 #include "hook_imports.hpp"
-#include "../quickjs.hpp"
 
 #include <cstdio>
 
@@ -8,6 +8,7 @@ namespace jshookz::provider::bindings {
 namespace {
 
 JSValue
+// @binding provider:accept
 js_hook_accept(JSContext *ctx, JSValueConst this_val,
                int argc, JSValueConst *argv)
 {
@@ -33,6 +34,7 @@ js_hook_accept(JSContext *ctx, JSValueConst this_val,
 }
 
 JSValue
+// @binding provider:rollback
 js_hook_rollback(JSContext *ctx, JSValueConst this_val,
                  int argc, JSValueConst *argv)
 {
@@ -92,6 +94,7 @@ get_result_array_length(JSContext *ctx, JSValueConst value,
 }
 
 JSValue
+// @binding provider:rollback.onFail
 js_rollback_on_fail(JSContext *ctx, JSValueConst this_val,
                     int argc, JSValueConst *argv)
 {
@@ -147,6 +150,7 @@ js_rollback_on_fail(JSContext *ctx, JSValueConst this_val,
 }
 
 JSValue
+// @binding provider:rollback.require
 js_rollback_require(JSContext *ctx, JSValueConst this_val,
                     int argc, JSValueConst *argv)
 {
@@ -191,6 +195,7 @@ js_rollback_require(JSContext *ctx, JSValueConst this_val,
 }
 
 JSValue
+// @binding provider:rollback.onAnyFail
 js_rollback_on_any_fail(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv)
 {
@@ -238,6 +243,7 @@ js_rollback_on_any_fail(JSContext *ctx, JSValueConst this_val,
 }
 
 JSValue
+// @binding provider:rollback.onAllFail
 js_rollback_on_all_fail(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv)
 {

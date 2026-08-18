@@ -1,9 +1,6 @@
 /*
- * types.hpp - C++ types compiled into the WASM module
- *
- * These live INSIDE the WASM sandbox alongside QuickJS.
- * They can be used by the JS wrapper functions to provide
- * rich typed operations without crossing the WASM boundary.
+ * Host-blind Xahau values. Compiled into the sealed wasm and the Mac
+ * gtests. Do not include hook_imports.hpp or call hook_* / host_*.
  */
 
 #pragma once

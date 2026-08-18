@@ -4,7 +4,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[3]
-PROVIDER = ROOT / "cpp" / "provider"
+CPP = ROOT / "cpp"
+PROVIDER = CPP / "provider"
+XAHAU_TYPES = CPP / "xahau-types"
 SURFACE = (
     ROOT
     / "python"
@@ -17,11 +19,20 @@ SURFACE = (
 RAW_BYTE_APIS = ("JS_GetArrayBuffer(", "JS_GetTypedArrayBuffer(")
 
 
+def _cpp_sources() -> dict[str, str]:
+    sources: dict[str, str] = {}
+    for root in (PROVIDER, XAHAU_TYPES):
+        for path in root.rglob("*.cpp"):
+            sources[str(path.relative_to(CPP))] = path.read_text()
+    return sources
+
+
 def _raw_byte_api_uses(sources: dict[str, str]) -> list[str]:
     return sorted(
         name
         for name, source in sources.items()
-        if name != "quickjs.cpp" and any(api in source for api in RAW_BYTE_APIS)
+        if Path(name).name != "quickjs.cpp"
+        and any(api in source for api in RAW_BYTE_APIS)
     )
 
 
@@ -35,12 +46,7 @@ def test_raw_byte_api_fence_detects_a_binding_bypass():
 
 
 def test_provider_byte_inputs_funnel_through_byte_view():
-    sources = {
-        str(path.relative_to(PROVIDER)): path.read_text()
-        for path in PROVIDER.rglob("*.cpp")
-    }
-
-    assert _raw_byte_api_uses(sources) == []
+    assert _raw_byte_api_uses(_cpp_sources()) == []
 
 
 def _cpp_byte_policy_names(header: str) -> set[str]:
@@ -61,7 +67,7 @@ def test_surface_byte_policies_are_cpp_policy_names():
         for parameters in surface["byte_policies"].values()
         for policy in parameters.values()
     }
-    implemented = _cpp_byte_policy_names((PROVIDER / "quickjs.hpp").read_text())
+    implemented = _cpp_byte_policy_names((XAHAU_TYPES / "quickjs.hpp").read_text())
 
     assert declared <= implemented
 
@@ -107,19 +113,11 @@ def test_binding_policy_join_detects_a_retargeted_accept():
     )
     assert replacements == 1
 
-    live_sources = {
-        str(path.relative_to(PROVIDER)): path.read_text()
-        for path in PROVIDER.rglob("*.cpp")
-    }
-    live_sources["bindings/control.cpp"] = mutated
+    live_sources = _cpp_sources()
+    live_sources["provider/bindings/control.cpp"] = mutated
 
     assert not _binding_policy_join(live_sources)
 
 
 def test_surface_byte_policies_match_cpp_binding_uses_exactly():
-    sources = {
-        str(path.relative_to(PROVIDER)): path.read_text()
-        for path in PROVIDER.rglob("*.cpp")
-    }
-
-    assert _binding_policy_join(sources)
+    assert _binding_policy_join(_cpp_sources())

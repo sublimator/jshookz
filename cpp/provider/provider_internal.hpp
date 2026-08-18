@@ -9,10 +9,6 @@ extern "C" {
 [[nodiscard]] bool register_uint_types(JSContext* ctx);
 }
 
-#ifdef CONFIG_PROTOCOL_XDATA
-extern "C" void register_protocol_functions(JSContext* ctx);
-#endif
-
 namespace jshookz::provider {
 
 [[nodiscard]] JSValue makeSTBlob(

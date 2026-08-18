@@ -1,19 +1,11 @@
 #pragma once
 
-#include "../quickjs.hpp"
+#include "result.hpp"
 
 #include <cstdint>
 
 namespace jshookz::provider::bindings {
 
-[[nodiscard]] bool registerResult(JSContext* ctx);
-bool isResult(JSValueConst value) noexcept;
-bool isEffectResult(JSValueConst value) noexcept;
-JSValue result_success(JSContext* ctx, JSValue value);
-JSValue uint_failure(
-    JSContext* ctx,
-    char const* issue,
-    std::uint32_t bits);
 JSValue host_success(JSContext* ctx, JSValue value);
 JSValue host_failure(JSContext* ctx, std::int64_t code);
 JSValue host_effect_success(JSContext* ctx);

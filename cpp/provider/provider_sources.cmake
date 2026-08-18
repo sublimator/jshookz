@@ -1,14 +1,13 @@
-# One provider source inventory shared by the deployable Xahau build and the
-# codec fixture. Keep API categories in bindings/; provider.cpp owns only the
-# exported Wasm lifecycle. Sealed provider does not compile x-data-quickjs.
+# One provider source inventory. Xahau JS values live in ../xahau-types
+# (no hook_* / host_*). Bindings/ own host crossings. provider.cpp owns
+# the exported Wasm lifecycle.
 include(${CMAKE_CURRENT_LIST_DIR}/../quickjs-cpp/quickjs_cpp_sources.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/../xahau-types/xahau_types_sources.cmake)
 set(JSHOOKZ_PROVIDER_CPP_SOURCES
     ${JSHOOKZ_QJS_CPP_SOURCES}
+    ${JSHOOKZ_XAHAU_TYPES_SOURCES}
     ${CMAKE_CURRENT_LIST_DIR}/provider.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/quickjs.cpp
     ${CMAKE_CURRENT_LIST_DIR}/sandbox.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/types_js.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/uint_js.cpp
     ${CMAKE_CURRENT_LIST_DIR}/bindings/common.cpp
     ${CMAKE_CURRENT_LIST_DIR}/bindings/control.cpp
     ${CMAKE_CURRENT_LIST_DIR}/bindings/emission.cpp

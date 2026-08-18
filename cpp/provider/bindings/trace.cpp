@@ -5,6 +5,7 @@ namespace jshookz::provider::bindings {
 namespace {
 
 JSValue
+// @binding provider:trace
 js_trace(JSContext *ctx, JSValueConst this_val,
          int argc, JSValueConst *argv)
 {

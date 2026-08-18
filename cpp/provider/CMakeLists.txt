@@ -60,6 +60,7 @@ add_executable(jshookz_provider
 
 target_include_directories(jshookz_provider PRIVATE
     ${JSHOOKZ_QJS_CPP_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../xahau-types
 )
 
 # Only C files need the QuickJS repo include dir. C++ files include

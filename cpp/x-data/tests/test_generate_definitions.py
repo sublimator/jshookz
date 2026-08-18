@@ -9,9 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-CODEC = Path(__file__).resolve().parent.parent
-REPO = CODEC.parent.parent
-XDATA = REPO / "cpp" / "x-data"
+XDATA = Path(__file__).resolve().parent.parent
+REPO = XDATA.parent.parent
 SCRIPT = XDATA / "scripts" / "generate_definitions.py"
 
 spec = importlib.util.spec_from_file_location("generate_definitions", SCRIPT)

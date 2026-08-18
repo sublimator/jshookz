@@ -1,4 +1,4 @@
-#include "bindings/common.hpp"
+#include "result.hpp"
 #include "quickjs.hpp"
 
 #include <cmath>
@@ -182,6 +182,7 @@ thisUInt(JSContext* ctx, JSValueConst value)
 }
 
 JSValue
+// @binding provider:UInt.bits
 uintBits(JSContext* ctx, JSValueConst thisValue)
 {
     auto const* integer = thisUInt(ctx, thisValue);
@@ -191,6 +192,7 @@ uintBits(JSContext* ctx, JSValueConst thisValue)
 }
 
 JSValue
+// @binding provider:UInt.byteLength
 uintByteLength(JSContext* ctx, JSValueConst thisValue)
 {
     auto const* integer = thisUInt(ctx, thisValue);
@@ -200,6 +202,7 @@ uintByteLength(JSContext* ctx, JSValueConst thisValue)
 }
 
 JSValue
+// @binding provider:UInt.toBigInt
 uintToBigInt(
     JSContext* ctx, JSValueConst thisValue, int, JSValueConst*)
 {
@@ -210,6 +213,7 @@ uintToBigInt(
 }
 
 JSValue
+// @binding provider:UInt.toNumber
 uintToNumber(
     JSContext* ctx, JSValueConst thisValue, int, JSValueConst*)
 {
@@ -225,6 +229,7 @@ uintToNumber(
 }
 
 JSValue
+// @binding provider:UInt.toString
 uintToString(
     JSContext* ctx, JSValueConst thisValue, int, JSValueConst*)
 {
@@ -238,6 +243,7 @@ uintToString(
 }
 
 JSValue
+// @binding provider:UInt.isZero
 uintIsZero(
     JSContext* ctx, JSValueConst thisValue, int, JSValueConst*)
 {
@@ -248,6 +254,7 @@ uintIsZero(
 }
 
 JSValue
+// @binding provider:UInt.equals
 uintEquals(
     JSContext* ctx,
     JSValueConst thisValue,
@@ -270,6 +277,7 @@ uintEquals(
 }
 
 JSValue
+// @binding provider:UInt.compare
 uintCompare(
     JSContext* ctx,
     JSValueConst thisValue,
@@ -304,6 +312,10 @@ enum class Arithmetic : int
 };
 
 JSValue
+// @binding provider:UInt.add
+// @binding provider:UInt.subtract
+// @binding provider:UInt.saturatingAdd
+// @binding provider:UInt.saturatingSubtract
 uintArithmetic(
     JSContext* ctx,
     JSValueConst thisValue,
@@ -364,6 +376,7 @@ uintArithmetic(
 }
 
 JSValue
+// @binding provider:UInt.mulDiv
 uintMulDiv(
     JSContext* ctx,
     JSValueConst,
@@ -406,6 +419,7 @@ uintMulDiv(
 }
 
 JSValue
+// @binding provider:UInt.from
 uintFrom(
     JSContext* ctx,
     JSValueConst,
@@ -447,6 +461,8 @@ JSCFunctionListEntry const uintPrototypeFunctions[] = {
 };
 
 JSValue
+// @binding provider:UInt.zero
+// @binding provider:UInt.max
 newFactory(JSContext* ctx, std::uint8_t bits)
 {
     OwnedValue factory(ctx, JS_NewObject(ctx));
