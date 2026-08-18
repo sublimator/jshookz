@@ -38,7 +38,7 @@ static void js_blob_finalizer(JSRuntime *rt, JSValue val) {
 }
 
 static JSClassDef js_blob_class = {
-    "STBlob",
+    .class_name = "STBlob",
     .finalizer = js_blob_finalizer,
 };
 
@@ -199,7 +199,7 @@ static void js_hash256_finalizer(JSRuntime *rt, JSValue val) {
 }
 
 static JSClassDef js_hash256_class = {
-    "Hash256",
+    .class_name = "Hash256",
     .finalizer = js_hash256_finalizer,
 };
 
@@ -309,7 +309,7 @@ static void js_accountid_finalizer(JSRuntime *rt, JSValue val) {
 }
 
 static JSClassDef js_accountid_class = {
-    "AccountID",
+    .class_name = "AccountID",
     .finalizer = js_accountid_finalizer,
 };
 
@@ -421,7 +421,7 @@ static void js_xfl_finalizer(JSRuntime *rt, JSValue val) {
 }
 
 static JSClassDef js_xfl_class = {
-    "XFL",
+    .class_name = "XFL",
     .finalizer = js_xfl_finalizer,
 };
 
