@@ -2,7 +2,10 @@
 
 #include <cstdint>
 #include <span>
+#include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 #include <jshookz/quickjs.h>
 
@@ -77,6 +80,14 @@ opaque(JSContext *ctx, JSValueConst value, JSClassID classId) noexcept
     return static_cast<T *>(JS_GetOpaque2(ctx, value, classId));
 }
 
+/** Non-throwing probe. Null if the value is not this class. */
+template <class T>
+T *
+tryOpaque(JSValueConst value, JSClassID classId) noexcept
+{
+    return static_cast<T *>(JS_GetOpaque(value, classId));
+}
+
 template <class T>
 void
 destroyOpaque(JSRuntime *rt, JSValueConst value, JSClassID classId) noexcept
@@ -124,6 +135,176 @@ uint8Array(JSContext *ctx, std::span<std::uint8_t const> bytes);
 /** Preserve a pending JavaScript exception, or create the contract TypeError. */
 JSValue
 pendingOrTypeError(JSContext *ctx, char const *message);
+
+[[nodiscard]] inline bool
+defineClass(JSRuntime *rt, JSClassID *classId, JSClassDef const *def)
+{
+    if (rt == nullptr || classId == nullptr || def == nullptr)
+        return false;
+    if (*classId == 0)
+        JS_NewClassID(classId);
+    return JS_NewClass(rt, *classId, def) >= 0;
+}
+
+[[nodiscard]] inline bool
+installPrototype(
+    JSContext *ctx,
+    JSClassID classId,
+    std::span<JSCFunctionListEntry const> functions,
+    bool freeze = true)
+{
+    OwnedValue prototype(ctx, JS_NewObject(ctx));
+    if (prototype.isException())
+        return false;
+    if (!functions.empty() &&
+        !installFunctions(ctx, prototype.get(), functions))
+        return false;
+    if (freeze && !freezeObject(ctx, prototype.get()))
+        return false;
+    JS_SetClassProto(ctx, classId, prototype.release());
+    return true;
+}
+
+[[nodiscard]] inline bool
+installFactory(
+    JSContext *ctx,
+    JSValueConst global,
+    char const *name,
+    std::span<JSCFunctionListEntry const> functions,
+    bool freeze = true)
+{
+    if (name == nullptr || name[0] == '\0')
+        return false;
+    OwnedValue factory(ctx, JS_NewObject(ctx));
+    if (factory.isException())
+        return false;
+    if (!functions.empty() &&
+        !installFunctions(ctx, factory.get(), functions))
+        return false;
+    if (freeze && !freezeObject(ctx, factory.get()))
+        return false;
+    return JS_SetPropertyStr(ctx, global, name, factory.release()) >= 0;
+}
+
+enum class HexCase : std::uint8_t
+{
+    Lower,
+    Upper,
+};
+
+inline int
+hexNibble(char value) noexcept
+{
+    if (value >= '0' && value <= '9')
+        return value - '0';
+    if (value >= 'a' && value <= 'f')
+        return value - 'a' + 10;
+    if (value >= 'A' && value <= 'F')
+        return value - 'A' + 10;
+    return -1;
+}
+
+inline bool
+hexDecode(std::string_view hex, std::vector<std::uint8_t> &out)
+{
+    if (hex.size() % 2 != 0)
+        return false;
+    out.resize(hex.size() / 2);
+    for (std::size_t i = 0; i < hex.size(); i += 2) {
+        int const hi = hexNibble(hex[i]);
+        int const lo = hexNibble(hex[i + 1]);
+        if (hi < 0 || lo < 0)
+            return false;
+        out[i / 2] = static_cast<std::uint8_t>((hi << 4) | lo);
+    }
+    return true;
+}
+
+inline std::string
+hexEncode(std::span<std::uint8_t const> bytes, HexCase hexCase)
+{
+    char const *digits =
+        hexCase == HexCase::Upper ? "0123456789ABCDEF" : "0123456789abcdef";
+    std::string out;
+    out.resize(bytes.size() * 2);
+    for (std::size_t i = 0; i < bytes.size(); ++i) {
+        out[i * 2] = digits[bytes[i] >> 4];
+        out[i * 2 + 1] = digits[bytes[i] & 0x0f];
+    }
+    return out;
+}
+
+/** TypedArray / ArrayBuffer window. Not Hook BytePolicy. */
+class BorrowedBytes
+{
+    std::uint8_t const *data_ = nullptr;
+    std::size_t size_ = 0;
+    OwnedValue backing_;
+    bool valid_ = false;
+
+public:
+    explicit BorrowedBytes(JSContext *ctx) noexcept
+        : backing_(ctx)
+    {
+    }
+
+    BorrowedBytes(BorrowedBytes const &) = delete;
+    BorrowedBytes &operator=(BorrowedBytes const &) = delete;
+    BorrowedBytes(BorrowedBytes &&) noexcept = default;
+    BorrowedBytes &operator=(BorrowedBytes &&) noexcept = default;
+
+    static BorrowedBytes from(JSContext *ctx, JSValueConst value)
+    {
+        BorrowedBytes out(ctx);
+        size_t offset = 0;
+        size_t byteLength = 0;
+        size_t bufferSize = 0;
+        int const typedArrayType = JS_GetTypedArrayType(value);
+        if (typedArrayType >= 0 &&
+            typedArrayType != JS_TYPED_ARRAY_FLOAT16) {
+            OwnedValue buffer(
+                ctx,
+                JS_GetTypedArrayBuffer(
+                    ctx, value, &offset, &byteLength, nullptr));
+            if (buffer.isException())
+                return out;
+            auto *data = JS_GetArrayBuffer(ctx, &bufferSize, buffer.get());
+            if ((data != nullptr || !JS_HasException(ctx)) &&
+                offset <= bufferSize &&
+                byteLength <= bufferSize - offset) {
+                out.data_ = data + offset;
+                out.size_ = byteLength;
+                out.backing_ = std::move(buffer);
+                out.valid_ = true;
+            }
+            return out;
+        }
+
+        auto *data = JS_GetArrayBuffer(ctx, &bufferSize, value);
+        if (data == nullptr && JS_HasException(ctx)) {
+            OwnedValue exception(ctx, JS_GetException(ctx));
+            return out;
+        }
+        if (data == nullptr)
+            return out;
+        out.data_ = data;
+        out.size_ = bufferSize;
+        out.backing_ = OwnedValue(ctx, JS_DupValue(ctx, value));
+        out.valid_ = true;
+        return out;
+    }
+
+    explicit operator bool() const noexcept
+    {
+        return valid_;
+    }
+
+    std::span<std::uint8_t const>
+    bytes() const noexcept
+    {
+        return {data_, size_};
+    }
+};
 
 /** Sequential array construction with explicit ownership transfer to JS. */
 class ArrayBuilder
