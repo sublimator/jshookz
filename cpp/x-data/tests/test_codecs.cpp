@@ -12,6 +12,8 @@
 // desyncs every byte that follows.
 
 #include <catl/xdata/codecs/codecs.h>
+#include <catl/xdata/json-visitor.h>
+#include <catl/xdata/parser.h>
 
 #include <gtest/gtest.h>
 
@@ -194,6 +196,69 @@ TEST(CodecRoundTrip, AccountIdThroughDecode)
     auto const back =
         codecs::AccountIDCodec::decode(Slice(bytes.data(), bytes.size()));
     EXPECT_EQ(back.as_string(), ACCOUNT);
+}
+
+// -- input bounds (upstream d5d11ba, 2f08afe) --------------------------------
+
+TEST(ParserDepth, NestingBeyondTheCapIsRejected)
+{
+    // A blob of nothing but STObject field headers: each one opens another
+    // level and never closes it, which is the shape that drove unbounded
+    // recursion into a stack-exhaustion SIGSEGV before the cap.
+    auto const protocol = Protocol::load_embedded_xahau_protocol();
+    auto const field = protocol.find_field("Memo");
+    ASSERT_TRUE(field);
+    ASSERT_EQ(field->meta.type.code, FieldTypes::STObject.code);
+
+    std::vector<std::uint8_t> blob;
+    VectorSink sink(blob);
+    Serializer<VectorSink> s(sink);
+    for (int i = 0; i < kMaxParseDepth + 8; ++i)
+        s.add_field_header(*field);
+
+    ParserContext ctx{Slice(blob.data(), blob.size())};
+    JsonVisitor visitor(protocol);
+    EXPECT_THROW(parse_with_visitor(ctx, protocol, visitor), ParserError);
+}
+
+TEST(ParserDepth, NestingWithinTheCapStillParses)
+{
+    auto const protocol = Protocol::load_embedded_xahau_protocol();
+    auto const field = protocol.find_field("Memo");
+    ASSERT_TRUE(field);
+
+    std::vector<std::uint8_t> blob;
+    VectorSink sink(blob);
+    Serializer<VectorSink> s(sink);
+    constexpr int depth = 8;
+    for (int i = 0; i < depth; ++i)
+        s.add_field_header(*field);
+    for (int i = 0; i < depth; ++i)
+        s.add_object_end_marker();
+
+    ParserContext ctx{Slice(blob.data(), blob.size())};
+    JsonVisitor visitor(protocol);
+    EXPECT_NO_THROW(parse_with_visitor(ctx, protocol, visitor));
+}
+
+TEST(Base58LengthCap, OversizeInputIsRejectedWithoutQuadraticWork)
+{
+    // base58 is O(n^2); the cap bounds CPU on attacker-controlled strings.
+    std::string const huge(2048, 'r');
+    EXPECT_FALSE(catl::base58::xrpl_codec.decode(huge));
+    EXPECT_FALSE(catl::base58::decode_account_id(huge));
+
+    std::vector<std::uint8_t> const big(2048, 0x41);
+    EXPECT_TRUE(catl::base58::xrpl_codec.encode(big.data(), big.size()).empty());
+}
+
+TEST(Base58LengthCap, NormalSizedValuesStillRoundTrip)
+{
+    auto const decoded = catl::base58::decode_account_id(ACCOUNT);
+    ASSERT_TRUE(decoded);
+    EXPECT_EQ(decoded->size(), 20u);
+    EXPECT_EQ(catl::base58::encode_account_id(decoded->data(), decoded->size()),
+              ACCOUNT);
 }
 
 TEST(CodecRoundTrip, EmptyAccountSliceDecodesToTheDefaultAccount)

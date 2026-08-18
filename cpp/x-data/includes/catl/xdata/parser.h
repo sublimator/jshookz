@@ -2,6 +2,7 @@
 
 #include "catl/core/types.h"  // For Slice, Hash256, etc.
 #include "catl/xdata/fields.h"
+#include "catl/xdata/exception_policy.h"
 #include "catl/xdata/parser-context.h"
 #include "catl/xdata/parser-error.h"
 #include "catl/xdata/protocol.h"
@@ -21,6 +22,14 @@
 
 namespace catl::xdata {
 
+// Maximum STObject/STArray nesting depth. XRPL serialized objects nest only
+// a handful of levels deep (tx → metadata → affected nodes → fields); this
+// cap is far above any legitimate structure but bounds stack usage so a
+// hostile blob of nested-object headers from an untrusted peer or file can't
+// drive unbounded recursion into a stack-exhaustion SIGSEGV (which escapes
+// the std::exception handlers callers wrap us in).
+inline constexpr int kMaxParseDepth = 256;
+
 // Helper functions to check for end markers
 inline bool
 is_object_end_marker(const FieldDef* field)
@@ -38,7 +47,7 @@ is_array_end_marker(const FieldDef* field)
 
 // Forward declarations
 inline void
-skip_array(ParserContext& ctx, const Protocol& protocol);
+skip_array(ParserContext& ctx, const Protocol& protocol, int depth = 0);
 
 // Get fixed size for a type (returns 0 for variable/special types)
 inline size_t
@@ -50,8 +59,10 @@ get_fixed_size(const FieldType& type)
 // Skip an entire object (find end marker) - only used when visitor returns
 // false
 inline void
-skip_object(ParserContext& ctx, const Protocol& protocol)
+skip_object(ParserContext& ctx, const Protocol& protocol, int depth = 0)
 {
+    if (depth > kMaxParseDepth)
+        CATL_XDATA_THROW(ParserError("STObject nesting exceeds maximum depth"));
     while (!ctx.cursor.empty())
     {
         auto [header_slice, field_code] = read_field_header(ctx.cursor);
@@ -77,11 +88,11 @@ skip_object(ParserContext& ctx, const Protocol& protocol)
         // Skip field data
         if (field->meta.type == FieldTypes::STObject)
         {
-            skip_object(ctx, protocol);
+            skip_object(ctx, protocol, depth + 1);
         }
         else if (field->meta.type == FieldTypes::STArray)
         {
-            skip_array(ctx, protocol);
+            skip_array(ctx, protocol, depth + 1);
         }
         else if (field->meta.type == FieldTypes::PathSet)
         {
@@ -128,8 +139,10 @@ skip_object(ParserContext& ctx, const Protocol& protocol)
 
 // Skip an entire array - only used when visitor returns false
 inline void
-skip_array(ParserContext& ctx, const Protocol& protocol)
+skip_array(ParserContext& ctx, const Protocol& protocol, int depth)
 {
+    if (depth > kMaxParseDepth)
+        CATL_XDATA_THROW(ParserError("STArray nesting exceeds maximum depth"));
     while (!ctx.cursor.empty())
     {
         auto [header_slice, field_code] = read_field_header(ctx.cursor);
@@ -152,12 +165,11 @@ skip_array(ParserContext& ctx, const Protocol& protocol)
         {
             // skip_object will consume everything up to and including the
             // ObjectEndMarker
-            skip_object(ctx, protocol);
+            skip_object(ctx, protocol, depth + 1);
         }
         else
         {
-            CATL_XDATA_THROW(ParserError(
-                "Array elements must be STObject type"));
+            CATL_XDATA_THROW(ParserError("Array elements must be STObject type"));
         }
     }
 }
@@ -171,7 +183,7 @@ parse_with_visitor(
     Visitor&& visitor)
 {
     FieldPath path;
-    parse_with_visitor_impl(ctx, protocol, visitor, path);
+    parse_with_visitor_impl(ctx, protocol, visitor, path, 0);
 }
 
 // Implementation that maintains the path
@@ -181,8 +193,11 @@ parse_with_visitor_impl(
     ParserContext& ctx,
     const Protocol& protocol,
     Visitor&& visitor,
-    FieldPath& path)
+    FieldPath& path,
+    int depth = 0)
 {
+    if (depth > kMaxParseDepth)
+        CATL_XDATA_THROW(ParserError("STObject/STArray nesting exceeds maximum depth"));
     while (!ctx.cursor.empty())
     {
         auto [header_slice, field_code] = read_field_header(ctx.cursor);
@@ -213,11 +228,12 @@ parse_with_visitor_impl(
 
             //@@start selective-descent
             // Ask visitor if they want to descend
-            if (visitor.visit_object_start(path, start_slice))
+            if (detail::call_object_start(visitor, path, start_slice))
             {
                 // Add to path and recurse
                 path.push_back({field, -1});
-                parse_with_visitor_impl(ctx, protocol, visitor, path);
+                parse_with_visitor_impl(
+                    ctx, protocol, visitor, path, depth + 1);
                 path.pop_back();
 
                 // parse_with_visitor_impl consumes the ObjectEndMarker when it
@@ -226,7 +242,7 @@ parse_with_visitor_impl(
             else
             {
                 // Skip the object
-                skip_object(ctx, protocol);
+                skip_object(ctx, protocol, depth + 1);
             }
             //@@end selective-descent
             // Create FieldSlice with complete object data
@@ -237,7 +253,7 @@ parse_with_visitor_impl(
                 object_size};
             FieldSlice end_slice{field, header_slice, object_data};
 
-            visitor.visit_object_end(path, end_slice);
+            detail::call_object_end(visitor, path, end_slice);
         }
         else if (field->meta.type == FieldTypes::STArray)
         {
@@ -248,7 +264,7 @@ parse_with_visitor_impl(
             FieldSlice start_slice{field, header_slice, Slice{}};
 
             // Ask visitor if they want to descend
-            if (visitor.visit_array_start(path, start_slice))
+            if (detail::call_array_start(visitor, path, start_slice))
             {
                 // Add to path
                 path.push_back({field, -1});
@@ -293,15 +309,16 @@ parse_with_visitor_impl(
                             elem_field, elem_header, Slice{}};
 
                         // Parse the STObject content
-                        if (visitor.visit_object_start(path, elem_start_slice))
+                        if (detail::call_object_start(
+                                visitor, path, elem_start_slice))
                         {
                             // Parse the object's fields
                             parse_with_visitor_impl(
-                                ctx, protocol, visitor, path);
+                                ctx, protocol, visitor, path, depth + 1);
                         }
                         else
                         {
-                            skip_object(ctx, protocol);
+                            skip_object(ctx, protocol, depth + 1);
                         }
 
                         // Create FieldSlice with complete object data
@@ -315,7 +332,8 @@ parse_with_visitor_impl(
                         FieldSlice elem_end_slice{
                             elem_field, elem_header, elem_data};
 
-                        visitor.visit_object_end(path, elem_end_slice);
+                        detail::call_object_end(
+                            visitor, path, elem_end_slice);
 
                         path.pop_back();
                     }
@@ -343,7 +361,7 @@ parse_with_visitor_impl(
             else
             {
                 // Skip the array
-                skip_array(ctx, protocol);
+                skip_array(ctx, protocol, depth + 1);
             }
             // Create FieldSlice with complete array data
             size_t end_pos = ctx.cursor.pos;
@@ -353,7 +371,7 @@ parse_with_visitor_impl(
                 array_size};
             FieldSlice end_slice{field, header_slice, array_data};
 
-            visitor.visit_array_end(path, end_slice);
+            detail::call_array_end(visitor, path, end_slice);
         }
         else
         {
@@ -403,8 +421,8 @@ parse_with_visitor_impl(
 
             Slice field_data = ctx.cursor.read_slice(field_size);
             path.push_back({field, -1});
-            visitor.visit_field(
-                path, FieldSlice{field, header_slice, field_data});
+            detail::call_field(
+                visitor, path, FieldSlice{field, header_slice, field_data});
             path.pop_back();
             //@@end leaf-field
         }

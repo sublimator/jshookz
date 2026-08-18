@@ -26,6 +26,37 @@ this repository under the root MIT license.
 `CATALOGUE_TOOLS` checkout. Local adaptations are expected and must be
 preserved deliberately during an update.
 
+### Selective back-ports, 2026-08-18
+
+The vendor point stays at `298b81f`. These are individual upstream commits
+pulled forward, not a re-vendor, so `check-xdata.sh` still reports the rest of
+the tree against the original point:
+
+| Upstream | What | How it landed |
+|---|---|---|
+| `e39b942` | `acq_rel` on the intrusive refcount RMW (TSan-clean) | `core/src/types.cpp` taken verbatim; now in sync with upstream HEAD |
+| `e76de19` | optional `SliceVisitor` callbacks via `detail::call_*` | `includes/catl/xdata/slice-visitor.h` taken verbatim; now in sync |
+| `d5d11ba` | `kMaxParseDepth = 256` threaded through the parser | `includes/catl/xdata/parser.h` taken from upstream HEAD, then every `throw` re-wrapped as `CATL_XDATA_THROW` |
+| `2f08afe` | `kMaxBase58Len = 1024` bound on quadratic base58 | hand-applied to `base58/src/base58.cpp`, which keeps the injected `sha256_oneshot` and the exception policy |
+
+Deliberately **not** taken:
+
+- `870ff8c` / `6e3c99e` canonical protocol definitions. Upstream's
+  `xahau_definitions.json` carries `EntropyCount`, `RandomData`,
+  `RandomDigests`, `Validator` and the `Entropy`/`Shuffle` transaction types,
+  which are Xahau **feature-branch** fields. Our copy is the later pin with
+  recorded provenance (see below) and taking upstream's would regress it.
+- `1119fdd` duplicate field-code fix — already present here.
+- `64f4bb8`, `ad3b4b8`, `1e12e7a` — stats visitor, CMake codegen and logger
+  diagnostics, none of which this tree builds.
+
+The exception policy is the standing adaptation to re-apply on any future
+pull: `cpp/provider/CMakeLists.txt` builds `-fno-exceptions`, and
+`exception_policy.h` degrades a throw to `__builtin_trap()`. An in-module C++
+throw cannot be caught here at all, so the depth cap aborts the instance
+rather than raising — still strictly better than the stack-exhaustion SIGSEGV
+it replaces, but not a recoverable error.
+
 ## Protocol definitions
 
 The embedded definitions are content-pinned inputs from XRPL/Xahau
