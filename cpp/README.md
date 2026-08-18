@@ -14,5 +14,12 @@ Do not `add_subdirectory(provider)` from the host tree. Wrong toolchain.
 - `quickjs/` — vendored C engine
 - `quickjs-cpp/` — JSValue RAII (`jshookz_quickjs`, `jshookz_qjs_src`)
 - `xahau-types/` — host-blind JS types; no `hook_*` / `host_*`
+  - `hash/` — Hash + UInt
+  - `account/`
+  - `blob/`
+  - `xfl/`
+  - `amount/`
+  - `keylet/`
+  - `result`
 - `x-data/` — protocol tables; host-tested, not in the sealed wasm
 - `provider/` — wasm entry, bindings, host crossings

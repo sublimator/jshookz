@@ -1,4 +1,4 @@
-# cpp/xahau-types — STBlob, Hash256, AccountID, XFL, UInt, Result, ByteView.
+# cpp/xahau-types — one folder per type family (hash+uint, account, blob, …).
 #
 # These TUs do not include hook_imports.hpp and do not call hook_* or host_*.
 # Host crossings and host_* Result factories stay in cpp/provider/bindings/.

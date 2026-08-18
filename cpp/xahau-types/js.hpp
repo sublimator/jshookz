@@ -1,0 +1,50 @@
+#pragma once
+
+#include "quickjs.hpp"
+
+#include <new>
+#include <span>
+#include <utility>
+
+namespace jshookz::provider::types {
+
+template <class T, class... Args>
+[[nodiscard]] inline JSValue
+nativeNew(JSContext* ctx, JSClassID class_id, Args&&... args)
+{
+    void* storage = js_mallocz(ctx, sizeof(T));
+    if (!storage)
+        return JS_ThrowOutOfMemory(ctx);
+    T* value = new (storage) T(std::forward<Args>(args)...);
+    JSValue object = JS_NewObjectClass(ctx, class_id);
+    if (JS_IsException(object)) {
+        value->~T();
+        js_free(ctx, storage);
+        return object;
+    }
+    JS_SetOpaque(object, value);
+    return object;
+}
+
+using FactoryInitializer = bool (*)(JSContext*, JSValueConst);
+
+[[nodiscard]] bool
+registerClass(
+    JSContext* ctx,
+    JSValueConst global,
+    char const* name,
+    JSClassID* class_id,
+    JSClassDef const* class_def,
+    std::span<JSCFunctionListEntry const> prototypeFunctions,
+    std::span<JSCFunctionListEntry const> staticFunctions,
+    jshookz::provider::qjs::ByteClassFamily byteFamily =
+        jshookz::provider::qjs::ByteClassFamily::none,
+    JSCFunction* toBytes = nullptr,
+    FactoryInitializer initializeFactory = nullptr);
+
+[[nodiscard]] bool registerSTBlob(JSContext* ctx, JSValueConst global);
+[[nodiscard]] bool registerHash256(JSContext* ctx, JSValueConst global);
+[[nodiscard]] bool registerAccountID(JSContext* ctx, JSValueConst global);
+[[nodiscard]] bool registerXFL(JSContext* ctx, JSValueConst global);
+
+}  // namespace jshookz::provider::types
