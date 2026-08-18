@@ -200,12 +200,17 @@ def main() -> None:
         description="Generate C++ Protocol tables from server_definitions JSON"
     )
     parser.add_argument("--input", type=Path, required=True, help="Input JSON file")
-    parser.add_argument("--output", type=Path, required=True, help="Output C++ header")
+    parser.add_argument("--output", type=Path, required=True, help="Output path")
     parser.add_argument("--namespace", default="catl::xdata", help="C++ namespace")
     parser.add_argument(
         "--no-clean",
         action="store_true",
         help="Skip cleanup (duplicates, features)",
+    )
+    parser.add_argument(
+        "--emit-json",
+        action="store_true",
+        help="Write cleaned protocol JSON instead of a C++ header",
     )
     args = parser.parse_args()
 
@@ -220,6 +225,11 @@ def main() -> None:
         defs = unwrap_definitions(raw)
         if not args.no_clean:
             defs = clean_definitions(defs)
+        if args.emit_json:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(json.dumps(defs), encoding="utf-8")
+            print(f"  Wrote {args.output}", file=sys.stderr)
+            return
         tables = tables_from_defs(defs)
     except ValueError as error:
         print(f"Error: {error}", file=sys.stderr)

@@ -33,6 +33,15 @@ get_protocol()
     return *g_protocol;
 }
 
+static void
+clear_pending(JSContext* ctx)
+{
+    if (!JS_HasException(ctx))
+        return;
+    JSValue exc = JS_GetException(ctx);
+    JS_FreeValue(ctx, exc);
+}
+
 // --- Hex utilities ---
 
 static bool
@@ -97,6 +106,8 @@ js_decode_object(JSContext* ctx, JSValueConst this_val,
                 input_len = len;
             }
             JS_FreeValue(ctx, buf);
+        } else {
+            clear_pending(ctx);
         }
     }
 
@@ -107,6 +118,8 @@ js_decode_object(JSContext* ctx, JSValueConst this_val,
         if (data) {
             input_ptr = data;
             input_len = buf_size;
+        } else {
+            clear_pending(ctx);
         }
     }
 
@@ -302,6 +315,8 @@ js_util_hex(JSContext* ctx, JSValueConst this_val,
                 std::string hex = hex_encode(data + off, len);
                 return JS_NewStringLen(ctx, hex.c_str(), hex.size());
             }
+        } else {
+            clear_pending(ctx);
         }
     }
 
@@ -313,6 +328,7 @@ js_util_hex(JSContext* ctx, JSValueConst this_val,
             std::string hex = hex_encode(data, buf_size);
             return JS_NewStringLen(ctx, hex.c_str(), hex.size());
         }
+        clear_pending(ctx);
     }
 
     return JS_ThrowTypeError(ctx, "util_hex: expected Uint8Array or ArrayBuffer");

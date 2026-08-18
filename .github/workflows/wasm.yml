@@ -107,7 +107,8 @@ jobs:
         run: |
           python/jshookz/.venv/bin/pytest -q python/jshookz/tests
           python/hostem/.venv/bin/pytest -q python/hostem/tests
-          cpp/x-data-quickjs/.venv/bin/pytest -q cpp/x-data-quickjs/tests
+          JSHOOKZ_QJS_RUNNER="$GITHUB_WORKSPACE/build/cpp/x-data-quickjs/qjs_runner" \
+            cpp/x-data-quickjs/.venv/bin/pytest -q cpp/x-data-quickjs/tests
           scripts/check-wasm-stack.sh
 
 
