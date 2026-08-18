@@ -60,9 +60,25 @@ struct XChainBridgeCodec
         boost::json::object obj;
         size_t pos = 0;
 
+        // Every read below is bounds-checked. This is the one branch of the
+        // parser's leaf dispatch that used to index the buffer directly —
+        // get_issue_size, the cursor and the VL reader all validate — so a
+        // truncated XChainBridge field read past the end of the input.
+        auto require = [&](size_t n, char const* what) {
+            if (pos > data.size() || n > data.size() - pos)
+            {
+                CATL_XDATA_THROW(DecodeError(
+                    CodecErrorCode::malformed_data,
+                    "XChainBridge",
+                    std::string("truncated ") + what));
+            }
+        };
+
         // LockingChainDoor: STAccount = VL prefix + AccountID (20 bytes)
+        require(1, "LockingChainDoor length");
         size_t lcd_vl = data.data()[pos];
         pos += 1;
+        require(lcd_vl, "LockingChainDoor");
         obj["LockingChainDoor"] = AccountIDCodec::decode(
             Slice(data.data() + pos, lcd_vl));
         pos += lcd_vl;
@@ -70,18 +86,22 @@ struct XChainBridgeCodec
         // LockingChainIssue: STIssue = 20 (XRP) or 40 (non-XRP) bytes
         SliceCursor lci_cursor(Slice(data.data() + pos, data.size() - pos));
         size_t lci_size = get_issue_size(lci_cursor);
+        require(lci_size, "LockingChainIssue");
         obj["LockingChainIssue"] = IssueCodec::decode(
             Slice(data.data() + pos, lci_size));
         pos += lci_size;
 
         // IssuingChainDoor: STAccount = VL prefix + AccountID
+        require(1, "IssuingChainDoor length");
         size_t icd_vl = data.data()[pos];
         pos += 1;
+        require(icd_vl, "IssuingChainDoor");
         obj["IssuingChainDoor"] = AccountIDCodec::decode(
             Slice(data.data() + pos, icd_vl));
         pos += icd_vl;
 
         // IssuingChainIssue: STIssue = rest
+        require(1, "IssuingChainIssue");
         obj["IssuingChainIssue"] = IssueCodec::decode(
             Slice(data.data() + pos, data.size() - pos));
         return obj;
@@ -89,26 +109,44 @@ struct XChainBridgeCodec
 #endif
 
     /// Get the total wire size by peeking at the data.
+    ///
+    /// Called from the parser's leaf dispatch before any length is known, so
+    /// it is reached with attacker-controlled input and must validate every
+    /// read itself. A two-byte input — an XChainBridge field header and
+    /// nothing else — used to read past the end of the buffer here.
     static size_t
     wire_size(SliceCursor& cursor)
     {
-        size_t start = cursor.pos;
+        size_t const start = cursor.pos;
+
+        auto require = [&](size_t n, char const* what) {
+            if (cursor.remaining_size() < n)
+            {
+                cursor.pos = start;
+                CATL_XDATA_THROW(SliceCursorError(
+                    std::string("XChainBridge: truncated ") + what));
+            }
+        };
 
         // LockingChainDoor: VL + account
-        size_t lcd_len = cursor.data.data()[cursor.pos];
+        require(1, "LockingChainDoor length");
+        size_t const lcd_len = cursor.data.data()[cursor.pos];
+        require(1 + lcd_len, "LockingChainDoor");
         cursor.pos += 1 + lcd_len;
 
-        // LockingChainIssue: 20 or 40
+        // LockingChainIssue: 20 or 40 — get_issue_size validates its own reads
         cursor.pos += get_issue_size(cursor);
 
         // IssuingChainDoor: VL + account
-        size_t icd_len = cursor.data.data()[cursor.pos];
+        require(1, "IssuingChainDoor length");
+        size_t const icd_len = cursor.data.data()[cursor.pos];
+        require(1 + icd_len, "IssuingChainDoor");
         cursor.pos += 1 + icd_len;
 
         // IssuingChainIssue: 20 or 40
         cursor.pos += get_issue_size(cursor);
 
-        size_t total = cursor.pos - start;
+        size_t const total = cursor.pos - start;
         cursor.pos = start;  // reset — caller will read
         return total;
     }

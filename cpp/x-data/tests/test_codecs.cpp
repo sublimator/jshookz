@@ -141,16 +141,25 @@ TEST(CodecSizeAgreement, IssueIou)
 
 TEST(CodecSizeAgreement, PathSetHops)
 {
+    // Both AccountID positions in a hop, not just `account`: the `issuer`
+    // encoder is a separate call site and was reachable with no test at all,
+    // so flipping it back to the eliding encoder stayed green.
     for (auto account : {ACCOUNT, ZERO})
     {
-        auto const v =
-            json(R"([[{"account":")" + std::string(account) + R"("}]])");
-        auto const bytes =
-            emit([&](auto& s) { codecs::PathSetCodec::encode(s, v); });
-        EXPECT_EQ(bytes.size(), codecs::PathSetCodec::encoded_size(v))
-            << "account=" << account;
-        // type byte + 20-byte account + END_BYTE
-        EXPECT_EQ(bytes.size(), 22u) << "account=" << account;
+        for (auto issuer : {ACCOUNT, ZERO})
+        {
+            auto const v = json(
+                R"([[{"account":")" + std::string(account) +
+                R"(","currency":"USD","issuer":")" + std::string(issuer) +
+                R"("}]])");
+            auto const bytes =
+                emit([&](auto& s) { codecs::PathSetCodec::encode(s, v); });
+            EXPECT_EQ(bytes.size(), codecs::PathSetCodec::encoded_size(v))
+                << "account=" << account << " issuer=" << issuer;
+            // type byte + account(20) + currency(20) + issuer(20) + END_BYTE
+            EXPECT_EQ(bytes.size(), 62u)
+                << "account=" << account << " issuer=" << issuer;
+        }
     }
 }
 
@@ -243,13 +252,88 @@ TEST(ParserDepth, NestingWithinTheCapStillParses)
 
 TEST(Base58LengthCap, OversizeInputIsRejectedWithoutQuadraticWork)
 {
-    // base58 is O(n^2); the cap bounds CPU on attacker-controlled strings.
-    std::string const huge(2048, 'r');
+    // NOT 'r'. 'r' is the alphabet's zero character, so a string of them takes
+    // the leading-zeros path and does no quadratic work — a cap test built
+    // from 'r's passes with the cap removed and proves nothing.
+    std::string const huge(2048, 'p');
     EXPECT_FALSE(catl::base58::xrpl_codec.decode(huge));
-    EXPECT_FALSE(catl::base58::decode_account_id(huge));
+
+    // Just under the cap still does the work rather than being rejected.
+    std::string const ok(1024, 'p');
+    EXPECT_TRUE(catl::base58::xrpl_codec.decode(ok));
 
     std::vector<std::uint8_t> const big(2048, 0x41);
     EXPECT_TRUE(catl::base58::xrpl_codec.encode(big.data(), big.size()).empty());
+    std::vector<std::uint8_t> const fits(1024, 0x41);
+    EXPECT_FALSE(
+        catl::base58::xrpl_codec.encode(fits.data(), fits.size()).empty());
+}
+
+namespace {
+
+/// Declines every object, so the parser takes the skip_object/skip_array
+/// path instead of descending. Implementing only one callback is legal since
+/// upstream e76de19 made the rest optional.
+struct DeclineObjects
+{
+    bool
+    visit_object_start(const FieldPath&, const FieldSlice&)
+    {
+        return false;
+    }
+};
+
+}  // namespace
+
+TEST(ParserDepth, SkipPathIsCappedToo)
+{
+    // The descend path and the skip path have separate depth guards. Only the
+    // descend one was covered, so deleting both skip_* guards left the suite
+    // green — and the skip path is what selective descent relies on.
+    auto const protocol = Protocol::load_embedded_xahau_protocol();
+    auto const field = protocol.find_field("Memo");
+    ASSERT_TRUE(field);
+
+    std::vector<std::uint8_t> blob;
+    VectorSink sink(blob);
+    Serializer<VectorSink> s(sink);
+    for (int i = 0; i < kMaxParseDepth + 8; ++i)
+        s.add_field_header(*field);
+
+    ParserContext ctx{Slice(blob.data(), blob.size())};
+    DeclineObjects visitor;
+    EXPECT_THROW(parse_with_visitor(ctx, protocol, visitor), ParserError);
+}
+
+TEST(TruncatedInput, XChainBridgeHeaderWithNoBodyIsRejected)
+{
+    // A field header and nothing else. wire_size() is called from the leaf
+    // dispatch before any length is known, and used to index straight past
+    // the end of the buffer — reachable at depth 0, so the recursion cap does
+    // nothing for it.
+    auto const protocol = Protocol::load_embedded_xahau_protocol();
+    auto const field = protocol.find_field("XChainBridge");
+    ASSERT_TRUE(field);
+
+    std::vector<std::uint8_t> blob;
+    VectorSink sink(blob);
+    Serializer<VectorSink> s(sink);
+    s.add_field_header(*field);
+    ASSERT_LE(blob.size(), 3u);
+
+    ParserContext ctx{Slice(blob.data(), blob.size())};
+    JsonVisitor visitor(protocol);
+    EXPECT_THROW(parse_with_visitor(ctx, protocol, visitor), std::exception);
+}
+
+TEST(TruncatedInput, XChainBridgeDecodeStopsAtTheEnd)
+{
+    // Same for the decode side: a VL prefix promising more than remains.
+    std::vector<std::uint8_t> const truncated{20, 0x01, 0x02};
+    EXPECT_THROW(
+        codecs::XChainBridgeCodec::decode(
+            Slice(truncated.data(), truncated.size())),
+        std::exception);
 }
 
 TEST(Base58LengthCap, NormalSizedValuesStillRoundTrip)
