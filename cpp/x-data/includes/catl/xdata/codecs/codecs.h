@@ -257,7 +257,7 @@ encode_field_value(
     }
     else if (t == FieldTypes::AccountID)
     {
-        AccountIDCodec::encode(s, v, path);
+        AccountIDCodec::encode_vl_payload(s, v, path);
     }
     else if (t == FieldTypes::Blob)
     {

@@ -47,6 +47,15 @@ if(BUILD_TESTING)
     gtest_discover_tests(test_parse_helpers)
 
     if(Boost_INCLUDE_DIR)
+        # Also the only target that compiles the codec headers at all: the
+        # wasm library builds them out via CATL_XDATA_NO_BOOST_JSON, and no
+        # other TU here includes codecs.h.
+        add_executable(test_codecs tests/test_codecs.cpp)
+        target_link_libraries(test_codecs PRIVATE
+            jshookz_xdata_json GTest::gtest_main
+        )
+        gtest_discover_tests(test_codecs)
+
         find_package(Python3 COMPONENTS Interpreter)
         if(Python3_Interpreter_FOUND)
             set(_cleaned_dir ${CMAKE_CURRENT_BINARY_DIR}/cleaned)

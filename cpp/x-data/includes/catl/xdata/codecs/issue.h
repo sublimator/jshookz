@@ -53,7 +53,7 @@ struct IssueCodec
     {
         if (auto r = CurrencyCodec::encode_expected(s, currency, path); !r)
             return std::unexpected(std::move(r.error()));
-        if (auto r = AccountIDCodec::encode_expected(s, issuer, path); !r)
+        if (auto r = AccountIDCodec::encode_raw_expected(s, issuer, path); !r)
             return std::unexpected(std::move(r.error()));
         return {};
     }

@@ -66,7 +66,7 @@ struct PathSetCodec
 
                 if (obj.contains("account"))
                 {
-                    AccountIDCodec::encode(
+                    AccountIDCodec::encode_raw(
                         s, std::string_view(obj.at("account").as_string()));
                 }
                 if (obj.contains("currency"))
@@ -76,7 +76,7 @@ struct PathSetCodec
                 }
                 if (obj.contains("issuer"))
                 {
-                    AccountIDCodec::encode(
+                    AccountIDCodec::encode_raw(
                         s, std::string_view(obj.at("issuer").as_string()));
                 }
             }

@@ -39,17 +39,17 @@ struct XChainBridgeCodec
         auto const& obj = v.as_object();
         // Doors are STAccount → VL-encoded (like in STObject)
         auto lcd_sv = std::string_view(obj.at("LockingChainDoor").as_string());
-        size_t lcd_size = (lcd_sv == AccountIDCodec::ZERO_ACCOUNT_B58) ? 0 : 20;
+        size_t lcd_size = AccountIDCodec::is_zero_account(lcd_sv) ? 0 : 20;
         s.add_vl_prefix(lcd_size);
-        AccountIDCodec::encode(s, lcd_sv);
+        AccountIDCodec::encode_vl_payload(s, lcd_sv);
 
         // Issues are STIssue → raw (no VL)
         IssueCodec::encode(s, obj.at("LockingChainIssue"));
 
         auto icd_sv = std::string_view(obj.at("IssuingChainDoor").as_string());
-        size_t icd_size = (icd_sv == AccountIDCodec::ZERO_ACCOUNT_B58) ? 0 : 20;
+        size_t icd_size = AccountIDCodec::is_zero_account(icd_sv) ? 0 : 20;
         s.add_vl_prefix(icd_size);
-        AccountIDCodec::encode(s, icd_sv);
+        AccountIDCodec::encode_vl_payload(s, icd_sv);
 
         IssueCodec::encode(s, obj.at("IssuingChainIssue"));
     }
