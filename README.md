@@ -127,4 +127,4 @@ C++ lives under `cpp/` (QuickJS, provider, x-data, codec). Python products
 live under `python/`. Xahau pins live under `xahau/`.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full build and
-[VENDOR.md](VENDOR.md) for provenance.
+[vendor/README.md](vendor/README.md) for provenance.

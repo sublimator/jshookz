@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# check-upstream-quickjs.sh — how far has this fork drifted from bellard/quickjs?
+# check-quickjs.sh — how far has this fork drifted from bellard/quickjs?
 #
 # QuickJS is kept under cpp/quickjs. This script compares that subtree with
 # the recorded Bellard upstream rather than treating the product root as an
 # upstream QuickJS checkout.
 #
-# Usage: scripts/check-upstream-quickjs.sh
+# Usage: vendor/check-quickjs.sh
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
