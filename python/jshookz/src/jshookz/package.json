@@ -1,0 +1,13 @@
+{
+  "name": "@jshookz/frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TypeScript frontend for the jshookz hook compiler: entry policy, result validation, and the driver that type-checks a hook against the declared Xahau API.",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "devDependencies": {
+    "typescript": "6.0.3"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.frontend.json"
+  }
+}

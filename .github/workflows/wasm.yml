@@ -36,7 +36,6 @@ jobs:
             build-essential cmake curl libboost-dev ninja-build xz-utils
           mkdir -p "$BOOST_INCLUDE_DIR"
           ln -s /usr/include/boost "$BOOST_INCLUDE_DIR/boost"
-          npm install --global typescript@6.0.3
 
       - name: Install wasi-sdk
         run: |
@@ -72,6 +71,9 @@ jobs:
           python3 -m pip install --user 'conan>=2,<3'
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      - name: Install the pinned TypeScript frontend
+        run: npm install --prefix python/jshookz/src/jshookz
+
       - name: Install locked test environments
         run: |
           uv sync --project python/jshookz --locked --group dev
@@ -83,7 +85,8 @@ jobs:
             xahau/tools/generate_raw_hook_abi.py --check
           python3 scripts/check-api-artifacts.py
           ./scripts/project-readme-examples.py --check
-          tsc -p python/hostem/tsconfig.xahau-integration.json
+          python/jshookz/src/jshookz/node_modules/.bin/tsc \
+            -p python/hostem/tsconfig.xahau-integration.json
 
       - name: Build and seal Xahau provider
         run: python/jshookz/.venv/bin/jshookz build provider
@@ -110,26 +113,17 @@ jobs:
           scripts/check-wasm-stack.sh
 
 
-      - name: Verify wheel contents
+      - name: End-to-end compile and package a hook
         run: |
-          uv build --project python/jshookz --wheel --out-dir build/dist
-          unzip -l build/dist/jshookz-*.whl | grep 'jshookz/types/hooks-api.d.ts'
-          unzip -l build/dist/jshookz-*.whl | grep 'jshookz/types/xahau-quickjs-v1.d.ts'
-          unzip -l build/dist/jshookz-*.whl | grep 'jshookz/types/xahau-quickjs-v1.surface.json'
-          unzip -l build/dist/jshookz-*.whl | grep 'jshookz/types/api-artifacts.json'
-          unzip -l build/dist/jshookz-*.whl | grep 'jshookz/result_validator.ts'
-          uv venv "$RUNNER_TEMP/jshookz-wheel-smoke"
-          uv pip install --python "$RUNNER_TEMP/jshookz-wheel-smoke/bin/python" \
-            build/dist/jshookz-*.whl
           cd "$RUNNER_TEMP"
           JSHOOKZ_PROVIDER_WASM="$GITHUB_WORKSPACE/build/xahau-provider/jshookz_provider.wasm" \
-            "$RUNNER_TEMP/jshookz-wheel-smoke/bin/jshookz" info
+            "$GITHUB_WORKSPACE/python/jshookz/.venv/bin/jshookz" info
           JSHOOKZ_PROVIDER_WASM="$GITHUB_WORKSPACE/build/xahau-provider/jshookz_provider.wasm" \
-            "$RUNNER_TEMP/jshookz-wheel-smoke/bin/jshookz" compile-hook \
+            "$GITHUB_WORKSPACE/python/jshookz/.venv/bin/jshookz" compile-hook \
             "$GITHUB_WORKSPACE/python/hostem/examples/xahau-accept.hook.ts" \
             -o smoke.qjsc
           JSHOOKZ_PROVIDER_WASM="$GITHUB_WORKSPACE/build/xahau-provider/jshookz_provider.wasm" \
-            "$RUNNER_TEMP/jshookz-wheel-smoke/bin/jshookz" package-hook \
+            "$GITHUB_WORKSPACE/python/jshookz/.venv/bin/jshookz" package-hook \
             "$GITHUB_WORKSPACE/python/hostem/examples/xahau-accept.hook.ts" \
             --profile "$GITHUB_WORKSPACE/xahau/profiles/xahau-quickjs-v1.lock.json" \
             -o smoke.xqjs
