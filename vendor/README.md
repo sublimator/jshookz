@@ -10,7 +10,7 @@ repository. Generated artifacts record their own exact inputs where practical.
 retained at `cpp/quickjs/LICENSE`. Local deterministic-runtime changes are
 part of the jshookz product tree.
 
-Run `scripts/check-upstream-quickjs.sh` to compare the subtree with Bellard's
+Run `vendor/check-quickjs.sh` to compare the subtree with Bellard's
 current `master`; the script uses the dedicated public upstream URL and never
 assumes that this repository's `origin` points at QuickJS.
 
@@ -22,7 +22,7 @@ execution: explicit error policy, injected crypto operations, and generated
 embedded definitions. Nicholas owns this code and distributes the copy in
 this repository under the root MIT license.
 
-`scripts/check-upstream-xdata.sh` compares it with an explicitly supplied
+`vendor/check-xdata.sh` compares it with an explicitly supplied
 `CATALOGUE_TOOLS` checkout. Local adaptations are expected and must be
 preserved deliberately during an update.
 

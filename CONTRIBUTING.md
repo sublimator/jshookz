@@ -66,4 +66,4 @@ a layout change.
 - Never add WASI to the production profile.
 - Include tests for result width, memory bounds, terminals, and deterministic
   behavior when changing an ABI boundary.
-- Update `VENDOR.md` whenever vendored or generated-source provenance moves.
+- Update `vendor/README.md` whenever vendored or generated-source provenance moves.

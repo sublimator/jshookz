@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-upstream-xdata.sh — compare the vendored catl::xdata tree against
+# check-xdata.sh — compare the vendored catl::xdata tree against
 # its catalogue-tools upstream checkout.
 #
 # cpp/x-data/ was vendored from catalogue-tools at
@@ -16,8 +16,8 @@
 #   NOT-UPSTREAM    file doesn't exist upstream at all
 #
 # Usage:
-#   scripts/check-upstream-xdata.sh [-v]
-#   CATALOGUE_TOOLS=/path/to/catalogue-tools scripts/check-upstream-xdata.sh
+#   vendor/check-xdata.sh [-v]
+#   CATALOGUE_TOOLS=/path/to/catalogue-tools vendor/check-xdata.sh
 #
 # After a re-sync, update VENDOR_POINT below (and in the provenance doc).
 
