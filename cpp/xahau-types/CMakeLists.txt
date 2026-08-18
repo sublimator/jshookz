@@ -14,6 +14,12 @@ target_include_directories(jshookz_xahau_types PUBLIC
 )
 target_link_libraries(jshookz_xahau_types PUBLIC jshookz_qjs_src)
 target_compile_features(jshookz_xahau_types PUBLIC cxx_std_23)
+# QuickJS JS_CFUNC_DEF mixes designated and positional initializers.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(jshookz_xahau_types PRIVATE -fpermissive)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(jshookz_xahau_types PRIVATE -Wno-c99-designator)
+endif()
 
 if(BUILD_TESTING)
     find_package(GTest REQUIRED)
