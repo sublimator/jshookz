@@ -1,6 +1,7 @@
 # One provider source inventory. Xahau JS values live in ../xahau-types
 # (no hook_* / host_*). Bindings/ own host crossings. provider.cpp owns
 # the exported Wasm lifecycle.
+include(${CMAKE_CURRENT_LIST_DIR}/../quickjs-cpp/quickjs_c_sources.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/../quickjs-cpp/quickjs_cpp_sources.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/../xahau-types/xahau_types_sources.cmake)
 set(JSHOOKZ_PROVIDER_CPP_SOURCES

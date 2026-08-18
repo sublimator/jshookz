@@ -123,7 +123,7 @@ The broader [`hooks-api.d.ts`](python/jshookz/src/jshookz/types/hooks-api.d.ts)
 is the API we are growing toward, not a claim that everything is implemented
 in v1.
 
-C++ lives under `cpp/` (QuickJS, provider, x-data, codec). Python products
+C++ lives under [`cpp/`](cpp/README.md) (QuickJS, provider, x-data, codec). Python products
 live under `python/`. Xahau pins live under `xahau/`.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full build and

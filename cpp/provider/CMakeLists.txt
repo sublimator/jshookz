@@ -40,37 +40,27 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_compile_options(-Wno-deprecated)
 add_link_options(-Wno-deprecated)
 
-# QuickJS source files (C — no quickjs-libc.c, sandboxed)
-set(QUICKJS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../quickjs")
-set(QUICKJS_SOURCES
-    ${QUICKJS_SOURCE_DIR}/quickjs.c
-    ${QUICKJS_SOURCE_DIR}/cutils.c
-    ${QUICKJS_SOURCE_DIR}/dtoa.c
-    ${QUICKJS_SOURCE_DIR}/libregexp.c
-    ${QUICKJS_SOURCE_DIR}/libunicode.c
-)
-
 # Provider-owned C++ sources compiled into the WASM module.
 include(provider_sources.cmake)
 
 add_executable(jshookz_provider
-    ${QUICKJS_SOURCES}
+    ${JSHOOKZ_QUICKJS_C_SOURCES}
     ${JSHOOKZ_PROVIDER_CPP_SOURCES}
 )
 
 target_include_directories(jshookz_provider PRIVATE
     ${JSHOOKZ_QJS_CPP_INCLUDE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../xahau-types
+    ${JSHOOKZ_XAHAU_TYPES_INCLUDE_DIR}
 )
 
 # Only C files need the QuickJS repo include dir. C++ files include
 # <jshookz/quickjs.h> so QuickJS's VERSION file cannot shadow <version>.
-set_source_files_properties(${QUICKJS_SOURCES} PROPERTIES
-    INCLUDE_DIRECTORIES "${QUICKJS_SOURCE_DIR}"
+set_source_files_properties(${JSHOOKZ_QUICKJS_C_SOURCES} PROPERTIES
+    INCLUDE_DIRECTORIES "${JSHOOKZ_QUICKJS_SOURCE_DIR}"
 )
 
 target_compile_definitions(jshookz_provider PRIVATE
-    CONFIG_VERSION="2025-09-13"
+    CONFIG_VERSION="${JSHOOKZ_QJS_CONFIG_VERSION}"
     _GNU_SOURCE
     # Standalone WASI needs switch dispatch and no thread-backed Atomics, but
     # unlike Emscripten it supports the native stack-pointer check.
@@ -90,7 +80,7 @@ if(XAHAU_HOOK_PROVIDER)
 endif()
 
 # C flags
-set_source_files_properties(${QUICKJS_SOURCES} PROPERTIES COMPILE_OPTIONS
+set_source_files_properties(${JSHOOKZ_QUICKJS_C_SOURCES} PROPERTIES COMPILE_OPTIONS
     "-O2;-fwrapv;-funsigned-char;-Wno-sign-compare;-Wno-missing-field-initializers;-Wno-unused-parameter;-mllvm;-wasm-enable-sjlj"
 )
 
