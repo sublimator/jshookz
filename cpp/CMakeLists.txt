@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(jshookz_cpp CXX)
+project(jshookz_cpp C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,3 +8,5 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # with the wasi-sdk toolchain; do not add_subdirectory it here.
 include(CTest)
 add_subdirectory(quickjs-cpp)
+add_subdirectory(x-data)
+add_subdirectory(x-data-quickjs)

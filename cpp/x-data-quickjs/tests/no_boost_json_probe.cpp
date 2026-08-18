@@ -1,4 +1,3 @@
-#define CATL_XDATA_NO_BOOST_JSON
 #include "qjs_visitor.h"
 #include "qjs_encode.h"
 #include "catl/xdata/protocol.h"
