@@ -4,6 +4,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/quickjs_cpp_sources.cmake)
 add_library(jshookz_qjs INTERFACE)
 target_include_directories(jshookz_qjs INTERFACE
     ${JSHOOKZ_QJS_CPP_INCLUDE_DIR}
+    ${JSHOOKZ_QUICKJS_SOURCE_DIR}
 )
 target_compile_features(jshookz_qjs INTERFACE cxx_std_23)
 

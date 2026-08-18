@@ -151,7 +151,7 @@ CFLAGS+=-fwrapv # ensure that signed overflows behave as expected
 ifdef CONFIG_WERROR
 CFLAGS+=-Werror
 endif
-DEFINES:=-D_GNU_SOURCE -DCONFIG_VERSION=\"$(shell cat VERSION)\"
+DEFINES:=-D_GNU_SOURCE -DCONFIG_VERSION=\"$(shell cat QUICKJS_VERSION)\"
 ifdef CONFIG_WIN32
 DEFINES+=-D__USE_MINGW_ANSI_STDIO # for standard snprintf behavior
 endif
@@ -427,7 +427,7 @@ build_doc: $(DOCS)
 clean_doc:
 	rm -f $(DOCS)
 
-doc/version.texi: VERSION
+doc/version.texi: QUICKJS_VERSION
 	@echo "@set VERSION `cat $<`" > $@
 
 doc/%.pdf: doc/%.texi doc/version.texi

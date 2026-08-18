@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include <jshookz/quickjs.h>
+#include <quickjs.h>
 
 extern "C" {
 [[nodiscard]] bool register_cpp_types(JSContext* ctx);

@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#include <jshookz/quickjs.h>
+#include <quickjs.h>
 
 namespace jshookz::qjs {
 

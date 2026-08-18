@@ -50,13 +50,8 @@ add_executable(jshookz_provider
 
 target_include_directories(jshookz_provider PRIVATE
     ${JSHOOKZ_QJS_CPP_INCLUDE_DIR}
+    ${JSHOOKZ_QUICKJS_SOURCE_DIR}
     ${JSHOOKZ_XAHAU_TYPES_INCLUDE_DIR}
-)
-
-# Only C files need the QuickJS repo include dir. C++ files include
-# <jshookz/quickjs.h> so QuickJS's VERSION file cannot shadow <version>.
-set_source_files_properties(${JSHOOKZ_QUICKJS_C_SOURCES} PROPERTIES
-    INCLUDE_DIRECTORIES "${JSHOOKZ_QUICKJS_SOURCE_DIR}"
 )
 
 target_compile_definitions(jshookz_provider PRIVATE
