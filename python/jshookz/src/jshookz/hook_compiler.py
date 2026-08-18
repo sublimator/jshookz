@@ -43,19 +43,47 @@ class PackagedHook:
     javascript: str
 
 
+# The frontend declares its own TypeScript in package.json. Prefer that
+# install: the version doing the type-checking is then stated where the code
+# that depends on it lives, rather than inherited from whatever `tsc` happens
+# to be on PATH. A global tsc of a different major silently changes what
+# type-checks, and nothing would notice.
+_FRONTEND_NODE_MODULES = _FRONTEND_DIR / "node_modules"
+
+
 def _typescript_executable(tsc: str | None) -> str:
-    executable = tsc or os.environ.get("TSC") or shutil.which("tsc")
-    if not executable:
-        raise RuntimeError("TypeScript compiler not found; install or set TSC")
-    return executable
+    if tsc:
+        return tsc
+    override = os.environ.get("TSC")
+    if override:
+        return override
+    local = _FRONTEND_NODE_MODULES / ".bin" / "tsc"
+    if local.is_file():
+        return str(local)
+    found = shutil.which("tsc")
+    if not found:
+        raise RuntimeError(
+            "TypeScript compiler not found. Run `npm install` in "
+            f"{_FRONTEND_DIR}, or set TSC."
+        )
+    return found
 
 
 def _typescript_library(tsc: str | None) -> Path:
+    """Locate typescript.js — by package resolution first, layout guess last."""
+    local = _FRONTEND_NODE_MODULES / "typescript" / "lib" / "typescript.js"
+    if not tsc and not os.environ.get("TSC") and local.is_file():
+        return local
     executable = Path(_typescript_executable(tsc)).resolve()
+    # Fallback for an explicitly supplied tsc: assume the npm layout
+    # (<prefix>/bin/tsc alongside <prefix>/lib/typescript.js). This is a guess
+    # and fails loudly rather than silently using a mismatched parser.
     typescript = executable.parent.parent / "lib" / "typescript.js"
     if not typescript.is_file():
         raise RuntimeError(
-            "Cannot locate the TypeScript parser beside tsc: " f"{executable}"
+            "Cannot locate the TypeScript parser beside tsc: "
+            f"{executable}. Run `npm install` in {_FRONTEND_DIR} to use the "
+            "pinned frontend TypeScript instead."
         )
     return typescript
 
