@@ -108,7 +108,7 @@ Compile and package a Hook:
 ```bash
 python/jshookz/.venv/bin/jshookz compile-hook hook.ts -o hook.qjsc
 python/jshookz/.venv/bin/jshookz package-hook hook.ts \
-  --profile xahau/profiles/xahau-quickjs-v1.lock.json \
+  --profile build/xahau-provider/jshookz_provider.manifest.json \
   -o hook.xqjs
 ```
 

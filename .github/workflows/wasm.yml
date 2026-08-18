@@ -125,7 +125,7 @@ jobs:
           JSHOOKZ_PROVIDER_WASM="$GITHUB_WORKSPACE/build/xahau-provider/jshookz_provider.wasm" \
             "$GITHUB_WORKSPACE/python/jshookz/.venv/bin/jshookz" package-hook \
             "$GITHUB_WORKSPACE/python/hostem/examples/xahau-accept.hook.ts" \
-            --profile "$GITHUB_WORKSPACE/xahau/profiles/xahau-quickjs-v1.lock.json" \
+            --profile "$GITHUB_WORKSPACE/build/xahau-provider/jshookz_provider.manifest.json" \
             -o smoke.xqjs
           test -s smoke.qjsc
           test -s smoke.xqjs
