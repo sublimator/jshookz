@@ -90,14 +90,18 @@ def seal_xahau_hook_provider_bundle(
     manifest_path: Path = paths.XAHAU_HOOK_PROVIDER_MANIFEST,
     cmake_manifest_path: Path = paths.XAHAU_HOOK_PROVIDER_CMAKE_MANIFEST,
     native_abi_path: Path = paths.XAHAU_HOOK_PROVIDER_NATIVE_ABI,
+    source_path: Path = paths.XAHAU_RUNTIME_PROFILE_SOURCE,
 ) -> Path:
-    """Verify and emit the manifest consumed by Xahau's native build."""
-    from .runtime_profile import verify_runtime_profile_lock
+    """Measure the sealed wasm and emit the lock/manifest xahaud pins."""
+    from .runtime_profile import build_runtime_profile_lock
 
-    profile = verify_runtime_profile_lock(lock_path, wasm_path)
+    data = build_runtime_profile_lock(source_path, wasm_path)
+    lock_text = json.dumps(data, indent=2, sort_keys=True) + "\n"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text(lock_text)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(lock_path, manifest_path)
-    data = profile.data
+    if lock_path.resolve() != manifest_path.resolve():
+        manifest_path.write_text(lock_text)
     source = data["source"]
     provider = data["provider"]
     provider_imports = provider["imports"]

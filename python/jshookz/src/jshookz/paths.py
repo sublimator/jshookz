@@ -33,8 +33,8 @@ def _discover_repo_root() -> Path | None:
 
 
 SOURCE_CHECKOUT = _discover_repo_root()
-# Product data works from an installed wheel. Build/profile defaults require a
-# source checkout or explicit CLI paths/environment overrides.
+# Build/profile defaults require a source checkout or explicit CLI
+# paths/environment overrides.
 REPO_ROOT = SOURCE_CHECKOUT or PACKAGE_ROOT / "__source_checkout_required__"
 
 
@@ -75,6 +75,7 @@ XAHAU_HOOK_PROVIDER_NATIVE_ABI = (
 XAHAU_RUNTIME_PROFILE_SOURCE = (
     REPO_ROOT / "xahau/profiles" / "xahau-quickjs-v1.source.json"
 )
+# Emitted by `jshookz build provider`. Not committed; xahaud pins a copy.
 XAHAU_RUNTIME_PROFILE_LOCK = (
     REPO_ROOT / "xahau/profiles" / "xahau-quickjs-v1.lock.json"
 )

@@ -9,7 +9,6 @@ import pytest
 
 from jshookz.paths import (
     XAHAU_HOOK_PROVIDER_WASM,
-    XAHAU_RUNTIME_PROFILE_LOCK,
     XAHAU_RUNTIME_PROFILE_SOURCE,
     XAHAU_V1_HOOKS_API_DECLARATIONS,
     XAHAU_V1_JAVASCRIPT_SURFACE,
@@ -25,16 +24,10 @@ from jshookz.runtime_profile import (
 
 
 SOURCE = XAHAU_RUNTIME_PROFILE_SOURCE
-CHECKED_LOCK = XAHAU_RUNTIME_PROFILE_LOCK
 
 
 def _write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
-
-
-def test_checked_profile_lock_is_fresh():
-    expected = build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)
-    assert json.loads(CHECKED_LOCK.read_text()) == expected
 
 
 def test_native_engine_and_python_oracle_versions_are_named_separately():
@@ -203,14 +196,12 @@ def test_load_profile_rejects_short_identity(tmp_path: Path):
         load_runtime_profile_lock(lock_path)
 
 
-def test_provider_bundle_manifest_is_the_verified_profile_lock(tmp_path: Path):
+def test_provider_bundle_emits_the_profile_lock(tmp_path: Path):
     lock = build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)
     lock_path = tmp_path / "profile.lock.json"
     manifest_path = tmp_path / "jshookz_provider.manifest.json"
     cmake_manifest_path = tmp_path / "jshookz_provider.manifest.cmake"
     native_abi_path = tmp_path / "jshookz_provider.native-abi.json"
-    _write_json(lock_path, lock)
-
     emitted = seal_xahau_hook_provider_bundle(
         XAHAU_HOOK_PROVIDER_WASM,
         lock_path,
@@ -220,7 +211,8 @@ def test_provider_bundle_manifest_is_the_verified_profile_lock(tmp_path: Path):
     )
 
     assert emitted == manifest_path
-    assert manifest_path.read_bytes() == lock_path.read_bytes()
+    assert json.loads(manifest_path.read_text()) == lock
+    assert lock_path.read_bytes() == manifest_path.read_bytes()
     cmake_manifest = cmake_manifest_path.read_text()
     assert f'"{lock["provider"]["sha256"]}"' in cmake_manifest
     assert f'"{lock["bytecode_abi_id"]}"' in cmake_manifest
@@ -249,7 +241,9 @@ def test_provider_bundle_manifest_is_the_verified_profile_lock(tmp_path: Path):
 
 
 def test_native_projection_rejects_duplicate_provider_import():
-    imports = json.loads(CHECKED_LOCK.read_text())["provider"]["imports"]
+    imports = build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)[
+        "provider"
+    ]["imports"]
     with pytest.raises(ValueError, match="pinned raw Hook ABI"):
         _validate_native_abi([*imports, imports[0]])
 

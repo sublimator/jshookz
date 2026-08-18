@@ -21,9 +21,8 @@ python/jshookz/.venv/bin/jshookz build provider
 python/jshookz/.venv/bin/pytest -q python/jshookz/tests
 ```
 
-`jshookz build provider` verifies the checked runtime-profile lock and emits
-the JSON/CMake manifests. A changed provider hash requires an intentional new
-profile decision; do not update the lock merely to make the check pass.
+`jshookz build provider` emits the runtime-profile lock and the JSON/CMake
+manifests. Do not commit the lock; xahaud pins it.
 
 ## Raw Hook ABI and hostem
 
