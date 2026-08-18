@@ -234,7 +234,7 @@ def test_native_factories_and_prototypes_are_frozen_at_registration():
         "[STBlob, STBlob.from([])],"
         "[Hash256, Hash256.from(new Uint8Array(32))],"
         "[AccountID, AccountID.zero],"
-        "[XFL, XFL.fromRaw(0n)],"
+        "[XFLDecimal, XFLDecimal.fromRaw(0n)],"
         "[UInt8, UInt8.zero]"
         "].every(([factory, value]) => "
         "Object.isFrozen(factory) && Object.isFrozen(Object.getPrototypeOf(value))));"

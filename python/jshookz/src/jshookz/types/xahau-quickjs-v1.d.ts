@@ -23,13 +23,7 @@ type HexString = string;
 
 type UIntWidth = 8 | 16 | 32 | 64;
 
-type UInt8 = UInt<8>;
-
-type UInt16 = UInt<16>;
-
-type UInt32 = UInt<32>;
-
-type UInt64 = UInt<64>;
+type HashWidth = 32;
 
 type UIntInput<Bits extends UIntWidth = UIntWidth> = UInt<Bits> | bigint | number;
 
@@ -147,16 +141,13 @@ interface UIntError {
 type UIntResult<T> = Result<T, UIntError>;
 
 /**
- * Immutable fixed-width unsigned integer.
- *
- * JavaScript operators intentionally remain available through the default
- * primitive record projections (`u32be`, `u64be`). Choose this value type
- * when the contract wants its width and overflow policy carried with the
- * value rather than re-established around every arithmetic expression.
+ * Immutable fixed-width unsigned integer. Width classes extend this
+ * (`instanceof UInt` and `instanceof UInt8`).
  */
-interface UInt<Bits extends UIntWidth = UIntWidth> {
+declare abstract class UInt<Bits extends UIntWidth = UIntWidth> {
   readonly bits: Bits;
   readonly byteLength: Bits extends 8 ? 1 : Bits extends 16 ? 2 : Bits extends 32 ? 4 : 8;
+  protected constructor();
 
   toBigInt(): bigint;
   toString(): string;
@@ -171,93 +162,111 @@ interface UInt<Bits extends UIntWidth = UIntWidth> {
   saturatingSubtract(other: UInt<Bits>): UInt<Bits>;
 }
 
-interface UIntFactory<Bits extends UIntWidth> {
-  readonly zero: UInt<Bits>;
-  readonly max: UInt<Bits>;
-  from(value: bigint | number): UIntResult<UInt<Bits>>;
-  /** Exact floor of `(multiplicand * multiplier) / divisor` through a wider intermediate. */
-  mulDiv(
-    multiplicand: UIntInput<Bits>,
-    multiplier: UIntInput<Bits>,
-    divisor: UIntInput<Bits>,
-  ): UIntResult<UInt<Bits>>;
+declare class UInt8 extends UInt<8> {
+  private constructor();
+  static readonly zero: UInt8;
+  static readonly max: UInt8;
+  static from(value: bigint | number): UIntResult<UInt8>;
+  static mulDiv(
+    multiplicand: UIntInput<8>,
+    multiplier: UIntInput<8>,
+    divisor: UIntInput<8>,
+  ): UIntResult<UInt8>;
 }
 
-declare const UInt8: UIntFactory<8>;
+declare class UInt16 extends UInt<16> {
+  private constructor();
+  static readonly zero: UInt16;
+  static readonly max: UInt16;
+  static from(value: bigint | number): UIntResult<UInt16>;
+  static mulDiv(
+    multiplicand: UIntInput<16>,
+    multiplier: UIntInput<16>,
+    divisor: UIntInput<16>,
+  ): UIntResult<UInt16>;
+}
 
-declare const UInt16: UIntFactory<16>;
+declare class UInt32 extends UInt<32> {
+  private constructor();
+  static readonly zero: UInt32;
+  static readonly max: UInt32;
+  static from(value: bigint | number): UIntResult<UInt32>;
+  static mulDiv(
+    multiplicand: UIntInput<32>,
+    multiplier: UIntInput<32>,
+    divisor: UIntInput<32>,
+  ): UIntResult<UInt32>;
+}
 
-declare const UInt32: UIntFactory<32>;
-
-declare const UInt64: UIntFactory<64>;
+declare class UInt64 extends UInt<64> {
+  private constructor();
+  static readonly zero: UInt64;
+  static readonly max: UInt64;
+  static from(value: bigint | number): UIntResult<UInt64>;
+  static mulDiv(
+    multiplicand: UIntInput<64>,
+    multiplier: UIntInput<64>,
+    divisor: UIntInput<64>,
+  ): UIntResult<UInt64>;
+}
 
 /** @serial Blob */
-declare interface STBlob {
+declare class STBlob {
+  private constructor();
   readonly byteLength: number;
   byteAt(index: number): number;
   toBytes(): Uint8Array;
   toHex(): HexString;
   equals(other: BytesLike | STBlob): boolean;
-}
-
-declare interface STBlobFactory {
-  from(value: BytesLike): STBlob;
+  static from(value: BytesLike): STBlob;
   /** Decode an even-length hexadecimal literal. */
-  fromHex(value: HexString): STBlob;
+  static fromHex(value: HexString): STBlob;
 }
 
-declare const STBlob: STBlobFactory;
+/** Fixed-width hash. Width classes extend this (`instanceof Hash` and `instanceof Hash256`). */
+declare abstract class Hash<Width extends HashWidth = HashWidth> {
+  readonly byteLength: Width;
+  protected constructor();
+  toBytes(): Uint8Array;
+  toHex(): HexString;
+  isZero(): boolean;
+  equals(other: Hash<Width>): boolean;
+}
 
 /** @serial Hash256 */
-declare interface Hash256 {
-  toHex(): HexString;
-  toBytes(): Uint8Array;
-  isZero(): boolean;
-  equals(other: Hash256): boolean;
-}
-
-declare interface Hash256Factory {
-  from(value: BytesLike): Hash256;
+declare class Hash256 extends Hash<32> {
+  private constructor();
+  static from(value: BytesLike): Hash256;
   /** Decode exactly 32 bytes from an even-length hexadecimal literal. */
-  fromHex(value: HexString): Hash256;
+  static fromHex(value: HexString): Hash256;
 }
-
-declare const Hash256: Hash256Factory;
 
 /** @serial AccountID */
-declare interface AccountID {
+declare class AccountID {
+  private constructor();
   toHex(): HexString;
   toBytes(): Uint8Array;
   isZero(): boolean;
   equals(other: AccountID): boolean;
-}
-
-declare interface AccountIDFactory {
   /** XRP's native-issue account: 20 zero bytes. */
-  readonly zero: AccountID;
+  static readonly zero: AccountID;
   /** Ripple's no-account sentinel: integer one as a 20-byte AccountID. */
-  readonly one: AccountID;
-  from(value: BytesLike): AccountID;
+  static readonly one: AccountID;
+  static from(value: BytesLike): AccountID;
   /** Decode exactly 20 bytes from an even-length hexadecimal literal. */
-  fromHex(value: HexString): AccountID;
+  static fromHex(value: HexString): AccountID;
 }
 
-declare const AccountID: AccountIDFactory;
-
-/** @inner-rich-type XFL */
-declare interface XFL {
+/** Decimal quantity whose wire form is an XFL encoding. */
+declare class XFLDecimal {
+  private constructor();
   readonly raw: bigint;
   mantissa(): bigint;
   exponent(): number;
   isNegative(): boolean;
   isZero(): boolean;
+  static fromRaw(raw: bigint): XFLDecimal;
 }
-
-declare interface XFLFactory {
-  fromRaw(raw: bigint): XFL;
-}
-
-declare const XFL: XFLFactory;
 
 declare const enum TransactionType {
   Payment = 0,

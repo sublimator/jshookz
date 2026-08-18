@@ -43,7 +43,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "376121ca3f04376fff8af79897bf688bf4121349379c6537d1fda8c167772513"
+    "sha256": "bba9e0666c339603f10926392d285087cf60075e39a0fdc738b2b29d52864acc"
   },
   "globals": {
     "AccountID": "object",
@@ -53,7 +53,7 @@
     "UInt32": "object",
     "UInt64": "object",
     "UInt8": "object",
-    "XFL": "object",
+    "XFLDecimal": "object",
     "accept": "function",
     "emit": "object",
     "hook": "object",
@@ -197,7 +197,7 @@
       ],
       "probe": "state.set('surface-probe', new Uint8Array(0))"
     },
-    "XFL": {
+    "XFLDecimal": {
       "members": {
         "exponent": "function",
         "isNegative": "function",
@@ -212,7 +212,7 @@
         "mantissa",
         "raw"
       ],
-      "probe": "XFL.fromRaw(0n)"
+      "probe": "XFLDecimal.fromRaw(0n)"
     }
   },
   "schema": "jshookz.javascript-surface.v1",
@@ -255,7 +255,7 @@
       "mulDiv": "function",
       "zero": "value"
     },
-    "XFL": {
+    "XFLDecimal": {
       "fromRaw": "function"
     }
   }

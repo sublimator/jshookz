@@ -82,8 +82,8 @@ def test_rich_roots_are_typed_as_factories_not_constructors(tmp_path: Path):
           class DerivedHash extends Hash256 {}
           // @ts-expect-error AccountID has no instanceof contract.
           const account = {} instanceof AccountID;
-          // @ts-expect-error XFL exposes no public prototype.
-          const prototype = XFL.prototype;
+          // @ts-expect-error XFLDecimal exposes no public prototype.
+          const prototype = XFLDecimal.prototype;
           void blob;
           void DerivedHash;
           void account;

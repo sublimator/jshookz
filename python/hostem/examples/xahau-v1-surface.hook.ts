@@ -22,7 +22,7 @@ function typecheckV1Surface(blob: STBlob, hash: Hash256, account: AccountID): vo
   account.toHex();
   account.toBytes();
 
-  const xfl = XFL.fromRaw(0n);
+  const xfl = XFLDecimal.fromRaw(0n);
   xfl.raw;
   xfl.mantissa();
   xfl.exponent();

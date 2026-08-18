@@ -31,10 +31,6 @@ type HookTypedArray =
 type BytesLike = HookTypedArray | ArrayBuffer | readonly number[];
 type HexString = string;
 type UIntWidth = 8 | 16 | 32 | 64;
-type UInt8 = UInt<8>;
-type UInt16 = UInt<16>;
-type UInt32 = UInt<32>;
-type UInt64 = UInt<64>;
 type UIntInput<Bits extends UIntWidth = UIntWidth> = UInt<Bits> | bigint | number;
 type Drops = bigint;
 type LedgerSequence = number;
@@ -190,16 +186,13 @@ type UIntResult<T> = Result<T, UIntError>;
 
 
 /**
- * Immutable fixed-width unsigned integer.
- *
- * JavaScript operators intentionally remain available through the default
- * primitive record projections (`u32be`, `u64be`). Choose this value type
- * when the contract wants its width and overflow policy carried with the
- * value rather than re-established around every arithmetic expression.
+ * Immutable fixed-width unsigned integer. Width classes extend this
+ * (`instanceof UInt` and `instanceof UInt8`).
  */
-interface UInt<Bits extends UIntWidth = UIntWidth> {
+declare abstract class UInt<Bits extends UIntWidth = UIntWidth> {
   readonly bits: Bits;
   readonly byteLength: Bits extends 8 ? 1 : Bits extends 16 ? 2 : Bits extends 32 ? 4 : 8;
+  protected constructor();
 
   toBigInt(): bigint;
   toString(): string;
@@ -214,23 +207,53 @@ interface UInt<Bits extends UIntWidth = UIntWidth> {
   saturatingSubtract(other: UInt<Bits>): UInt<Bits>;
 }
 
-
-interface UIntFactory<Bits extends UIntWidth> {
-  readonly zero: UInt<Bits>;
-  readonly max: UInt<Bits>;
-  from(value: bigint | number): UIntResult<UInt<Bits>>;
-  /** Exact floor of `(multiplicand * multiplier) / divisor` through a wider intermediate. */
-  mulDiv(
-    multiplicand: UIntInput<Bits>,
-    multiplier: UIntInput<Bits>,
-    divisor: UIntInput<Bits>,
-  ): UIntResult<UInt<Bits>>;
+declare class UInt8 extends UInt<8> {
+  private constructor();
+  static readonly zero: UInt8;
+  static readonly max: UInt8;
+  static from(value: bigint | number): UIntResult<UInt8>;
+  static mulDiv(
+    multiplicand: UIntInput<8>,
+    multiplier: UIntInput<8>,
+    divisor: UIntInput<8>,
+  ): UIntResult<UInt8>;
 }
 
-declare const UInt8: UIntFactory<8>;
-declare const UInt16: UIntFactory<16>;
-declare const UInt32: UIntFactory<32>;
-declare const UInt64: UIntFactory<64>;
+declare class UInt16 extends UInt<16> {
+  private constructor();
+  static readonly zero: UInt16;
+  static readonly max: UInt16;
+  static from(value: bigint | number): UIntResult<UInt16>;
+  static mulDiv(
+    multiplicand: UIntInput<16>,
+    multiplier: UIntInput<16>,
+    divisor: UIntInput<16>,
+  ): UIntResult<UInt16>;
+}
+
+declare class UInt32 extends UInt<32> {
+  private constructor();
+  static readonly zero: UInt32;
+  static readonly max: UInt32;
+  static from(value: bigint | number): UIntResult<UInt32>;
+  static mulDiv(
+    multiplicand: UIntInput<32>,
+    multiplier: UIntInput<32>,
+    divisor: UIntInput<32>,
+  ): UIntResult<UInt32>;
+}
+
+declare class UInt64 extends UInt<64> {
+  private constructor();
+  static readonly zero: UInt64;
+  static readonly max: UInt64;
+  static from(value: bigint | number): UIntResult<UInt64>;
+  static mulDiv(
+    multiplicand: UIntInput<64>,
+    multiplier: UIntInput<64>,
+    divisor: UIntInput<64>,
+  ): UIntResult<UInt64>;
+}
 
 /** Structural decoding contract accepted by typed state reads. */
 interface BinarySchema<T> {
@@ -385,8 +408,8 @@ declare namespace record {
   }
   function i64be(offset: number): RecordField<bigint, 8>;
   function i64le(offset: number): RecordField<bigint, 8>;
-  function xflbe(offset: number): RecordField<XFL, 8>;
-  function xflle(offset: number): RecordField<XFL, 8>;
+  function xflbe(offset: number): RecordField<XFLDecimal, 8>;
+  function xflle(offset: number): RecordField<XFLDecimal, 8>;
   function bytes<const Width extends number>(offset: number, byteLength: Width): RecordField<STBlob, Width>;
   function hash<const Width extends HashWidth>(offset: number, byteLength: Width): RecordField<HashByWidth[Width], Width>;
   function accountID(offset: number): RecordField<AccountID, 20>;
@@ -410,7 +433,8 @@ interface SerializationOptions {
 }
 
 /** @serial Blob */
-interface STBlob {
+declare class STBlob {
+  private constructor();
   readonly byteLength: number;
   byteAt(index: number): number;
   slice(start: number, end?: number): STBlob;
@@ -419,7 +443,7 @@ interface STBlob {
   toUint8(): number;
   toUint32(endian?: "big" | "little"): number;
   toUint64(endian?: "big" | "little"): bigint;
-  toXFL(endian?: "big" | "little"): XFL;
+  toXFL(endian?: "big" | "little"): XFLDecimal;
   toAccountID(): AccountID;
   toCurrency(): Currency;
   toHash128(): Hash128;
@@ -432,21 +456,15 @@ interface STBlob {
   equals(other: BytesLike | STBlob): boolean;
   compare(other: BytesLike | STBlob, options?: ByteCompareOptions): -1 | 0 | 1;
   indexOf(needle: BytesLike | STBlob, options?: ByteFindOptions): number | undefined;
+  static from(value: BytesLike): STBlob;
+  static fromHex(value: HexString): STBlob;
+  static concat(...parts: (BytesLike | STBlob)[]): STBlob;
+  static fromUint8(value: number): STBlob;
+  static fromUint32(value: number, endian?: "big" | "little"): STBlob;
+  static fromUint64(value: bigint | number, endian?: "big" | "little"): STBlob;
 }
 
-interface STBlobFactory {
-  from(value: BytesLike): STBlob;
-  /** Decode an even-length hexadecimal literal. */
-  fromHex(value: HexString): STBlob;
-  concat(...parts: (BytesLike | STBlob)[]): STBlob;
-  fromUint8(value: number): STBlob;
-  fromUint32(value: number, endian?: "big" | "little"): STBlob;
-  fromUint64(value: bigint | number, endian?: "big" | "little"): STBlob;
-}
-
-declare const STBlob: STBlobFactory;
-
-/** @inner-rich-type Hash */
+/** Fixed-width hash. Width classes extend this (`instanceof Hash` and `instanceof Hash256`). */
 declare abstract class Hash<Width extends HashWidth = HashWidth> {
   private readonly __hashWidthBrand: Width;
   readonly byteLength: Width;
@@ -480,22 +498,13 @@ declare class Hash192 extends Hash<24> {
 }
 
 /** @serial Hash256 */
-interface Hash256 extends Hash<32> {
-  toHex(): HexString;
-  toBytes(): Uint8Array;
-  isZero(): boolean;
-  equals(other: Hash256): boolean;
-}
-
-interface Hash256Factory {
-  readonly zero: Hash256;
-  from(value: BytesLike): Hash256;
+declare class Hash256 extends Hash<32> {
+  private constructor();
+  static readonly zero: Hash256;
+  static from(value: BytesLike | Hash<32>): Hash256;
   /** Decode exactly 32 bytes from an even-length hexadecimal literal. */
-  fromHex(value: HexString): Hash256;
-  from(value: BytesLike | Hash<32>): Hash256;
+  static fromHex(value: HexString): Hash256;
 }
-
-declare const Hash256: Hash256Factory;
 
 /** @serial Hash384 */
 declare class Hash384 extends Hash<48> {
@@ -521,28 +530,18 @@ interface HashByWidth {
 }
 
 /** @serial AccountID */
-interface AccountID extends Hash160 {
+declare class AccountID extends Hash160 {
+  private constructor();
   readonly r: string;
   toString(): string;
-  toHex(): HexString;
-  toBytes(): Uint8Array;
-  isZero(): boolean;
-  equals(other: AccountID): boolean;
-}
-
-interface AccountIDFactory {
   /** XRP's native-issue account: 20 zero bytes. */
-  readonly zero: AccountID;
+  static readonly zero: AccountID;
   /** Ripple's no-account sentinel: integer one as a 20-byte AccountID. */
-  readonly one: AccountID;
-  from(value: BytesLike): AccountID;
-  /** Decode exactly 20 bytes from an even-length hexadecimal literal. */
-  fromHex(value: HexString): AccountID;
-  from(value: BytesLike | Hash160 | string): AccountID;
-  fromRAddress(value: string): AccountID;
+  static readonly one: AccountID;
+  static from(value: BytesLike | Hash160 | string): AccountID;
+  static fromHex(value: HexString): AccountID;
+  static fromRAddress(value: string): AccountID;
 }
-
-declare const AccountID: AccountIDFactory;
 
 /** @serial Currency */
 declare class Currency {
@@ -568,38 +567,34 @@ declare class Issue {
   equals(other: Issue): boolean;
 }
 
-/** @inner-rich-type XFL */
-interface XFL {
+/** Decimal quantity whose wire form is an XFL encoding. */
+declare class XFLDecimal {
+  private constructor();
   readonly raw: bigint;
   mantissa(): bigint;
   exponent(): number;
   isNegative(): boolean;
   isZero(): boolean;
   sign(): -1 | 0 | 1;
-  log(): XFL;
-  root(degree: number): XFL;
+  log(): XFLDecimal;
+  root(degree: number): XFLDecimal;
   /**
    * Apply the bounded Hooks `float_int` projection. Conversion failures remain
    * ordinary Hook statuses even when a provider evaluates the rule locally.
    */
   toInt(decimalPlaces?: number, absolute?: boolean): HostResult<bigint>;
   toString(): string;
-  equals(other: XFL): boolean;
-  compare(other: XFL): number;
-}
-
-interface XFLFactory {
-  readonly zero: XFL;
-  readonly one: XFL;
-  fromRaw(raw: bigint): XFL;
+  equals(other: XFLDecimal): boolean;
+  compare(other: XFLDecimal): number;
+  static readonly zero: XFLDecimal;
+  static readonly one: XFLDecimal;
+  static fromRaw(raw: bigint): XFLDecimal;
   /**
    * Construct `mantissa × 10^exponent`. The value comes first so ordinary
    * calls read in the same order as the decimal quantity they express.
    */
-  from(mantissa: bigint | number, exponent?: number): HostResult<XFL>;
+  static from(mantissa: bigint | number, exponent?: number): HostResult<XFLDecimal>;
 }
-
-declare const XFL: XFLFactory;
 
 /** @serial Amount */
 declare class Amount {
@@ -608,15 +603,15 @@ declare class Amount {
   readonly currency?: Currency;
   readonly issuer?: AccountID;
   readonly mptIssuanceId?: Hash256;
-  readonly xfl?: XFL;
+  readonly xfl?: XFLDecimal;
   readonly drops?: Drops;
   readonly byteLength: 8 | 33 | 48;
   static from(value: BytesLike | STBlob): Amount;
   static drops(value: Drops): NativeAmount;
-  static iou(value: XFL, currency: Currency, issuer: AccountID): IOUAmount;
-  static mpt(value: XFL, mptIssuanceId: Hash256): MPTAmount;
+  static iou(value: XFLDecimal, currency: Currency, issuer: AccountID): IOUAmount;
+  static mpt(value: XFLDecimal, mptIssuanceId: Hash256): MPTAmount;
   toBytes(options?: SerializationOptions): Uint8Array;
-  toXFL(): XFL;
+  toXFL(): XFLDecimal;
   toString(): string;
   isNative(): this is NativeAmount;
   isIOU(): this is IOUAmount;
@@ -638,14 +633,14 @@ declare interface IOUAmount extends Amount {
   readonly drops: undefined;
   readonly currency: Currency;
   readonly issuer: AccountID;
-  readonly xfl: XFL;
+  readonly xfl: XFLDecimal;
 }
 
 declare interface MPTAmount extends Amount {
   readonly kind: "mpt";
   readonly drops: undefined;
   readonly mptIssuanceId: Hash256;
-  readonly xfl: XFL;
+  readonly xfl: XFLDecimal;
 }
 
 declare interface PathHop {
@@ -1587,21 +1582,21 @@ declare namespace util {
 }
 
 declare namespace float {
-  const zero: XFL;
-  const one: XFL;
-  function set(exponent: number, mantissa: bigint | number): HostResult<XFL>;
-  function sum(left: XFL, right: XFL): HostResult<XFL>;
-  function multiply(left: XFL, right: XFL): HostResult<XFL>;
-  function multiplyRatio(value: XFL, opts: { readonly numerator: number; readonly denominator: number; readonly roundUp?: boolean }): HostResult<XFL>;
-  function divide(left: XFL, right: XFL): HostResult<XFL>;
-  function negate(value: XFL): HostResult<XFL>;
-  function invert(value: XFL): HostResult<XFL>;
-  function compare(left: XFL, right: XFL): HostResult<number>;
-  function sign(value: XFL): HostResult<-1 | 0 | 1>;
-  function mantissa(value: XFL): HostResult<bigint>;
-  function log(value: XFL): HostResult<XFL>;
-  function root(value: XFL, degree: number): HostResult<XFL>;
-  function amount(value: XFL, issue?: Issue): HostResult<Amount>;
+  const zero: XFLDecimal;
+  const one: XFLDecimal;
+  function set(exponent: number, mantissa: bigint | number): HostResult<XFLDecimal>;
+  function sum(left: XFLDecimal, right: XFLDecimal): HostResult<XFLDecimal>;
+  function multiply(left: XFLDecimal, right: XFLDecimal): HostResult<XFLDecimal>;
+  function multiplyRatio(value: XFLDecimal, opts: { readonly numerator: number; readonly denominator: number; readonly roundUp?: boolean }): HostResult<XFLDecimal>;
+  function divide(left: XFLDecimal, right: XFLDecimal): HostResult<XFLDecimal>;
+  function negate(value: XFLDecimal): HostResult<XFLDecimal>;
+  function invert(value: XFLDecimal): HostResult<XFLDecimal>;
+  function compare(left: XFLDecimal, right: XFLDecimal): HostResult<number>;
+  function sign(value: XFLDecimal): HostResult<-1 | 0 | 1>;
+  function mantissa(value: XFLDecimal): HostResult<bigint>;
+  function log(value: XFLDecimal): HostResult<XFLDecimal>;
+  function root(value: XFLDecimal, degree: number): HostResult<XFLDecimal>;
+  function amount(value: XFLDecimal, issue?: Issue): HostResult<Amount>;
 }
 
 declare namespace ledger {

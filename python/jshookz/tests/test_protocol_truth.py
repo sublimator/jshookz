@@ -18,7 +18,7 @@ def test_rich_roots_are_non_constructible_factory_objects():
     host.init()
     try:
         result = host.eval(
-            "JSON.stringify([STBlob, Hash256, AccountID, XFL].map(root => {"
+            "JSON.stringify([STBlob, Hash256, AccountID, XFLDecimal].map(root => {"
             "  let constructError = false;"
             "  let instanceError = false;"
             "  try { new root(); } catch (error) { constructError = error instanceof TypeError; }"
@@ -44,15 +44,15 @@ def test_xfl_accessors_match_official_hook_float_vectors():
     try:
         result = host.eval(
             "JSON.stringify((() => {"
-            "  const positive = XFL.fromRaw(6089866696204910592n);"
-            "  const negative = XFL.fromRaw(1478180677777522688n);"
-            "  const hookApiVector = XFL.fromRaw(6270245249190730432n);"
-            "  const hookApiNegativeVector = XFL.fromRaw(1658559230763342528n);"
-            "  const zero = XFL.fromRaw(0n);"
+            "  const positive = XFLDecimal.fromRaw(6089866696204910592n);"
+            "  const negative = XFLDecimal.fromRaw(1478180677777522688n);"
+            "  const hookApiVector = XFLDecimal.fromRaw(6270245249190730432n);"
+            "  const hookApiNegativeVector = XFLDecimal.fromRaw(1658559230763342528n);"
+            "  const zero = XFLDecimal.fromRaw(0n);"
             "  let invalid = false;"
-            "  try { XFL.fromRaw(-1n); } catch (error) { invalid = error instanceof RangeError; }"
+            "  try { XFLDecimal.fromRaw(-1n); } catch (error) { invalid = error instanceof RangeError; }"
             "  let oversized = false;"
-            "  try { XFL.fromRaw(1n << 64n); } catch (error) { oversized = error instanceof RangeError; }"
+            "  try { XFLDecimal.fromRaw(1n << 64n); } catch (error) { oversized = error instanceof RangeError; }"
             "  return {"
             "    positive: [positive.mantissa().toString(), positive.exponent(), positive.isNegative()],"
             "    negative: [negative.mantissa().toString(), negative.exponent(), negative.isNegative()],"
