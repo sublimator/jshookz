@@ -10,7 +10,7 @@ add_library(jshookz_xahau_types STATIC
     ${JSHOOKZ_XAHAU_TYPES_SOURCES}
 )
 target_include_directories(jshookz_xahau_types PUBLIC
-    ${CMAKE_CURRENT_LIST_DIR}
+    ${JSHOOKZ_XAHAU_TYPES_INCLUDE_DIR}
 )
 target_link_libraries(jshookz_xahau_types PUBLIC jshookz_qjs_src)
 target_compile_features(jshookz_xahau_types PUBLIC cxx_std_23)
