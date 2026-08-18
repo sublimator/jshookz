@@ -8,5 +8,5 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # with the wasi-sdk toolchain; do not add_subdirectory it here.
 include(CTest)
 add_subdirectory(quickjs-cpp)
+add_subdirectory(xahau-types)
 add_subdirectory(x-data)
-add_subdirectory(x-data-quickjs)

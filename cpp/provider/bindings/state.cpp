@@ -6,6 +6,7 @@ namespace jshookz::provider::bindings {
 namespace {
 
 JSValue
+// @binding provider:state.get
 js_state_get(JSContext *ctx, JSValueConst this_val,
              int argc, JSValueConst *argv)
 {
@@ -36,6 +37,7 @@ js_state_get(JSContext *ctx, JSValueConst this_val,
 }
 
 JSValue
+// @binding provider:state.set
 js_state_set(JSContext *ctx, JSValueConst this_val,
              int argc, JSValueConst *argv)
 {

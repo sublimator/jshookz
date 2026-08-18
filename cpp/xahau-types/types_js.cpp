@@ -1,20 +1,6 @@
 /*
- * types_js.cpp - Expose C++ types to JavaScript via QuickJS
- *
- * This is compiled with clang++ into the WASM module alongside
- * QuickJS (which is C). The C++ types in types.hpp get QuickJS
- * class wrappers here, making them available as JS objects.
- *
- * Example JS usage:
- *   let h = Hash256.fromHex("AABB...");
- *   h.toHex()  // "AABB..."
- *   h.isZero() // false
- *
- *   let a = Amount.xrp(1000000);  // 1 XRP in drops
- *   a.isXRP()   // true
- *   a.drops()   // 1000000
- *
- *   let id = AccountID.fromHex("...");
+ * Host-blind JS wrappers for the types in types.hpp. Do not include
+ * hook_imports.hpp or call hook_* / host_*.
  */
 
 #include "types.hpp"
@@ -97,6 +83,7 @@ static JSValue js_blob_new(JSContext *ctx, const uint8_t *data, size_t len) {
     return obj;
 }
 
+// @binding provider:STBlob.from
 static JSValue js_blob_from(JSContext *ctx, JSValueConst this_val,
                             int argc, JSValueConst *argv)
 {
@@ -110,6 +97,7 @@ static JSValue js_blob_from(JSContext *ctx, JSValueConst this_val,
     return js_blob_new(ctx, bytes.data(), bytes.size());
 }
 
+// @binding provider:STBlob.fromHex
 static JSValue js_blob_from_hex(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv)
 {
@@ -123,6 +111,7 @@ static JSValue js_blob_from_hex(JSContext *ctx, JSValueConst this_val,
     return js_blob_new(ctx, bytes.data(), bytes.size());
 }
 
+// @binding provider:STBlob.byteLength
 static JSValue js_blob_byte_length(JSContext *ctx, JSValueConst this_val)
 {
     auto *blob = qjs::opaque<JSBlob>(ctx, this_val, js_blob_class_id);
@@ -130,6 +119,7 @@ static JSValue js_blob_byte_length(JSContext *ctx, JSValueConst this_val)
     return JS_NewInt64(ctx, (int64_t)blob->len);
 }
 
+// @binding provider:STBlob.toBytes
 static JSValue js_blob_to_bytes(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv)
 {
@@ -139,6 +129,7 @@ static JSValue js_blob_to_bytes(JSContext *ctx, JSValueConst this_val,
         ctx, std::span<std::uint8_t const>{blob->data, blob->len});
 }
 
+// @binding provider:STBlob.toHex
 static JSValue js_blob_to_hex(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
 {
@@ -157,6 +148,7 @@ static JSValue js_blob_to_hex(JSContext *ctx, JSValueConst this_val,
     return result;
 }
 
+// @binding provider:STBlob.byteAt
 static JSValue js_blob_byte_at(JSContext *ctx, JSValueConst this_val,
                                int argc, JSValueConst *argv)
 {
@@ -170,6 +162,7 @@ static JSValue js_blob_byte_at(JSContext *ctx, JSValueConst this_val,
     return JS_NewInt32(ctx, blob->data[index]);
 }
 
+// @binding provider:STBlob.equals
 static JSValue js_blob_equals(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
 {
@@ -211,6 +204,7 @@ static JSClassDef js_hash256_class = {
 };
 
 // Hash256.from(BytesLike) — shared byte inputs, with strings decoded as hex
+// @binding provider:Hash256.from
 static JSValue js_hash256_from(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv)
 {
@@ -233,6 +227,7 @@ static JSValue js_hash256_from(JSContext *ctx, JSValueConst this_val,
         ctx, js_hash256_class_id, bytes.data(), bytes.size());
 }
 
+// @binding provider:Hash256.fromHex
 static JSValue js_hash256_from_hex(JSContext *ctx, JSValueConst this_val,
                                    int argc, JSValueConst *argv)
 {
@@ -251,6 +246,7 @@ static JSValue js_hash256_from_hex(JSContext *ctx, JSValueConst this_val,
         ctx, js_hash256_class_id, bytes.data(), bytes.size());
 }
 
+// @binding provider:Hash256.toHex
 static JSValue js_hash256_to_hex(JSContext *ctx, JSValueConst this_val,
                                   int argc, JSValueConst *argv)
 {
@@ -263,6 +259,7 @@ static JSValue js_hash256_to_hex(JSContext *ctx, JSValueConst this_val,
     return JS_NewString(ctx, buf);
 }
 
+// @binding provider:Hash256.toBytes
 static JSValue js_hash256_to_bytes(JSContext *ctx, JSValueConst this_val,
                                     int argc, JSValueConst *argv)
 {
@@ -272,6 +269,7 @@ static JSValue js_hash256_to_bytes(JSContext *ctx, JSValueConst this_val,
         ctx, std::span<std::uint8_t const>{h->data(), h->size()});
 }
 
+// @binding provider:Hash256.isZero
 static JSValue js_hash256_is_zero(JSContext *ctx, JSValueConst this_val,
                                    int argc, JSValueConst *argv)
 {
@@ -280,6 +278,7 @@ static JSValue js_hash256_is_zero(JSContext *ctx, JSValueConst this_val,
     return JS_NewBool(ctx, h->is_zero());
 }
 
+// @binding provider:Hash256.equals
 static JSValue js_hash256_equals(JSContext *ctx, JSValueConst this_val,
                                   int argc, JSValueConst *argv)
 {
@@ -315,6 +314,7 @@ static JSClassDef js_accountid_class = {
 };
 
 // AccountID.from(BytesLike)
+// @binding provider:AccountID.from
 static JSValue js_accountid_from(JSContext *ctx, JSValueConst this_val,
                                   int argc, JSValueConst *argv)
 {
@@ -337,6 +337,7 @@ static JSValue js_accountid_from(JSContext *ctx, JSValueConst this_val,
         ctx, js_accountid_class_id, bytes.data(), bytes.size());
 }
 
+// @binding provider:AccountID.fromHex
 static JSValue js_accountid_from_hex(JSContext *ctx, JSValueConst this_val,
                                      int argc, JSValueConst *argv)
 {
@@ -355,6 +356,7 @@ static JSValue js_accountid_from_hex(JSContext *ctx, JSValueConst this_val,
         ctx, js_accountid_class_id, bytes.data(), bytes.size());
 }
 
+// @binding provider:AccountID.toHex
 static JSValue js_accountid_to_hex(JSContext *ctx, JSValueConst this_val,
                                     int argc, JSValueConst *argv)
 {
@@ -366,6 +368,7 @@ static JSValue js_accountid_to_hex(JSContext *ctx, JSValueConst this_val,
     return JS_NewString(ctx, buf);
 }
 
+// @binding provider:AccountID.toBytes
 static JSValue js_accountid_to_bytes(JSContext *ctx, JSValueConst this_val,
                                       int argc, JSValueConst *argv)
 {
@@ -375,6 +378,7 @@ static JSValue js_accountid_to_bytes(JSContext *ctx, JSValueConst this_val,
         ctx, std::span<std::uint8_t const>{a->data(), a->size()});
 }
 
+// @binding provider:AccountID.isZero
 static JSValue js_accountid_is_zero(JSContext *ctx, JSValueConst this_val,
                                      int argc, JSValueConst *argv)
 {
@@ -384,6 +388,7 @@ static JSValue js_accountid_is_zero(JSContext *ctx, JSValueConst this_val,
     return JS_NewBool(ctx, account->is_zero());
 }
 
+// @binding provider:AccountID.equals
 static JSValue js_accountid_equals(JSContext *ctx, JSValueConst this_val,
                                     int argc, JSValueConst *argv)
 {
@@ -424,6 +429,7 @@ static JSValue js_xfl_new(JSContext *ctx, const XFL &xfl) {
     return js_native_new<XFL>(ctx, js_xfl_class_id, xfl);
 }
 
+// @binding provider:XFL.fromRaw
 static JSValue js_xfl_from_raw(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv)
 {
@@ -482,6 +488,7 @@ makeAccountID(
 
 }  // namespace jshookz::provider
 
+// @binding provider:XFL.raw
 static JSValue js_xfl_raw(JSContext *ctx, JSValueConst this_val)
 {
     auto *x = qjs::opaque<XFL>(ctx, this_val, js_xfl_class_id);
@@ -489,6 +496,7 @@ static JSValue js_xfl_raw(JSContext *ctx, JSValueConst this_val)
     return JS_NewBigInt64(ctx, x->raw());
 }
 
+// @binding provider:XFL.mantissa
 static JSValue js_xfl_mantissa(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv)
 {
@@ -497,6 +505,7 @@ static JSValue js_xfl_mantissa(JSContext *ctx, JSValueConst this_val,
     return JS_NewBigInt64(ctx, static_cast<std::int64_t>(x->mantissa()));
 }
 
+// @binding provider:XFL.exponent
 static JSValue js_xfl_exponent(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv)
 {
@@ -505,6 +514,7 @@ static JSValue js_xfl_exponent(JSContext *ctx, JSValueConst this_val,
     return JS_NewInt32(ctx, x->exponent());
 }
 
+// @binding provider:XFL.isNegative
 static JSValue js_xfl_is_negative(JSContext *ctx, JSValueConst this_val,
                                    int argc, JSValueConst *argv)
 {
@@ -513,6 +523,7 @@ static JSValue js_xfl_is_negative(JSContext *ctx, JSValueConst this_val,
     return JS_NewBool(ctx, x->is_negative());
 }
 
+// @binding provider:XFL.isZero
 static JSValue js_xfl_is_zero(JSContext *ctx, JSValueConst this_val,
                                int argc, JSValueConst *argv)
 {
@@ -536,6 +547,8 @@ static const JSCFunctionListEntry js_xfl_static_funcs[] = {
 };
 
 static bool
+// @binding provider:AccountID.zero
+// @binding provider:AccountID.one
 install_account_constants(JSContext* ctx, JSValueConst factory)
 {
     std::uint8_t zeroBytes[20] = {};

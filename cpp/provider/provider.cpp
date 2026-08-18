@@ -47,6 +47,7 @@ destroy_runtime(void)
 }
 
 static JSValue
+// @binding provider:CallbackInfo
 callbackInfo(JSContext *context, uint32_t rawFlags)
 {
     using jshookz::provider::qjs::OwnedValue;
@@ -86,7 +87,7 @@ callbackInfo(JSContext *context, uint32_t rawFlags)
  *     contract. The cap's job is narrower: never hand the host an unbounded
  *     read.
  *   - The result slot is the VALUE/STATUS channel, not the bulk channel. Bytes
- *     have a proper path (encode_object returns a Uint8Array the host reads
+ *     have a proper path (guest types return Uint8Array the host reads
  *     from wasm memory directly). 1 MiB is far above any legitimate status,
  *     hash, error, or decoded-object JSON.
  *   - Deliberate consequence: hex of a maximum VL field (918744 bytes ->
@@ -94,8 +95,7 @@ callbackInfo(JSContext *context, uint32_t rawFlags)
  *     bytes channel, not a bug to raise the cap for.
  *
  * FIXED, never host-configurable: a per-node knob would let two nodes disagree
- * about whether the same contract succeeded. Pinned on both sides of the
- * boundary by cpp/x-data-quickjs/tests/test_fixture_provider_result_abi.py.
+ * about whether the same contract succeeded.
  */
 enum { RESULT_MAX = 1048576 };
 
@@ -279,12 +279,6 @@ void qjs_init(void)
         jshookz::provider::registerBindings(ctx) &&
         register_cpp_types(ctx) &&
         register_uint_types(ctx);
-#ifdef CONFIG_PROTOCOL_XDATA
-    if (initialized) {
-        register_protocol_functions(ctx);
-        initialized = !JS_HasException(ctx);
-    }
-#endif
     if (initialized)
         initialized =
             jshookz::provider::installDeterministicSandbox(ctx);

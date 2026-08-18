@@ -76,7 +76,6 @@ jobs:
         run: |
           uv sync --project python/jshookz --locked --group dev
           uv sync --project python/hostem --locked --group dev
-          uv sync --project cpp/x-data-quickjs --locked
 
       - name: Verify generated Hook ABI and TypeScript API
         run: |
@@ -107,8 +106,7 @@ jobs:
         run: |
           python/jshookz/.venv/bin/pytest -q python/jshookz/tests
           python/hostem/.venv/bin/pytest -q python/hostem/tests
-          JSHOOKZ_QJS_RUNNER="$GITHUB_WORKSPACE/build/cpp/x-data-quickjs/qjs_runner" \
-            cpp/x-data-quickjs/.venv/bin/pytest -q cpp/x-data-quickjs/tests
+          python/jshookz/.venv/bin/pytest -q cpp/x-data/tests
           scripts/check-wasm-stack.sh
 
 

@@ -6,18 +6,21 @@ namespace jshookz::provider::bindings {
 namespace {
 
 JSValue
+// @binding provider:ledger.sequence
 js_ledger_sequence(JSContext *ctx, JSValueConst this_val)
 {
     return JS_NewInt64(ctx, hook_ledger_seq());
 }
 
 JSValue
+// @binding provider:ledger.lastTime
 js_ledger_last_time(JSContext *ctx, JSValueConst this_val)
 {
     return JS_NewInt64(ctx, hook_ledger_last_time());
 }
 
 JSValue
+// @binding provider:ledger.lastHash
 js_ledger_last_hash(JSContext *ctx, JSValueConst this_val)
 {
     uint8_t bytes[32];
@@ -31,6 +34,7 @@ js_ledger_last_hash(JSContext *ctx, JSValueConst this_val)
 }
 
 JSValue
+// @binding provider:otxn.type
 js_otxn_type(JSContext *ctx, JSValueConst this_val,
              int argc, JSValueConst *argv)
 {
@@ -41,6 +45,7 @@ js_otxn_type(JSContext *ctx, JSValueConst this_val,
 }
 
 JSValue
+// @binding provider:hook.account
 js_hook_account(JSContext *ctx, JSValueConst this_val,
                 int argc, JSValueConst *argv)
 {

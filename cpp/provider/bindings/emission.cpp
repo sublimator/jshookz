@@ -6,6 +6,7 @@ namespace jshookz::provider::bindings {
 namespace {
 
 JSValue
+// @binding provider:emit.prepare
 js_emit_prepare(JSContext *ctx, JSValueConst this_val,
                 int argc, JSValueConst *argv)
 {
@@ -50,6 +51,7 @@ js_emit_prepare(JSContext *ctx, JSValueConst this_val,
 }
 
 JSValue
+// @binding provider:emit.reserve
 js_emit_reserve(JSContext *ctx, JSValueConst this_val,
                 int argc, JSValueConst *argv)
 {
@@ -63,6 +65,7 @@ js_emit_reserve(JSContext *ctx, JSValueConst this_val,
 }
 
 JSValue
+// @binding provider:emit.tx
 js_emit_tx(JSContext *ctx, JSValueConst this_val,
            int argc, JSValueConst *argv)
 {

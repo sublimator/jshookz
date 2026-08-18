@@ -38,11 +38,21 @@ python/hostem/.venv/bin/pytest -q python/hostem/tests
 Edit the policy or generator, not generated output. The source of truth is the
 pinned public Xahau `hook_api.macro`, parsed by hookz.
 
-## x-data-quickjs (native)
+## Host C++ (`cpp/xahau-types`, `cpp/x-data`)
+
+`xahau-types` is host-blind: no `hook_*` / `host_*`. That is why it links
+on Mac. Host crossings stay in `cpp/provider/bindings/`.
 
 ```bash
-uv sync --project cpp/x-data-quickjs --locked
-cpp/x-data-quickjs/.venv/bin/pytest -q cpp/x-data-quickjs/tests
+conan profile detect --exist-ok
+conan install cpp --output-folder=build/cpp --build=missing \
+  -s compiler.cppstd=23
+cmake -S cpp -B build/cpp \
+  -DCMAKE_TOOLCHAIN_FILE="$PWD/build/cpp/conan_toolchain.cmake" \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build/cpp
+ctest --test-dir build/cpp --output-on-failure
+python/jshookz/.venv/bin/pytest -q cpp/x-data/tests
 scripts/check-generated-definitions.sh
 scripts/check-wasm-stack.sh
 ```
