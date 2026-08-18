@@ -30,7 +30,7 @@ uintFinalizer(JSRuntime* runtime, JSValue value)
 }
 
 JSClassDef const uintClass = {
-    "UInt",
+    .class_name = "UInt",
     .finalizer = uintFinalizer,
 };
 

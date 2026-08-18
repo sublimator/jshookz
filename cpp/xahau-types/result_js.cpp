@@ -5,7 +5,7 @@ namespace {
 
 JSClassID resultClassId;
 JSClassID effectResultClassId;
-JSClassDef const resultClass = {"Result"};
+JSClassDef const resultClass = {.class_name = "Result"};
 
 JSValue
 // @binding provider:Result.okOr
@@ -108,24 +108,15 @@ resultMoot(
     return JS_UNDEFINED;
 }
 
-#define RESULT_CFUNC_DEF(name, length, callback)                              \
-    {                                                                         \
-        name, 0, JS_DEF_CFUNC, 0,                                             \
-            .u = {.func = {                                                   \
-                      length, JS_CFUNC_generic, {.generic = callback}}}       \
-    }
-
 JSCFunctionListEntry const resultPrototypeFunctions[] = {
-    RESULT_CFUNC_DEF("okOr", 1, resultOkOr),
-    RESULT_CFUNC_DEF("okOrHandle", 1, resultOkOrHandle),
-    RESULT_CFUNC_DEF("okMapOr", 2, resultOkMapOr),
+    JS_CFUNC_DEF("okOr", 1, resultOkOr),
+    JS_CFUNC_DEF("okOrHandle", 1, resultOkOrHandle),
+    JS_CFUNC_DEF("okMapOr", 2, resultOkMapOr),
 };
 
 JSCFunctionListEntry const effectResultPrototypeFunctions[] = {
-    RESULT_CFUNC_DEF("moot", 0, resultMoot),
+    JS_CFUNC_DEF("moot", 0, resultMoot),
 };
-
-#undef RESULT_CFUNC_DEF
 
 JSValue
 newResult(JSContext* ctx, bool effect)
