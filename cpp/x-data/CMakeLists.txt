@@ -10,6 +10,7 @@ target_include_directories(jshookz_xdata PUBLIC
 )
 target_compile_definitions(jshookz_xdata PUBLIC
     CATL_XDATA_NO_BOOST_JSON
+    CATL_XDATA_NO_THROWING_CURSOR
     CODEC_BACKEND_XDATA
 )
 target_compile_features(jshookz_xdata PUBLIC cxx_std_23)
@@ -84,6 +85,20 @@ if(BUILD_TESTING)
         add_executable(test_scan_alloc tests/test_scan_alloc.cpp)
         target_link_libraries(test_scan_alloc PRIVATE jshookz_xdata GTest::gtest_main)
         gtest_discover_tests(test_scan_alloc DISCOVERY_TIMEOUT 30)
+
+        add_executable(test_parser_context tests/test_parser_context.cpp)
+        target_link_libraries(test_parser_context PRIVATE jshookz_xdata GTest::gtest_main)
+        gtest_discover_tests(test_parser_context DISCOVERY_TIMEOUT 30)
+
+        add_test(NAME throwing_cursor_poison
+            COMMAND ${CMAKE_COMMAND}
+                -DCOMPILER=${CMAKE_CXX_COMPILER}
+                -DPROBE=${CMAKE_CURRENT_LIST_DIR}/tests/throwing_cursor_poison_probe.cpp
+                -DINC0=${CMAKE_CURRENT_LIST_DIR}/includes
+                -DINC1=${CMAKE_CURRENT_LIST_DIR}/core/includes
+                -DOUT=${CMAKE_CURRENT_BINARY_DIR}/throwing_cursor_poison_probe.o
+                -P ${CMAKE_CURRENT_LIST_DIR}/tests/check_throwing_cursor_poison.cmake
+        )
 
         find_package(Python3 COMPONENTS Interpreter)
         if(Python3_Interpreter_FOUND)

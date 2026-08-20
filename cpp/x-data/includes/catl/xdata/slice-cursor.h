@@ -63,6 +63,7 @@ struct SliceCursor
         return data.data()[pos];
     }
 
+#ifndef CATL_XDATA_NO_THROWING_CURSOR
     uint8_t
     peek_u8() const
     {
@@ -73,6 +74,7 @@ struct SliceCursor
         }
         return *result;
     }
+#endif
 
     std::expected<uint8_t, CodecErrorValue>
     try_read_u8()
@@ -85,6 +87,7 @@ struct SliceCursor
         return data.data()[pos++];
     }
 
+#ifndef CATL_XDATA_NO_THROWING_CURSOR
     uint8_t
     read_u8()
     {
@@ -95,6 +98,7 @@ struct SliceCursor
         }
         return *result;
     }
+#endif
 
     std::expected<uint16_t, CodecErrorValue>
     try_read_uint16_be()
@@ -110,6 +114,7 @@ struct SliceCursor
         return result;
     }
 
+#ifndef CATL_XDATA_NO_THROWING_CURSOR
     uint16_t
     read_uint16_be()
     {
@@ -120,6 +125,7 @@ struct SliceCursor
         }
         return *result;
     }
+#endif
 
     std::expected<uint32_t, CodecErrorValue>
     try_read_uint32_be()
@@ -137,6 +143,7 @@ struct SliceCursor
         return result;
     }
 
+#ifndef CATL_XDATA_NO_THROWING_CURSOR
     uint32_t
     read_uint32_be()
     {
@@ -147,6 +154,7 @@ struct SliceCursor
         }
         return *result;
     }
+#endif
 
     std::expected<uint64_t, CodecErrorValue>
     try_read_uint64_be()
@@ -165,6 +173,7 @@ struct SliceCursor
         return result;
     }
 
+#ifndef CATL_XDATA_NO_THROWING_CURSOR
     uint64_t
     read_uint64_be()
     {
@@ -175,6 +184,7 @@ struct SliceCursor
         }
         return *result;
     }
+#endif
 
     std::expected<void, CodecErrorValue>
     try_advance(size_t n)
@@ -190,6 +200,7 @@ struct SliceCursor
         return {};
     }
 
+#ifndef CATL_XDATA_NO_THROWING_CURSOR
     void
     advance(size_t n)
     {
@@ -199,6 +210,7 @@ struct SliceCursor
             CATL_XDATA_THROW(SliceCursorError(result.error().message));
         }
     }
+#endif
 
     std::expected<Slice, CodecErrorValue>
     try_read_slice(size_t n)
@@ -214,6 +226,7 @@ struct SliceCursor
         return result;
     }
 
+#ifndef CATL_XDATA_NO_THROWING_CURSOR
     Slice
     read_slice(size_t n)
     {
@@ -224,6 +237,7 @@ struct SliceCursor
         }
         return *result;
     }
+#endif
 };
 
 inline std::expected<std::pair<Slice, uint32_t>, CodecErrorValue>
@@ -301,6 +315,7 @@ try_read_field_header(SliceCursor& cursor)
 // Returns: pair of (field header slice, field code).
 // field_code 0 means end-of-input (empty cursor before a tag), not an
 // illegal long-form header — those throw.
+#ifndef CATL_XDATA_NO_THROWING_CURSOR
 inline std::pair<Slice, uint32_t>
 read_field_header(SliceCursor& cursor)
 {
@@ -311,6 +326,7 @@ read_field_header(SliceCursor& cursor)
     }
     return *result;
 }
+#endif
 
 // Read variable length prefix
 inline std::expected<size_t, CodecErrorValue>
@@ -360,6 +376,7 @@ try_read_vl_length(SliceCursor& cursor)
         std::to_string(static_cast<int>(byte1))));
 }
 
+#ifndef CATL_XDATA_NO_THROWING_CURSOR
 inline size_t
 read_vl_length(SliceCursor& cursor)
 {
@@ -370,5 +387,6 @@ read_vl_length(SliceCursor& cursor)
     }
     return *result;
 }
+#endif
 
 }  // namespace catl::xdata

@@ -447,13 +447,14 @@ run_amount(std::string_view hex)
     size_t n = get_amount_size(bytes[0]);
     o.locate_ok = bytes.size() == n;
     o.locate_end = o.locate_ok ? static_cast<std::uint32_t>(bytes.size()) : 0;
-    auto c = scan_detail::certify_amount(Slice{bytes.data(), bytes.size()});
-    o.certify_null_ok = c.has_value();
+    char const* c =
+        scan_detail::certify_amount(Slice{bytes.data(), bytes.size()});
+    o.certify_null_ok = c == nullptr;
     o.certify_index_ok = o.certify_null_ok;
     o.sinks_agree = true;
     o.consumed_all = o.locate_ok && o.certify_null_ok;
-    if (!c)
-        o.certify_err = c.error().message;
+    if (c)
+        o.certify_err = c;
     if (!o.locate_ok)
         o.locate_err = "amount extent mismatch";
     if (o.certify_null_ok)
@@ -479,22 +480,22 @@ run_pathset(std::string_view hex)
     auto bytes = decode_hex(hex);
     o.blob_size = bytes.size();
     Slice backing{bytes.data(), bytes.size()};
-    SliceCursor cur{backing, 0};
-    auto loc = scan_detail::scan_pathset(cur, ScanMode::Locate);
-    o.locate_ok = loc.has_value();
-    if (loc)
-        o.locate_end = *loc;
+    ParserContext loc_ctx{backing};
+    scan_detail::scan_pathset(loc_ctx, ScanMode::Locate);
+    o.locate_ok = !loc_ctx.failed();
+    if (o.locate_ok)
+        o.locate_end = static_cast<std::uint32_t>(loc_ctx.pos());
     else
-        o.locate_err = loc.error().message;
-    SliceCursor cur2{backing, 0};
-    auto cert = scan_detail::scan_pathset(cur2, ScanMode::CertifyWire);
-    o.certify_null_ok = cert.has_value();
+        o.locate_err = loc_ctx.as_error().message;
+    ParserContext cert_ctx{backing};
+    scan_detail::scan_pathset(cert_ctx, ScanMode::CertifyWire);
+    o.certify_null_ok = !cert_ctx.failed();
     o.certify_index_ok = o.certify_null_ok;
     o.sinks_agree = true;
     o.consumed_all = o.locate_ok && o.certify_null_ok &&
         o.locate_end == bytes.size();
-    if (!cert)
-        o.certify_err = cert.error().message;
+    if (cert_ctx.failed())
+        o.certify_err = cert_ctx.as_error().message;
     if (o.certify_null_ok)
     {
         try

@@ -18,32 +18,32 @@ constexpr uint8_t TYPE_ISSUER = 0x20;
 inline void
 skip_pathset(ParserContext& ctx)
 {
-    while (!ctx.cursor.empty())
+    while (!ctx.failed() && !ctx.empty())
     {
-        uint8_t type_byte = ctx.cursor.read_u8();
+        uint8_t type_byte = 0;
+        if (!ctx.read_u8(type_byte))
+            return;
 
         if (type_byte == PathSet::END_BYTE)
-        {
-            break;  // End of PathSet
-        }
+            break;
 
         if (type_byte == PathSet::PATH_SEPARATOR)
-        {
-            continue;  // Path separator, next path
-        }
+            continue;
 
-        // It's a hop - type byte tells us what follows
         if (type_byte & PathSet::TYPE_ACCOUNT)
         {
-            ctx.cursor.advance(20);  // AccountID
+            if (!ctx.advance(20))
+                return;
         }
         if (type_byte & PathSet::TYPE_CURRENCY)
         {
-            ctx.cursor.advance(20);  // Currency
+            if (!ctx.advance(20))
+                return;
         }
         if (type_byte & PathSet::TYPE_ISSUER)
         {
-            ctx.cursor.advance(20);  // AccountID as issuer
+            if (!ctx.advance(20))
+                return;
         }
     }
 }
