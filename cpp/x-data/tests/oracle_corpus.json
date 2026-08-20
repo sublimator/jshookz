@@ -1,0 +1,236 @@
+{
+  "oracle_repo": "xahaud-worktrees/xahaud-hookz-test-vectors",
+  "oracle_commit": "4e08bd2c7",
+  "notes": "Account empty VL (8100) is defaulted STAccount, 0 payload bytes. Account 20 zero bytes is an explicit all-zero AccountID (base58 rrr...rhoLvTp). Not empty VL.",
+  "cases": [
+    {
+      "id": "stobject-account-20",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "20-byte Account VL payload (genesis).",
+      "json": {
+        "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+      }
+    },
+    {
+      "id": "stobject-account-zero-20",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "81140000000000000000000000000000000000000000",
+      "notes": "20 zero bytes: explicit all-zero AccountID (base58 rrr...rhoLvTp). Not empty VL.",
+      "json": {
+        "Account": "rrrrrrrrrrrrrrrrrrrrrhoLvTp"
+      }
+    },
+    {
+      "id": "stobject-account-empty-vl",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "8100",
+      "notes": "STAccount VL length 0 (defaulted). Distinct from 20-byte zero AccountID."
+    },
+    {
+      "id": "stobject-account-vl-1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "8101FF",
+      "notes": "STAccount VL length 1 is invalid.",
+      "oracle_error": "Error decoding: Invalid STAccount size"
+    },
+    {
+      "id": "stobject-seq-account-sorted",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "24000000018114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "",
+      "json": {
+        "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+        "Sequence": 1
+      }
+    },
+    {
+      "id": "stobject-seq-account-out-of-order",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E82400000001",
+      "notes": "Out-of-order nonduplicate fields: xahaud set() accepts."
+    },
+    {
+      "id": "stobject-duplicate-account",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E88114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "Duplicate Account after sort.",
+      "oracle_error": "Error decoding: Duplicate field detected"
+    },
+    {
+      "id": "stobject-trailing-ff",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8FF",
+      "notes": "Trailing bytes after a complete object.",
+      "oracle_error": "Error decoding: Unknown field in Object t=15 f=15"
+    },
+    {
+      "id": "stobject-nop-0",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "Zero NOP headers."
+    },
+    {
+      "id": "stobject-nop-1",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "998114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "One NOP 0x99; omitted from material index."
+    },
+    {
+      "id": "stobject-nop-63",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999998114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "63 NOPs accepted (throw is ++counter == 64)."
+    },
+    {
+      "id": "stobject-nop-64",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999998114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "64th NOP: Too many NOPS.",
+      "oracle_error": "Error decoding: Too many NOPS"
+    },
+    {
+      "id": "stobject-native-amount",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "6140000000000F42408114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "",
+      "json": {
+        "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+        "Amount": "1000000"
+      }
+    },
+    {
+      "id": "stobject-iou-amount",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "61D4838D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E88114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "",
+      "json": {
+        "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+        "Amount": {
+          "value": "1",
+          "currency": "USD",
+          "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+        }
+      }
+    },
+    {
+      "id": "stobject-iou-zero",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "6180000000000000000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E88114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "Canonical IOU zero; not native.",
+      "json": {
+        "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+        "Amount": {
+          "value": "0",
+          "currency": "USD",
+          "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+        }
+      }
+    },
+    {
+      "id": "stobject-iou-zero-issuer",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "61D4838D7EA4C68000000000000000000000000000555344000000000000000000000000000000000000000000000000008114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "IOU issuer all-zero is native-account, rejected. Not empty VL.",
+      "oracle_error": "Error decoding: invalid native account"
+    },
+    {
+      "id": "amount-mpt",
+      "expect": "accept",
+      "codec_type": "amount",
+      "blob": "600000000000000001000000000000000000000000000000000000000000000000",
+      "notes": "",
+      "json": {
+        "value": "1",
+        "mpt_issuance_id": "000000000000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "id": "amount-native",
+      "expect": "accept",
+      "codec_type": "amount",
+      "blob": "40000000000F4240",
+      "notes": "",
+      "json": "1000000"
+    },
+    {
+      "id": "stobject-vl-blob",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "701A02DEAD8114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "",
+      "json": {
+        "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+        "Blob": "DEAD"
+      }
+    },
+    {
+      "id": "stobject-nested-memos",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8F9EA7D02DEADE1F1",
+      "notes": "",
+      "json": {
+        "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+        "Memos": [
+          {
+            "Memo": {
+              "MemoData": "DEAD"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "stobject-pathset",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8011201B5F762798A53D543A014CAF8B297CFF8F2F937E800",
+      "notes": "",
+      "json": {
+        "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+        "Paths": [
+          [
+            {
+              "account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "pathset-empty",
+      "expect": "reject",
+      "codec_type": "pathset",
+      "blob": "00",
+      "notes": "Empty PathSet (lone 0x00).",
+      "oracle_error": "Error decoding: empty path"
+    },
+    {
+      "id": "stobject-fee",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "68400000000000000A",
+      "notes": "",
+      "json": {
+        "Fee": "10"
+      }
+    }
+  ]
+}

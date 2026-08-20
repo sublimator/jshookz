@@ -184,8 +184,8 @@ Protocol::get_field_by_code(uint32_t field_code) const
     uint16_t type_code = get_field_type_code(field_code);
     uint16_t field_id = get_field_id(field_code);
 
-    // Fast path for common cases
-    if (type_code < 256 && field_id < 256)
+    if (type_code < Protocol::kFastTypeDim &&
+        field_id < Protocol::kFastNthDim)
     {
         return fast_lookup_->data[type_code][field_id];
     }
@@ -263,25 +263,31 @@ Protocol::get_ledger_entry_type_name(uint16_t leTypeCode) const
 void
 Protocol::build_fast_lookup()
 {
-    // Clear the lookup table
     std::memset(fast_lookup_->data, 0, sizeof(fast_lookup_->data));
+    max_serialized_type_code_ = 0;
+    max_serialized_nth_ = 0;
+    fast_lookup_fallback_count_ = 0;
 
-    // Populate the fast lookup table
     for (const auto& field : fields_)
     {
         uint16_t type_code = get_field_type_code(field.code);
         uint16_t field_id = get_field_id(field.code);
+        if (type_code > max_serialized_type_code_ && type_code < 10000)
+            max_serialized_type_code_ = type_code;
+        if (field_id > max_serialized_nth_ && field_id < 10000)
+            max_serialized_nth_ = field_id;
 
-        if (type_code < 256 && field_id < 256)
+        if (type_code < Protocol::kFastTypeDim &&
+            field_id < Protocol::kFastNthDim)
         {
             // First writer wins — don't let duplicates (e.g. "hash"
             // nth=1) overwrite real fields (e.g. "LedgerHash" nth=1).
-            // TODO: detect duplicate field codes at load time and
-            // either warn loudly or reject the definitions outright.
-            // The root cause is broken definitions JSON with duplicate
-            // "hash" entries at different indices.
             if (!fast_lookup_->data[type_code][field_id])
                 fast_lookup_->data[type_code][field_id] = &field;
+        }
+        else
+        {
+            ++fast_lookup_fallback_count_;
         }
     }
 }

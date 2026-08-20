@@ -56,6 +56,29 @@ if(BUILD_TESTING)
         )
         gtest_discover_tests(test_codecs)
 
+        add_executable(test_scan tests/test_scan.cpp)
+        target_link_libraries(test_scan PRIVATE
+            jshookz_xdata_json GTest::gtest_main
+        )
+        target_include_directories(test_scan PRIVATE ${CMAKE_CURRENT_LIST_DIR}/tests)
+        target_compile_definitions(test_scan PRIVATE
+            JSHOOKZ_ORACLE_CORPUS_JSON="${CMAKE_CURRENT_LIST_DIR}/tests/oracle_corpus.json"
+        )
+        gtest_discover_tests(test_scan)
+
+        add_executable(oracle_corpus_runner tests/oracle_corpus_runner.cpp)
+        target_link_libraries(oracle_corpus_runner PRIVATE jshookz_xdata_json)
+        target_include_directories(oracle_corpus_runner PRIVATE
+            ${CMAKE_CURRENT_LIST_DIR}/tests
+        )
+        target_compile_definitions(oracle_corpus_runner PRIVATE
+            JSHOOKZ_ORACLE_CORPUS_JSON="${CMAKE_CURRENT_LIST_DIR}/tests/oracle_corpus.json"
+        )
+
+        add_executable(test_scan_noexcept tests/test_scan_noexcept.cpp)
+        target_link_libraries(test_scan_noexcept PRIVATE jshookz_xdata)
+        target_compile_options(test_scan_noexcept PRIVATE -fno-exceptions)
+
         find_package(Python3 COMPONENTS Interpreter)
         if(Python3_Interpreter_FOUND)
             set(_cleaned_dir ${CMAKE_CURRENT_BINARY_DIR}/cleaned)

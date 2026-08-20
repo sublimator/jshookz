@@ -1,0 +1,126 @@
+#include "oracle_run.hpp"
+
+#include <catl/xdata/protocol.h>
+#include <catl/xdata/scan.h>
+
+#include <gtest/gtest.h>
+
+#include <boost/json.hpp>
+
+#include <fstream>
+#include <set>
+#include <sstream>
+
+#ifndef JSHOOKZ_ORACLE_CORPUS_JSON
+#error "JSHOOKZ_ORACLE_CORPUS_JSON is required"
+#endif
+
+using namespace catl::xdata;
+
+namespace {
+
+boost::json::value
+load_corpus()
+{
+    std::ifstream in(JSHOOKZ_ORACLE_CORPUS_JSON);
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    return boost::json::parse(ss.str());
+}
+
+oracle_run::Outcomes
+run_case(Protocol const& protocol, boost::json::object const& c)
+{
+    auto const type = std::string(c.at("codec_type").as_string());
+    auto const blob = std::string(c.at("blob").as_string());
+    if (type == "amount")
+        return oracle_run::run_amount(blob);
+    if (type == "pathset")
+        return oracle_run::run_pathset(blob);
+    return oracle_run::run_stobject(protocol, blob);
+}
+
+}  // namespace
+
+TEST(LookupTable, DimensionsAre32By128)
+{
+    EXPECT_EQ(Protocol::kFastTypeDim, 32);
+    EXPECT_EQ(Protocol::kFastNthDim, 128);
+    EXPECT_EQ(
+        Protocol::fast_lookup_bytes(),
+        sizeof(FieldDef const*) * 32u * 128u);
+    auto const old_bytes = sizeof(FieldDef const*) * 256u * 256u;
+    EXPECT_EQ(old_bytes / Protocol::fast_lookup_bytes(), 16u);
+}
+
+TEST(LookupTable, EmbeddedXahauFitsAndCountsFallbacks)
+{
+    auto const p = Protocol::load_embedded_xahau_protocol();
+    EXPECT_LT(p.max_serialized_type_code(), Protocol::kFastTypeDim);
+    // Some nth values exceed 128 (definitions go to 259+). Those are the
+    // counted slow-path remainder, together with type codes 10001+.
+    EXPECT_GT(p.max_serialized_nth(), 0u);
+    EXPECT_GT(p.fast_lookup_fallback_count(), 0u);
+}
+
+TEST(ScanCorpus, LocateCertifyDecodeMatchOracleExpect)
+{
+    auto const protocol = Protocol::load_embedded_xahau_protocol();
+    auto const root = load_corpus().as_object();
+    auto const& cases = root.at("cases").as_array();
+    ASSERT_FALSE(cases.empty());
+
+    for (auto const& item : cases)
+    {
+        auto const& c = item.as_object();
+        auto const id = std::string(c.at("id").as_string());
+        auto const expect = std::string(c.at("expect").as_string());
+        auto const o = run_case(protocol, c);
+        EXPECT_TRUE(o.sinks_agree) << id << " NullSink vs IndexSink";
+        if (expect == "accept")
+        {
+            EXPECT_TRUE(o.locate_ok) << id << " locate " << o.locate_err;
+            EXPECT_TRUE(o.certify_null_ok)
+                << id << " certify " << o.certify_err;
+            EXPECT_TRUE(o.decode_frames_ok) << id << " decode frames";
+        }
+        else
+        {
+            EXPECT_FALSE(o.certify_null_ok) << id << " should reject";
+        }
+    }
+}
+
+TEST(ScanCorpus, RequiredIdsPresent)
+{
+    auto const root = load_corpus().as_object();
+    std::set<std::string> ids;
+    for (auto const& item : root.at("cases").as_array())
+        ids.insert(std::string(item.as_object().at("id").as_string()));
+    for (char const* need : {
+             "stobject-account-20",
+             "stobject-account-empty-vl",
+             "stobject-account-zero-20",
+             "stobject-nop-63",
+             "stobject-nop-64",
+             "stobject-duplicate-account",
+             "stobject-seq-account-out-of-order",
+             "stobject-trailing-ff",
+             "stobject-pathset",
+             "stobject-native-amount",
+             "stobject-iou-amount",
+             "stobject-vl-blob",
+             "stobject-nested-memos",
+         })
+    {
+        EXPECT_TRUE(ids.count(need)) << need;
+    }
+}
+
+TEST(ScanNoThrow, MalformedUnknownFieldIsError)
+{
+    auto const protocol = Protocol::load_embedded_xahau_protocol();
+    auto o = oracle_run::run_stobject(protocol, "FF");
+    EXPECT_FALSE(o.certify_null_ok);
+    EXPECT_FALSE(o.locate_ok);
+}

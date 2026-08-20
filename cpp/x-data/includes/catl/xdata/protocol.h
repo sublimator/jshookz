@@ -139,6 +139,33 @@ public:
         expand_xaddresses_ = v;
     }
 
+    static constexpr uint16_t kFastTypeDim = 32;
+    static constexpr uint16_t kFastNthDim = 128;
+
+    uint16_t
+    max_serialized_type_code() const
+    {
+        return max_serialized_type_code_;
+    }
+
+    uint16_t
+    max_serialized_nth() const
+    {
+        return max_serialized_nth_;
+    }
+
+    std::size_t
+    fast_lookup_fallback_count() const
+    {
+        return fast_lookup_fallback_count_;
+    }
+
+    static constexpr std::size_t
+    fast_lookup_bytes()
+    {
+        return sizeof(const FieldDef*) * kFastTypeDim * kFastNthDim;
+    }
+
 private:
     bool expand_xaddresses_ = false;
     // Network this protocol was loaded for (if specified)
@@ -150,13 +177,15 @@ private:
     // Types that were inferred as VL-encoded during loading
     std::unordered_set<uint16_t> inferred_vl_types_;
 
+    uint16_t max_serialized_type_code_ = 0;
+    uint16_t max_serialized_nth_ = 0;
+    std::size_t fast_lookup_fallback_count_ = 0;
+
     //@@start fast-lookup
-    // Fast lookup table for common cases (type < 256, field_id < 256)
-    // Heap-allocated: 256*256*sizeof(ptr) = 256KB on wasm32.
-    // Was stack-embedded, which overflowed the 64KB WASM stack and
-    // silently corrupted dlmalloc's small-bin free list.
+    // Fast lookup: type < 32, nth < 128. 32*128*sizeof(ptr) = 16KB on wasm32.
+    // Was 256*256 = 256KB. Types 10001+ and nth >= 128 use fieldCodeIndex_.
     struct LookupTable {
-        const FieldDef* data[256][256] = {};
+        const FieldDef* data[kFastTypeDim][kFastNthDim] = {};
     };
     std::unique_ptr<LookupTable> fast_lookup_ = std::make_unique<LookupTable>();
     //@@end fast-lookup
