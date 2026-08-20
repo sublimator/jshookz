@@ -37,13 +37,13 @@ policySpec(BytePolicy policy) noexcept
             return {
                 StringMode::reject,
                 RichMode::reject,
-                "byte array, declared typed array, or ArrayBuffer"};
+                "Uint8Array, ArrayBuffer, or 0..255 byte array"};
         case BytePolicy::hexString:
         case BytePolicy::legacyHexInput:
             return {
                 StringMode::hex,
                 RichMode::reject,
-                "byte array, declared typed array, ArrayBuffer, or hex string"};
+                "Uint8Array, ArrayBuffer, 0..255 byte array, or hex string"};
         case BytePolicy::bytesLikeOrSTBlob:
             return {
                 StringMode::reject,
@@ -243,8 +243,8 @@ ByteView::parseBinary(JSValueConst value)
     size_t byteLength = 0;
     size_t bufferSize = 0;
     int const typedArrayType = JS_GetTypedArrayType(value);
-    if (typedArrayType >= 0 &&
-        typedArrayType != JS_TYPED_ARRAY_FLOAT16) {
+    if (typedArrayType == JS_TYPED_ARRAY_UINT8 ||
+        typedArrayType == JS_TYPED_ARRAY_UINT8C) {
         OwnedValue buffer(
             ctx_,
             JS_GetTypedArrayBuffer(

@@ -4,26 +4,11 @@
  * its broader specification, and the provider surface manifest by hash.
  */
 
-type HookTypedArray =
-  | Int8Array
-  | Uint8Array
-  | Uint8ClampedArray
-  | Int16Array
-  | Uint16Array
-  | Int32Array
-  | Uint32Array
-  | Float32Array
-  | Float64Array
-  | BigInt64Array
-  | BigUint64Array;
-
-type BytesLike = HookTypedArray | ArrayBuffer | readonly number[];
+type BytesLike = Uint8Array | ArrayBuffer | readonly number[];
 
 type HexString = string;
 
 type UIntWidth = 8 | 16 | 32 | 64;
-
-type HashWidth = 32;
 
 type UIntInput<Bits extends UIntWidth = UIntWidth> = UInt<Bits> | bigint | number;
 
@@ -143,6 +128,11 @@ type UIntResult<T> = Result<T, UIntError>;
 /**
  * Immutable fixed-width unsigned integer. Width classes extend this
  * (`instanceof UInt` and `instanceof UInt8`).
+ *
+ * JavaScript operators intentionally remain available through the default
+ * primitive record projections (`u32be`, `u64be`). Choose this value type
+ * when the contract wants its width and overflow policy carried with the
+ * value rather than re-established around every arithmetic expression.
  */
 declare abstract class UInt<Bits extends UIntWidth = UIntWidth> {
   readonly bits: Bits;
@@ -223,31 +213,20 @@ declare class STBlob {
   static fromHex(value: HexString): STBlob;
 }
 
-/** Fixed-width hash. Width classes extend this (`instanceof Hash` and `instanceof Hash256`). */
-declare abstract class Hash<Width extends HashWidth = HashWidth> {
-  readonly byteLength: Width;
-  protected constructor();
-  toBytes(): Uint8Array;
-  toHex(): HexString;
-  isZero(): boolean;
-  equals(other: Hash<Width>): boolean;
-}
-
 /** @serial Hash256 */
-declare class Hash256 extends Hash<32> {
-  private constructor();
+declare class Hash256 {
+  static readonly zero: Hash256;
   static from(value: BytesLike): Hash256;
   /** Decode exactly 32 bytes from an even-length hexadecimal literal. */
   static fromHex(value: HexString): Hash256;
+  toHex(): HexString;
+  toBytes(): Uint8Array;
+  isZero(): boolean;
+  equals(other: BytesLike | Hash256): boolean;
 }
 
 /** @serial AccountID */
 declare class AccountID {
-  private constructor();
-  toHex(): HexString;
-  toBytes(): Uint8Array;
-  isZero(): boolean;
-  equals(other: AccountID): boolean;
   /** XRP's native-issue account: 20 zero bytes. */
   static readonly zero: AccountID;
   /** Ripple's no-account sentinel: integer one as a 20-byte AccountID. */
@@ -255,17 +234,10 @@ declare class AccountID {
   static from(value: BytesLike): AccountID;
   /** Decode exactly 20 bytes from an even-length hexadecimal literal. */
   static fromHex(value: HexString): AccountID;
-}
-
-/** Decimal quantity whose wire form is an XFL encoding. */
-declare class XFLDecimal {
-  private constructor();
-  readonly raw: bigint;
-  mantissa(): bigint;
-  exponent(): number;
-  isNegative(): boolean;
+  toHex(): HexString;
+  toBytes(): Uint8Array;
   isZero(): boolean;
-  static fromRaw(raw: bigint): XFLDecimal;
+  equals(other: BytesLike | AccountID): boolean;
 }
 
 declare const enum TransactionType {

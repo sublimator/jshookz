@@ -22,13 +22,6 @@ function typecheckV1Surface(blob: STBlob, hash: Hash256, account: AccountID): vo
   account.toHex();
   account.toBytes();
 
-  const xfl = XFLDecimal.fromRaw(0n);
-  xfl.raw;
-  xfl.mantissa();
-  xfl.exponent();
-  xfl.isNegative();
-  xfl.isZero();
-
   const uint = rollback.onFail(UInt64.from(1n), "UInt64 construction failed", 1);
   uint.bits;
   uint.byteLength;

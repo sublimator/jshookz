@@ -43,17 +43,16 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "bba9e0666c339603f10926392d285087cf60075e39a0fdc738b2b29d52864acc"
+    "sha256": "eda397ac79167fb00db60939e1dc21fd6c2eee7c4cec7078127167a0dca0f0de"
   },
   "globals": {
-    "AccountID": "object",
-    "Hash256": "object",
-    "STBlob": "object",
-    "UInt16": "object",
-    "UInt32": "object",
-    "UInt64": "object",
-    "UInt8": "object",
-    "XFLDecimal": "object",
+    "AccountID": "function",
+    "Hash256": "function",
+    "STBlob": "function",
+    "UInt16": "function",
+    "UInt32": "function",
+    "UInt64": "function",
+    "UInt8": "function",
     "accept": "function",
     "emit": "object",
     "hook": "object",
@@ -140,6 +139,7 @@
       "members": {
         "byteAt": "function",
         "byteLength": "value",
+        "constructor": "function",
         "equals": "function",
         "toBytes": "function",
         "toHex": "function"
@@ -147,40 +147,46 @@
       "own": [
         "byteAt",
         "byteLength",
+        "constructor",
         "equals",
         "toBytes",
         "toHex"
       ],
       "probe": "STBlob.from(new Uint8Array(0))"
     },
-    "UInt": {
+    "UInt16": {
       "members": {
-        "add": "function",
-        "bits": "value",
-        "byteLength": "value",
-        "compare": "function",
-        "equals": "function",
-        "isZero": "function",
-        "saturatingAdd": "function",
-        "saturatingSubtract": "function",
-        "subtract": "function",
-        "toBigInt": "function",
-        "toNumber": "function",
-        "toString": "function"
+        "constructor": "function"
       },
       "own": [
-        "add",
-        "bits",
-        "byteLength",
-        "compare",
-        "equals",
-        "isZero",
-        "saturatingAdd",
-        "saturatingSubtract",
-        "subtract",
-        "toBigInt",
-        "toNumber",
-        "toString"
+        "constructor"
+      ],
+      "probe": "UInt16.zero"
+    },
+    "UInt32": {
+      "members": {
+        "constructor": "function"
+      },
+      "own": [
+        "constructor"
+      ],
+      "probe": "UInt32.zero"
+    },
+    "UInt64": {
+      "members": {
+        "constructor": "function"
+      },
+      "own": [
+        "constructor"
+      ],
+      "probe": "UInt64.from(0n)"
+    },
+    "UInt8": {
+      "members": {
+        "constructor": "function"
+      },
+      "own": [
+        "constructor"
       ],
       "probe": "UInt8.zero"
     },
@@ -196,23 +202,6 @@
         "moot"
       ],
       "probe": "state.set('surface-probe', new Uint8Array(0))"
-    },
-    "XFLDecimal": {
-      "members": {
-        "exponent": "function",
-        "isNegative": "function",
-        "isZero": "function",
-        "mantissa": "function",
-        "raw": "value"
-      },
-      "own": [
-        "exponent",
-        "isNegative",
-        "isZero",
-        "mantissa",
-        "raw"
-      ],
-      "probe": "XFLDecimal.fromRaw(0n)"
     }
   },
   "schema": "jshookz.javascript-surface.v1",
@@ -225,7 +214,8 @@
     },
     "Hash256": {
       "from": "function",
-      "fromHex": "function"
+      "fromHex": "function",
+      "zero": "value"
     },
     "STBlob": {
       "from": "function",
@@ -254,9 +244,6 @@
       "max": "value",
       "mulDiv": "function",
       "zero": "value"
-    },
-    "XFLDecimal": {
-      "fromRaw": "function"
     }
   }
 }

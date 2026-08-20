@@ -16,19 +16,7 @@
  * deliberately versioned subset; tooling must not silently widen that subset.
  */
 
-type HookTypedArray =
-  | Int8Array
-  | Uint8Array
-  | Uint8ClampedArray
-  | Int16Array
-  | Uint16Array
-  | Int32Array
-  | Uint32Array
-  | Float32Array
-  | Float64Array
-  | BigInt64Array
-  | BigUint64Array;
-type BytesLike = HookTypedArray | ArrayBuffer | readonly number[];
+type BytesLike = Uint8Array | ArrayBuffer | readonly number[];
 type HexString = string;
 type UIntWidth = 8 | 16 | 32 | 64;
 type UIntInput<Bits extends UIntWidth = UIntWidth> = UInt<Bits> | bigint | number;
@@ -188,6 +176,11 @@ type UIntResult<T> = Result<T, UIntError>;
 /**
  * Immutable fixed-width unsigned integer. Width classes extend this
  * (`instanceof UInt` and `instanceof UInt8`).
+ *
+ * JavaScript operators intentionally remain available through the default
+ * primitive record projections (`u32be`, `u64be`). Choose this value type
+ * when the contract wants its width and overflow policy carried with the
+ * value rather than re-established around every arithmetic expression.
  */
 declare abstract class UInt<Bits extends UIntWidth = UIntWidth> {
   readonly bits: Bits;
@@ -206,6 +199,7 @@ declare abstract class UInt<Bits extends UIntWidth = UIntWidth> {
   saturatingAdd(other: UInt<Bits>): UInt<Bits>;
   saturatingSubtract(other: UInt<Bits>): UInt<Bits>;
 }
+
 
 declare class UInt8 extends UInt<8> {
   private constructor();
@@ -261,23 +255,14 @@ interface BinarySchema<T> {
   safeParse(value: BytesLike | STBlob): ParseResult<T>;
 }
 
+/** Width-known element codec. Offset is not part of the unit; composition assigns it. */
 interface RecordField<T, Width extends number = number> {
-  readonly kind: string;
-  readonly offset: number;
   readonly byteLength: Width;
-
-  /** Permit overlap only with fields carrying the same non-empty group. */
-  overlay(group: string): RecordField<T, Width>;
 }
 
-/** Produce one configured record field at the requested offset. */
-type RootFieldFactory<T, Width extends number> =
-  (offset: number) => RecordField<T, Width>;
-
 /**
- * A named scalar schema produced from one configured root-field factory.
- * Parsing requires exactly `byteLength`; encoding and parsing reuse the
- * returned field's representation logic. Runtime schema objects are frozen.
+ * A named scalar schema. Parsing requires exactly `byteLength`; encoding and
+ * parsing reuse the element's representation. Runtime schema objects are frozen.
  */
 interface ScalarSchema<
   Name extends string,
@@ -292,9 +277,8 @@ interface ScalarSchema<
 }
 
 /**
- * Define a named scalar schema from either a field factory or an already
- * configured root field. `cell` invokes a factory with zero, then requires a
- * genuine record-field descriptor rooted at offset zero in either form.
+ * One-element record: a width-known codec, no offset.
+ * `cell("Hash256", record.hash(32))`.
  */
 declare function cell<
   const Name extends string,
@@ -302,121 +286,152 @@ declare function cell<
   const Width extends number,
 >(
   name: Name,
-  factory: RootFieldFactory<T, Width>,
+  field: RecordField<T, Width>,
 ): ScalarSchema<Name, T, Width>;
 
-declare function cell<
-  const Name extends string,
-  T,
-  const Width extends number,
->(
-  name: Name,
-  rootField: RecordField<T, Width>,
-): ScalarSchema<Name, T, Width>;
+type RecordFieldValue<T> =
+  T extends RecordField<infer V, number> ? V : never;
 
-type RecordShape = Readonly<Record<string, RecordField<unknown, number>>>;
-type RecordFieldValue<T> = T extends RecordField<infer V, number> ? V : never;
-type RecordValue<T extends RecordShape> = {
+type OverlayValue<T extends { readonly [K: string]: RecordField<unknown, number> }> = {
   -readonly [K in keyof T as RecordFieldValue<T[K]> extends never ? never : K]: RecordFieldValue<T[K]>;
+};
+
+interface RecordLayoutClaim {
+  readonly expectOffset: number;
+}
+
+type RecordEntry<
+  Name extends string = string,
+  T = unknown,
+  Width extends number = number,
+> =
+  | readonly [name: Name, field: RecordField<T, Width>]
+  | readonly [name: Name, field: RecordField<T, Width>, layout: RecordLayoutClaim]
+  | RecordField<never, number>;
+
+type RecordEntries = readonly RecordEntry[];
+
+type RecordValueFromEntries<E extends RecordEntries> = {
+  [T in E[number] as T extends readonly [infer N extends string, infer F, ...unknown[]]
+    ? RecordFieldValue<F> extends never ? never : N
+    : never
+  ]: T extends readonly [string, infer F, ...unknown[]] ? RecordFieldValue<F> : never;
 };
 
 interface RecordSchema<
   Name extends string,
   Size extends number,
-  Shape extends RecordShape,
-> extends BinarySchema<RecordValue<Shape>> {
+  Value,
+> extends BinarySchema<Value> {
   readonly name: Name;
   readonly byteLength: Size;
-  readonly fields: Shape;
 
   /**
    * Decode a record after validating its size and field representations.
    * Prefer this result-valued form for state or transaction-derived bytes.
    */
-  safeParse(value: BytesLike | STBlob): ParseResult<RecordValue<Shape>>;
+  safeParse(value: BytesLike | STBlob): ParseResult<Value>;
 
   /**
    * Assertion form for a programmer-guaranteed record. Throws on malformed
    * input; it must not become the default for untrusted persisted bytes.
    */
-  parse(value: BytesLike | STBlob): RecordValue<Shape>;
+  parse(value: BytesLike | STBlob): Value;
 
-  encode(value: RecordValue<Shape>): STBlob;
+  encode(value: Value): STBlob;
   patch(
     source: BytesLike | STBlob,
-    values: Partial<RecordValue<Shape>>,
+    values: Partial<Value>,
   ): ParseResult<STBlob>;
 }
 
 /**
- * Define a checked fixed-width composite binary record at hook runtime.
+ * Sequential fixed-width record. Each entry is an independent unit that
+ * names its own length; the array order assigns offsets. `expectOffset` is
+ * an assertion about the derived cursor, never a position. Reserved bytes
+ * are `record.padding(n)` as a bare entry (no dummy name). Accidental overlap is unrepresentable; use
+ * `record.overlay({ ... })` for equal-width reinterpretations of one range.
  *
- * Construction validates bounds, coverage, and overlap. Overlapping fields
- * are rejected unless every participant names the same explicit overlay
- * group. The default coverage policy is `complete`; use `record.padding(...)`
- * for reserved bytes or opt into `allow-gaps` deliberately.
- *
- * This is a runtime API first. A future compiler may recognize and lower the
- * same declarative schema to generated TypeScript, WASM, or native metadata
- * without changing hook source.
+ * Construction refuses when the derived extent is not `byteLength`.
  */
 declare function record<
   const Name extends string,
   const Size extends number,
-  const Shape extends RecordShape,
+  const Entries extends RecordEntries,
 >(
   name: Name,
   byteLength: Size,
-  fields: Shape,
-  options?: record.Options,
-): RecordSchema<Name, Size, Shape>;
+  fields: Entries,
+): RecordSchema<Name, Size, RecordValueFromEntries<Entries>>;
 
 declare namespace record {
-  interface Options {
-    readonly coverage?: "complete" | "allow-gaps";
-  }
-
-  function u8(offset: number): RecordField<number, 1>;
+  function u8(): RecordField<number, 1>;
   namespace u8 {
-    function uint(offset: number): RecordField<UInt8, 1>;
+    function uint(): RecordField<UInt8, 1>;
   }
-  function u16be(offset: number): RecordField<number, 2>;
-  function u16le(offset: number): RecordField<number, 2>;
+  function u16be(): RecordField<number, 2>;
+  function u16le(): RecordField<number, 2>;
   namespace u16be {
-    function uint(offset: number): RecordField<UInt16, 2>;
+    function uint(): RecordField<UInt16, 2>;
   }
   namespace u16le {
-    function uint(offset: number): RecordField<UInt16, 2>;
+    function uint(): RecordField<UInt16, 2>;
   }
-  function u32be(offset: number): RecordField<number, 4>;
-  function u32le(offset: number): RecordField<number, 4>;
+  function u32be(): RecordField<number, 4>;
+  function u32le(): RecordField<number, 4>;
   namespace u32be {
-    function uint(offset: number): RecordField<UInt32, 4>;
+    function uint(): RecordField<UInt32, 4>;
   }
   namespace u32le {
-    function uint(offset: number): RecordField<UInt32, 4>;
+    function uint(): RecordField<UInt32, 4>;
   }
-  function i32be(offset: number): RecordField<number, 4>;
-  function i32le(offset: number): RecordField<number, 4>;
-  function u64be(offset: number): RecordField<bigint, 8>;
-  function u64le(offset: number): RecordField<bigint, 8>;
+  function i32be(): RecordField<number, 4>;
+  function i32le(): RecordField<number, 4>;
+  function u64be(): RecordField<bigint, 8>;
+  function u64le(): RecordField<bigint, 8>;
   namespace u64be {
-    function uint(offset: number): RecordField<UInt64, 8>;
+    function uint(): RecordField<UInt64, 8>;
   }
   namespace u64le {
-    function uint(offset: number): RecordField<UInt64, 8>;
+    function uint(): RecordField<UInt64, 8>;
   }
-  function i64be(offset: number): RecordField<bigint, 8>;
-  function i64le(offset: number): RecordField<bigint, 8>;
-  function xflbe(offset: number): RecordField<XFLDecimal, 8>;
-  function xflle(offset: number): RecordField<XFLDecimal, 8>;
-  function bytes<const Width extends number>(offset: number, byteLength: Width): RecordField<STBlob, Width>;
-  function hash<const Width extends HashWidth>(offset: number, byteLength: Width): RecordField<HashByWidth[Width], Width>;
-  function accountID(offset: number): RecordField<AccountID, 20>;
-  function currency(offset: number): RecordField<Currency, 20>;
+  function i64be(): RecordField<bigint, 8>;
+  function i64le(): RecordField<bigint, 8>;
+  function xflbe(): RecordField<XFLDecimal, 8>;
+  function xflle(): RecordField<XFLDecimal, 8>;
+  function bytes<const Width extends number>(byteLength: Width): RecordField<STBlob, Width>;
+  function hash<const Width extends HashWidth>(byteLength: Width): RecordField<HashByWidth[Width], Width>;
+  function accountID(): RecordField<AccountID, 20>;
+  function currency(): RecordField<Currency, 20>;
 
-  /** A named field that participates in coverage but is omitted from values. */
-  function padding<const Width extends number>(offset: number, byteLength: Width): RecordField<never, Width>;
+  /**
+   * Exact `byteLength` ASCII bytes (0x00–0x7F). No padding, no NUL trim.
+   * Wrong length or a non-ASCII byte is a parse failure.
+   */
+  function ascii<const Width extends number>(byteLength: Width): RecordField<string, Width>;
+  /**
+   * Exact `byteLength` UTF-8 bytes. No padding or terminator. Invalid UTF-8
+   * or wrong encoded length is a parse failure.
+   */
+  function utf8<const Width extends number>(byteLength: Width): RecordField<string, Width>;
+  /**
+   * Buffer of `byteLength` bytes containing a NUL-terminated C string.
+   * Decode stops at the first 0x00; trailing bytes after that must be 0x00.
+   * Missing terminator or a non-zero tail is a parse failure.
+   */
+  function cString<const Width extends number>(byteLength: Width): RecordField<string, Width>;
+
+  /** Occupies `byteLength` bytes and is omitted from parsed values. */
+  function padding<const Width extends number>(byteLength: Width): RecordField<never, Width>;
+
+  /**
+   * One computed range with equal-width named interpretations. Construction
+   * refuses mixed widths.
+   */
+  function overlay<
+    const Width extends number,
+    const Shape extends { readonly [K: string]: RecordField<unknown, Width> },
+  >(interpretations: Shape): RecordField<OverlayValue<Shape>, Width>;
 }
 
 interface ByteCompareOptions {
@@ -457,6 +472,7 @@ declare class STBlob {
   compare(other: BytesLike | STBlob, options?: ByteCompareOptions): -1 | 0 | 1;
   indexOf(needle: BytesLike | STBlob, options?: ByteFindOptions): number | undefined;
   static from(value: BytesLike): STBlob;
+  /** Decode an even-length hexadecimal literal. */
   static fromHex(value: HexString): STBlob;
   static concat(...parts: (BytesLike | STBlob)[]): STBlob;
   static fromUint8(value: number): STBlob;
@@ -464,7 +480,7 @@ declare class STBlob {
   static fromUint64(value: bigint | number, endian?: "big" | "little"): STBlob;
 }
 
-/** Fixed-width hash. Width classes extend this (`instanceof Hash` and `instanceof Hash256`). */
+/** @inner-rich-type Hash */
 declare abstract class Hash<Width extends HashWidth = HashWidth> {
   private readonly __hashWidthBrand: Width;
   readonly byteLength: Width;
@@ -499,11 +515,16 @@ declare class Hash192 extends Hash<24> {
 
 /** @serial Hash256 */
 declare class Hash256 extends Hash<32> {
-  private constructor();
   static readonly zero: Hash256;
-  static from(value: BytesLike | Hash<32>): Hash256;
+  static from(value: BytesLike): Hash256;
   /** Decode exactly 32 bytes from an even-length hexadecimal literal. */
   static fromHex(value: HexString): Hash256;
+  static from(value: BytesLike | Hash<32>): Hash256;
+  constructor(value: BytesLike | Hash<32>);
+  toHex(): HexString;
+  toBytes(): Uint8Array;
+  isZero(): boolean;
+  equals(other: BytesLike | Hash256): boolean;
 }
 
 /** @serial Hash384 */
@@ -531,16 +552,22 @@ interface HashByWidth {
 
 /** @serial AccountID */
 declare class AccountID extends Hash160 {
-  private constructor();
   readonly r: string;
   toString(): string;
   /** XRP's native-issue account: 20 zero bytes. */
   static readonly zero: AccountID;
   /** Ripple's no-account sentinel: integer one as a 20-byte AccountID. */
   static readonly one: AccountID;
-  static from(value: BytesLike | Hash160 | string): AccountID;
+  static from(value: BytesLike): AccountID;
+  /** Decode exactly 20 bytes from an even-length hexadecimal literal. */
   static fromHex(value: HexString): AccountID;
+  static from(value: BytesLike | Hash160 | string): AccountID;
   static fromRAddress(value: string): AccountID;
+  constructor(value: BytesLike | Hash160 | string);
+  toHex(): HexString;
+  toBytes(): Uint8Array;
+  isZero(): boolean;
+  equals(other: BytesLike | AccountID): boolean;
 }
 
 /** @serial Currency */
@@ -560,40 +587,131 @@ declare class Issue {
   readonly kind: "native" | "iou" | "mpt";
   readonly currency?: Currency;
   readonly issuer?: AccountID;
-  readonly mptIssuanceId?: Hash256;
+  readonly mptIssuanceId?: Hash192;
   static native(): Issue;
   static iou(currency: Currency, issuer: AccountID): Issue;
-  static mpt(mptIssuanceId: Hash256): Issue;
+  static mpt(mptIssuanceId: Hash192): Issue;
   equals(other: Issue): boolean;
 }
 
-/** Decimal quantity whose wire form is an XFL encoding. */
-declare class XFLDecimal {
+/** Failure from constructing or operating on an `XFLDecimal`. */
+interface XFLError {
+  readonly domain: "xfl";
+  readonly issue:
+    | "overflow"
+    | "underflow"
+    | "division-by-zero"
+    | "out-of-range"
+    | "invalid";
+}
+type XFLResult<T> = Result<T, XFLError>;
+
+/**
+ * Artifact-declared last-digit rule for unmarked `XFLDecimal` arithmetic.
+ *
+ * `xahauFloatV1` matches live C-hook `float_*` numbers at the pin (Results,
+ * not poison). `nearestEvenV1` is the 16-digit XFL-domain projection of
+ * pinned `ripple::Number`.
+ */
+declare const enum XFLProfile {
+  xahauFloatV1 = 0,
+  nearestEvenV1 = 1,
+}
+
+interface HookConfig {
+  readonly xflArithmetic: XFLProfile;
+}
+
+declare function defineHookConfig<const C extends HookConfig>(config: C): C;
+
+/**
+ * Packed XLS-17 XFL word: mantissa, exponent, raw bits. Not the public
+ * scalar. Poison words are not values.
+ */
+declare class XFLWord {
   private constructor();
   readonly raw: bigint;
   mantissa(): bigint;
   exponent(): number;
+  toDecimal(): XFLDecimal;
+  static fromRaw(raw: bigint): XFLWord;
+  static fromDecimal(value: XFLDecimal): XFLWord;
+}
+
+/**
+ * Immutable profile-bound arithmetic. Local override of the artifact
+ * profile: `XFLMath.nearestEvenV1.add(left, right)`.
+ */
+declare class XFLMath {
+  private constructor();
+  readonly profile: XFLProfile;
+  static readonly xahauFloatV1: XFLMath;
+  static readonly nearestEvenV1: XFLMath;
+  static for(profile: XFLProfile): XFLMath;
+  add(left: XFLDecimal, right: XFLDecimal): XFLResult<XFLDecimal>;
+  subtract(left: XFLDecimal, right: XFLDecimal): XFLResult<XFLDecimal>;
+  multiply(left: XFLDecimal, right: XFLDecimal): XFLResult<XFLDecimal>;
+  divide(left: XFLDecimal, right: XFLDecimal): XFLResult<XFLDecimal>;
+  invert(value: XFLDecimal): XFLResult<XFLDecimal>;
+  multiplyRatio(
+    value: XFLDecimal,
+    opts: {
+      readonly numerator: number;
+      readonly denominator: number;
+      readonly roundUp?: boolean;
+    },
+  ): XFLResult<XFLDecimal>;
+  log(value: XFLDecimal): XFLResult<XFLDecimal>;
+  root(value: XFLDecimal, degree: number): XFLResult<XFLDecimal>;
+}
+
+/**
+ * XFLDecimal — the bounded decimal value used for issued amounts on Xahau.
+ *
+ * In C Hook material "an XFL" is a packed signed 64-bit word. That word is
+ * `XFLWord`. This type is the value it encodes: sign × mantissa × 10^exponent,
+ * 16 significant digits, exponent −96..80, one canonical zero. Every instance
+ * is a valid number. There is no raw word, mantissa, or exponent accessor
+ * here; ABI poison is a Result, never an `XFLDecimal`.
+ *
+ * Unmarked `add` / `multiply` / `divide` take last-digit semantics from
+ * `hookConfig.xflArithmetic`. They are not aliases of C `float_*`. Local
+ * override is `XFLMath`. Negate and compare stay on the scalar.
+ *
+ * @see XFLWord
+ * @see XFLMath
+ * @see XFLProfile
+ * @inner-rich-type XFLDecimal
+ */
+declare class XFLDecimal {
+  private constructor();
   isNegative(): boolean;
   isZero(): boolean;
   sign(): -1 | 0 | 1;
-  log(): XFLDecimal;
-  root(degree: number): XFLDecimal;
-  /**
-   * Apply the bounded Hooks `float_int` projection. Conversion failures remain
-   * ordinary Hook statuses even when a provider evaluates the rule locally.
-   */
-  toInt(decimalPlaces?: number, absolute?: boolean): HostResult<bigint>;
+  add(other: XFLDecimal): XFLResult<XFLDecimal>;
+  subtract(other: XFLDecimal): XFLResult<XFLDecimal>;
+  multiply(other: XFLDecimal): XFLResult<XFLDecimal>;
+  divide(other: XFLDecimal): XFLResult<XFLDecimal>;
+  negate(): XFLDecimal;
+  invert(): XFLResult<XFLDecimal>;
+  multiplyRatio(opts: {
+    readonly numerator: number;
+    readonly denominator: number;
+    readonly roundUp?: boolean;
+  }): XFLResult<XFLDecimal>;
+  log(): XFLResult<XFLDecimal>;
+  root(degree: number): XFLResult<XFLDecimal>;
+  toInt(decimalPlaces?: number): XFLResult<bigint>;
   toString(): string;
   equals(other: XFLDecimal): boolean;
   compare(other: XFLDecimal): number;
   static readonly zero: XFLDecimal;
   static readonly one: XFLDecimal;
-  static fromRaw(raw: bigint): XFLDecimal;
   /**
    * Construct `mantissa × 10^exponent`. The value comes first so ordinary
    * calls read in the same order as the decimal quantity they express.
    */
-  static from(mantissa: bigint | number, exponent?: number): HostResult<XFLDecimal>;
+  static from(mantissa: bigint | number, exponent?: number): XFLResult<XFLDecimal>;
 }
 
 /** @serial Amount */
@@ -602,14 +720,14 @@ declare class Amount {
   readonly issue: Issue;
   readonly currency?: Currency;
   readonly issuer?: AccountID;
-  readonly mptIssuanceId?: Hash256;
-  readonly xfl?: XFLDecimal;
+  readonly mptIssuanceId?: Hash192;
+  readonly value?: XFLDecimal | bigint;
   readonly drops?: Drops;
   readonly byteLength: 8 | 33 | 48;
   static from(value: BytesLike | STBlob): Amount;
   static drops(value: Drops): NativeAmount;
   static iou(value: XFLDecimal, currency: Currency, issuer: AccountID): IOUAmount;
-  static mpt(value: XFLDecimal, mptIssuanceId: Hash256): MPTAmount;
+  static mpt(value: bigint, mptIssuanceId: Hash192): MPTAmount;
   toBytes(options?: SerializationOptions): Uint8Array;
   toXFL(): XFLDecimal;
   toString(): string;
@@ -625,7 +743,8 @@ declare interface NativeAmount extends Amount {
   readonly drops: Drops;
   readonly currency: undefined;
   readonly issuer: undefined;
-  readonly xfl: undefined;
+  readonly mptIssuanceId: undefined;
+  readonly value: undefined;
 }
 
 declare interface IOUAmount extends Amount {
@@ -633,14 +752,17 @@ declare interface IOUAmount extends Amount {
   readonly drops: undefined;
   readonly currency: Currency;
   readonly issuer: AccountID;
-  readonly xfl: XFLDecimal;
+  readonly mptIssuanceId: undefined;
+  readonly value: XFLDecimal;
 }
 
 declare interface MPTAmount extends Amount {
   readonly kind: "mpt";
   readonly drops: undefined;
-  readonly mptIssuanceId: Hash256;
-  readonly xfl: XFLDecimal;
+  readonly currency: undefined;
+  readonly issuer: undefined;
+  readonly mptIssuanceId: Hash192;
+  readonly value: bigint;
 }
 
 declare interface PathHop {
@@ -716,15 +838,18 @@ declare interface STObject {
 }
 
 /**
- * Lazy fixed-shape array view. Numeric access decodes an element on demand;
- * an out-of-range index produces `undefined`.
+ * Minted array of certified objects. `length` is known from the certification
+ * index. Numeric access materializes an element on demand; an out-of-range
+ * index produces `undefined`. Dense; iterable in index order.
  *
  * @serial STArray
  * @inner-rich-type STArray
  */
-declare interface STArray<T extends STObject = STObject> {
+declare interface STArray<T extends STObject = STObject> extends Iterable<T> {
   readonly length: number;
   readonly [index: number]: T | undefined;
+  at(index: number): T | undefined;
+  [Symbol.iterator](): IterableIterator<T>;
 }
 
 /** @serial Transaction */
@@ -740,6 +865,13 @@ declare interface Tx extends STObject {
   readonly Blob?: STBlob;
   readonly NFTokenID?: Hash256;
   readonly HookParameters?: STArray;
+}
+
+/** Originating-transaction view narrowed to Payment. */
+declare interface Payment extends Tx {
+  readonly TransactionType: TransactionType.Payment;
+  readonly Destination: AccountID;
+  readonly Amount: Amount;
 }
 
 declare interface AccountRoot extends STObject {
@@ -834,6 +966,167 @@ declare interface TxMeta extends STObject {
 declare interface XPop {
   readonly transaction: Tx;
   readonly metadata: TxMeta;
+}
+
+/**
+ * Host-backed object. Bytes still live on the host; each named field and
+ * `get` is a crossing. This is not `STObject`: after mint, getters are total.
+ * Nested objects are further `HostObject` subclasses
+ * (`instanceof HostObject` and `instanceof HostPayment`). The provider
+ * constructs them; there is no public constructor.
+ */
+declare class HostObject {
+  protected constructor();
+  get<T>(field: SerializedField<T>): HostResult<T | undefined>;
+  get(field: string): HostResult<SerializedValue>;
+  materialize(): HostResult<STObject>;
+}
+
+/**
+ * Host-backed STArray. The wire form is terminator-delimited, not counted:
+ * `count()` walks, `at(i)` is O(i) from the start. `forEach` is the cheap
+ * traversal — one walk, one error channel.
+ */
+declare class HostArray<E extends HostObject = HostObject> {
+  private constructor();
+  forEach(body: (element: E, index: number) => void): HostResult<void>;
+  /** Walks the array. Not a field. */
+  count(): HostResult<number>;
+  /** O(index) scan from the start. Prefer `forEach`. */
+  at(index: number): HostResult<E | undefined>;
+}
+
+declare class HostTx extends HostObject {
+  private constructor();
+  readonly TransactionType: HostResult<TransactionType>;
+  readonly Account: HostResult<AccountID>;
+  readonly Destination: HostResult<AccountID | undefined>;
+  readonly Amount: HostResult<Amount | undefined>;
+  readonly Amounts: HostResult<HostArray | undefined>;
+  readonly Fee: HostResult<Amount | undefined>;
+  readonly Flags: HostResult<UInt32>;
+  readonly Sequence: HostResult<UInt32 | undefined>;
+  readonly Blob: HostResult<STBlob | undefined>;
+  readonly NFTokenID: HostResult<Hash256 | undefined>;
+  readonly HookParameters: HostResult<HostArray | undefined>;
+  materialize(): HostResult<Tx>;
+}
+
+declare class HostPayment extends HostObject {
+  private constructor();
+  readonly TransactionType: TransactionType.Payment;
+  readonly Account: HostResult<AccountID>;
+  readonly Destination: HostResult<AccountID>;
+  readonly Amount: HostResult<Amount>;
+  readonly Amounts: HostResult<HostArray | undefined>;
+  readonly Fee: HostResult<Amount | undefined>;
+  readonly Flags: HostResult<UInt32>;
+  readonly Sequence: HostResult<UInt32 | undefined>;
+  readonly Blob: HostResult<STBlob | undefined>;
+  readonly NFTokenID: HostResult<Hash256 | undefined>;
+  readonly HookParameters: HostResult<HostArray | undefined>;
+  materialize(): HostResult<Payment>;
+}
+
+declare class HostAccountRoot extends HostObject {
+  private constructor();
+  readonly LedgerEntryType: "AccountRoot";
+  readonly Account: HostResult<AccountID>;
+  readonly Balance: HostResult<NativeAmount>;
+  readonly Flags: HostResult<UInt32>;
+  readonly ImportSequence: HostResult<UInt32 | undefined>;
+  readonly RewardAccumulator: HostResult<UInt64 | undefined>;
+  readonly RewardLgrFirst: HostResult<LedgerSequence | undefined>;
+  readonly RewardLgrLast: HostResult<LedgerSequence | undefined>;
+  readonly RewardTime: HostResult<RippleTime | undefined>;
+  readonly Sequence: HostResult<UInt32>;
+  readonly OwnerCount: HostResult<UInt32>;
+  readonly PreviousTxnID: HostResult<Hash256>;
+  readonly PreviousTxnLgrSeq: HostResult<UInt32>;
+  readonly AccountTxnID: HostResult<Hash256 | undefined>;
+  readonly RegularKey: HostResult<AccountID | undefined>;
+  readonly EmailHash: HostResult<Hash128 | undefined>;
+  readonly WalletLocator: HostResult<Hash256 | undefined>;
+  readonly WalletSize: HostResult<UInt32 | undefined>;
+  readonly MessageKey: HostResult<STBlob | undefined>;
+  readonly TransferRate: HostResult<UInt32 | undefined>;
+  readonly Domain: HostResult<STBlob | undefined>;
+  readonly TickSize: HostResult<UInt8 | undefined>;
+  readonly TicketCount: HostResult<UInt32 | undefined>;
+  readonly NFTokenMinter: HostResult<AccountID | undefined>;
+  readonly MintedNFTokens: HostResult<UInt32 | undefined>;
+  readonly BurnedNFTokens: HostResult<UInt32 | undefined>;
+  readonly HookStateCount: HostResult<UInt32 | undefined>;
+  readonly FirstNFTokenSequence: HostResult<UInt32 | undefined>;
+  readonly GovernanceFlags: HostResult<Hash256 | undefined>;
+  readonly GovernanceMarks: HostResult<Hash256 | undefined>;
+  readonly AccountIndex: HostResult<UInt64 | undefined>;
+  readonly TouchCount: HostResult<UInt64 | undefined>;
+  readonly HookStateScale: HostResult<UInt16 | undefined>;
+  readonly Cron: HostResult<Hash256 | undefined>;
+  readonly AMMID: HostResult<Hash256 | undefined>;
+  readonly LedgerIndex: HostResult<Hash256 | undefined>;
+  readonly Remarks: HostResult<HostArray | undefined>;
+  materialize(): HostResult<AccountRoot>;
+}
+
+declare class HostInstalledHook extends HostObject {
+  private constructor();
+  readonly HookHash: HostResult<Hash256 | undefined>;
+  materialize(): HostResult<InstalledHook>;
+}
+
+declare class HostHookArrayEntry extends HostObject {
+  private constructor();
+  readonly Hook: HostResult<HostInstalledHook>;
+  materialize(): HostResult<HookArrayEntry>;
+}
+
+declare class HostHookLedger extends HostObject {
+  private constructor();
+  readonly LedgerEntryType: "Hook";
+  readonly Hooks: HostResult<HostArray<HostHookArrayEntry>>;
+  materialize(): HostResult<HookLedger>;
+}
+
+declare class HostHookDefinition extends HostObject {
+  private constructor();
+  readonly LedgerEntryType: "HookDefinition";
+  readonly HookHash: HostResult<Hash256>;
+  materialize(): HostResult<HookDefinition>;
+}
+
+declare class HostActiveValidator extends HostObject {
+  private constructor();
+  readonly PublicKey: HostResult<STBlob>;
+  readonly Account: HostResult<AccountID | undefined>;
+  materialize(): HostResult<ActiveValidator>;
+}
+
+declare class HostActiveValidatorArrayEntry extends HostObject {
+  private constructor();
+  readonly ActiveValidator: HostResult<HostActiveValidator>;
+  materialize(): HostResult<ActiveValidatorArrayEntry>;
+}
+
+declare class HostUNLReport extends HostObject {
+  private constructor();
+  readonly LedgerEntryType: "UNLReport";
+  readonly ActiveValidators: HostResult<HostArray<HostActiveValidatorArrayEntry> | undefined>;
+  materialize(): HostResult<UNLReport>;
+}
+
+declare class HostNFToken extends HostObject {
+  private constructor();
+  readonly NFTokenID: HostResult<Hash256>;
+  readonly URI: HostResult<STBlob | undefined>;
+  materialize(): HostResult<NFToken>;
+}
+
+declare class HostTxMeta extends HostObject {
+  private constructor();
+  readonly TransactionResult: HostResult<TransactionResult>;
+  materialize(): HostResult<TxMeta>;
 }
 
 declare const enum TransactionType {
@@ -1290,8 +1583,9 @@ interface CallbackInfo {
 }
 
 /**
- * Typed ledger locator. `T` is erased at runtime and records the ledger-object
- * shape returned when this keylet is passed to `ledger.lookup`.
+ * Typed ledger locator. `T` is erased at runtime and records the minted
+ * ledger-object shape for `ledger.lookup`. `ledger.get` returns the matching
+ * `HostObject` subtype.
  */
 declare class LedgerKeylet<T extends STObject = STObject> {
   private readonly __valueType?: T;
@@ -1305,12 +1599,15 @@ declare class LedgerKeylet<T extends STObject = STObject> {
 declare namespace otxn {
   function raw(): HostResult<STBlob>;
   /**
-   * Materialized originating transaction for this invocation. Its existence
-   * is an execution invariant; provider failure to construct it is a runtime
-   * exception, not a contract-visible host status.
+   * Minted originating transaction. Total getters. Existence is an
+   * execution invariant.
    */
-  function current(): Tx;
-  function object(): HostResult<STObject>;
+  function object(): Tx;
+  /**
+   * Host-backed originating transaction. Field reads are `HostResult`.
+   * The handle itself is total.
+   */
+  function hostObject(): HostTx;
   function type(): HostResult<TransactionType>;
   function id(flags?: number): HostResult<Hash256>;
   function generation(): HostResult<number>;
@@ -1318,7 +1615,11 @@ declare namespace otxn {
   function param(name: StateKeyLike): HostResult<STBlob | undefined>;
   function params(names: readonly StateKeyLike[]): HostResult<readonly (STBlob | undefined)[]>;
   function params<const T extends BatchKeys>(names: T): HostResult<BatchValues<T>>;
-  function meta(): HostResult<STObject | undefined>;
+  /**
+   * Minted originating-transaction metadata, if the host supplied it.
+   */
+  function metaObject(): HostResult<TxMeta | undefined>;
+  function metaHostObject(): HostResult<HostTxMeta | undefined>;
   function xpop(): HostResult<XPop | undefined>;
 }
 
@@ -1359,14 +1660,6 @@ declare namespace state {
   function del(key: StateKeyLike): HostResult<void>;
   function setMany(items: readonly Put[]): HostResult<void>;
   function foreign(account: AccountID, namespace: Hash256): Accessor;
-}
-
-declare namespace slot {
-  type SlotValue = STObject | STArray | SerializedValue;
-  function fromLedger<T extends STObject>(keylet: LedgerKeylet<T>): HostResult<T | undefined>;
-  function meta(): HostResult<STObject | undefined>;
-  function xpop(): HostResult<XPop | undefined>;
-  function clear(value: SlotValue): HostResult<void>;
 }
 
 declare namespace emit {
@@ -1581,24 +1874,6 @@ declare namespace util {
   function validateObject(value: BytesLike | STBlob): boolean;
 }
 
-declare namespace float {
-  const zero: XFLDecimal;
-  const one: XFLDecimal;
-  function set(exponent: number, mantissa: bigint | number): HostResult<XFLDecimal>;
-  function sum(left: XFLDecimal, right: XFLDecimal): HostResult<XFLDecimal>;
-  function multiply(left: XFLDecimal, right: XFLDecimal): HostResult<XFLDecimal>;
-  function multiplyRatio(value: XFLDecimal, opts: { readonly numerator: number; readonly denominator: number; readonly roundUp?: boolean }): HostResult<XFLDecimal>;
-  function divide(left: XFLDecimal, right: XFLDecimal): HostResult<XFLDecimal>;
-  function negate(value: XFLDecimal): HostResult<XFLDecimal>;
-  function invert(value: XFLDecimal): HostResult<XFLDecimal>;
-  function compare(left: XFLDecimal, right: XFLDecimal): HostResult<number>;
-  function sign(value: XFLDecimal): HostResult<-1 | 0 | 1>;
-  function mantissa(value: XFLDecimal): HostResult<bigint>;
-  function log(value: XFLDecimal): HostResult<XFLDecimal>;
-  function root(value: XFLDecimal, degree: number): HostResult<XFLDecimal>;
-  function amount(value: XFLDecimal, issue?: Issue): HostResult<Amount>;
-}
-
 declare namespace ledger {
   const sequence: LedgerSequence;
   const lastTime: RippleTime;
@@ -1607,6 +1882,16 @@ declare namespace ledger {
   function nonce(): HostResult<Hash256>;
   function accountRoot(account: AccountID): HostResult<AccountRoot | undefined>;
   function unlReport(): HostResult<UNLReport | undefined>;
+  /**
+   * Host-backed ledger object. Outer `HostResult` is existence; field
+   * reads on the handle are crossings.
+   */
+  function get(locator: LedgerKeylet<AccountRoot>): HostResult<HostAccountRoot | undefined>;
+  function get(locator: LedgerKeylet<HookLedger>): HostResult<HostHookLedger | undefined>;
+  function get(locator: LedgerKeylet<HookDefinition>): HostResult<HostHookDefinition | undefined>;
+  function get(locator: LedgerKeylet<UNLReport>): HostResult<HostUNLReport | undefined>;
+  function get(locator: LedgerKeylet): HostResult<HostObject | undefined>;
+  function get(locator: Hash256): HostResult<HostObject | undefined>;
   function lookup<T extends STObject>(locator: LedgerKeylet<T>): HostResult<T | undefined>;
   function lookup(locator: Hash256): HostResult<STObject | undefined>;
   function lookupMany(locators: readonly (LedgerKeylet | Hash256)[]): HostResult<readonly (STObject | undefined)[]>;
