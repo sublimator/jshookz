@@ -43,7 +43,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "be81f49f3b1ff2a60853c86390f18e0901b9b53da6c7109dbe206ef9301783a9"
+    "sha256": "0d1204ecb53503610f7c51a8f4816a64c6b45f140202f1565f0fcf2f5baa8c83"
   },
   "globals": {
     "AccountID": "function",
@@ -63,6 +63,10 @@
     "trace": "function"
   },
   "namespaces": {
+    "accept": {
+      "unless": "function",
+      "when": "function"
+    },
     "emit": {
       "prepare": "function",
       "reserve": "function",

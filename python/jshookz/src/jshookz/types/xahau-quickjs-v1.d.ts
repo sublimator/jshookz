@@ -381,6 +381,32 @@ declare namespace hook {
  */
 declare function accept(message?: string | BytesLike | STBlob, code?: number): never;
 
+declare namespace accept {
+  /**
+   * Continue only if this is present/successful. Otherwise `accept` —
+   * this invocation succeeded and did nothing.
+   * There is no `accept.require`; that name is a compile error on purpose.
+   */
+  function unless<T, Error>(
+    result: Result<T, Error>,
+    message?: string | BytesLike | STBlob,
+    code?: number,
+  ): Exclude<T, null | undefined>;
+  function unless<T>(
+    value: T,
+    message?: string | BytesLike | STBlob,
+    code?: number,
+  ): Exclude<T, Falsy>;
+  /**
+   * If `condition` is true, `accept`. If false, return and continue.
+   */
+  function when(
+    condition: unknown,
+    message?: string | BytesLike | STBlob,
+    code?: number,
+  ): void;
+}
+
 /**
  * Reject, atomically roll back, and terminate this hook execution. Like
  * `accept`, the host unwinds the Wasm invocation and this call never returns.
