@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
-"""Export 0069 locate/certify corpus from xahau-codec. Never confuses empty VL
-with the 20-byte all-zero AccountID."""
+"""Export 0069 locate/certify corpus from xahau-codec.
+
+Never confuses empty VL with the 20-byte all-zero AccountID.
+Retains debug-json envelopes (fields, canonical_blob, json, commit).
+"""
 
 from __future__ import annotations
 
@@ -14,6 +17,14 @@ CODEC = Path.home() / "projects/xahaud-worktrees/xahaud-hookz-test-vectors/build
 OUT = Path(__file__).with_name("oracle_corpus.json")
 GENESIS = "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
 ZERO_B58 = "rrrrrrrrrrrrrrrrrrrrrhoLvTp"
+ORACLE_COMMIT = "cb829d7657607643f0bdc29c65f9a41fbd86a688"
+XCHAIN_NATIVE = (
+    "011914B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+    "0000000000000000000000000000000000000000"
+    "14B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+    "0000000000000000000000000000000000000000"
+)
+PATHSET_TRUNCATED = "011201" + ("00" * 20)
 
 
 def run_codec(args: list[str], input_text: str | None = None) -> tuple[int, str, str]:
@@ -38,25 +49,40 @@ def encode(json_text: str, codec_type: str = "stobject") -> str:
     return "".join(out.split())
 
 
-def classify_hex(blob: str, codec_type: str = "stobject") -> tuple[str, str]:
+def classify_hex(blob: str, codec_type: str = "stobject") -> tuple[str, dict | str]:
     args = ["debug-json"]
     if codec_type != "stobject":
         args += ["--codec-type", codec_type]
     args.append(blob)
     code, out, err = run_codec(args)
     if code == 0:
-        return "accept", out
+        try:
+            envelope = json.loads(out)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"debug-json not JSON for {blob}: {out}") from exc
+        commit = envelope.get("commit")
+        if commit and not str(commit).startswith(ORACLE_COMMIT[:9]):
+            raise RuntimeError(
+                f"oracle commit {commit} does not match pin {ORACLE_COMMIT}"
+            )
+        return "accept", envelope
     if "Too many NOPS" in err:
         return "reject", err
-    if "self-check failed" in err:
-        # decode succeeded; envelope omitted NOP or resorted fields
-        return "accept", err
     if err.startswith("Error decoding:") or "Error decoding:" in err:
         return "reject", err
     return "reject", err or out
 
 
-def case(cid: str, blob: str, *, expect: str | None = None, codec_type: str = "stobject", notes: str = "", json_src=None):
+def case(
+    cid: str,
+    blob: str,
+    *,
+    expect: str | None = None,
+    codec_type: str = "stobject",
+    notes: str = "",
+    json_src=None,
+    trailing_ok: bool = False,
+):
     got, detail = classify_hex(blob, codec_type)
     if expect is not None and got != expect:
         raise RuntimeError(f"{cid}: expected {expect} got {got}: {detail}")
@@ -66,11 +92,21 @@ def case(cid: str, blob: str, *, expect: str | None = None, codec_type: str = "s
         "codec_type": codec_type,
         "blob": blob.upper(),
         "notes": notes,
+        "oracle_commit": ORACLE_COMMIT,
     }
+    if trailing_ok:
+        item["trailing_ok"] = True
     if json_src is not None:
         item["json"] = json_src
-    if got == "reject":
-        item["oracle_error"] = detail.split("\n")[0]
+    if got == "accept" and isinstance(detail, dict):
+        item["canonical_blob"] = str(detail.get("canonical_blob", "")).upper()
+        item["fields"] = detail.get("fields", [])
+        if "json" in detail and "json" not in item:
+            item["json"] = detail["json"]
+        item["oracle_branch"] = detail.get("branch")
+        item["oracle_codec_type"] = detail.get("codec_type")
+    elif got == "reject":
+        item["oracle_error"] = str(detail).split("\n")[0]
     return item
 
 
@@ -101,7 +137,6 @@ def main() -> int:
     cases.append(case("stobject-seq-account-sorted", seq_acct, expect="accept",
                       json_src={"Account": GENESIS, "Sequence": 1}))
 
-    # sorted is 24.... then 81.... ; swap halves of known layout
     if not seq_acct.upper().startswith("24"):
         raise RuntimeError("unexpected Sequence header")
     unsorted = seq_acct[10:] + seq_acct[:10]
@@ -112,7 +147,13 @@ def main() -> int:
                       notes="Duplicate Account after sort."))
 
     cases.append(case("stobject-trailing-ff", acct20 + "FF", expect="reject",
-                      notes="Trailing bytes after a complete object."))
+                      notes="Unknown field after a complete unterminated object."))
+
+    cases.append(case("stobject-e1", "E1", expect="accept",
+                      notes="Top-level object end marker only."))
+    cases.append(case("stobject-e1-then-ff", "E1FF", expect="accept",
+                      trailing_ok=True,
+                      notes="Object end marker stops the scope; leftover is not a constructor reject."))
 
     cases.append(case("stobject-nop-0", acct20, expect="accept", notes="Zero NOP headers."))
     cases.append(case("stobject-nop-1", "99" + acct20, expect="accept",
@@ -121,6 +162,13 @@ def main() -> int:
                       notes="63 NOPs accepted (throw is ++counter == 64)."))
     cases.append(case("stobject-nop-64", ("99" * 64) + acct20, expect="reject",
                       notes="64th NOP: Too many NOPS."))
+
+    cases.append(case("stobject-array-nop-1", "F999F1", expect="accept",
+                      notes="Array-local NOP; canonical_blob drops 0x99."))
+    cases.append(case("stobject-array-nop-63", "F9" + ("99" * 63) + "F1", expect="accept",
+                      notes="63 array-local NOPs accepted."))
+    cases.append(case("stobject-array-nop-64", "F9" + ("99" * 64) + "F1", expect="reject",
+                      notes="64th array-local NOP: Too many NOPS."))
 
     amt_obj = encode(json.dumps({"Account": GENESIS, "Amount": "1000000"}))
     cases.append(case("stobject-native-amount", amt_obj, expect="accept",
@@ -172,25 +220,39 @@ def main() -> int:
     cases.append(case("stobject-pathset", paths, expect="accept",
                       json_src={"Account": GENESIS, "Paths": [[{"account": GENESIS}]]}))
 
+    cases.append(case("stobject-pathset-truncated", PATHSET_TRUNCATED, expect="reject",
+                      notes="Paths hop without END_BYTE. Framing error in both scan modes."))
+
     cases.append(case("pathset-empty", "00", expect="reject", codec_type="pathset",
                       notes="Empty PathSet (lone 0x00)."))
+
+    cases.append(case("stobject-xchain-bridge", XCHAIN_NATIVE, expect="accept",
+                      notes="XChainBridge: two VL-AccountID + two Issue (native)."))
 
     fee = encode(json.dumps({"Fee": "10"}))
     cases.append(case("stobject-fee", fee, expect="accept", json_src={"Fee": "10"}))
 
     payload = {
         "oracle_repo": "xahaud-worktrees/xahaud-hookz-test-vectors",
-        "oracle_commit": "4e08bd2c7",
+        "oracle_commit": ORACLE_COMMIT,
         "notes": (
             "Account empty VL (8100) is defaulted STAccount, 0 payload bytes. "
             "Account 20 zero bytes is an explicit all-zero AccountID "
-            "(base58 rrr...rhoLvTp). Not empty VL."
+            "(base58 rrr...rhoLvTp). Not empty VL. "
+            "Accepts retain debug-json fields and canonical_blob."
         ),
         "cases": cases,
     }
     OUT.write_text(json.dumps(payload, indent=2) + "\n")
     accepts = sum(1 for c in cases if c["expect"] == "accept")
     rejects = sum(1 for c in cases if c["expect"] == "reject")
+    missing = [
+        c["id"] for c in cases
+        if c["expect"] == "accept" and c.get("codec_type") == "stobject"
+        and ("fields" not in c or "canonical_blob" not in c)
+    ]
+    if missing:
+        raise RuntimeError(f"accept missing envelope: {missing}")
     print(f"wrote {OUT} ({len(cases)} cases, {accepts} accept, {rejects} reject)")
     return 0
 

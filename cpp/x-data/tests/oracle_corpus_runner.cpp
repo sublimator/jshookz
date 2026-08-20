@@ -23,6 +23,11 @@ main(int argc, char** argv)
     std::ostringstream ss;
     ss << in.rdbuf();
     auto const root = boost::json::parse(ss.str()).as_object();
+    if (!root.contains("oracle_commit"))
+    {
+        std::cerr << "corpus missing oracle_commit\n";
+        return 1;
+    }
     auto const protocol = catl::xdata::Protocol::load_embedded_xahau_protocol();
 
     int fail = 0;
@@ -33,18 +38,36 @@ main(int argc, char** argv)
         auto const expect = std::string(c.at("expect").as_string());
         auto const type = std::string(c.at("codec_type").as_string());
         auto const blob = std::string(c.at("blob").as_string());
+        if (expect == "accept" && type == "stobject" &&
+            (!c.contains("fields") || !c.contains("canonical_blob")))
+        {
+            std::cout << "FAIL " << id << " missing oracle envelope\n";
+            ++fail;
+            continue;
+        }
         oracle_run::Outcomes o;
         if (type == "amount")
             o = oracle_run::run_amount(blob);
         else if (type == "pathset")
             o = oracle_run::run_pathset(blob);
         else
-            o = oracle_run::run_stobject(protocol, blob);
+        {
+            auto const* fields = c.if_contains("fields");
+            auto const* js = c.if_contains("json");
+            std::string canonical;
+            if (c.contains("canonical_blob"))
+                canonical = std::string(c.at("canonical_blob").as_string());
+            o = oracle_run::run_stobject(protocol, blob, fields, js, canonical);
+        }
 
+        bool const trailing_ok =
+            c.contains("trailing_ok") && c.at("trailing_ok").as_bool();
         bool const certify_ok = o.certify_null_ok;
         bool const pass = o.sinks_agree &&
             (expect == "accept"
-                 ? (o.locate_ok && certify_ok && o.decode_frames_ok)
+                 ? (o.locate_ok && certify_ok && o.decode_frames_ok &&
+                    o.names_ok && o.json_ok &&
+                    (trailing_ok || o.consumed_all))
                  : !certify_ok);
         if (!pass)
             ++fail;
@@ -52,9 +75,17 @@ main(int argc, char** argv)
                   << " expect=" << expect << " locate=" << o.locate_ok
                   << " certify=" << certify_ok
                   << " sinks_agree=" << o.sinks_agree
-                  << " decode=" << o.decode_frames_ok;
+                  << " decode=" << o.decode_frames_ok
+                  << " names=" << o.names_ok << " json=" << o.json_ok
+                  << " end=" << o.locate_end << "/" << o.blob_size;
         if (!certify_ok && !o.certify_err.empty())
             std::cout << " err=" << o.certify_err;
+        if (!o.decode_err.empty())
+            std::cout << " decode_err=" << o.decode_err;
+        if (!o.json_err.empty())
+            std::cout << " json_err=" << o.json_err;
+        if (!o.names_err.empty())
+            std::cout << " names_err=" << o.names_err;
         std::cout << "\n";
     }
     std::cout << "fallbacks=" << protocol.fast_lookup_fallback_count()

@@ -1,7 +1,7 @@
 {
   "oracle_repo": "xahaud-worktrees/xahaud-hookz-test-vectors",
-  "oracle_commit": "4e08bd2c7",
-  "notes": "Account empty VL (8100) is defaulted STAccount, 0 payload bytes. Account 20 zero bytes is an explicit all-zero AccountID (base58 rrr...rhoLvTp). Not empty VL.",
+  "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+  "notes": "Account empty VL (8100) is defaulted STAccount, 0 payload bytes. Account 20 zero bytes is an explicit all-zero AccountID (base58 rrr...rhoLvTp). Not empty VL. Accepts retain debug-json fields and canonical_blob.",
   "cases": [
     {
       "id": "stobject-account-20",
@@ -9,9 +9,21 @@
       "codec_type": "stobject",
       "blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
       "notes": "20-byte Account VL payload (genesis).",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
       "json": {
         "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
-      }
+      },
+      "canonical_blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "fields": [
+        {
+          "header": "81",
+          "name": "Account",
+          "value": "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+          "vl": "14"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
     },
     {
       "id": "stobject-account-zero-20",
@@ -19,16 +31,43 @@
       "codec_type": "stobject",
       "blob": "81140000000000000000000000000000000000000000",
       "notes": "20 zero bytes: explicit all-zero AccountID (base58 rrr...rhoLvTp). Not empty VL.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
       "json": {
         "Account": "rrrrrrrrrrrrrrrrrrrrrhoLvTp"
-      }
+      },
+      "canonical_blob": "81140000000000000000000000000000000000000000",
+      "fields": [
+        {
+          "header": "81",
+          "name": "Account",
+          "value": "0000000000000000000000000000000000000000",
+          "vl": "14"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
     },
     {
       "id": "stobject-account-empty-vl",
       "expect": "accept",
       "codec_type": "stobject",
       "blob": "8100",
-      "notes": "STAccount VL length 0 (defaulted). Distinct from 20-byte zero AccountID."
+      "notes": "STAccount VL length 0 (defaulted). Distinct from 20-byte zero AccountID.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "8100",
+      "fields": [
+        {
+          "header": "81",
+          "name": "Account",
+          "value": "",
+          "vl": "00"
+        }
+      ],
+      "json": {
+        "Account": ""
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
     },
     {
       "id": "stobject-account-vl-1",
@@ -36,6 +75,7 @@
       "codec_type": "stobject",
       "blob": "8101FF",
       "notes": "STAccount VL length 1 is invalid.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
       "oracle_error": "Error decoding: Invalid STAccount size"
     },
     {
@@ -44,17 +84,55 @@
       "codec_type": "stobject",
       "blob": "24000000018114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
       "notes": "",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
       "json": {
         "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
         "Sequence": 1
-      }
+      },
+      "canonical_blob": "24000000018114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "fields": [
+        {
+          "header": "24",
+          "name": "Sequence",
+          "value": "00000001"
+        },
+        {
+          "header": "81",
+          "name": "Account",
+          "value": "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+          "vl": "14"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
     },
     {
       "id": "stobject-seq-account-out-of-order",
       "expect": "accept",
       "codec_type": "stobject",
       "blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E82400000001",
-      "notes": "Out-of-order nonduplicate fields: xahaud set() accepts."
+      "notes": "Out-of-order nonduplicate fields: xahaud set() accepts.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "24000000018114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "fields": [
+        {
+          "header": "24",
+          "name": "Sequence",
+          "value": "00000001"
+        },
+        {
+          "header": "81",
+          "name": "Account",
+          "value": "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+          "vl": "14"
+        }
+      ],
+      "json": {
+        "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+        "Sequence": 1
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
     },
     {
       "id": "stobject-duplicate-account",
@@ -62,6 +140,7 @@
       "codec_type": "stobject",
       "blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E88114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
       "notes": "Duplicate Account after sort.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
       "oracle_error": "Error decoding: Duplicate field detected"
     },
     {
@@ -69,29 +148,102 @@
       "expect": "reject",
       "codec_type": "stobject",
       "blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8FF",
-      "notes": "Trailing bytes after a complete object.",
+      "notes": "Unknown field after a complete unterminated object.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
       "oracle_error": "Error decoding: Unknown field in Object t=15 f=15"
+    },
+    {
+      "id": "stobject-e1",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "E1",
+      "notes": "Top-level object end marker only.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "",
+      "fields": [],
+      "json": {},
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "stobject-e1-then-ff",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "E1FF",
+      "notes": "Object end marker stops the scope; leftover is not a constructor reject.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "trailing_ok": true,
+      "canonical_blob": "",
+      "fields": [],
+      "json": {},
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
     },
     {
       "id": "stobject-nop-0",
       "expect": "accept",
       "codec_type": "stobject",
       "blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
-      "notes": "Zero NOP headers."
+      "notes": "Zero NOP headers.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "fields": [
+        {
+          "header": "81",
+          "name": "Account",
+          "value": "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+          "vl": "14"
+        }
+      ],
+      "json": {
+        "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
     },
     {
       "id": "stobject-nop-1",
       "expect": "accept",
       "codec_type": "stobject",
       "blob": "998114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
-      "notes": "One NOP 0x99; omitted from material index."
+      "notes": "One NOP 0x99; omitted from material index.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "fields": [
+        {
+          "header": "81",
+          "name": "Account",
+          "value": "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+          "vl": "14"
+        }
+      ],
+      "json": {
+        "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
     },
     {
       "id": "stobject-nop-63",
       "expect": "accept",
       "codec_type": "stobject",
       "blob": "9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999998114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
-      "notes": "63 NOPs accepted (throw is ++counter == 64)."
+      "notes": "63 NOPs accepted (throw is ++counter == 64).",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "fields": [
+        {
+          "header": "81",
+          "name": "Account",
+          "value": "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+          "vl": "14"
+        }
+      ],
+      "json": {
+        "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
     },
     {
       "id": "stobject-nop-64",
@@ -99,6 +251,60 @@
       "codec_type": "stobject",
       "blob": "999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999998114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
       "notes": "64th NOP: Too many NOPS.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Too many NOPS"
+    },
+    {
+      "id": "stobject-array-nop-1",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "F999F1",
+      "notes": "Array-local NOP; canonical_blob drops 0x99.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "F9F1",
+      "fields": [
+        {
+          "elements": [],
+          "end_marker": "F1",
+          "header": "F9",
+          "name": "Memos"
+        }
+      ],
+      "json": {
+        "Memos": []
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "stobject-array-nop-63",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "F9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999F1",
+      "notes": "63 array-local NOPs accepted.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "F9F1",
+      "fields": [
+        {
+          "elements": [],
+          "end_marker": "F1",
+          "header": "F9",
+          "name": "Memos"
+        }
+      ],
+      "json": {
+        "Memos": []
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "stobject-array-nop-64",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "F999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999F1",
+      "notes": "64th array-local NOP: Too many NOPS.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
       "oracle_error": "Error decoding: Too many NOPS"
     },
     {
@@ -107,10 +313,32 @@
       "codec_type": "stobject",
       "blob": "6140000000000F42408114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
       "notes": "",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
       "json": {
         "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
         "Amount": "1000000"
-      }
+      },
+      "canonical_blob": "6140000000000F42408114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "fields": [
+        {
+          "header": "61",
+          "name": "Amount",
+          "parts": {
+            "drops": "1000000",
+            "negative": false,
+            "type": "native"
+          },
+          "value": "40000000000F4240"
+        },
+        {
+          "header": "81",
+          "name": "Account",
+          "value": "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+          "vl": "14"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
     },
     {
       "id": "stobject-iou-amount",
@@ -118,6 +346,7 @@
       "codec_type": "stobject",
       "blob": "61D4838D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E88114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
       "notes": "",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
       "json": {
         "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
         "Amount": {
@@ -125,7 +354,31 @@
           "currency": "USD",
           "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
         }
-      }
+      },
+      "canonical_blob": "61D4838D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E88114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "fields": [
+        {
+          "header": "61",
+          "name": "Amount",
+          "parts": {
+            "currency": "USD",
+            "exponent": "-15",
+            "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+            "mantissa": "1000000000000000",
+            "negative": false,
+            "type": "iou"
+          },
+          "value": "D4838D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        },
+        {
+          "header": "81",
+          "name": "Account",
+          "value": "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+          "vl": "14"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
     },
     {
       "id": "stobject-iou-zero",
@@ -133,6 +386,7 @@
       "codec_type": "stobject",
       "blob": "6180000000000000000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E88114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
       "notes": "Canonical IOU zero; not native.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
       "json": {
         "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
         "Amount": {
@@ -140,7 +394,29 @@
           "currency": "USD",
           "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
         }
-      }
+      },
+      "canonical_blob": "6180000000000000000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E88114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "fields": [
+        {
+          "header": "61",
+          "name": "Amount",
+          "parts": {
+            "currency": "USD",
+            "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+            "type": "iou",
+            "zero": true
+          },
+          "value": "80000000000000000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        },
+        {
+          "header": "81",
+          "name": "Account",
+          "value": "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+          "vl": "14"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
     },
     {
       "id": "stobject-iou-zero-issuer",
@@ -148,6 +424,7 @@
       "codec_type": "stobject",
       "blob": "61D4838D7EA4C68000000000000000000000000000555344000000000000000000000000000000000000000000000000008114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
       "notes": "IOU issuer all-zero is native-account, rejected. Not empty VL.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
       "oracle_error": "Error decoding: invalid native account"
     },
     {
@@ -156,10 +433,25 @@
       "codec_type": "amount",
       "blob": "600000000000000001000000000000000000000000000000000000000000000000",
       "notes": "",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
       "json": {
         "value": "1",
         "mpt_issuance_id": "000000000000000000000000000000000000000000000000"
-      }
+      },
+      "canonical_blob": "600000000000000001000000000000000000000000000000000000000000000000",
+      "fields": [
+        {
+          "parts": {
+            "mpt_id": "000000000000000000000000000000000000000000000000",
+            "negative": false,
+            "type": "mpt",
+            "value": "1"
+          },
+          "value": "600000000000000001000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "amount"
     },
     {
       "id": "amount-native",
@@ -167,7 +459,21 @@
       "codec_type": "amount",
       "blob": "40000000000F4240",
       "notes": "",
-      "json": "1000000"
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": "1000000",
+      "canonical_blob": "40000000000F4240",
+      "fields": [
+        {
+          "parts": {
+            "drops": "1000000",
+            "negative": false,
+            "type": "native"
+          },
+          "value": "40000000000F4240"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "amount"
     },
     {
       "id": "stobject-vl-blob",
@@ -175,10 +481,28 @@
       "codec_type": "stobject",
       "blob": "701A02DEAD8114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
       "notes": "",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
       "json": {
         "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
         "Blob": "DEAD"
-      }
+      },
+      "canonical_blob": "701A02DEAD8114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "fields": [
+        {
+          "header": "701A",
+          "name": "Blob",
+          "value": "DEAD",
+          "vl": "02"
+        },
+        {
+          "header": "81",
+          "name": "Account",
+          "value": "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+          "vl": "14"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
     },
     {
       "id": "stobject-nested-memos",
@@ -186,6 +510,7 @@
       "codec_type": "stobject",
       "blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8F9EA7D02DEADE1F1",
       "notes": "",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
       "json": {
         "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
         "Memos": [
@@ -195,7 +520,38 @@
             }
           }
         ]
-      }
+      },
+      "canonical_blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8F9EA7D02DEADE1F1",
+      "fields": [
+        {
+          "header": "81",
+          "name": "Account",
+          "value": "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+          "vl": "14"
+        },
+        {
+          "elements": [
+            {
+              "end_marker": "E1",
+              "fields": [
+                {
+                  "header": "7D",
+                  "name": "MemoData",
+                  "value": "DEAD",
+                  "vl": "02"
+                }
+              ],
+              "header": "EA",
+              "name": "Memo"
+            }
+          ],
+          "end_marker": "F1",
+          "header": "F9",
+          "name": "Memos"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
     },
     {
       "id": "stobject-pathset",
@@ -203,6 +559,7 @@
       "codec_type": "stobject",
       "blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8011201B5F762798A53D543A014CAF8B297CFF8F2F937E800",
       "notes": "",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
       "json": {
         "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
         "Paths": [
@@ -212,7 +569,32 @@
             }
           ]
         ]
-      }
+      },
+      "canonical_blob": "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8011201B5F762798A53D543A014CAF8B297CFF8F2F937E800",
+      "fields": [
+        {
+          "header": "81",
+          "name": "Account",
+          "value": "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+          "vl": "14"
+        },
+        {
+          "header": "0112",
+          "name": "Paths",
+          "value": "01B5F762798A53D543A014CAF8B297CFF8F2F937E800"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "stobject-pathset-truncated",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0112010000000000000000000000000000000000000000",
+      "notes": "Paths hop without END_BYTE. Framing error in both scan modes.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
     },
     {
       "id": "pathset-empty",
@@ -220,7 +602,38 @@
       "codec_type": "pathset",
       "blob": "00",
       "notes": "Empty PathSet (lone 0x00).",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
       "oracle_error": "Error decoding: empty path"
+    },
+    {
+      "id": "stobject-xchain-bridge",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "011914B5F762798A53D543A014CAF8B297CFF8F2F937E8000000000000000000000000000000000000000014B5F762798A53D543A014CAF8B297CFF8F2F937E80000000000000000000000000000000000000000",
+      "notes": "XChainBridge: two VL-AccountID + two Issue (native).",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "011914B5F762798A53D543A014CAF8B297CFF8F2F937E8000000000000000000000000000000000000000014B5F762798A53D543A014CAF8B297CFF8F2F937E80000000000000000000000000000000000000000",
+      "fields": [
+        {
+          "header": "0119",
+          "name": "XChainBridge",
+          "value": "14B5F762798A53D543A014CAF8B297CFF8F2F937E8000000000000000000000000000000000000000014B5F762798A53D543A014CAF8B297CFF8F2F937E80000000000000000000000000000000000000000"
+        }
+      ],
+      "json": {
+        "XChainBridge": {
+          "IssuingChainDoor": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+          "IssuingChainIssue": {
+            "currency": "XAH"
+          },
+          "LockingChainDoor": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+          "LockingChainIssue": {
+            "currency": "XAH"
+          }
+        }
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
     },
     {
       "id": "stobject-fee",
@@ -228,9 +641,25 @@
       "codec_type": "stobject",
       "blob": "68400000000000000A",
       "notes": "",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
       "json": {
         "Fee": "10"
-      }
+      },
+      "canonical_blob": "68400000000000000A",
+      "fields": [
+        {
+          "header": "68",
+          "name": "Fee",
+          "parts": {
+            "drops": "10",
+            "negative": false,
+            "type": "native"
+          },
+          "value": "400000000000000A"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
     }
   ]
 }

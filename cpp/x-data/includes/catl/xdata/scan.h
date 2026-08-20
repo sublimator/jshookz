@@ -8,7 +8,6 @@
 #include "catl/xdata/types/issue.h"
 #include "catl/xdata/types/pathset.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <expected>
 #include <vector>
@@ -47,6 +46,10 @@ struct IndexSink
 
 namespace scan_detail {
 
+// xahaud-vectors:src/libxrpl/protocol/STObject.cpp:60
+// xahaud-vectors:src/libxrpl/protocol/STVar.cpp:117
+inline constexpr int kMaxScanDepth = 10;
+
 inline CodecErrorValue
 err(std::string msg)
 {
@@ -77,6 +80,22 @@ all_zero20(uint8_t const* p)
             return false;
     }
     return true;
+}
+
+inline bool
+is_nop(uint16_t type, uint16_t nth) noexcept
+{
+    // xahaud-vectors:src/libxrpl/protocol/STObject.cpp:223
+    // xahaud-vectors:src/libxrpl/protocol/STArray.cpp:69
+    return type == 9 && nth == 9;
+}
+
+inline bool
+nop_overflows(int& nop_count) noexcept
+{
+    // xahaud-vectors:src/libxrpl/protocol/STObject.cpp:225
+    // xahaud-vectors:src/libxrpl/protocol/STArray.cpp:71
+    return ++nop_count == 64;
 }
 
 inline std::expected<size_t, CodecErrorValue>
@@ -112,6 +131,7 @@ certify_amount(Slice payload)
     constexpr uint64_t kMinMant = 1000000000000000ull;
     constexpr uint64_t kMaxMant = 9999999999999999ull;
 
+    // xahaud-vectors:src/libxrpl/protocol/STAmount.cpp:117
     if ((value & kIssued) == 0)
     {
         if ((value & kMpt) != 0)
@@ -124,6 +144,7 @@ certify_amount(Slice payload)
             return std::unexpected(err("native Amount size"));
         if ((value & kPositive) != 0)
             return {};
+        // xahaud-vectors:src/libxrpl/protocol/STAmount.cpp:140
         if ((value & kValueMask) == 0)
             return std::unexpected(err("negative zero is not canonical"));
         return {};
@@ -133,8 +154,10 @@ certify_amount(Slice payload)
         return std::unexpected(err("IOU Amount size"));
     uint8_t const* currency = payload.data() + 8;
     uint8_t const* account = payload.data() + 28;
+    // xahaud-vectors:src/libxrpl/protocol/STAmount.cpp:153
     if (all_zero20(currency))
         return std::unexpected(err("invalid native currency"));
+    // xahaud-vectors:src/libxrpl/protocol/STAmount.cpp:158
     if (all_zero20(account))
         return std::unexpected(err("invalid native account"));
 
@@ -152,10 +175,71 @@ certify_amount(Slice payload)
     return {};
 }
 
+template <bool Track>
+struct DupTracker;
+
+template <>
+struct DupTracker<false>
+{
+    void
+    push(uint32_t) const noexcept
+    {
+    }
+    bool
+    has_duplicate() const noexcept
+    {
+        return false;
+    }
+};
+
+// Heap-free duplicate set. Locate instantiates DupTracker<false>.
+// xahaud-vectors:src/libxrpl/protocol/STObject.cpp:268
+template <>
+struct DupTracker<true>
+{
+    uint64_t bits[64]{};
+    uint32_t extra[16]{};
+    uint8_t extra_n = 0;
+    bool dup = false;
+
+    void
+    push(uint32_t c) noexcept
+    {
+        uint16_t const type = get_field_type_code(c);
+        uint16_t const nth = get_field_id(c);
+        if (type < 32 && nth < 128)
+        {
+            unsigned const idx = static_cast<unsigned>(type) * 2u + (nth >> 6);
+            uint64_t const mask = 1ull << (nth & 63);
+            if (bits[idx] & mask)
+                dup = true;
+            bits[idx] |= mask;
+            return;
+        }
+        for (uint8_t i = 0; i < extra_n; ++i)
+        {
+            if (extra[i] == c)
+            {
+                dup = true;
+                return;
+            }
+        }
+        if (extra_n < 16)
+            extra[extra_n++] = c;
+        else
+            dup = true;
+    }
+
+    bool
+    has_duplicate() const noexcept
+    {
+        return dup;
+    }
+};
+
 inline std::expected<uint32_t, CodecErrorValue>
 scan_pathset(SliceCursor& cursor, ScanMode mode)
 {
-    size_t const start = cursor.pos;
     bool saw_hop = false;
     bool empty_path = true;
     while (!cursor.empty())
@@ -202,12 +286,36 @@ scan_pathset(SliceCursor& cursor, ScanMode mode)
         saw_hop = true;
         empty_path = false;
     }
-    (void)start;
-    if (mode == ScanMode::CertifyWire)
-        return std::unexpected(err("truncated PathSet"));
-    if (!fits_u32(cursor.pos))
-        return std::unexpected(err("offset overflow"));
-    return static_cast<uint32_t>(cursor.pos);
+    // xahaud-vectors:src/libxrpl/protocol/STPathSet.cpp:57
+    // xahaud-vectors:src/libxrpl/protocol/Serializer.cpp:342
+    return std::unexpected(err("truncated PathSet"));
+}
+
+inline std::expected<void, CodecErrorValue>
+skip_xchain_bridge(SliceCursor& cursor, ScanMode mode)
+{
+    // xahaud-vectors:src/libxrpl/protocol/STXChainBridge.cpp:139
+    for (int door = 0; door < 2; ++door)
+    {
+        auto len = try_read_vl_length(cursor);
+        if (!len)
+            return std::unexpected(len.error());
+        if (mode == ScanMode::CertifyWire && *len != 0 && *len != 20)
+        {
+            // xahaud-vectors:src/libxrpl/protocol/STAccount.cpp:45
+            return std::unexpected(err("Invalid STAccount size"));
+        }
+        auto adv = cursor.try_advance(*len);
+        if (!adv)
+            return std::unexpected(adv.error());
+        auto n = try_issue_size(cursor);
+        if (!n)
+            return std::unexpected(n.error());
+        auto adv2 = cursor.try_advance(*n);
+        if (!adv2)
+            return std::unexpected(adv2.error());
+    }
+    return {};
 }
 
 template <ScanMode M, class Sink>
@@ -227,10 +335,12 @@ scan_array(
     Sink& sink,
     int depth)
 {
-    if (depth > 256)
+    if (depth > kMaxScanDepth)
         return std::unexpected(err("nesting exceeds maximum depth"));
+    int nop_count = 0;
     while (!cursor.empty())
     {
+        size_t const header_begin = cursor.pos;
         auto hdr = try_read_field_header(cursor);
         if (!hdr)
             return std::unexpected(hdr.error());
@@ -239,6 +349,12 @@ scan_array(
             break;
         uint16_t const type = get_field_type_code(field_code);
         uint16_t const nth = get_field_id(field_code);
+        if (is_nop(type, nth))
+        {
+            if (nop_overflows(nop_count))
+                return std::unexpected(err("Too many NOPS"));
+            continue;
+        }
         if (type == FieldTypes::STArray.code && nth == 1)
         {
             if (!fits_u32(cursor.pos))
@@ -247,9 +363,22 @@ scan_array(
         }
         if (type != FieldTypes::STObject.code)
             return std::unexpected(err("array elements must be STObject"));
+        size_t const payload_begin = cursor.pos;
         auto inner = scan_object<M, Sink>(cursor, protocol, sink, depth + 1, false);
         if (!inner)
             return inner;
+        size_t const wire_end = cursor.pos;
+        if (!fits_u32(header_begin) || !fits_u32(payload_begin) ||
+            !fits_u32(wire_end))
+            return std::unexpected(err("offset overflow"));
+        if constexpr (Sink::kRecords)
+        {
+            sink.emit(FieldFrame{
+                field_code,
+                static_cast<uint32_t>(header_begin),
+                static_cast<uint32_t>(payload_begin),
+                static_cast<uint32_t>(wire_end)});
+        }
     }
     if (!fits_u32(cursor.pos))
         return std::unexpected(err("offset overflow"));
@@ -265,11 +394,11 @@ scan_object(
     int depth,
     bool top_level)
 {
-    if (depth > 256)
+    if (depth > kMaxScanDepth)
         return std::unexpected(err("nesting exceeds maximum depth"));
 
     int nop_count = 0;
-    std::vector<uint32_t> seen;
+    DupTracker<M == ScanMode::CertifyWire> seen;
 
     while (!cursor.empty())
     {
@@ -288,16 +417,16 @@ scan_object(
         uint16_t const type = get_field_type_code(field_code);
         uint16_t const nth = get_field_id(field_code);
 
-        if (type == 9 && nth == 9)
+        if (is_nop(type, nth))
         {
-            ++nop_count;
-            if (nop_count >= 64)
+            if (nop_overflows(nop_count))
                 return std::unexpected(err("Too many NOPS"));
             continue;
         }
 
         if (type == FieldTypes::STObject.code && nth == 1)
         {
+            // xahaud-vectors:src/libxrpl/protocol/STObject.cpp:235
             if (!fits_u32(cursor.pos))
                 return std::unexpected(err("offset overflow"));
             break;
@@ -325,7 +454,11 @@ scan_object(
             {
                 if (type == FieldTypes::AccountID.code &&
                     *len != 0 && *len != 20)
+                {
+                    // xahaud-vectors:src/libxrpl/protocol/STAccount.cpp:38
+                    // xahaud-vectors:src/libxrpl/protocol/STAccount.cpp:45
                     return std::unexpected(err("Invalid STAccount size"));
+                }
             }
             auto adv = cursor.try_advance(*len);
             if (!adv)
@@ -378,6 +511,12 @@ scan_object(
             if (!adv)
                 return std::unexpected(adv.error());
         }
+        else if (type == FieldTypes::XChainBridge.code)
+        {
+            auto skip = skip_xchain_bridge(cursor, M);
+            if (!skip)
+                return std::unexpected(skip.error());
+        }
         else
         {
             size_t fixed = field ? field->meta.type.fixed_size : 0;
@@ -401,18 +540,13 @@ scan_object(
                 static_cast<uint32_t>(payload_begin),
                 static_cast<uint32_t>(wire_end)});
         }
-        seen.push_back(field_code);
+        seen.push(field_code);
     }
 
     if constexpr (M == ScanMode::CertifyWire)
     {
-        auto sorted = seen;
-        std::sort(sorted.begin(), sorted.end());
-        for (size_t i = 1; i < sorted.size(); ++i)
-        {
-            if (sorted[i] == sorted[i - 1])
-                return std::unexpected(err("Duplicate field detected"));
-        }
+        if (seen.has_duplicate())
+            return std::unexpected(err("Duplicate field detected"));
     }
 
     if (!fits_u32(cursor.pos))

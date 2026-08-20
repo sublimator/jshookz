@@ -74,10 +74,16 @@ if(BUILD_TESTING)
         target_compile_definitions(oracle_corpus_runner PRIVATE
             JSHOOKZ_ORACLE_CORPUS_JSON="${CMAKE_CURRENT_LIST_DIR}/tests/oracle_corpus.json"
         )
+        add_test(NAME oracle_corpus_runner COMMAND oracle_corpus_runner)
 
         add_executable(test_scan_noexcept tests/test_scan_noexcept.cpp)
         target_link_libraries(test_scan_noexcept PRIVATE jshookz_xdata)
         target_compile_options(test_scan_noexcept PRIVATE -fno-exceptions)
+        add_test(NAME test_scan_noexcept COMMAND test_scan_noexcept)
+
+        add_executable(test_scan_alloc tests/test_scan_alloc.cpp)
+        target_link_libraries(test_scan_alloc PRIVATE jshookz_xdata GTest::gtest_main)
+        gtest_discover_tests(test_scan_alloc)
 
         find_package(Python3 COMPONENTS Interpreter)
         if(Python3_Interpreter_FOUND)

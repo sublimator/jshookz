@@ -37,7 +37,12 @@ run_case(Protocol const& protocol, boost::json::object const& c)
         return oracle_run::run_amount(blob);
     if (type == "pathset")
         return oracle_run::run_pathset(blob);
-    return oracle_run::run_stobject(protocol, blob);
+    auto const* fields = c.if_contains("fields");
+    auto const* js = c.if_contains("json");
+    std::string canonical;
+    if (c.contains("canonical_blob"))
+        canonical = std::string(c.at("canonical_blob").as_string());
+    return oracle_run::run_stobject(protocol, blob, fields, js, canonical);
 }
 
 }  // namespace
@@ -77,12 +82,28 @@ TEST(ScanCorpus, LocateCertifyDecodeMatchOracleExpect)
         auto const expect = std::string(c.at("expect").as_string());
         auto const o = run_case(protocol, c);
         EXPECT_TRUE(o.sinks_agree) << id << " NullSink vs IndexSink";
+        bool const trailing_ok =
+            c.contains("trailing_ok") && c.at("trailing_ok").as_bool();
         if (expect == "accept")
         {
             EXPECT_TRUE(o.locate_ok) << id << " locate " << o.locate_err;
             EXPECT_TRUE(o.certify_null_ok)
                 << id << " certify " << o.certify_err;
-            EXPECT_TRUE(o.decode_frames_ok) << id << " decode frames";
+            EXPECT_TRUE(o.decode_frames_ok)
+                << id << " decode " << o.decode_err;
+            EXPECT_TRUE(o.names_ok) << id << " names " << o.names_err;
+            EXPECT_TRUE(o.json_ok) << id << " json " << o.json_err;
+            if (!trailing_ok)
+            {
+                EXPECT_TRUE(o.consumed_all)
+                    << id << " end locate=" << o.locate_end
+                    << " certify=" << o.certify_end
+                    << " size=" << o.blob_size;
+            }
+            else
+            {
+                EXPECT_LT(o.locate_end, o.blob_size) << id;
+            }
         }
         else
         {
@@ -107,10 +128,15 @@ TEST(ScanCorpus, RequiredIdsPresent)
              "stobject-seq-account-out-of-order",
              "stobject-trailing-ff",
              "stobject-pathset",
+             "stobject-pathset-truncated",
              "stobject-native-amount",
              "stobject-iou-amount",
              "stobject-vl-blob",
              "stobject-nested-memos",
+             "stobject-array-nop-1",
+             "stobject-array-nop-64",
+             "stobject-xchain-bridge",
+             "stobject-e1-then-ff",
          })
     {
         EXPECT_TRUE(ids.count(need)) << need;
@@ -123,4 +149,24 @@ TEST(ScanNoThrow, MalformedUnknownFieldIsError)
     auto o = oracle_run::run_stobject(protocol, "FF");
     EXPECT_FALSE(o.certify_null_ok);
     EXPECT_FALSE(o.locate_ok);
+}
+
+TEST(ScanCorpus, AcceptsRetainOracleEnvelope)
+{
+    auto const root = load_corpus().as_object();
+    EXPECT_EQ(
+        std::string(root.at("oracle_commit").as_string()),
+        "cb829d7657607643f0bdc29c65f9a41fbd86a688");
+    for (auto const& item : root.at("cases").as_array())
+    {
+        auto const& c = item.as_object();
+        if (std::string(c.at("expect").as_string()) != "accept")
+            continue;
+        if (std::string(c.at("codec_type").as_string()) != "stobject")
+            continue;
+        auto const id = std::string(c.at("id").as_string());
+        EXPECT_TRUE(c.contains("fields")) << id;
+        EXPECT_TRUE(c.contains("canonical_blob")) << id;
+        EXPECT_TRUE(c.contains("oracle_commit")) << id;
+    }
 }
