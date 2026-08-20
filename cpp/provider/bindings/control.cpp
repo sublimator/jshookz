@@ -150,6 +150,60 @@ js_rollback_on_fail(JSContext *ctx, JSValueConst this_val,
 }
 
 JSValue
+call_lifecycle(
+    JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv,
+    int message_index,
+    JSValue (*terminal)(JSContext *, JSValueConst, int, JSValueConst *))
+{
+    if (argc <= message_index || JS_IsUndefined(argv[message_index]))
+        return terminal(ctx, this_val, 0, nullptr);
+    JSValueConst args[2] = {
+        argv[message_index],
+        argc > message_index + 1 ? argv[message_index + 1] : JS_UNDEFINED,
+    };
+    int const n = argc > message_index + 1 &&
+            !JS_IsUndefined(argv[message_index + 1])
+        ? 2
+        : 1;
+    return terminal(ctx, this_val, n, args);
+}
+
+// 1 = continue with owned *out, 0 = missing, -1 = exception.
+int
+take_present_value(JSContext *ctx, JSValueConst value, JSValue *out,
+                   const char *function_name)
+{
+    if (isEffectResult(value)) {
+        JS_ThrowTypeError(
+            ctx, "%s: void-effect Result has no value to require",
+            function_name);
+        return -1;
+    }
+    if (isResult(value)) {
+        int const success = get_result_success(ctx, value, function_name);
+        if (success < 0)
+            return -1;
+        if (success) {
+            qjs::OwnedValue inner = qjs::property(ctx, value, "value");
+            if (inner.isException())
+                return -1;
+            if (!JS_IsUndefined(inner.get()) && !JS_IsNull(inner.get())) {
+                *out = inner.release();
+                return 1;
+            }
+        }
+        return 0;
+    }
+    int const truthy = JS_ToBool(ctx, value);
+    if (truthy < 0)
+        return -1;
+    if (!truthy)
+        return 0;
+    *out = JS_DupValue(ctx, value);
+    return 1;
+}
+
+JSValue
 // @binding provider:rollback.require
 js_rollback_require(JSContext *ctx, JSValueConst this_val,
                     int argc, JSValueConst *argv)
@@ -158,40 +212,73 @@ js_rollback_require(JSContext *ctx, JSValueConst this_val,
         return JS_ThrowTypeError(
             ctx, "rollback.require: expected Result or optional value");
 
-    if (isEffectResult(argv[0]))
-        return JS_ThrowTypeError(
-            ctx, "rollback.require: void-effect Result has no value to require");
-
-    if (isResult(argv[0])) {
-        int const success =
-            get_result_success(ctx, argv[0], "rollback.require");
-        if (success < 0)
-            return JS_EXCEPTION;
-        if (success) {
-            qjs::OwnedValue value = qjs::property(ctx, argv[0], "value");
-            if (value.isException() ||
-                (!JS_IsUndefined(value.get()) && !JS_IsNull(value.get())))
-                return value.release();
-        }
-    } else {
-        int const truthy = JS_ToBool(ctx, argv[0]);
-        if (truthy < 0)
-            return JS_EXCEPTION;
-        if (truthy)
-            return JS_DupValue(ctx, argv[0]);
-    }
+    JSValue present = JS_UNDEFINED;
+    int const status =
+        take_present_value(ctx, argv[0], &present, "rollback.require");
+    if (status < 0)
+        return JS_EXCEPTION;
+    if (status > 0)
+        return present;
 
     if (argc < 2 || JS_IsUndefined(argv[1]))
         return JS_ThrowTypeError(
             ctx, "rollback.require: expected rollback message");
+    return call_lifecycle(
+        ctx, this_val, argc, argv, 1, js_hook_rollback);
+}
 
-    JSValueConst rollback_args[2] = {
-        argv[1],
-        argc > 2 ? argv[2] : JS_UNDEFINED,
-    };
-    int const rollback_argc = argc > 2 ? 2 : 1;
-    return js_hook_rollback(
-        ctx, this_val, rollback_argc, rollback_args);
+JSValue
+// @binding provider:rollback.when
+js_rollback_when(JSContext *ctx, JSValueConst this_val,
+                 int argc, JSValueConst *argv)
+{
+    if (argc < 1)
+        return JS_ThrowTypeError(
+            ctx, "rollback.when: expected condition");
+    int const truthy = JS_ToBool(ctx, argv[0]);
+    if (truthy < 0)
+        return JS_EXCEPTION;
+    if (!truthy)
+        return JS_UNDEFINED;
+    return call_lifecycle(
+        ctx, this_val, argc, argv, 1, js_hook_rollback);
+}
+
+JSValue
+// @binding provider:accept.unless
+js_accept_unless(JSContext *ctx, JSValueConst this_val,
+                 int argc, JSValueConst *argv)
+{
+    if (argc < 1)
+        return JS_ThrowTypeError(
+            ctx, "accept.unless: expected Result or optional value");
+
+    JSValue present = JS_UNDEFINED;
+    int const status =
+        take_present_value(ctx, argv[0], &present, "accept.unless");
+    if (status < 0)
+        return JS_EXCEPTION;
+    if (status > 0)
+        return present;
+    return call_lifecycle(
+        ctx, this_val, argc, argv, 1, js_hook_accept);
+}
+
+JSValue
+// @binding provider:accept.when
+js_accept_when(JSContext *ctx, JSValueConst this_val,
+               int argc, JSValueConst *argv)
+{
+    if (argc < 1)
+        return JS_ThrowTypeError(
+            ctx, "accept.when: expected condition");
+    int const truthy = JS_ToBool(ctx, argv[0]);
+    if (truthy < 0)
+        return JS_EXCEPTION;
+    if (!truthy)
+        return JS_UNDEFINED;
+    return call_lifecycle(
+        ctx, this_val, argc, argv, 1, js_hook_accept);
 }
 
 JSValue
@@ -296,9 +383,18 @@ js_rollback_on_all_fail(JSContext *ctx, JSValueConst this_val,
 bool
 registerControl(JSContext *ctx, JSValue global)
 {
-    if (JS_SetPropertyStr(ctx, global, "accept",
-            JS_NewCFunction(ctx, js_hook_accept, "accept", 2)) < 0)
+    qjs::OwnedValue accept(
+        ctx, JS_NewCFunction(ctx, js_hook_accept, "accept", 2));
+    if (accept.isException())
         return false;
+    if (JS_SetPropertyStr(ctx, accept.get(), "unless",
+            JS_NewCFunction(ctx, js_accept_unless, "unless", 3)) < 0 ||
+        JS_SetPropertyStr(ctx, accept.get(), "when",
+            JS_NewCFunction(ctx, js_accept_when, "when", 3)) < 0)
+        return false;
+    if (JS_SetPropertyStr(ctx, global, "accept", accept.release()) < 0)
+        return false;
+
     qjs::OwnedValue rollback(
         ctx, JS_NewCFunction(ctx, js_hook_rollback, "rollback", 2));
     if (rollback.isException())
@@ -307,6 +403,8 @@ registerControl(JSContext *ctx, JSValue global)
             JS_NewCFunction(ctx, js_rollback_on_fail, "onFail", 3)) < 0 ||
         JS_SetPropertyStr(ctx, rollback.get(), "require",
             JS_NewCFunction(ctx, js_rollback_require, "require", 3)) < 0 ||
+        JS_SetPropertyStr(ctx, rollback.get(), "when",
+            JS_NewCFunction(ctx, js_rollback_when, "when", 3)) < 0 ||
         JS_SetPropertyStr(ctx, rollback.get(), "onAnyFail",
             JS_NewCFunction(ctx, js_rollback_on_any_fail, "onAnyFail", 3)) < 0 ||
         JS_SetPropertyStr(ctx, rollback.get(), "onAllFail",

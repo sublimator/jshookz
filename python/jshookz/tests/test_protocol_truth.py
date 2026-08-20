@@ -99,6 +99,26 @@ def test_account_id_constants_have_value_semantics():
     assert json.loads(result.result_value) == [True, True, False, True]
 
 
+def test_accept_unless_refuses_void_effect_results_at_runtime():
+    host = WasmHost.profiled(handler=_EffectHost())
+    host.init()
+    try:
+        result = host.eval(
+            "JSON.stringify((() => {"
+            "  try { accept.unless(state.set('K', [1]), 'skip'); }"
+            "  catch (error) { return [error instanceof TypeError, String(error)]; }"
+            "  return [false, 'accepted'];"
+            "})())"
+        )
+    finally:
+        host.destroy()
+
+    assert result.ok, result.error
+    caught, message = json.loads(result.result_value)
+    assert caught
+    assert "void-effect Result" in message
+
+
 def test_rollback_require_refuses_void_effect_results_at_runtime():
     host = WasmHost.profiled(handler=_EffectHost())
     host.init()

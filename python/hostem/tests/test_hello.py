@@ -255,6 +255,110 @@ def test_rollback_require_defaults_only_the_explicit_policy_code():
     ]
 
 
+def test_rollback_when_rollbacks_on_truthy_and_continues_on_falsy():
+    rejected = HookRunner().run(
+        '''
+        export function main() {
+          rollback.when(true, "when fired", 81);
+          accept("unexpected");
+        }
+        '''
+    )
+    assert rejected.rejected, rejected.error
+    assert rejected.return_code == 81
+    assert rejected.return_msg == b"when fired"
+    assert [call.name for call in rejected.call_log] == ["rollback"]
+
+    continued = HookRunner().run(
+        '''
+        export function main() {
+          rollback.when(false, "when fired", 81);
+          rollback.when(0, "when fired", 81);
+          accept("continued", 82);
+        }
+        '''
+    )
+    assert continued.accepted, continued.error
+    assert continued.return_code == 82
+    assert continued.return_msg == b"continued"
+    assert [call.name for call in continued.call_log] == ["accept"]
+
+
+def test_accept_when_accepts_on_truthy_and_continues_on_falsy():
+    accepted = HookRunner().run(
+        '''
+        export function main() {
+          accept.when(1, "done", 83);
+          rollback("unexpected", 1);
+        }
+        '''
+    )
+    assert accepted.accepted, accepted.error
+    assert accepted.return_code == 83
+    assert accepted.return_msg == b"done"
+    assert [call.name for call in accepted.call_log] == ["accept"]
+
+    continued = HookRunner().run(
+        '''
+        export function main() {
+          accept.when(false, "done", 83);
+          accept("kept going", 84);
+        }
+        '''
+    )
+    assert continued.accepted, continued.error
+    assert continued.return_code == 84
+    assert continued.return_msg == b"kept going"
+    assert [call.name for call in continued.call_log] == ["accept"]
+
+
+def test_accept_unless_accepts_on_absence_and_unwraps_presence():
+    missing = HookRunner().run(
+        '''
+        export function main() {
+          const value = accept.unless(state.get("MISSING"), "no work", 85);
+          accept(`unexpected:${value}`, 1);
+        }
+        '''
+    )
+    assert missing.accepted, missing.error
+    assert missing.return_code == 85
+    assert missing.return_msg == b"no work"
+    assert [call.name for call in missing.call_log] == ["state", "accept"]
+
+    present_runner = HookRunner()
+    present_runner.runtime.state_db[b"MISSING"] = b"\x02"
+    present = present_runner.run(
+        '''
+        export function main() {
+          const value = accept.unless(state.get("MISSING"), "no work", 85);
+          accept(`had:${value.byteLength}`, 86);
+        }
+        '''
+    )
+    assert present.accepted, present.error
+    assert present.return_code == 86
+    assert present.return_msg == b"had:1"
+    assert [call.name for call in present.call_log] == ["state", "accept"]
+
+
+def test_rollback_when_does_not_treat_a_result_object_as_a_predicate():
+    # Result is a JS object, hence truthy. when is the condition form;
+    # require/unless is the unwrap form.
+    result = HookRunner().run(
+        '''
+        export function main() {
+          const missing = state.get("MISSING");
+          rollback.when(missing, "result object is truthy", 87);
+          accept("unexpected");
+        }
+        '''
+    )
+    assert result.rejected, result.error
+    assert result.return_code == 87
+    assert result.return_msg == b"result object is truthy"
+
+
 def test_rollback_require_rejects_a_missing_contract_policy():
     result = HookRunner().run(
         '''
