@@ -1,6 +1,11 @@
-// Standalone wasm fuel probe. Not part of the host test binary.
-// Compile with wasi-sdk; run with wasmtime --fuel or python wasmtime.
+// No-exceptions wasm fuel probe. JsonVisitor cannot link under wasi-sdk
+// (libc++abi has no __cxa_throw). This uses the shipped parse_with_visitor
+// path and materializes every leaf with shipped decode_raw / AccountID
+// decode_string_expected / Amount certify — not a skip visitor.
 
+#include "catl/xdata/codecs/account_id.h"
+#include "catl/xdata/codecs/int.h"
+#include "catl/xdata/codecs/uint.h"
 #include "catl/xdata/parser-context.h"
 #include "catl/xdata/parser.h"
 #include "catl/xdata/protocol.h"
@@ -10,11 +15,16 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <string>
+#include <vector>
 
 namespace {
 
-struct CountVisitor
+struct MaterializeVisitor
 {
+    uint64_t acc = 0;
+    std::vector<std::string> owned;
+
     bool
     visit_object_start(catl::xdata::FieldPath const&, catl::xdata::FieldSlice const&)
     {
@@ -34,12 +44,51 @@ struct CountVisitor
     {
     }
     void
-    visit_field(catl::xdata::FieldPath const&, catl::xdata::FieldSlice const&)
+    visit_field(catl::xdata::FieldPath const&, catl::xdata::FieldSlice const& fs)
     {
+        using namespace catl::xdata;
+        auto const& t = fs.get_field().meta.type;
+        Slice const d = fs.data;
+        if (t == FieldTypes::UInt8)
+            acc += codecs::UInt8Codec::decode_raw(d);
+        else if (t == FieldTypes::UInt16)
+            acc += codecs::UInt16Codec::decode_raw(d);
+        else if (t == FieldTypes::UInt32)
+            acc += codecs::UInt32Codec::decode_raw(d);
+        else if (t == FieldTypes::Int32)
+            acc += static_cast<uint64_t>(codecs::Int32Codec::decode_raw(d));
+        else if (t == FieldTypes::AccountID)
+        {
+            auto s = codecs::AccountIDCodec::decode_string_expected(d);
+            if (s)
+            {
+                owned.push_back(std::move(*s));
+                acc += owned.back().size();
+            }
+        }
+        else if (t == FieldTypes::Amount)
+        {
+            (void)scan_detail::certify_amount(d);
+            if (d.size() >= 8)
+            {
+                uint64_t v = 0;
+                for (int i = 0; i < 8; ++i)
+                    v = (v << 8) | d.data()[i];
+                acc += v;
+            }
+            owned.emplace_back(
+                reinterpret_cast<char const*>(d.data()), d.size());
+        }
+        else
+        {
+            owned.emplace_back(
+                reinterpret_cast<char const*>(d.data()), d.size());
+            for (size_t i = 0; i < d.size(); ++i)
+                acc += d.data()[i];
+        }
     }
 };
 
-// stobject-nested-memos blob
 constexpr uint8_t kBlob[] = {
     0x81, 0x14, 0xB5, 0xF7, 0x62, 0x79, 0x8A, 0x53, 0xD5, 0x43, 0xA0, 0x14,
     0xCA, 0xF8, 0xB2, 0x97, 0xCF, 0xF8, 0xF2, 0xF9, 0x37, 0xE8, 0xF9, 0xEA,
@@ -55,12 +104,15 @@ main(int argc, char** argv)
     Slice backing{kBlob, sizeof(kBlob)};
     constexpr int kIters = 2000;
     char const* which = argc > 1 ? argv[1] : "all";
+    uint64_t sink = 0;
 
     auto loc = [&] {
         for (int i = 0; i < kIters; ++i)
         {
             NullSink s;
-            (void)scan_scope<ScanMode::Locate>(backing, 0, protocol, s);
+            auto r = scan_scope<ScanMode::Locate>(backing, 0, protocol, s);
+            if (r)
+                sink += *r;
         }
         std::puts("locate_no_index");
     };
@@ -68,7 +120,9 @@ main(int argc, char** argv)
         for (int i = 0; i < kIters; ++i)
         {
             NullSink s;
-            (void)scan_scope<ScanMode::CertifyWire>(backing, 0, protocol, s);
+            auto r = scan_scope<ScanMode::CertifyWire>(backing, 0, protocol, s);
+            if (r)
+                sink += *r;
         }
         std::puts("certify_no_index");
     };
@@ -76,7 +130,9 @@ main(int argc, char** argv)
         for (int i = 0; i < kIters; ++i)
         {
             IndexSink s;
-            (void)scan_scope<ScanMode::CertifyWire>(backing, 0, protocol, s);
+            auto r = scan_scope<ScanMode::CertifyWire>(backing, 0, protocol, s);
+            if (r)
+                sink += *r + s.frames.size();
         }
         std::puts("certify_index");
     };
@@ -84,8 +140,9 @@ main(int argc, char** argv)
         for (int i = 0; i < kIters; ++i)
         {
             ParserContext ctx{backing};
-            CountVisitor visitor;
+            MaterializeVisitor visitor;
             parse_with_visitor(ctx, protocol, visitor);
+            sink += visitor.acc + visitor.owned.size();
         }
         std::puts("full_eager_decode");
     };
@@ -105,5 +162,7 @@ main(int argc, char** argv)
         idx();
         eager();
     }
+    if (sink == 0xffffffffffffull)
+        std::puts("never");
     return 0;
 }
