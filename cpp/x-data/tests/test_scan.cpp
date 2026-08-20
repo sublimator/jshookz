@@ -196,6 +196,48 @@ TEST(ScanCorpus, MixedOracleCommitIsRejected)
     EXPECT_NE(err.find("mixed oracle_commit"), std::string::npos) << err;
 }
 
+TEST(ScanCorpus, HeaderEnumCartesianSetPresent)
+{
+    auto const root = load_corpus().as_object();
+    std::string err;
+    EXPECT_TRUE(oracle_run::header_enum_complete(root, err)) << err;
+    EXPECT_EQ(oracle_run::header_enum_ids().size(), 305u);
+}
+
+TEST(ScanCorpus, HeaderEnumFamilyDeletionIsRejected)
+{
+    auto v = load_corpus();
+    auto& cases = v.as_object().at("cases").as_array();
+    boost::json::array kept;
+    for (auto const& item : cases)
+    {
+        auto const id = std::string(item.as_object().at("id").as_string());
+        if (id.rfind("hdr-", 0) != 0)
+            kept.push_back(item);
+    }
+    v.as_object()["cases"] = std::move(kept);
+    std::string err;
+    EXPECT_FALSE(oracle_run::header_enum_complete(v.as_object(), err)) << err;
+    EXPECT_NE(err.find("missing header enum hdr-"), std::string::npos) << err;
+}
+
+TEST(ScanCorpus, HeaderEnumSingleRowDeletionIsRejected)
+{
+    auto v = load_corpus();
+    auto& cases = v.as_object().at("cases").as_array();
+    boost::json::array kept;
+    for (auto const& item : cases)
+    {
+        auto const id = std::string(item.as_object().at("id").as_string());
+        if (id != "hdr-arr-E1")
+            kept.push_back(item);
+    }
+    v.as_object()["cases"] = std::move(kept);
+    std::string err;
+    EXPECT_FALSE(oracle_run::header_enum_complete(v.as_object(), err)) << err;
+    EXPECT_NE(err.find("hdr-arr-E1"), std::string::npos) << err;
+}
+
 TEST(ScanIssue, UsdWithNativeAccountIsCertifyReject)
 {
     auto const protocol = Protocol::load_embedded_xahau_protocol();

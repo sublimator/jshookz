@@ -30,6 +30,11 @@ main(int argc, char** argv)
             std::cerr << "FAIL provenance " << prov_err << "\n";
             return 1;
         }
+        if (!oracle_run::header_enum_complete(root, prov_err))
+        {
+            std::cerr << "FAIL header-enum " << prov_err << "\n";
+            return 1;
+        }
     }
     auto const protocol = catl::xdata::Protocol::load_embedded_xahau_protocol();
 

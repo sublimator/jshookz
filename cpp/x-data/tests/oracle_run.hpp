@@ -6,6 +6,7 @@
 #include "catl/xdata/parser.h"
 #include "catl/xdata/scan.h"
 
+#include <cstdio>
 #include <exception>
 #include <set>
 #include <string>
@@ -52,6 +53,78 @@ corpus_provenance_ok(boost::json::object const& root, std::string& err)
         if (std::string(c.at("oracle_commit").as_string()) != pin)
         {
             err = id + " mixed oracle_commit";
+            return false;
+        }
+    }
+    return true;
+}
+
+// Cartesian header-enumerator IDs. Independent of the JSON file so deleting
+// hdr-* rows cannot stay green. Must match export_oracle_corpus.py.
+inline std::set<std::string>
+header_enum_ids()
+{
+    std::set<std::string> ids;
+    char buf[64];
+    for (int b = 0; b < 256; ++b)
+    {
+        std::snprintf(buf, sizeof(buf), "hdr-b-%02X", b);
+        ids.insert(buf);
+    }
+    static constexpr int kTypeBytes[] = {0, 1, 5, 15, 16, 26, 255};
+    static constexpr int kNameNibbles[] = {0x1, 0x5, 0xE};
+    for (int tb : kTypeBytes)
+    {
+        for (int nn : kNameNibbles)
+        {
+            std::snprintf(buf, sizeof(buf), "hdr-t-%02X-n-%X", tb, nn);
+            ids.insert(buf);
+        }
+    }
+    static constexpr int kTypeNibbles[] = {1, 8, 14};
+    static constexpr int kNameBytes[] = {0, 1, 5, 15, 16, 255};
+    for (int tn : kTypeNibbles)
+    {
+        for (int nb : kNameBytes)
+        {
+            std::snprintf(buf, sizeof(buf), "hdr-n-t%X-f%02X", tn, nb);
+            ids.insert(buf);
+        }
+    }
+    static constexpr char const* kArr[] = {
+        "E1", "E032E1", "E032E1F1", "F1", "99", "0105"};
+    for (char const* inner : kArr)
+    {
+        std::string id = std::string("hdr-arr-") + inner;
+        ids.insert(id);
+        std::string_view iv{inner};
+        if (iv != "F1" && !iv.ends_with("F1"))
+            ids.insert(id + "-F1");
+    }
+    return ids;
+}
+
+inline bool
+header_enum_complete(boost::json::object const& root, std::string& err)
+{
+    if (!root.contains("cases") || !root.at("cases").is_array())
+    {
+        err = "missing cases";
+        return false;
+    }
+    std::set<std::string> have;
+    for (auto const& item : root.at("cases").as_array())
+    {
+        auto const& c = item.as_object();
+        if (c.contains("id") && c.at("id").is_string())
+            have.insert(std::string(c.at("id").as_string()));
+    }
+    auto const want = header_enum_ids();
+    for (auto const& id : want)
+    {
+        if (!have.count(id))
+        {
+            err = "missing header enum " + id;
             return false;
         }
     }
