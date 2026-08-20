@@ -38,6 +38,78 @@ TEST(ParserContext, FailedReadDoesNotAdvance)
     EXPECT_EQ(ctx.fail_offset(), 0u);
 }
 
+TEST(ParserContext, CompoundFailedReadsRestoreOperationStart)
+{
+    {
+        std::uint8_t const bytes[] = {0x01, 0x05};
+        ParserContext ctx{Slice{bytes, sizeof(bytes)}};
+        EXPECT_EQ(ctx.read_field_code(), 0u);
+        EXPECT_TRUE(ctx.failed());
+        EXPECT_EQ(ctx.pos(), 0u);
+        EXPECT_EQ(ctx.fail_offset(), 1u);
+    }
+    {
+        std::uint8_t const bytes[] = {0x10, 0x05};
+        ParserContext ctx{Slice{bytes, sizeof(bytes)}};
+        EXPECT_EQ(ctx.read_field_code(), 0u);
+        EXPECT_TRUE(ctx.failed());
+        EXPECT_EQ(ctx.pos(), 0u);
+        EXPECT_EQ(ctx.fail_offset(), 1u);
+    }
+    {
+        std::uint8_t const bytes[] = {0x00, 0x16, 0x05};
+        ParserContext ctx{Slice{bytes, sizeof(bytes)}};
+        EXPECT_EQ(ctx.read_field_code(), 0u);
+        EXPECT_TRUE(ctx.failed());
+        EXPECT_EQ(ctx.pos(), 0u);
+        EXPECT_EQ(ctx.fail_offset(), 2u);
+    }
+    {
+        std::uint8_t const bytes[] = {0x01};
+        ParserContext ctx{Slice{bytes, sizeof(bytes)}};
+        EXPECT_EQ(ctx.read_field_code(), 0u);
+        EXPECT_TRUE(ctx.failed());
+        EXPECT_EQ(ctx.pos(), 0u);
+        EXPECT_EQ(ctx.fail_offset(), 1u);
+    }
+    {
+        std::uint8_t const bytes[] = {0xc1};
+        ParserContext ctx{Slice{bytes, sizeof(bytes)}};
+        size_t len = 0;
+        EXPECT_FALSE(ctx.read_vl_length(len));
+        EXPECT_TRUE(ctx.failed());
+        EXPECT_EQ(ctx.pos(), 0u);
+        EXPECT_EQ(ctx.fail_offset(), 1u);
+    }
+    {
+        std::uint8_t const bytes[] = {0xf1};
+        ParserContext ctx{Slice{bytes, sizeof(bytes)}};
+        size_t len = 0;
+        EXPECT_FALSE(ctx.read_vl_length(len));
+        EXPECT_TRUE(ctx.failed());
+        EXPECT_EQ(ctx.pos(), 0u);
+        EXPECT_EQ(ctx.fail_offset(), 1u);
+    }
+    {
+        std::uint8_t const bytes[] = {0xf1, 0x00};
+        ParserContext ctx{Slice{bytes, sizeof(bytes)}};
+        size_t len = 0;
+        EXPECT_FALSE(ctx.read_vl_length(len));
+        EXPECT_TRUE(ctx.failed());
+        EXPECT_EQ(ctx.pos(), 0u);
+        EXPECT_EQ(ctx.fail_offset(), 2u);
+    }
+    {
+        std::uint8_t const bytes[] = {0xff};
+        ParserContext ctx{Slice{bytes, sizeof(bytes)}};
+        size_t len = 0;
+        EXPECT_FALSE(ctx.read_vl_length(len));
+        EXPECT_TRUE(ctx.failed());
+        EXPECT_EQ(ctx.pos(), 0u);
+        EXPECT_EQ(ctx.fail_offset(), 0u);
+    }
+}
+
 TEST(ParserContext, ResetClearsFailureForNextScan)
 {
     auto const protocol = Protocol::load_embedded_xahau_protocol();

@@ -305,6 +305,29 @@ TEST(ParserDepth, SkipPathIsCappedToo)
     EXPECT_THROW(parse_with_visitor(ctx, protocol, visitor), ParserError);
 }
 
+TEST(TruncatedInput, PathSetAccountHopWithNoAccountThrows)
+{
+    // Paths header (long type 18, field 1) then hop type Account with none of
+    // the 20 account bytes. skip_pathset is sticky; the legacy parser must
+    // throw rather than rewind and visit the truncated hop.
+    auto const protocol = Protocol::load_embedded_xahau_protocol();
+    std::uint8_t const blob[] = {0x01, 0x12, 0x01};
+    ParserContext ctx{Slice{blob, sizeof(blob)}};
+    struct CountFields
+    {
+        int fields = 0;
+        void
+        visit_field(const FieldPath&, const FieldSlice&)
+        {
+            ++fields;
+        }
+    };
+    CountFields visitor;
+    EXPECT_THROW(parse_with_visitor(ctx, protocol, visitor), std::exception);
+    EXPECT_EQ(visitor.fields, 0);
+    EXPECT_TRUE(ctx.failed());
+}
+
 TEST(TruncatedInput, XChainBridgeHeaderWithNoBodyIsRejected)
 {
     // A field header and nothing else. wire_size() is called from the leaf

@@ -45,6 +45,13 @@ is_array_end_marker(const FieldDef* field)
         field->meta.nth == 1;
 }
 
+inline void
+throw_if_failed(ParserContext const& ctx)
+{
+    if (ctx.failed())
+        CATL_XDATA_THROW(ParserError(ctx.as_error().message));
+}
+
 // Forward declarations
 inline void
 skip_array(ParserContext& ctx, const Protocol& protocol, int depth = 0);
@@ -65,6 +72,7 @@ skip_object(ParserContext& ctx, const Protocol& protocol, int depth = 0)
         CATL_XDATA_THROW(ParserError("STObject nesting exceeds maximum depth"));
     while (!ctx.cursor.empty())
     {
+        throw_if_failed(ctx);
         auto [header_slice, field_code] = read_field_header(ctx.cursor);
         if (field_code == 0)
         {
@@ -98,6 +106,7 @@ skip_object(ParserContext& ctx, const Protocol& protocol, int depth = 0)
         {
             // PathSet has its own termination protocol
             skip_pathset(ctx);
+            throw_if_failed(ctx);
         }
         else if (field->meta.is_vl_encoded)
         {
@@ -145,6 +154,7 @@ skip_array(ParserContext& ctx, const Protocol& protocol, int depth)
         CATL_XDATA_THROW(ParserError("STArray nesting exceeds maximum depth"));
     while (!ctx.cursor.empty())
     {
+        throw_if_failed(ctx);
         auto [header_slice, field_code] = read_field_header(ctx.cursor);
         if (field_code == 0)
             break;
@@ -200,6 +210,7 @@ parse_with_visitor_impl(
         CATL_XDATA_THROW(ParserError("STObject/STArray nesting exceeds maximum depth"));
     while (!ctx.cursor.empty())
     {
+        throw_if_failed(ctx);
         auto [header_slice, field_code] = read_field_header(ctx.cursor);
         if (field_code == 0)
             break;
@@ -405,6 +416,7 @@ parse_with_visitor_impl(
                 // PathSet - find the end byte to get size
                 size_t start_pos = ctx.cursor.pos;
                 skip_pathset(ctx);
+                throw_if_failed(ctx);
                 field_size = ctx.cursor.pos - start_pos;
                 ctx.cursor.pos = start_pos;  // Reset to read the data
             }

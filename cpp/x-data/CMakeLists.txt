@@ -90,9 +90,28 @@ if(BUILD_TESTING)
         target_link_libraries(test_parser_context PRIVATE jshookz_xdata GTest::gtest_main)
         gtest_discover_tests(test_parser_context DISCOVERY_TIMEOUT 30)
 
+        add_executable(test_scan_recover tests/scan_recover_wasm.cpp)
+        target_link_libraries(test_scan_recover PRIVATE jshookz_xdata)
+        add_test(NAME test_scan_recover
+            COMMAND ${CMAKE_COMMAND}
+                -DCMD=$<TARGET_FILE:test_scan_recover>
+                -P ${CMAKE_CURRENT_LIST_DIR}/tests/check_scan_recover.cmake
+        )
+
+        set(_poison_sysroot "${CMAKE_OSX_SYSROOT}")
+        if(_poison_sysroot AND NOT EXISTS "${_poison_sysroot}")
+            execute_process(
+                COMMAND xcrun --sdk ${_poison_sysroot} --show-sdk-path
+                OUTPUT_VARIABLE _poison_sysroot
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_QUIET
+            )
+        endif()
         add_test(NAME throwing_cursor_poison
             COMMAND ${CMAKE_COMMAND}
                 -DCOMPILER=${CMAKE_CXX_COMPILER}
+                "-DFLAGS=${CMAKE_CXX_FLAGS}"
+                "-DSYSROOT=${_poison_sysroot}"
                 -DPROBE=${CMAKE_CURRENT_LIST_DIR}/tests/throwing_cursor_poison_probe.cpp
                 -DINC0=${CMAKE_CURRENT_LIST_DIR}/includes
                 -DINC1=${CMAKE_CURRENT_LIST_DIR}/core/includes

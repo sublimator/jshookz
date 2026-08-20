@@ -1,5 +1,6 @@
 // Same-instance recovery: malformed scan then valid scan without
-// reloading the module. Compile with wasi-sdk; run with wasmtime.
+// reloading the module. Host CTest compiles this TU as test_scan_recover.
+// The same source is also a wasi-sdk/wasmtime probe.
 
 #include "catl/xdata/protocol.h"
 #include "catl/xdata/scan.h"

@@ -48,18 +48,28 @@ struct ParserContext
     }
 
     void
-    fail(char const* lit, uint32_t aux = 0, bool has_aux = false) noexcept
+    fail_at(
+        size_t offset,
+        char const* lit,
+        uint32_t aux = 0,
+        bool has_aux = false) noexcept
     {
         if (failed_)
             return;
         failed_ = true;
         code_ = CodecErrorCode::malformed_data;
-        fail_offset_ = cursor.pos > 0xffffffffu
+        fail_offset_ = offset > 0xffffffffu
             ? 0xffffffffu
-            : static_cast<uint32_t>(cursor.pos);
+            : static_cast<uint32_t>(offset);
         lit_ = lit ? lit : "";
         aux_ = aux;
         has_aux_ = has_aux;
+    }
+
+    void
+    fail(char const* lit, uint32_t aux = 0, bool has_aux = false) noexcept
+    {
+        fail_at(cursor.pos, lit, aux, has_aux);
     }
 
     CodecErrorValue
@@ -140,6 +150,8 @@ struct ParserContext
     }
 
     // 0 means end-of-input or already failed. Illegal long-form fails sticky.
+    // Failed compound reads restore pos to the operation start; fail_offset
+    // is the first failing byte.
     uint32_t
     read_field_code() noexcept
     {
@@ -147,6 +159,7 @@ struct ParserContext
             return 0;
         if (cursor.empty())
             return 0;
+        size_t const start = cursor.pos;
         uint8_t byte1 = 0;
         if (!read_u8(byte1))
             return 0;
@@ -158,14 +171,15 @@ struct ParserContext
             uint8_t t = 0;
             if (!read_u8(t))
             {
-                if (!failed_)
-                    fail("truncated field type");
+                cursor.pos = start;
                 return 0;
             }
             type = t;
             if (type < 16)
             {
-                fail("gFID: uncommon type out of range ", type, true);
+                size_t const bad = cursor.pos - 1;
+                cursor.pos = start;
+                fail_at(bad, "gFID: uncommon type out of range ", type, true);
                 return 0;
             }
         }
@@ -175,14 +189,15 @@ struct ParserContext
             uint8_t f = 0;
             if (!read_u8(f))
             {
-                if (!failed_)
-                    fail("truncated field id");
+                cursor.pos = start;
                 return 0;
             }
             field = f;
             if (field < 16)
             {
-                fail("gFID: uncommon name out of range ", field, true);
+                size_t const bad = cursor.pos - 1;
+                cursor.pos = start;
+                fail_at(bad, "gFID: uncommon name out of range ", field, true);
                 return 0;
             }
         }
@@ -192,6 +207,9 @@ struct ParserContext
     bool
     read_vl_length(size_t& out) noexcept
     {
+        if (failed_)
+            return false;
+        size_t const start = cursor.pos;
         uint8_t byte1 = 0;
         if (!read_u8(byte1))
             return false;
@@ -204,7 +222,10 @@ struct ParserContext
         {
             uint8_t byte2 = 0;
             if (!read_u8(byte2))
+            {
+                cursor.pos = start;
                 return false;
+            }
             out = 193 + ((static_cast<size_t>(byte1) - 193) * 256) + byte2;
             return true;
         }
@@ -213,11 +234,15 @@ struct ParserContext
             uint8_t byte2 = 0;
             uint8_t byte3 = 0;
             if (!read_u8(byte2) || !read_u8(byte3))
+            {
+                cursor.pos = start;
                 return false;
+            }
             out = 12481 + ((static_cast<size_t>(byte1) - 241) * 65536) +
                 (static_cast<size_t>(byte2) * 256) + byte3;
             return true;
         }
+        cursor.pos = start;
         fail("Invalid VL encoding");
         return false;
     }
