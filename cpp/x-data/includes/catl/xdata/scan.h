@@ -119,6 +119,33 @@ try_issue_size(SliceCursor const& cursor)
 }
 
 inline std::expected<void, CodecErrorValue>
+certify_issue(Slice payload)
+{
+    // xahaud-vectors:src/libxrpl/protocol/STIssue.cpp:77
+    // xahaud-vectors:src/libxrpl/protocol/Issue.cpp:67
+    if (payload.size() == 20)
+    {
+        if (!is_xrp_currency(payload.data()))
+            return std::unexpected(err("invalid Issue size"));
+        return {};
+    }
+    if (payload.size() == 44)
+    {
+        if (payload.size() < 40 || !is_no_account(payload.data() + 20))
+            return std::unexpected(err("invalid MPT Issue"));
+        return {};
+    }
+    if (payload.size() != 40)
+        return std::unexpected(err("invalid Issue size"));
+    bool const native_currency = is_xrp_currency(payload.data());
+    bool const native_account = all_zero20(payload.data() + 20);
+    if (native_currency != native_account)
+        return std::unexpected(
+            err("invalid issue: currency and account native mismatch"));
+    return {};
+}
+
+inline std::expected<void, CodecErrorValue>
 certify_amount(Slice payload)
 {
     if (payload.size() < 8)
@@ -311,6 +338,13 @@ skip_xchain_bridge(SliceCursor& cursor, ScanMode mode)
         auto n = try_issue_size(cursor);
         if (!n)
             return std::unexpected(n.error());
+        if (mode == ScanMode::CertifyWire)
+        {
+            Slice issue{cursor.data.data() + cursor.pos, *n};
+            auto c = certify_issue(issue);
+            if (!c)
+                return std::unexpected(c.error());
+        }
         auto adv2 = cursor.try_advance(*n);
         if (!adv2)
             return std::unexpected(adv2.error());
@@ -507,6 +541,13 @@ scan_object(
             auto n = try_issue_size(cursor);
             if (!n)
                 return std::unexpected(n.error());
+            if constexpr (M == ScanMode::CertifyWire)
+            {
+                Slice issue{cursor.data.data() + cursor.pos, *n};
+                auto c = certify_issue(issue);
+                if (!c)
+                    return std::unexpected(c.error());
+            }
             auto adv = cursor.try_advance(*n);
             if (!adv)
                 return std::unexpected(adv.error());

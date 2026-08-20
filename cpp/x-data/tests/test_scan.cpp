@@ -136,6 +136,8 @@ TEST(ScanCorpus, RequiredIdsPresent)
              "stobject-array-nop-1",
              "stobject-array-nop-64",
              "stobject-xchain-bridge",
+             "stobject-xchain-issue-native-mismatch",
+             "stobject-issue-usd-zero-account",
              "stobject-e1-then-ff",
          })
     {
@@ -154,9 +156,8 @@ TEST(ScanNoThrow, MalformedUnknownFieldIsError)
 TEST(ScanCorpus, AcceptsRetainOracleEnvelope)
 {
     auto const root = load_corpus().as_object();
-    EXPECT_EQ(
-        std::string(root.at("oracle_commit").as_string()),
-        "cb829d7657607643f0bdc29c65f9a41fbd86a688");
+    std::string err;
+    EXPECT_TRUE(oracle_run::corpus_provenance_ok(root, err)) << err;
     for (auto const& item : root.at("cases").as_array())
     {
         auto const& c = item.as_object();
@@ -167,6 +168,35 @@ TEST(ScanCorpus, AcceptsRetainOracleEnvelope)
         auto const id = std::string(c.at("id").as_string());
         EXPECT_TRUE(c.contains("fields")) << id;
         EXPECT_TRUE(c.contains("canonical_blob")) << id;
-        EXPECT_TRUE(c.contains("oracle_commit")) << id;
     }
+}
+
+TEST(ScanCorpus, MixedOracleCommitIsRejected)
+{
+    auto v = load_corpus();
+    auto& root = v.as_object();
+    ASSERT_FALSE(root.at("cases").as_array().empty());
+    root.at("cases").as_array()[0].as_object()["oracle_commit"] = "deadbeef";
+    std::string err;
+    EXPECT_FALSE(oracle_run::corpus_provenance_ok(root, err));
+    EXPECT_NE(err.find("mixed oracle_commit"), std::string::npos) << err;
+}
+
+TEST(ScanIssue, UsdWithNativeAccountIsCertifyReject)
+{
+    auto const protocol = Protocol::load_embedded_xahau_protocol();
+    auto const blob =
+        "011914B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        "0000000000000000000000005553440000000000"
+        "0000000000000000000000000000000000000000"
+        "14B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        "0000000000000000000000000000000000000000";
+    auto o = oracle_run::run_stobject(protocol, blob);
+    EXPECT_TRUE(o.locate_ok) << o.locate_err;
+    EXPECT_FALSE(o.certify_null_ok);
+    EXPECT_FALSE(o.certify_index_ok);
+    EXPECT_TRUE(o.sinks_agree);
+    EXPECT_NE(
+        o.certify_err.find("native mismatch"), std::string::npos)
+        << o.certify_err;
 }

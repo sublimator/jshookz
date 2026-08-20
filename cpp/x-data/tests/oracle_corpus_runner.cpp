@@ -23,10 +23,13 @@ main(int argc, char** argv)
     std::ostringstream ss;
     ss << in.rdbuf();
     auto const root = boost::json::parse(ss.str()).as_object();
-    if (!root.contains("oracle_commit"))
     {
-        std::cerr << "corpus missing oracle_commit\n";
-        return 1;
+        std::string prov_err;
+        if (!oracle_run::corpus_provenance_ok(root, prov_err))
+        {
+            std::cerr << "FAIL provenance " << prov_err << "\n";
+            return 1;
+        }
     }
     auto const protocol = catl::xdata::Protocol::load_embedded_xahau_protocol();
 

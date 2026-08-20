@@ -16,6 +16,47 @@ namespace oracle_run {
 
 inline constexpr char const* kZeroAccount =
     "rrrrrrrrrrrrrrrrrrrrrhoLvTp";
+inline constexpr char const* kOracleCommit =
+    "cb829d7657607643f0bdc29c65f9a41fbd86a688";
+
+inline bool
+corpus_provenance_ok(boost::json::object const& root, std::string& err)
+{
+    if (!root.contains("oracle_commit") || !root.at("oracle_commit").is_string())
+    {
+        err = "missing root oracle_commit";
+        return false;
+    }
+    auto const pin = std::string(root.at("oracle_commit").as_string());
+    if (pin != kOracleCommit)
+    {
+        err = "root oracle_commit is not the pinned vectors commit";
+        return false;
+    }
+    if (!root.contains("cases") || !root.at("cases").is_array())
+    {
+        err = "missing cases";
+        return false;
+    }
+    for (auto const& item : root.at("cases").as_array())
+    {
+        auto const& c = item.as_object();
+        std::string const id = c.contains("id") && c.at("id").is_string()
+            ? std::string(c.at("id").as_string())
+            : "<missing-id>";
+        if (!c.contains("oracle_commit") || !c.at("oracle_commit").is_string())
+        {
+            err = id + " missing oracle_commit";
+            return false;
+        }
+        if (std::string(c.at("oracle_commit").as_string()) != pin)
+        {
+            err = id + " mixed oracle_commit";
+            return false;
+        }
+    }
+    return true;
+}
 
 inline std::uint8_t
 hex_nibble(char c)

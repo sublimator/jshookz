@@ -636,6 +636,24 @@
       "oracle_codec_type": "stobject"
     },
     {
+      "id": "stobject-xchain-issue-native-mismatch",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "011914B5F762798A53D543A014CAF8B297CFF8F2F937E80000000000000000000000005553440000000000000000000000000000000000000000000000000014B5F762798A53D543A014CAF8B297CFF8F2F937E80000000000000000000000000000000000000000",
+      "notes": "XChainBridge first Issue is USD plus the all-zero native account. Oracle rejects currency/account native mismatch. Locate may still frame; CertifyWire must reject.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid issue: currency and account native mismatch"
+    },
+    {
+      "id": "stobject-issue-usd-zero-account",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "011800000000000000000000000055534400000000000000000000000000000000000000000000000000",
+      "notes": "Standalone Issue: USD currency with all-zero native account. Native currency plus a non-native account cannot be framed as one Issue field: native currency is 20 bytes, leftover is not Issue.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid issue: currency and account native mismatch"
+    },
+    {
       "id": "stobject-fee",
       "expect": "accept",
       "codec_type": "stobject",

@@ -221,6 +221,14 @@ struct IssueCodec
             }
 
             // IOU: first20=currency, second20=issuer
+            // xahaud-vectors:src/libxrpl/protocol/Issue.cpp:67
+            if (is_xrp_currency(first20) != is_xrp_currency(second20))
+            {
+                CATL_XDATA_THROW(DecodeError(
+                    CodecErrorCode::malformed_data,
+                    "Issue",
+                    "invalid issue: currency and account native mismatch"));
+            }
             boost::json::object obj;
             obj["currency"] = CurrencyCodec::decode(first20);
             obj["issuer"] = AccountIDCodec::decode(second20);

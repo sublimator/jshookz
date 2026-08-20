@@ -25,6 +25,15 @@ XCHAIN_NATIVE = (
     "0000000000000000000000000000000000000000"
 )
 PATHSET_TRUNCATED = "011201" + ("00" * 20)
+USD_CURRENCY = "0000000000000000000000005553440000000000"
+ZERO20 = "00" * 20
+GENESIS_HEX = "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+# USD currency + all-zero native account. Oracle rejects native mismatch.
+XCHAIN_ISSUE_MISMATCH = (
+    "011914" + GENESIS_HEX + USD_CURRENCY + ZERO20
+    + "14" + GENESIS_HEX + ZERO20
+)
+ISSUE_USD_ZERO_ACCOUNT = "0118" + USD_CURRENCY + ZERO20
 
 
 def run_codec(args: list[str], input_text: str | None = None) -> tuple[int, str, str]:
@@ -228,6 +237,22 @@ def main() -> int:
 
     cases.append(case("stobject-xchain-bridge", XCHAIN_NATIVE, expect="accept",
                       notes="XChainBridge: two VL-AccountID + two Issue (native)."))
+    cases.append(case(
+        "stobject-xchain-issue-native-mismatch", XCHAIN_ISSUE_MISMATCH,
+        expect="reject",
+        notes=(
+            "XChainBridge first Issue is USD plus the all-zero native account. "
+            "Oracle rejects currency/account native mismatch. Locate may still "
+            "frame; CertifyWire must reject."
+        )))
+    cases.append(case(
+        "stobject-issue-usd-zero-account", ISSUE_USD_ZERO_ACCOUNT,
+        expect="reject",
+        notes=(
+            "Standalone Issue: USD currency with all-zero native account. "
+            "Native currency plus a non-native account cannot be framed as one "
+            "Issue field: native currency is 20 bytes, leftover is not Issue."
+        )))
 
     fee = encode(json.dumps({"Fee": "10"}))
     cases.append(case("stobject-fee", fee, expect="accept", json_src={"Fee": "10"}))
