@@ -216,9 +216,10 @@ declare class STBlob {
 /** @serial Hash256 */
 declare class Hash256 {
   static readonly zero: Hash256;
-  static from(value: BytesLike): Hash256;
+  static from(value: BytesLike | Hash256): Hash256;
   /** Decode exactly 32 bytes from an even-length hexadecimal literal. */
   static fromHex(value: HexString): Hash256;
+  private constructor();
   toHex(): HexString;
   toBytes(): Uint8Array;
   isZero(): boolean;
@@ -234,6 +235,7 @@ declare class AccountID {
   static from(value: BytesLike): AccountID;
   /** Decode exactly 20 bytes from an even-length hexadecimal literal. */
   static fromHex(value: HexString): AccountID;
+  private constructor();
   toHex(): HexString;
   toBytes(): Uint8Array;
   isZero(): boolean;
@@ -373,11 +375,9 @@ declare namespace hook {
  * uses both `accept(...)` and the redundant `return accept(...)` spelling.
  * TypeScript should normally use the direct call.
  *
- * A supplied `code` becomes the integer HookReturnCode recorded on-ledger;
- * omit it only when that value is not part of the contract's intended
- * interface. C Hooks commonly pass `__LINE__` as a source-location breadcrumb,
- * but TypeScript translations are not required to preserve that
- * source-language convention. Explicitly meaningful codes remain caller-owned.
+ * A supplied `code` becomes the integer HookReturnCode recorded on-ledger.
+ * Omit it to let the compiler/provider record source location. Do not copy
+ * C `__LINE__`. Explicitly meaningful codes remain caller-owned.
  */
 declare function accept(message?: string | BytesLike | STBlob, code?: number): never;
 
@@ -407,7 +407,7 @@ declare namespace rollback {
   function onFail<T, Error>(
     result: Result<T, Error>,
     message: string | BytesLike | STBlob,
-    code: number,
+    code?: number,
   ): T;
   /**
    * Require a successful, present value. A failed result and a successful
@@ -429,10 +429,18 @@ declare namespace rollback {
    * `undefined`, and `NaN` therefore apply the rollback policy.
    */
   function require<T>(
-    value: T & { readonly okOr?: never },
+    value: T,
     message: string | BytesLike | STBlob,
     code?: number,
-  ): Truthy<T>;
+  ): Exclude<T, Falsy>;
+  /**
+   * If `condition` is true, `rollback`. If false, return and continue.
+   */
+  function when(
+    condition: unknown,
+    message?: string | BytesLike | STBlob,
+    code?: number,
+  ): void;
   /**
    * Return every value when every host operation succeeded. If any failed,
    * roll back with the first failure's host code, in input order. JavaScript

@@ -43,7 +43,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "eda397ac79167fb00db60939e1dc21fd6c2eee7c4cec7078127167a0dca0f0de"
+    "sha256": "be81f49f3b1ff2a60853c86390f18e0901b9b53da6c7109dbe206ef9301783a9"
   },
   "globals": {
     "AccountID": "function",
@@ -83,7 +83,8 @@
       "onAllFail": "function",
       "onAnyFail": "function",
       "onFail": "function",
-      "require": "function"
+      "require": "function",
+      "when": "function"
     },
     "state": {
       "get": "function",
@@ -93,12 +94,14 @@
   "prototypes": {
     "AccountID": {
       "members": {
+        "constructor": "function",
         "equals": "function",
         "isZero": "function",
         "toBytes": "function",
         "toHex": "function"
       },
       "own": [
+        "constructor",
         "equals",
         "isZero",
         "toBytes",
@@ -108,12 +111,14 @@
     },
     "Hash256": {
       "members": {
+        "constructor": "function",
         "equals": "function",
         "isZero": "function",
         "toBytes": "function",
         "toHex": "function"
       },
       "own": [
+        "constructor",
         "equals",
         "isZero",
         "toBytes",

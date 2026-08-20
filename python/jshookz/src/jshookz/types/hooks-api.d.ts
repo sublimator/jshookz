@@ -148,9 +148,10 @@ type ParseError =
 type ParseResult<T> = Result<T, ParseError>;
 
 /**
- * One-layer result from a schema-aware state read. Failure remains
- * distinguishable as either the original host status (`code`) or a codec
- * validation issue (`issue`); successful absence remains `undefined`.
+ * One-layer result from a schema-aware host-byte read (state or params).
+ * Failure remains distinguishable as either the original host status
+ * (`code`) or a codec validation issue (`issue`); successful absence
+ * remains `undefined`.
  *
  * Canonical triage keeps all three states distinct: first handle `!read.ok`
  * (preserving a host code or rejecting malformed bytes), then treat
@@ -158,7 +159,9 @@ type ParseResult<T> = Result<T, ParseError>;
  * decoded value. Persisted malformed bytes must not silently take the absent
  * default.
  */
-type StateReadResult<T> = Result<T | undefined, HostError | ParseError>;
+type SchemaReadResult<T> = Result<T | undefined, HostError | ParseError>;
+/** Same type; kept so existing `state.get` prose still type-checks. */
+type StateReadResult<T> = SchemaReadResult<T>;
 
 /** Failure from constructing or operating on a bounded unsigned integer. */
 interface UIntError {
@@ -254,6 +257,22 @@ interface BinarySchema<T> {
   readonly byteLength: number;
   safeParse(value: BytesLike | STBlob): ParseResult<T>;
 }
+
+/**
+ * Schema-batch values: object key is the wire name, value is a codec.
+ * A `RecordField` is a nameless unit codec; the batch supplies the name
+ * from the key (also `ParseError.field`). A `BinarySchema` already has a
+ * name and is accepted as-is.
+ */
+type BatchSchemaField = RecordField<unknown, number> | BinarySchema<unknown>;
+type BatchSchemaValue<F> = F extends BinarySchema<infer U>
+  ? U
+  : F extends RecordField<infer U, number>
+    ? U
+    : never;
+type BatchSchemaValues<T extends Record<string, BatchSchemaField>> = {
+  readonly [K in keyof T]: BatchSchemaValue<T[K]> | undefined;
+};
 
 /** Width-known element codec. Offset is not part of the unit; composition assigns it. */
 interface RecordField<T, Width extends number = number> {
@@ -494,33 +513,32 @@ declare abstract class Hash<Width extends HashWidth = HashWidth> {
 
 /** @serial Hash128 */
 declare class Hash128 extends Hash<16> {
+  private constructor();
   static readonly zero: Hash128;
   static from(value: BytesLike | Hash<16>): Hash128;
-  constructor(value: BytesLike | Hash<16>);
 }
 
 /** @serial Hash160 */
 declare class Hash160 extends Hash<20> {
+  protected constructor();
   static readonly zero: Hash160;
   static from(value: BytesLike | Hash<20>): Hash160;
-  constructor(value: BytesLike | Hash<20>);
 }
 
 /** @serial Hash192 */
 declare class Hash192 extends Hash<24> {
+  private constructor();
   static readonly zero: Hash192;
   static from(value: BytesLike | Hash<24>): Hash192;
-  constructor(value: BytesLike | Hash<24>);
 }
 
 /** @serial Hash256 */
 declare class Hash256 extends Hash<32> {
   static readonly zero: Hash256;
-  static from(value: BytesLike): Hash256;
+  static from(value: BytesLike | Hash256): Hash256;
   /** Decode exactly 32 bytes from an even-length hexadecimal literal. */
   static fromHex(value: HexString): Hash256;
-  static from(value: BytesLike | Hash<32>): Hash256;
-  constructor(value: BytesLike | Hash<32>);
+  private constructor();
   toHex(): HexString;
   toBytes(): Uint8Array;
   isZero(): boolean;
@@ -529,16 +547,16 @@ declare class Hash256 extends Hash<32> {
 
 /** @serial Hash384 */
 declare class Hash384 extends Hash<48> {
+  private constructor();
   static readonly zero: Hash384;
   static from(value: BytesLike | Hash<48>): Hash384;
-  constructor(value: BytesLike | Hash<48>);
 }
 
 /** @serial Hash512 */
 declare class Hash512 extends Hash<64> {
+  private constructor();
   static readonly zero: Hash512;
   static from(value: BytesLike | Hash<64>): Hash512;
-  constructor(value: BytesLike | Hash<64>);
 }
 
 interface HashByWidth {
@@ -563,7 +581,7 @@ declare class AccountID extends Hash160 {
   static fromHex(value: HexString): AccountID;
   static from(value: BytesLike | Hash160 | string): AccountID;
   static fromRAddress(value: string): AccountID;
-  constructor(value: BytesLike | Hash160 | string);
+  private constructor();
   toHex(): HexString;
   toBytes(): Uint8Array;
   isZero(): boolean;
@@ -572,6 +590,7 @@ declare class AccountID extends Hash160 {
 
 /** @serial Currency */
 declare class Currency {
+  private constructor();
   readonly byteLength: 20;
   readonly isNative: boolean;
   static readonly native: Currency;
@@ -584,6 +603,7 @@ declare class Currency {
 
 /** @serial Issue */
 declare class Issue {
+  private constructor();
   readonly kind: "native" | "iou" | "mpt";
   readonly currency?: Currency;
   readonly issuer?: AccountID;
@@ -634,7 +654,7 @@ declare class XFLWord {
   mantissa(): bigint;
   exponent(): number;
   toDecimal(): XFLDecimal;
-  static fromRaw(raw: bigint): XFLWord;
+  static fromRaw(raw: bigint): XFLResult<XFLWord>;
   static fromDecimal(value: XFLDecimal): XFLWord;
 }
 
@@ -716,6 +736,7 @@ declare class XFLDecimal {
 
 /** @serial Amount */
 declare class Amount {
+  private constructor();
   readonly kind: "native" | "iou" | "mpt";
   readonly issue: Issue;
   readonly currency?: Currency;
@@ -734,6 +755,14 @@ declare class Amount {
   isNative(): this is NativeAmount;
   isIOU(): this is IOUAmount;
   isMPT(): this is MPTAmount;
+  /**
+   * Value-narrowing companions of `isNative` / `isIOU` / `isMPT`.
+   * `rollback.require(amt.asNative(), msg)` unwraps; `isNative()` as a
+   * boolean cannot restore the discriminant after the call.
+   */
+  asNative(): NativeAmount | undefined;
+  asIOU(): IOUAmount | undefined;
+  asMPT(): MPTAmount | undefined;
   equals(other: Amount): boolean;
   compare(other: Amount): number;
 }
@@ -778,6 +807,7 @@ declare interface Path extends Iterable<PathHop> {
 
 /** @serial PathSet */
 declare class PathSet implements Iterable<Path> {
+  private constructor();
   readonly length: number;
   at(index: number): Path | undefined;
   [Symbol.iterator](): IterableIterator<Path>;
@@ -1010,6 +1040,11 @@ declare class HostTx extends HostObject {
   readonly NFTokenID: HostResult<Hash256 | undefined>;
   readonly HookParameters: HostResult<HostArray | undefined>;
   materialize(): HostResult<Tx>;
+  /**
+   * Narrow to Payment after reading `TransactionType`. One crossing.
+   * Full per-format leaves are 0001.
+   */
+  asPayment(): HostResult<HostPayment>;
 }
 
 declare class HostPayment extends HostObject {
@@ -1612,9 +1647,33 @@ declare namespace otxn {
   function id(flags?: number): HostResult<Hash256>;
   function generation(): HostResult<number>;
   function burden(): HostResult<bigint>;
+  /**
+   * Transaction-carried hook parameters (`otxn_param`). Names and values
+   * are blobs. Absent and empty are the same host status (`DOESNT_EXIST`)
+   * and both surface as `undefined`. At most 16 parameters, key ≤ 32
+   * bytes, value ≤ 256 bytes — same numeric caps as install-time params,
+   * but the 16 is per originating transaction, not per hook.
+   */
   function param(name: StateKeyLike): HostResult<STBlob | undefined>;
+  function param<T>(name: StateKeyLike, schema: BinarySchema<T>): SchemaReadResult<T>;
   function params(names: readonly StateKeyLike[]): HostResult<readonly (STBlob | undefined)[]>;
   function params<const T extends BatchKeys>(names: T): HostResult<BatchValues<T>>;
+  /**
+   * Schema batch. Object key is the wire name; value is a codec.
+   * Missing → `undefined` in the record. Host failure → `HostError`.
+   * Parse failure → `ParseError` with `issue: "invalid-field"` and `field`
+   * set to the object key of the first malformed entry, in key order.
+   * Malformed must not become absent.
+   *
+   * Blob batch is `{ localAlias: wireName }` because both sides are names.
+   * Schema batch is `{ wireName: codec }` because the value is not a name.
+   * Quoted keys cover any UTF-8 name (`"DAO-BPS"`). Singular
+   * `param(name, schema)` is for names that are not valid UTF-8
+   * (`BytesLike` wire names that cannot round-trip through a JS string).
+   */
+  function params<
+    const T extends { readonly [K: string]: BatchSchemaField },
+  >(fields: T): Result<BatchSchemaValues<T>, HostError | ParseError>;
   /**
    * Minted originating-transaction metadata, if the host supplied it.
    */
@@ -1926,9 +1985,34 @@ declare namespace hook {
   function position(): HostResult<number>;
   function mode(): HostResult<HookExecutionMode>;
   function hashAt(position: number): HostResult<Hash256 | undefined>;
+  /**
+   * Install-time hook parameters (`hook_param`). Names and values are
+   * blobs. Absent and empty are the same host status (`DOESNT_EXIST`)
+   * and both surface as `undefined`. At most 16 parameters per installed
+   * hook, key ≤ 32 bytes, value ≤ 256 bytes.
+   *
+   * The value may have been substituted or deleted by an earlier hook in
+   * this chain via `paramSet`; it is not necessarily the SetHook
+   * install-time blob.
+   *
+   * The schema overload is the same triage as `state.get`: `!ok` is a
+   * host code or a codec issue, `undefined` is absent, otherwise decoded.
+   * `schema.byteLength` must be ≤ 256; the provider rejects a larger
+   * schema at runtime.
+   */
   function param(name: StateKeyLike): HostResult<STBlob | undefined>;
+  function param<T>(name: StateKeyLike, schema: BinarySchema<T>): SchemaReadResult<T>;
   function params(names: readonly StateKeyLike[]): HostResult<readonly (STBlob | undefined)[]>;
   function params<const T extends BatchKeys>(names: T): HostResult<BatchValues<T>>;
+  /**
+   * Schema batch. Object key is the wire name; value is a codec.
+   * Missing → `undefined`. Parse failure names `field` as that key.
+   * Same 16-per-hook cap as the blob batch. Quoted keys cover any
+   * UTF-8 name; singular `param` is for non-UTF-8 `BytesLike` names.
+   */
+  function params<
+    const T extends { readonly [K: string]: BatchSchemaField },
+  >(fields: T): Result<BatchSchemaValues<T>, HostError | ParseError>;
   function paramSet(targetHook: Hash256, name: StateKeyLike, value: BytesLike): HostResult<void>;
   function skip(targetHook: Hash256, remove?: boolean): HostResult<void>;
   function again(): HostResult<void>;
@@ -1946,13 +2030,37 @@ declare namespace hook {
  * uses both `accept(...)` and the redundant `return accept(...)` spelling.
  * TypeScript should normally use the direct call.
  *
- * A supplied `code` becomes the integer HookReturnCode recorded on-ledger;
- * omit it only when that value is not part of the contract's intended
- * interface. C Hooks commonly pass `__LINE__` as a source-location breadcrumb,
- * but TypeScript translations are not required to preserve that
- * source-language convention. Explicitly meaningful codes remain caller-owned.
+ * A supplied `code` becomes the integer HookReturnCode recorded on-ledger.
+ * Omit it to let the compiler/provider record source location. Do not copy
+ * C `__LINE__`. Explicitly meaningful codes remain caller-owned.
  */
 declare function accept(message?: string | BytesLike | STBlob, code?: number): never;
+
+declare namespace accept {
+  /**
+   * Continue only if this is present/successful. Otherwise `accept` —
+   * this invocation succeeded and did nothing.
+   * There is no `accept.require`; that name is a compile error on purpose.
+   */
+  function unless<T, Error>(
+    result: Result<T, Error>,
+    message?: string | BytesLike | STBlob,
+    code?: number,
+  ): Exclude<T, null | undefined>;
+  function unless<T>(
+    value: T,
+    message?: string | BytesLike | STBlob,
+    code?: number,
+  ): Exclude<T, Falsy>;
+  /**
+   * If `condition` is true, `accept`. If false, return and continue.
+   */
+  function when(
+    condition: unknown,
+    message?: string | BytesLike | STBlob,
+    code?: number,
+  ): void;
+}
 
 /**
  * Reject, atomically roll back, and terminate this hook execution. Like
@@ -1981,7 +2089,7 @@ declare namespace rollback {
   function onFail<T, Error>(
     result: Result<T, Error>,
     message: string | BytesLike | STBlob,
-    code: number,
+    code?: number,
   ): T;
 
   /**
@@ -2005,10 +2113,19 @@ declare namespace rollback {
    * `undefined`, and `NaN` therefore apply the rollback policy.
    */
   function require<T>(
-    value: T & { readonly okOr?: never },
+    value: T,
     message: string | BytesLike | STBlob,
     code?: number,
-  ): Truthy<T>;
+  ): Exclude<T, Falsy>;
+
+  /**
+   * If `condition` is true, `rollback`. If false, return and continue.
+   */
+  function when(
+    condition: unknown,
+    message?: string | BytesLike | STBlob,
+    code?: number,
+  ): void;
 
   /**
    * Return every value when every host operation succeeded. If any failed,
