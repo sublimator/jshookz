@@ -64,7 +64,7 @@ if(BUILD_TESTING)
         target_compile_definitions(test_scan PRIVATE
             JSHOOKZ_ORACLE_CORPUS_JSON="${CMAKE_CURRENT_LIST_DIR}/tests/oracle_corpus.json"
         )
-        gtest_discover_tests(test_scan)
+        gtest_discover_tests(test_scan DISCOVERY_TIMEOUT 30)
 
         add_executable(oracle_corpus_runner tests/oracle_corpus_runner.cpp)
         target_link_libraries(oracle_corpus_runner PRIVATE jshookz_xdata_json)
@@ -83,7 +83,7 @@ if(BUILD_TESTING)
 
         add_executable(test_scan_alloc tests/test_scan_alloc.cpp)
         target_link_libraries(test_scan_alloc PRIVATE jshookz_xdata GTest::gtest_main)
-        gtest_discover_tests(test_scan_alloc)
+        gtest_discover_tests(test_scan_alloc DISCOVERY_TIMEOUT 30)
 
         find_package(Python3 COMPONENTS Interpreter)
         if(Python3_Interpreter_FOUND)

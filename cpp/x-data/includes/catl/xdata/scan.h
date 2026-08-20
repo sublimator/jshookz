@@ -352,6 +352,58 @@ skip_xchain_bridge(SliceCursor& cursor, ScanMode mode)
     return {};
 }
 
+enum class FieldScope { Object, Array };
+enum class Admit { Nop, EndScope, Field };
+
+struct AdmitResult
+{
+    Admit kind = Admit::Field;
+    FieldDef const* field = nullptr;
+};
+
+inline std::expected<AdmitResult, CodecErrorValue>
+admit_field(
+    FieldScope scope,
+    uint32_t field_code,
+    Protocol const& protocol)
+{
+    uint16_t const type = get_field_type_code(field_code);
+    uint16_t const nth = get_field_id(field_code);
+    if (is_nop(type, nth))
+        return AdmitResult{Admit::Nop, nullptr};
+
+    bool const obj_end = type == FieldTypes::STObject.code && nth == 1;
+    bool const arr_end = type == FieldTypes::STArray.code && nth == 1;
+
+    if (scope == FieldScope::Array)
+    {
+        // xahaud-vectors:src/libxrpl/protocol/STArray.cpp:79
+        if (arr_end)
+            return AdmitResult{Admit::EndScope, nullptr};
+        // xahaud-vectors:src/libxrpl/protocol/STArray.cpp:82
+        if (obj_end)
+            return std::unexpected(err("Illegal terminator in array"));
+        FieldDef const* field = protocol.get_field_by_code(field_code);
+        if (!field)
+            return std::unexpected(err("Unknown field - In Array"));
+        if (field->meta.type != FieldTypes::STObject)
+            return std::unexpected(err("Non-object in array"));
+        return AdmitResult{Admit::Field, field};
+    }
+
+    // xahaud-vectors:src/libxrpl/protocol/STObject.cpp:235
+    if (obj_end)
+        return AdmitResult{Admit::EndScope, nullptr};
+    if (arr_end)
+        return std::unexpected(err("Illegal end-of-array marker in object"));
+    FieldDef const* field = protocol.get_field_by_code(field_code);
+    bool const inferred_vl = !field && protocol.is_inferred_vl_type(type);
+    if (!field && !inferred_vl)
+        return std::unexpected(
+            err("Unknown field code: " + std::to_string(field_code)));
+    return AdmitResult{Admit::Field, field};
+}
+
 template <ScanMode M, class Sink>
 std::expected<uint32_t, CodecErrorValue>
 scan_object(
@@ -381,22 +433,21 @@ scan_array(
         auto const field_code = hdr->second;
         if (field_code == 0)
             break;
-        uint16_t const type = get_field_type_code(field_code);
-        uint16_t const nth = get_field_id(field_code);
-        if (is_nop(type, nth))
+        auto admitted = admit_field(FieldScope::Array, field_code, protocol);
+        if (!admitted)
+            return std::unexpected(admitted.error());
+        if (admitted->kind == Admit::Nop)
         {
             if (nop_overflows(nop_count))
                 return std::unexpected(err("Too many NOPS"));
             continue;
         }
-        if (type == FieldTypes::STArray.code && nth == 1)
+        if (admitted->kind == Admit::EndScope)
         {
             if (!fits_u32(cursor.pos))
                 return std::unexpected(err("offset overflow"));
             return static_cast<uint32_t>(cursor.pos);
         }
-        if (type != FieldTypes::STObject.code)
-            return std::unexpected(err("array elements must be STObject"));
         size_t const payload_begin = cursor.pos;
         auto inner = scan_object<M, Sink>(cursor, protocol, sink, depth + 1, false);
         if (!inner)
@@ -430,6 +481,7 @@ scan_object(
 {
     if (depth > kMaxScanDepth)
         return std::unexpected(err("nesting exceeds maximum depth"));
+    (void)top_level;
 
     int nop_count = 0;
     DupTracker<M == ScanMode::CertifyWire> seen;
@@ -442,39 +494,28 @@ scan_object(
             return std::unexpected(hdr.error());
         uint32_t const field_code = hdr->second;
         if (field_code == 0)
-        {
-            if (top_level && cursor.empty())
-                break;
-            return std::unexpected(err("invalid field header"));
-        }
+            break;
 
-        uint16_t const type = get_field_type_code(field_code);
-        uint16_t const nth = get_field_id(field_code);
-
-        if (is_nop(type, nth))
+        auto admitted = admit_field(FieldScope::Object, field_code, protocol);
+        if (!admitted)
+            return std::unexpected(admitted.error());
+        if (admitted->kind == Admit::Nop)
         {
             if (nop_overflows(nop_count))
                 return std::unexpected(err("Too many NOPS"));
             continue;
         }
-
-        if (type == FieldTypes::STObject.code && nth == 1)
+        if (admitted->kind == Admit::EndScope)
         {
-            // xahaud-vectors:src/libxrpl/protocol/STObject.cpp:235
             if (!fits_u32(cursor.pos))
                 return std::unexpected(err("offset overflow"));
             break;
         }
-        if (type == FieldTypes::STArray.code && nth == 1)
-            return std::unexpected(err("Illegal end-of-array marker in object"));
 
-        FieldDef const* field = protocol.get_field_by_code(field_code);
+        FieldDef const* field = admitted->field;
+        uint16_t const type = get_field_type_code(field_code);
         bool const inferred_vl =
             !field && protocol.is_inferred_vl_type(type);
-        if (!field && !inferred_vl)
-            return std::unexpected(err(
-                "Unknown field code: " + std::to_string(field_code)));
-
         bool const vl = field ? field->meta.is_vl_encoded : inferred_vl;
         size_t payload_begin = cursor.pos;
 

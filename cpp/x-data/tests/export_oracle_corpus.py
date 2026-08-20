@@ -115,7 +115,11 @@ def case(
         item["oracle_branch"] = detail.get("branch")
         item["oracle_codec_type"] = detail.get("codec_type")
     elif got == "reject":
-        item["oracle_error"] = str(detail).split("\n")[0]
+        err0 = str(detail).split("\n")[0]
+        item["oracle_error"] = err0
+        if "is required but missing" in err0:
+            # SOTemplate required fields are not CertifyWire representation.
+            item["wire_ok"] = True
     return item
 
 
@@ -256,6 +260,35 @@ def main() -> int:
 
     fee = encode(json.dumps({"Fee": "10"}))
     cases.append(case("stobject-fee", fee, expect="accept", json_src={"Fee": "10"}))
+
+    # Finite header x scope enumerator vs debug-json. Not story blobs.
+    # Skeptic samples F9E1 / F9E032E1F1 / 0105 / 1005 must already appear here.
+    for b in range(256):
+        blob = f"{b:02X}"
+        cases.append(case(
+            f"hdr-b-{blob}", blob,
+            notes="header enum: single-byte top-level object"))
+    for type_byte in (0, 1, 5, 15, 16, 26, 255):
+        for name_nibble in (0x1, 0x5, 0xE):
+            blob = f"{name_nibble:02X}{type_byte:02X}"
+            cases.append(case(
+                f"hdr-t-{type_byte:02X}-n-{name_nibble:X}", blob,
+                notes="header enum: long-form type"))
+    for type_nibble in (1, 8, 14):
+        for name_byte in (0, 1, 5, 15, 16, 255):
+            blob = f"{type_nibble:X}0{name_byte:02X}"
+            cases.append(case(
+                f"hdr-n-t{type_nibble:X}-f{name_byte:02X}", blob,
+                notes="header enum: long-form name"))
+    for inner in ("E1", "E032E1", "E032E1F1", "F1", "99", "0105"):
+        blob = "F9" + inner
+        cases.append(case(
+            f"hdr-arr-{inner}", blob,
+            notes="header enum: array wrap"))
+        if inner != "F1" and not inner.endswith("F1"):
+            cases.append(case(
+                f"hdr-arr-{inner}-F1", blob + "F1",
+                notes="header enum: array wrap plus end marker"))
 
     payload = {
         "oracle_repo": "xahaud-worktrees/xahaud-hookz-test-vectors",

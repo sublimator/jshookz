@@ -678,6 +678,3062 @@
       ],
       "oracle_branch": "hookz-test-vectors",
       "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-00",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "00",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-01",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "01",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-02",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "02",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-03",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "03",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-04",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "04",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-05",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "05",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-06",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "06",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-07",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "07",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-08",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "08",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-09",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "09",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-0A",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0A",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-0B",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0B",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-0C",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0C",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-0D",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0D",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-0E",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0E",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-0F",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0F",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-10",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "10",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-11",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "11",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get16"
+    },
+    {
+      "id": "hdr-b-12",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "12",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get16"
+    },
+    {
+      "id": "hdr-b-13",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "13",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get16"
+    },
+    {
+      "id": "hdr-b-14",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "14",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get16"
+    },
+    {
+      "id": "hdr-b-15",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "15",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get16"
+    },
+    {
+      "id": "hdr-b-16",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "16",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get16"
+    },
+    {
+      "id": "hdr-b-17",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "17",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=1 f=7"
+    },
+    {
+      "id": "hdr-b-18",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "18",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=1 f=8"
+    },
+    {
+      "id": "hdr-b-19",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "19",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=1 f=9"
+    },
+    {
+      "id": "hdr-b-1A",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "1A",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=1 f=10"
+    },
+    {
+      "id": "hdr-b-1B",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "1B",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=1 f=11"
+    },
+    {
+      "id": "hdr-b-1C",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "1C",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=1 f=12"
+    },
+    {
+      "id": "hdr-b-1D",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "1D",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=1 f=13"
+    },
+    {
+      "id": "hdr-b-1E",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "1E",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=1 f=14"
+    },
+    {
+      "id": "hdr-b-1F",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "1F",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=1 f=15"
+    },
+    {
+      "id": "hdr-b-20",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "20",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-21",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "21",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get32"
+    },
+    {
+      "id": "hdr-b-22",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "22",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get32"
+    },
+    {
+      "id": "hdr-b-23",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "23",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get32"
+    },
+    {
+      "id": "hdr-b-24",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "24",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get32"
+    },
+    {
+      "id": "hdr-b-25",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "25",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get32"
+    },
+    {
+      "id": "hdr-b-26",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "26",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get32"
+    },
+    {
+      "id": "hdr-b-27",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "27",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get32"
+    },
+    {
+      "id": "hdr-b-28",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "28",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get32"
+    },
+    {
+      "id": "hdr-b-29",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "29",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get32"
+    },
+    {
+      "id": "hdr-b-2A",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "2A",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get32"
+    },
+    {
+      "id": "hdr-b-2B",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "2B",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get32"
+    },
+    {
+      "id": "hdr-b-2C",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "2C",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get32"
+    },
+    {
+      "id": "hdr-b-2D",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "2D",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get32"
+    },
+    {
+      "id": "hdr-b-2E",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "2E",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get32"
+    },
+    {
+      "id": "hdr-b-2F",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "2F",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get32"
+    },
+    {
+      "id": "hdr-b-30",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "30",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-31",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "31",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-32",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "32",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-33",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "33",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-34",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "34",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-35",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "35",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-36",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "36",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-37",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "37",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-38",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "38",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-39",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "39",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-3A",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "3A",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-3B",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "3B",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-3C",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "3C",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-3D",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "3D",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-3E",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "3E",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=3 f=14"
+    },
+    {
+      "id": "hdr-b-3F",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "3F",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=3 f=15"
+    },
+    {
+      "id": "hdr-b-40",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "40",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-41",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "41",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "hdr-b-42",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "42",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=4 f=2"
+    },
+    {
+      "id": "hdr-b-43",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "43",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=4 f=3"
+    },
+    {
+      "id": "hdr-b-44",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "44",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=4 f=4"
+    },
+    {
+      "id": "hdr-b-45",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "45",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=4 f=5"
+    },
+    {
+      "id": "hdr-b-46",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "46",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=4 f=6"
+    },
+    {
+      "id": "hdr-b-47",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "47",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=4 f=7"
+    },
+    {
+      "id": "hdr-b-48",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "48",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=4 f=8"
+    },
+    {
+      "id": "hdr-b-49",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "49",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=4 f=9"
+    },
+    {
+      "id": "hdr-b-4A",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "4A",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=4 f=10"
+    },
+    {
+      "id": "hdr-b-4B",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "4B",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=4 f=11"
+    },
+    {
+      "id": "hdr-b-4C",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "4C",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=4 f=12"
+    },
+    {
+      "id": "hdr-b-4D",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "4D",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=4 f=13"
+    },
+    {
+      "id": "hdr-b-4E",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "4E",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=4 f=14"
+    },
+    {
+      "id": "hdr-b-4F",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "4F",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=4 f=15"
+    },
+    {
+      "id": "hdr-b-50",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "50",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-51",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "51",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "hdr-b-52",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "52",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "hdr-b-53",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "53",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "hdr-b-54",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "54",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "hdr-b-55",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "55",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "hdr-b-56",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "56",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "hdr-b-57",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "57",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "hdr-b-58",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "58",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "hdr-b-59",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "59",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "hdr-b-5A",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "5A",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "hdr-b-5B",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "5B",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "hdr-b-5C",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "5C",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "hdr-b-5D",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "5D",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "hdr-b-5E",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "5E",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "hdr-b-5F",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "5F",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "hdr-b-60",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "60",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-61",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "61",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-62",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "62",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-63",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "63",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-64",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "64",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-65",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "65",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-66",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "66",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-67",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "67",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-68",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "68",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-69",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "69",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-6A",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "6A",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-6B",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "6B",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-6C",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "6C",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-6D",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "6D",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "hdr-b-6E",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "6E",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=6 f=14"
+    },
+    {
+      "id": "hdr-b-6F",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "6F",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=6 f=15"
+    },
+    {
+      "id": "hdr-b-70",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "70",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-71",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "71",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-72",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "72",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-73",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "73",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-74",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "74",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-75",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "75",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-76",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "76",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-77",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "77",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-78",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "78",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-79",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "79",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-7A",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "7A",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-7B",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "7B",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-7C",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "7C",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-7D",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "7D",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-7E",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "7E",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-7F",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "7F",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=7 f=15"
+    },
+    {
+      "id": "hdr-b-80",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "80",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-81",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "81",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-82",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "82",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-83",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "83",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-84",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "84",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-85",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "85",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-86",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "86",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-87",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "87",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=8 f=7"
+    },
+    {
+      "id": "hdr-b-88",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "88",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-89",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "89",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-8A",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "8A",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-8B",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "8B",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-8C",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "8C",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=8 f=12"
+    },
+    {
+      "id": "hdr-b-8D",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "8D",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=8 f=13"
+    },
+    {
+      "id": "hdr-b-8E",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "8E",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=8 f=14"
+    },
+    {
+      "id": "hdr-b-8F",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "8F",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=8 f=15"
+    },
+    {
+      "id": "hdr-b-90",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "90",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-91",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "91",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown object type"
+    },
+    {
+      "id": "hdr-b-92",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "92",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=9 f=2"
+    },
+    {
+      "id": "hdr-b-93",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "93",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=9 f=3"
+    },
+    {
+      "id": "hdr-b-94",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "94",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=9 f=4"
+    },
+    {
+      "id": "hdr-b-95",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "95",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=9 f=5"
+    },
+    {
+      "id": "hdr-b-96",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "96",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=9 f=6"
+    },
+    {
+      "id": "hdr-b-97",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "97",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=9 f=7"
+    },
+    {
+      "id": "hdr-b-98",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "98",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=9 f=8"
+    },
+    {
+      "id": "hdr-b-99",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "99",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "",
+      "fields": [],
+      "json": {},
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-9A",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "9A",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=9 f=10"
+    },
+    {
+      "id": "hdr-b-9B",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "9B",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=9 f=11"
+    },
+    {
+      "id": "hdr-b-9C",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "9C",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=9 f=12"
+    },
+    {
+      "id": "hdr-b-9D",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "9D",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=9 f=13"
+    },
+    {
+      "id": "hdr-b-9E",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "9E",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=9 f=14"
+    },
+    {
+      "id": "hdr-b-9F",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "9F",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=9 f=15"
+    },
+    {
+      "id": "hdr-b-A0",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "A0",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-A1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "A1",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=10 f=1"
+    },
+    {
+      "id": "hdr-b-A2",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "A2",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=10 f=2"
+    },
+    {
+      "id": "hdr-b-A3",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "A3",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=10 f=3"
+    },
+    {
+      "id": "hdr-b-A4",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "A4",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=10 f=4"
+    },
+    {
+      "id": "hdr-b-A5",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "A5",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=10 f=5"
+    },
+    {
+      "id": "hdr-b-A6",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "A6",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=10 f=6"
+    },
+    {
+      "id": "hdr-b-A7",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "A7",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=10 f=7"
+    },
+    {
+      "id": "hdr-b-A8",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "A8",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=10 f=8"
+    },
+    {
+      "id": "hdr-b-A9",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "A9",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=10 f=9"
+    },
+    {
+      "id": "hdr-b-AA",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "AA",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=10 f=10"
+    },
+    {
+      "id": "hdr-b-AB",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "AB",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=10 f=11"
+    },
+    {
+      "id": "hdr-b-AC",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "AC",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=10 f=12"
+    },
+    {
+      "id": "hdr-b-AD",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "AD",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=10 f=13"
+    },
+    {
+      "id": "hdr-b-AE",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "AE",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=10 f=14"
+    },
+    {
+      "id": "hdr-b-AF",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "AF",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=10 f=15"
+    },
+    {
+      "id": "hdr-b-B0",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "B0",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-B1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "B1",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=11 f=1"
+    },
+    {
+      "id": "hdr-b-B2",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "B2",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=11 f=2"
+    },
+    {
+      "id": "hdr-b-B3",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "B3",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=11 f=3"
+    },
+    {
+      "id": "hdr-b-B4",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "B4",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=11 f=4"
+    },
+    {
+      "id": "hdr-b-B5",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "B5",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=11 f=5"
+    },
+    {
+      "id": "hdr-b-B6",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "B6",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=11 f=6"
+    },
+    {
+      "id": "hdr-b-B7",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "B7",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=11 f=7"
+    },
+    {
+      "id": "hdr-b-B8",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "B8",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=11 f=8"
+    },
+    {
+      "id": "hdr-b-B9",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "B9",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=11 f=9"
+    },
+    {
+      "id": "hdr-b-BA",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "BA",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=11 f=10"
+    },
+    {
+      "id": "hdr-b-BB",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "BB",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=11 f=11"
+    },
+    {
+      "id": "hdr-b-BC",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "BC",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=11 f=12"
+    },
+    {
+      "id": "hdr-b-BD",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "BD",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=11 f=13"
+    },
+    {
+      "id": "hdr-b-BE",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "BE",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=11 f=14"
+    },
+    {
+      "id": "hdr-b-BF",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "BF",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=11 f=15"
+    },
+    {
+      "id": "hdr-b-C0",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "C0",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-C1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "C1",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=12 f=1"
+    },
+    {
+      "id": "hdr-b-C2",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "C2",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=12 f=2"
+    },
+    {
+      "id": "hdr-b-C3",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "C3",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=12 f=3"
+    },
+    {
+      "id": "hdr-b-C4",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "C4",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=12 f=4"
+    },
+    {
+      "id": "hdr-b-C5",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "C5",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=12 f=5"
+    },
+    {
+      "id": "hdr-b-C6",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "C6",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=12 f=6"
+    },
+    {
+      "id": "hdr-b-C7",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "C7",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=12 f=7"
+    },
+    {
+      "id": "hdr-b-C8",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "C8",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=12 f=8"
+    },
+    {
+      "id": "hdr-b-C9",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "C9",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=12 f=9"
+    },
+    {
+      "id": "hdr-b-CA",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "CA",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=12 f=10"
+    },
+    {
+      "id": "hdr-b-CB",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "CB",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=12 f=11"
+    },
+    {
+      "id": "hdr-b-CC",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "CC",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=12 f=12"
+    },
+    {
+      "id": "hdr-b-CD",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "CD",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=12 f=13"
+    },
+    {
+      "id": "hdr-b-CE",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "CE",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=12 f=14"
+    },
+    {
+      "id": "hdr-b-CF",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "CF",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=12 f=15"
+    },
+    {
+      "id": "hdr-b-D0",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "D0",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-D1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "D1",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=13 f=1"
+    },
+    {
+      "id": "hdr-b-D2",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "D2",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=13 f=2"
+    },
+    {
+      "id": "hdr-b-D3",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "D3",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=13 f=3"
+    },
+    {
+      "id": "hdr-b-D4",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "D4",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=13 f=4"
+    },
+    {
+      "id": "hdr-b-D5",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "D5",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=13 f=5"
+    },
+    {
+      "id": "hdr-b-D6",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "D6",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=13 f=6"
+    },
+    {
+      "id": "hdr-b-D7",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "D7",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=13 f=7"
+    },
+    {
+      "id": "hdr-b-D8",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "D8",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=13 f=8"
+    },
+    {
+      "id": "hdr-b-D9",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "D9",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=13 f=9"
+    },
+    {
+      "id": "hdr-b-DA",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "DA",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=13 f=10"
+    },
+    {
+      "id": "hdr-b-DB",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "DB",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=13 f=11"
+    },
+    {
+      "id": "hdr-b-DC",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "DC",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=13 f=12"
+    },
+    {
+      "id": "hdr-b-DD",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "DD",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=13 f=13"
+    },
+    {
+      "id": "hdr-b-DE",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "DE",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=13 f=14"
+    },
+    {
+      "id": "hdr-b-DF",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "DF",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=13 f=15"
+    },
+    {
+      "id": "hdr-b-E0",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "E0",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-E1",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "E1",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "",
+      "fields": [],
+      "json": {},
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-E2",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "E2",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "E2E1",
+      "fields": [
+        {
+          "end_marker": "E1",
+          "fields": [],
+          "header": "E2",
+          "name": "TransactionMetaData"
+        }
+      ],
+      "json": {
+        "TransactionMetaData": {}
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-E3",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "E3",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "E3E1",
+      "fields": [
+        {
+          "end_marker": "E1",
+          "fields": [],
+          "header": "E3",
+          "name": "CreatedNode"
+        }
+      ],
+      "json": {
+        "CreatedNode": {}
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-E4",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "E4",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "E4E1",
+      "fields": [
+        {
+          "end_marker": "E1",
+          "fields": [],
+          "header": "E4",
+          "name": "DeletedNode"
+        }
+      ],
+      "json": {
+        "DeletedNode": {}
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-E5",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "E5",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "E5E1",
+      "fields": [
+        {
+          "end_marker": "E1",
+          "fields": [],
+          "header": "E5",
+          "name": "ModifiedNode"
+        }
+      ],
+      "json": {
+        "ModifiedNode": {}
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-E6",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "E6",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "E6E1",
+      "fields": [
+        {
+          "end_marker": "E1",
+          "fields": [],
+          "header": "E6",
+          "name": "PreviousFields"
+        }
+      ],
+      "json": {
+        "PreviousFields": {}
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-E7",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "E7",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "E7E1",
+      "fields": [
+        {
+          "end_marker": "E1",
+          "fields": [],
+          "header": "E7",
+          "name": "FinalFields"
+        }
+      ],
+      "json": {
+        "FinalFields": {}
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-E8",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "E8",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "E8E1",
+      "fields": [
+        {
+          "end_marker": "E1",
+          "fields": [],
+          "header": "E8",
+          "name": "NewFields"
+        }
+      ],
+      "json": {
+        "NewFields": {}
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-E9",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "E9",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "E9E1",
+      "fields": [
+        {
+          "end_marker": "E1",
+          "fields": [],
+          "header": "E9",
+          "name": "TemplateEntry"
+        }
+      ],
+      "json": {
+        "TemplateEntry": {}
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-EA",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "EA",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "EAE1",
+      "fields": [
+        {
+          "end_marker": "E1",
+          "fields": [],
+          "header": "EA",
+          "name": "Memo"
+        }
+      ],
+      "json": {
+        "Memo": {}
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-EB",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "EB",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Field 'Account' is required but missing.",
+      "wire_ok": true
+    },
+    {
+      "id": "hdr-b-EC",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "EC",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Field 'NFTokenID' is required but missing.",
+      "wire_ok": true
+    },
+    {
+      "id": "hdr-b-ED",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "ED",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Field 'EmitGeneration' is required but missing.",
+      "wire_ok": true
+    },
+    {
+      "id": "hdr-b-EE",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "EE",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "EEE1",
+      "fields": [
+        {
+          "end_marker": "E1",
+          "fields": [],
+          "header": "EE",
+          "name": "Hook"
+        }
+      ],
+      "json": {
+        "Hook": {}
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-EF",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "EF",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=14 f=15"
+    },
+    {
+      "id": "hdr-b-F0",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "F0",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-b-F1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "F1",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Illegal end-of-array marker in object"
+    },
+    {
+      "id": "hdr-b-F2",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "F2",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=15 f=2"
+    },
+    {
+      "id": "hdr-b-F3",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "F3",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "F3F1",
+      "fields": [
+        {
+          "elements": [],
+          "end_marker": "F1",
+          "header": "F3",
+          "name": "Signers"
+        }
+      ],
+      "json": {
+        "Signers": []
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-F4",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "F4",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "F4F1",
+      "fields": [
+        {
+          "elements": [],
+          "end_marker": "F1",
+          "header": "F4",
+          "name": "SignerEntries"
+        }
+      ],
+      "json": {
+        "SignerEntries": []
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-F5",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "F5",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "F5F1",
+      "fields": [
+        {
+          "elements": [],
+          "end_marker": "F1",
+          "header": "F5",
+          "name": "Template"
+        }
+      ],
+      "json": {
+        "Template": []
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-F6",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "F6",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "F6F1",
+      "fields": [
+        {
+          "elements": [],
+          "end_marker": "F1",
+          "header": "F6",
+          "name": "Necessary"
+        }
+      ],
+      "json": {
+        "Necessary": []
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-F7",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "F7",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "F7F1",
+      "fields": [
+        {
+          "elements": [],
+          "end_marker": "F1",
+          "header": "F7",
+          "name": "Sufficient"
+        }
+      ],
+      "json": {
+        "Sufficient": []
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-F8",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "F8",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "F8F1",
+      "fields": [
+        {
+          "elements": [],
+          "end_marker": "F1",
+          "header": "F8",
+          "name": "AffectedNodes"
+        }
+      ],
+      "json": {
+        "AffectedNodes": []
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-F9",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "F9",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "F9F1",
+      "fields": [
+        {
+          "elements": [],
+          "end_marker": "F1",
+          "header": "F9",
+          "name": "Memos"
+        }
+      ],
+      "json": {
+        "Memos": []
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-FA",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "FA",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "FAF1",
+      "fields": [
+        {
+          "elements": [],
+          "end_marker": "F1",
+          "header": "FA",
+          "name": "NFTokens"
+        }
+      ],
+      "json": {
+        "NFTokens": []
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-FB",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "FB",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "FBF1",
+      "fields": [
+        {
+          "elements": [],
+          "end_marker": "F1",
+          "header": "FB",
+          "name": "Hooks"
+        }
+      ],
+      "json": {
+        "Hooks": []
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-FC",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "FC",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "FCF1",
+      "fields": [
+        {
+          "elements": [],
+          "end_marker": "F1",
+          "header": "FC",
+          "name": "VoteSlots"
+        }
+      ],
+      "json": {
+        "VoteSlots": []
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-b-FD",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "FD",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=15 f=13"
+    },
+    {
+      "id": "hdr-b-FE",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "FE",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=15 f=14"
+    },
+    {
+      "id": "hdr-b-FF",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "FF",
+      "notes": "header enum: single-byte top-level object",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=15 f=15"
+    },
+    {
+      "id": "hdr-t-00-n-1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0100",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon type out of range 0"
+    },
+    {
+      "id": "hdr-t-00-n-5",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0500",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon type out of range 0"
+    },
+    {
+      "id": "hdr-t-00-n-E",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0E00",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon type out of range 0"
+    },
+    {
+      "id": "hdr-t-01-n-1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0101",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon type out of range 1"
+    },
+    {
+      "id": "hdr-t-01-n-5",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0501",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon type out of range 1"
+    },
+    {
+      "id": "hdr-t-01-n-E",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0E01",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon type out of range 1"
+    },
+    {
+      "id": "hdr-t-05-n-1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0105",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon type out of range 5"
+    },
+    {
+      "id": "hdr-t-05-n-5",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0505",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon type out of range 5"
+    },
+    {
+      "id": "hdr-t-05-n-E",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0E05",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon type out of range 5"
+    },
+    {
+      "id": "hdr-t-0F-n-1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "010F",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon type out of range 15"
+    },
+    {
+      "id": "hdr-t-0F-n-5",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "050F",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon type out of range 15"
+    },
+    {
+      "id": "hdr-t-0F-n-E",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0E0F",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon type out of range 15"
+    },
+    {
+      "id": "hdr-t-10-n-1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0110",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-t-10-n-5",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0510",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-t-10-n-E",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0E10",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=16 f=14"
+    },
+    {
+      "id": "hdr-t-1A-n-1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "011A",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "hdr-t-1A-n-5",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "051A",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=26 f=5"
+    },
+    {
+      "id": "hdr-t-1A-n-E",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0E1A",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=26 f=14"
+    },
+    {
+      "id": "hdr-t-FF-n-1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "01FF",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=255 f=1"
+    },
+    {
+      "id": "hdr-t-FF-n-5",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "05FF",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=255 f=5"
+    },
+    {
+      "id": "hdr-t-FF-n-E",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "0EFF",
+      "notes": "header enum: long-form type",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=255 f=14"
+    },
+    {
+      "id": "hdr-n-t1-f00",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "1000",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon name out of range 0"
+    },
+    {
+      "id": "hdr-n-t1-f01",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "1001",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon name out of range 1"
+    },
+    {
+      "id": "hdr-n-t1-f05",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "1005",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon name out of range 5"
+    },
+    {
+      "id": "hdr-n-t1-f0F",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "100F",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon name out of range 15"
+    },
+    {
+      "id": "hdr-n-t1-f10",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "1010",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get16"
+    },
+    {
+      "id": "hdr-n-t1-fFF",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "10FF",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=1 f=255"
+    },
+    {
+      "id": "hdr-n-t8-f00",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "8000",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon name out of range 0"
+    },
+    {
+      "id": "hdr-n-t8-f01",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "8001",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon name out of range 1"
+    },
+    {
+      "id": "hdr-n-t8-f05",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "8005",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon name out of range 5"
+    },
+    {
+      "id": "hdr-n-t8-f0F",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "800F",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon name out of range 15"
+    },
+    {
+      "id": "hdr-n-t8-f10",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "8010",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
+      "id": "hdr-n-t8-fFF",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "80FF",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=8 f=255"
+    },
+    {
+      "id": "hdr-n-tE-f00",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "E000",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon name out of range 0"
+    },
+    {
+      "id": "hdr-n-tE-f01",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "E001",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon name out of range 1"
+    },
+    {
+      "id": "hdr-n-tE-f05",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "E005",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon name out of range 5"
+    },
+    {
+      "id": "hdr-n-tE-f0F",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "E00F",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon name out of range 15"
+    },
+    {
+      "id": "hdr-n-tE-f10",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "E010",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Field 'Account' is required but missing.",
+      "wire_ok": true
+    },
+    {
+      "id": "hdr-n-tE-fFF",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "E0FF",
+      "notes": "header enum: long-form name",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field in Object t=14 f=255"
+    },
+    {
+      "id": "hdr-arr-E1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "F9E1",
+      "notes": "header enum: array wrap",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Illegal terminator in array"
+    },
+    {
+      "id": "hdr-arr-E1-F1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "F9E1F1",
+      "notes": "header enum: array wrap plus end marker",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Illegal terminator in array"
+    },
+    {
+      "id": "hdr-arr-E032E1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "F9E032E1",
+      "notes": "header enum: array wrap",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field - In Array"
+    },
+    {
+      "id": "hdr-arr-E032E1-F1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "F9E032E1F1",
+      "notes": "header enum: array wrap plus end marker",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field - In Array"
+    },
+    {
+      "id": "hdr-arr-E032E1F1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "F9E032E1F1",
+      "notes": "header enum: array wrap",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Unknown field - In Array"
+    },
+    {
+      "id": "hdr-arr-F1",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "F9F1",
+      "notes": "header enum: array wrap",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "F9F1",
+      "fields": [
+        {
+          "elements": [],
+          "end_marker": "F1",
+          "header": "F9",
+          "name": "Memos"
+        }
+      ],
+      "json": {
+        "Memos": []
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-arr-99",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "F999",
+      "notes": "header enum: array wrap",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "F9F1",
+      "fields": [
+        {
+          "elements": [],
+          "end_marker": "F1",
+          "header": "F9",
+          "name": "Memos"
+        }
+      ],
+      "json": {
+        "Memos": []
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-arr-99-F1",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "F999F1",
+      "notes": "header enum: array wrap plus end marker",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "F9F1",
+      "fields": [
+        {
+          "elements": [],
+          "end_marker": "F1",
+          "header": "F9",
+          "name": "Memos"
+        }
+      ],
+      "json": {
+        "Memos": []
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "hdr-arr-0105",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "F90105",
+      "notes": "header enum: array wrap",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon type out of range 5"
+    },
+    {
+      "id": "hdr-arr-0105-F1",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "F90105F1",
+      "notes": "header enum: array wrap plus end marker",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: gFID: uncommon type out of range 5"
     }
   ]
 }

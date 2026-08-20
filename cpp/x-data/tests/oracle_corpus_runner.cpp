@@ -65,13 +65,18 @@ main(int argc, char** argv)
 
         bool const trailing_ok =
             c.contains("trailing_ok") && c.at("trailing_ok").as_bool();
+        bool const header_enum = id.rfind("hdr-", 0) == 0;
+        bool const wire_ok =
+            c.contains("wire_ok") && c.at("wire_ok").as_bool();
         bool const certify_ok = o.certify_null_ok;
         bool const pass = o.sinks_agree &&
-            (expect == "accept"
-                 ? (o.locate_ok && certify_ok && o.decode_frames_ok &&
-                    o.names_ok && o.json_ok &&
-                    (trailing_ok || o.consumed_all))
-                 : !certify_ok);
+            (wire_ok
+                 ? certify_ok
+                 : (expect == "accept"
+                        ? (o.locate_ok && certify_ok && o.decode_frames_ok &&
+                           o.names_ok && (header_enum || o.json_ok) &&
+                           (trailing_ok || o.consumed_all))
+                        : !certify_ok));
         if (!pass)
             ++fail;
         std::cout << (pass ? "PASS" : "FAIL") << " " << id

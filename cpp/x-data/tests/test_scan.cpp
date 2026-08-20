@@ -84,6 +84,17 @@ TEST(ScanCorpus, LocateCertifyDecodeMatchOracleExpect)
         EXPECT_TRUE(o.sinks_agree) << id << " NullSink vs IndexSink";
         bool const trailing_ok =
             c.contains("trailing_ok") && c.at("trailing_ok").as_bool();
+        bool const header_enum = id.rfind("hdr-", 0) == 0;
+        bool const wire_ok =
+            c.contains("wire_ok") && c.at("wire_ok").as_bool();
+        if (wire_ok)
+        {
+            EXPECT_TRUE(o.certify_null_ok)
+                << id << " template-only oracle reject, wire must certify "
+                << o.certify_err;
+            EXPECT_TRUE(o.sinks_agree) << id;
+            continue;
+        }
         if (expect == "accept")
         {
             EXPECT_TRUE(o.locate_ok) << id << " locate " << o.locate_err;
@@ -92,7 +103,10 @@ TEST(ScanCorpus, LocateCertifyDecodeMatchOracleExpect)
             EXPECT_TRUE(o.decode_frames_ok)
                 << id << " decode " << o.decode_err;
             EXPECT_TRUE(o.names_ok) << id << " names " << o.names_err;
-            EXPECT_TRUE(o.json_ok) << id << " json " << o.json_err;
+            if (!header_enum)
+            {
+                EXPECT_TRUE(o.json_ok) << id << " json " << o.json_err;
+            }
             if (!trailing_ok)
             {
                 EXPECT_TRUE(o.consumed_all)

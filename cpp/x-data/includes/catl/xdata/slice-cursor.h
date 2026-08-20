@@ -250,43 +250,42 @@ try_read_field_header(SliceCursor& cursor)
     // Extract field bits from lower 4 bits
     uint32_t field = byte1 & 0x0F;
 
-    // If type bits are 0, type code is in next byte
+    // If type bits are 0, type code is in next byte.
+    // Empty cursor before this tag is EOF (field_code 0). A consumed
+    // long-form type/name out of range is an error, never 0.
+    // xahaud-vectors:src/libxrpl/protocol/Serializer.cpp:422
     if (type == 0)
     {
-        if (cursor.empty())
+        auto type_result = cursor.try_read_u8();
+        if (!type_result)
         {
             return std::unexpected(
                 slice_cursor_error("truncated field type"));
         }
-        auto type_result = cursor.try_read_u8();
-        if (!type_result)
-        {
-            return std::unexpected(type_result.error());
-        }
         type = *type_result;
-        if (type == 0 || type < 16)
+        if (type < 16)
         {
-            return std::pair<Slice, uint32_t>{Slice{}, 0};
+            return std::unexpected(slice_cursor_error(
+                "gFID: uncommon type out of range " +
+                std::to_string(type)));
         }
     }
 
-    // If field bits are 0, field code is in next byte
+    // xahaud-vectors:src/libxrpl/protocol/Serializer.cpp:436
     if (field == 0)
     {
-        if (cursor.empty())
+        auto field_result = cursor.try_read_u8();
+        if (!field_result)
         {
             return std::unexpected(
                 slice_cursor_error("truncated field id"));
         }
-        auto field_result = cursor.try_read_u8();
-        if (!field_result)
-        {
-            return std::unexpected(field_result.error());
-        }
         field = *field_result;
-        if (field == 0 || field < 16)
+        if (field < 16)
         {
-            return std::pair<Slice, uint32_t>{Slice{}, 0};
+            return std::unexpected(slice_cursor_error(
+                "gFID: uncommon name out of range " +
+                std::to_string(field)));
         }
     }
 
@@ -300,7 +299,8 @@ try_read_field_header(SliceCursor& cursor)
 
 // Read field header and return field code with the header bytes.
 // Returns: pair of (field header slice, field code).
-// The field code is 0 on invalid header/end.
+// field_code 0 means end-of-input (empty cursor before a tag), not an
+// illegal long-form header — those throw.
 inline std::pair<Slice, uint32_t>
 read_field_header(SliceCursor& cursor)
 {
