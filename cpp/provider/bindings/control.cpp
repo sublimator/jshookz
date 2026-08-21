@@ -168,53 +168,66 @@ call_lifecycle(
     return terminal(ctx, this_val, n, args);
 }
 
-// 1 = continue with owned *out, 0 = missing, -1 = exception.
+/* The named predicates are total over both carriers (0072:892-935): the
+ * failure channel is entailed by the value predicate — a failed Result
+ * cannot yield a present or truthy value — so a Result dispatches into
+ * its success value and a direct value is tested as itself. Exact-void
+ * Results remain ineligible. 1 = continue with owned *out, 0 = predicate
+ * false, -1 = exception. */
 int
-take_result_present(JSContext *ctx, JSValueConst value, JSValue *out,
-                    const char *function_name, const char *direct_form)
+take_present(JSContext *ctx, JSValueConst value, JSValue *out,
+             const char *function_name)
 {
-    /* The Present verbs accept only provider Results; the splits replaced
-     * the overloaded `require` and `unless`, whose predicates changed with
-     * the argument's static type (0070 review findings 4 and 11;
-     * symmetric grid ratified 2026-08-21, 0072:471-511). */
     if (isEffectResult(value)) {
         JS_ThrowTypeError(
             ctx, "%s: a void-effect Result has no value", function_name);
         return -1;
     }
-    if (!isResult(value)) {
-        JS_ThrowTypeError(
-            ctx, "%s: expected a provider Result; use %s for direct values",
-            function_name, direct_form);
-        return -1;
-    }
-    int const success = get_result_success(ctx, value, function_name);
-    if (success < 0)
-        return -1;
-    if (success) {
+    if (isResult(value)) {
+        int const success = get_result_success(ctx, value, function_name);
+        if (success < 0)
+            return -1;
+        if (!success)
+            return 0;
         qjs::OwnedValue inner = qjs::property(ctx, value, "value");
         if (inner.isException())
             return -1;
-        if (!JS_IsUndefined(inner.get()) && !JS_IsNull(inner.get())) {
-            *out = inner.release();
-            return 1;
-        }
+        if (JS_IsUndefined(inner.get()) || JS_IsNull(inner.get()))
+            return 0;
+        *out = inner.release();
+        return 1;
     }
-    return 0;
+    if (JS_IsUndefined(value) || JS_IsNull(value))
+        return 0;
+    *out = JS_DupValue(ctx, value);
+    return 1;
 }
 
 static int
-take_truthy_value(JSContext *ctx, JSValueConst value, JSValue *out,
-                  const char *function_name, const char *result_form)
+take_truthy(JSContext *ctx, JSValueConst value, JSValue *out,
+            const char *function_name)
 {
-    /* Runtime provenance guard: a Result object is truthy, so accepting one
-     * here would silently change its predicate — exactly the trap the split
-     * exists to remove. */
-    if (isResult(value) || isEffectResult(value)) {
+    if (isEffectResult(value)) {
         JS_ThrowTypeError(
-            ctx, "%s: expected a direct value; use %s for provider Results",
-            function_name, result_form);
+            ctx, "%s: a void-effect Result has no value", function_name);
         return -1;
+    }
+    if (isResult(value)) {
+        int const success = get_result_success(ctx, value, function_name);
+        if (success < 0)
+            return -1;
+        if (!success)
+            return 0;
+        qjs::OwnedValue inner = qjs::property(ctx, value, "value");
+        if (inner.isException())
+            return -1;
+        int const truthy = JS_ToBool(ctx, inner.get());
+        if (truthy < 0)
+            return -1;
+        if (!truthy)
+            return 0;
+        *out = inner.release();
+        return 1;
     }
     int const truthy = JS_ToBool(ctx, value);
     if (truthy < 0)
@@ -232,12 +245,11 @@ js_rollback_require_present(JSContext *ctx, JSValueConst this_val,
 {
     if (argc < 1)
         return JS_ThrowTypeError(
-            ctx, "rollback.requirePresent: expected a provider Result");
+            ctx, "rollback.requirePresent: expected a Result or value");
 
     JSValue present = JS_UNDEFINED;
-    int const status = take_result_present(
-        ctx, argv[0], &present, "rollback.requirePresent",
-        "rollback.requireTruthy");
+    int const status = take_present(
+        ctx, argv[0], &present, "rollback.requirePresent");
     if (status < 0)
         return JS_EXCEPTION;
     if (status > 0)
@@ -257,12 +269,11 @@ js_rollback_require_truthy(JSContext *ctx, JSValueConst this_val,
 {
     if (argc < 1)
         return JS_ThrowTypeError(
-            ctx, "rollback.requireTruthy: expected a direct value");
+            ctx, "rollback.requireTruthy: expected a Result or value");
 
     JSValue present = JS_UNDEFINED;
-    int const status = take_truthy_value(
-        ctx, argv[0], &present, "rollback.requireTruthy",
-        "rollback.requirePresent");
+    int const status = take_truthy(
+        ctx, argv[0], &present, "rollback.requireTruthy");
     if (status < 0)
         return JS_EXCEPTION;
     if (status > 0)
@@ -299,12 +310,11 @@ js_accept_unless_present(JSContext *ctx, JSValueConst this_val,
 {
     if (argc < 1)
         return JS_ThrowTypeError(
-            ctx, "accept.unlessPresent: expected a provider Result");
+            ctx, "accept.unlessPresent: expected a Result or value");
 
     JSValue present = JS_UNDEFINED;
-    int const status = take_result_present(
-        ctx, argv[0], &present, "accept.unlessPresent",
-        "accept.unlessTruthy");
+    int const status = take_present(
+        ctx, argv[0], &present, "accept.unlessPresent");
     if (status < 0)
         return JS_EXCEPTION;
     if (status > 0)
@@ -320,12 +330,11 @@ js_accept_unless_truthy(JSContext *ctx, JSValueConst this_val,
 {
     if (argc < 1)
         return JS_ThrowTypeError(
-            ctx, "accept.unlessTruthy: expected a direct value");
+            ctx, "accept.unlessTruthy: expected a Result or value");
 
     JSValue truthy = JS_UNDEFINED;
-    int const status = take_truthy_value(
-        ctx, argv[0], &truthy, "accept.unlessTruthy",
-        "accept.unlessPresent");
+    int const status = take_truthy(
+        ctx, argv[0], &truthy, "accept.unlessTruthy");
     if (status < 0)
         return JS_EXCEPTION;
     if (status > 0)

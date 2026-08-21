@@ -411,6 +411,34 @@ declare namespace accept {
       : []
   ): Present<T>;
   /**
+   * Continue only when this direct value is present (non-nullish);
+   * otherwise `accept` — the named form of `value ?? accept(...)`.
+   */
+  function unlessPresent<T>(
+    value: T,
+    message?: string | BytesLike | STBlob,
+    code?: number,
+    ...resultsTakeTheResultOverload: [
+      Extract<T, Result<unknown, unknown>>
+    ] extends [never]
+      ? []
+      : [never]
+  ): Present<T>;
+  /**
+   * Continue only when this Result succeeded with an ordinarily truthy
+   * value; failure and any falsy success accept.
+   */
+  function unlessTruthy<T, Error>(
+    result: Result<T, Error>,
+    message?: string | BytesLike | STBlob,
+    code?: number,
+    ...voidResultsAreIneligible: [T] extends [void]
+      ? [void] extends [T]
+        ? [never]
+        : []
+      : []
+  ): JSTruthy<T>;
+  /**
    * Continue only when this direct value is truthy; otherwise `accept`.
    * `false`, `0`, `0n`, `""`, `null`, `undefined`, and `NaN` accept.
    */
@@ -418,6 +446,11 @@ declare namespace accept {
     value: T,
     message?: string | BytesLike | STBlob,
     code?: number,
+    ...resultsTakeTheResultOverload: [
+      Extract<T, Result<unknown, unknown>>
+    ] extends [never]
+      ? []
+      : [never]
   ): JSTruthy<T>;
   /**
    * If `condition` is true, `accept`. If false, return and continue.
@@ -458,10 +491,9 @@ declare namespace rollback {
     code?: number,
   ): T;
   /**
-   * Require a successful Result carrying a present (non-nullish) value.
-   * A failed result and a successful `undefined` or `null` apply the
-   * contract-owned rollback policy; other falsy successes (`0`, `0n`,
-   * `false`, and `""`) remain valid values.
+   * Require a present (non-nullish) value from a Result. Failure and a
+   * nullish success both apply the contract-owned rollback policy; falsy
+   * successes (`0`, `0n`, `false`, and `""`) are values and return.
    */
   function requirePresent<T, Error>(
     result: Result<T, Error>,
@@ -473,14 +505,46 @@ declare namespace rollback {
     code?: number,
   ): Present<T>;
   /**
-   * Require an ordinarily truthy direct value — the direct-value behaviour
-   * of `require` under a name that says so. `false`, `0`, `0n`, `""`,
+   * Require a present (non-nullish) direct value — the named form of
+   * `value ?? rollback(...)`. `0`, `0n`, `false`, and `""` are values
+   * and return.
+   */
+  function requirePresent<T>(
+    value: T,
+    message: string | BytesLike | STBlob,
+    code?: number,
+    ...resultsTakeTheResultOverload: [
+      Extract<T, Result<unknown, unknown>>
+    ] extends [never]
+      ? []
+      : [never]
+  ): Present<T>;
+  /**
+   * Require a Result to have succeeded with an ordinarily truthy value.
+   * Failure and any falsy success apply the rollback policy.
+   */
+  function requireTruthy<T, Error>(
+    result: Result<T, Error>,
+    message: [T] extends [void]
+      ? [void] extends [T]
+        ? never
+        : string | BytesLike | STBlob
+      : string | BytesLike | STBlob,
+    code?: number,
+  ): JSTruthy<T>;
+  /**
+   * Require an ordinarily truthy direct value. `false`, `0`, `0n`, `""`,
    * `null`, `undefined`, and `NaN` apply the rollback policy.
    */
   function requireTruthy<T>(
     value: T,
     message: string | BytesLike | STBlob,
     code?: number,
+    ...resultsTakeTheResultOverload: [
+      Extract<T, Result<unknown, unknown>>
+    ] extends [never]
+      ? []
+      : [never]
   ): JSTruthy<T>;
   /**
    * If `condition` is true, `rollback`. If false, return and continue.
