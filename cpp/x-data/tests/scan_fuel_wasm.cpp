@@ -4,7 +4,8 @@
 // decode_string_expected / Amount certify — not a skip visitor.
 //
 // Amount view/raw/mask loops call scan_fuel_once.cpp (separate TU, -O2).
-// Export view_once_c, raw_once_c, mask_once_c. IOU 48-byte payload.
+// Export view_once_c, raw_once_c, mask_once_c. Bank of immutable certified
+// IOU payloads; loops never write through a certificate.
 
 #include "catl/xdata/amount-view.h"
 #include "catl/xdata/certified-index.h"
@@ -101,15 +102,6 @@ constexpr uint8_t kBlob[] = {
     0xCA, 0xF8, 0xB2, 0x97, 0xCF, 0xF8, 0xF2, 0xF9, 0x37, 0xE8, 0xF9, 0xEA,
     0x7D, 0x02, 0xDE, 0xAD, 0xE1, 0xF1};
 
-// Corpus stobject-iou-zero: Amount 48-byte IOU + Account. Payload starts at 1.
-constexpr uint8_t kIouObj[] = {
-    0x61, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x55, 0x53, 0x44,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0xb5, 0xf7, 0x62, 0x79, 0x8a, 0x53, 0xd5,
-    0x43, 0xa0, 0x14, 0xca, 0xf8, 0xb2, 0x97, 0xcf, 0xf8, 0xf2, 0xf9, 0x37,
-    0xe8, 0x81, 0x14, 0xb5, 0xf7, 0x62, 0x79, 0x8a, 0x53, 0xd5, 0x43, 0xa0,
-    0x14, 0xca, 0xf8, 0xb2, 0x97, 0xcf, 0xf8, 0xf2, 0xf9, 0x37, 0xe8};
-
 constexpr uint8_t kIssuer[20] = {
     0xb5, 0xf7, 0x62, 0x79, 0x8a, 0x53, 0xd5, 0x43, 0xa0, 0x14,
     0xca, 0xf8, 0xb2, 0x97, 0xcf, 0xf8, 0xf2, 0xf9, 0x37, 0xe8};
@@ -138,12 +130,50 @@ struct IouExpect
 };
 
 IouExpect
-iou_for_iter(int i)
+iou_for_slot(int i)
 {
     return IouExpect{
         catl::xdata::AmountRules::kMinMant + static_cast<uint64_t>(i % 9000),
         static_cast<int32_t>(i % 5) - 2,
         static_cast<uint8_t>(1 + (i % 200))};
+}
+
+struct IouBank
+{
+    static constexpr int kN = 32;
+    uint8_t pay[kN][48]{};
+    std::vector<catl::xdata::CertifiedIndex> idx;
+    IouExpect exp[kN]{};
+};
+
+bool
+build_iou_bank(IouBank& b, catl::xdata::Protocol const& protocol)
+{
+    using catl::xdata::AmountRules;
+    b.idx.clear();
+    b.idx.reserve(IouBank::kN);
+    for (int n = 0; n < IouBank::kN; ++n)
+    {
+        b.exp[n] = iou_for_slot(n);
+        write_iou(b.pay[n], b.exp[n].mant, b.exp[n].exp, b.exp[n].tag);
+        auto c = catl::xdata::certify_amount_span(
+            ::Slice{b.pay[n], 48}, protocol);
+        if (!c)
+            return false;
+        if (AmountRules::certify(::Slice{b.pay[n], 48}))
+            return false;
+        b.idx.push_back(std::move(*c));
+    }
+    return true;
+}
+
+size_t
+pick_slot(int i, unsigned& sel)
+{
+    size_t const k =
+        (static_cast<size_t>(i) * 17u + sel) % IouBank::kN;
+    sel += static_cast<unsigned>(k) + 1u;
+    return k;
 }
 
 }  // namespace
@@ -203,35 +233,21 @@ main(int argc, char** argv)
         std::puts("full_eager_decode");
     };
     auto view_repeat = [&] {
-        uint8_t obj[sizeof(kIouObj)];
-        std::memcpy(obj, kIouObj, sizeof(obj));
-        auto certified = certify_indexed(Slice{obj, sizeof(obj)}, 0, protocol);
-        if (!certified)
+        IouBank bank;
+        if (!build_iou_bank(bank, protocol))
         {
-            std::puts("FAIL certify_indexed");
+            std::puts("FAIL certify_amount_span");
             return;
         }
-        size_t amt = certified->frame_count();
-        uint32_t payload_begin = 0;
-        for (size_t i = 0; i < certified->frame_count(); ++i)
-        {
-            auto const& fr = certified->frame(i);
-            auto const* f = protocol.get_field_by_code(fr.field_code);
-            if (f && f->meta.type == FieldTypes::Amount)
-            {
-                amt = i;
-                payload_begin = fr.payload_begin;
-                break;
-            }
-        }
+        unsigned sel = 1;
         for (int i = 0; i < kIters; ++i)
         {
-            auto const e = iou_for_iter(i);
-            write_iou(obj + payload_begin, e.mant, e.exp, e.tag);
+            size_t const k = pick_slot(i, sel);
+            auto const& e = bank.exp[k];
             int32_t got_exp = 0;
             uint8_t got_tag = 0;
             uint64_t const m =
-                view_once_c(&*certified, amt, &got_exp, &got_tag);
+                view_once_c(&bank.idx[k], 0, &got_exp, &got_tag);
             if (m != e.mant || got_exp != e.exp || got_tag != e.tag)
             {
                 std::puts("FAIL view iou");
@@ -242,14 +258,21 @@ main(int argc, char** argv)
         std::puts("amount_view_repeat");
     };
     auto raw_repeat = [&] {
-        uint8_t buf[48]{};
+        IouBank bank;
+        if (!build_iou_bank(bank, protocol))
+        {
+            std::puts("FAIL certify_amount_span");
+            return;
+        }
+        unsigned sel = 1;
         for (int i = 0; i < kIters; ++i)
         {
-            auto const e = iou_for_iter(i);
-            write_iou(buf, e.mant, e.exp, e.tag);
+            size_t const k = pick_slot(i, sel);
+            auto const& e = bank.exp[k];
             int32_t got_exp = 0;
             uint8_t got_tag = 0;
-            uint64_t const m = raw_once_c(buf, sizeof(buf), &got_exp, &got_tag);
+            uint64_t const m =
+                raw_once_c(bank.pay[k], 48, &got_exp, &got_tag);
             if (m != e.mant || got_exp != e.exp || got_tag != e.tag)
             {
                 std::puts("FAIL raw iou");
@@ -260,13 +283,19 @@ main(int argc, char** argv)
         std::puts("amount_raw_recertify_repeat");
     };
     auto mask_repeat = [&] {
-        uint8_t buf[48]{};
+        IouBank bank;
+        if (!build_iou_bank(bank, protocol))
+        {
+            std::puts("FAIL certify_amount_span");
+            return;
+        }
+        unsigned sel = 1;
         for (int i = 0; i < kIters; ++i)
         {
-            auto const e = iou_for_iter(i);
-            write_iou(buf, e.mant, e.exp, e.tag);
+            size_t const k = pick_slot(i, sel);
+            auto const& e = bank.exp[k];
             uint8_t got_tag = 0;
-            uint64_t const m = mask_once_c(buf, sizeof(buf), &got_tag);
+            uint64_t const m = mask_once_c(bank.pay[k], 48, &got_tag);
             if (m != e.mant || got_tag != e.tag)
             {
                 std::puts("FAIL mask iou");
