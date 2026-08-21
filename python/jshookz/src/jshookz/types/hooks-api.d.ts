@@ -799,8 +799,8 @@ declare class Amount {
   isMPT(): this is MPTAmount;
   /**
    * Value-narrowing companions of `isNative` / `isIOU` / `isMPT`.
-   * `rollback.require(amt.asNative(), msg)` unwraps; `isNative()` as a
-   * boolean cannot restore the discriminant after the call.
+   * `rollback.requirePresent(amt.asNative(), msg)` unwraps; `isNative()`
+   * as a boolean cannot restore the discriminant after the call.
    */
   asNative(): NativeAmount | undefined;
   asIOU(): IOUAmount | undefined;

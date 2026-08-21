@@ -74,7 +74,16 @@ protected:
         set("S_FALSE", result_success(ctx, JS_FALSE));
         set("S_UNDEF", result_success(ctx, JS_UNDEFINED));
         set("S_NULL", result_success(ctx, JS_NULL));
-        set("FAILED", result_failure(ctx, result_error(ctx, "test")));
+        {
+            jshookz::qjs::OwnedValue error(
+                ctx, result_error(ctx, "test"));
+            ASSERT_GE(
+                JS_SetPropertyStr(
+                    ctx, error.get(), "code", JS_NewInt32(ctx, 12)),
+                0);
+            set("FAILED", result_failure(ctx, error.release()));
+        }
+        set("UNCODED", result_failure(ctx, result_error(ctx, "test")));
         set("VOIDOK", effect_success(ctx));
         ASSERT_FALSE(JS_HasException(ctx));
     }
@@ -143,7 +152,7 @@ protected:
     {
         auto out = eval(src);
         EXPECT_TRUE(out.isException()) << src;
-        JS_GetException(ctx);  // clear
+        jshookz::qjs::OwnedValue pending(ctx, JS_GetException(ctx));
         EXPECT_EQ(g_accepts, 0) << src;
         EXPECT_EQ(g_rollbacks, 0) << src;
         reset();
@@ -213,8 +222,10 @@ TEST_F(ControlTruthTable, UnlessPresentResultCarrier)
     expectAccept("accept.unlessPresent(S_UNDEF, 'm')");
     expectAccept("accept.unlessPresent(S_NULL, 'm')");
     expectReturn("accept.unlessPresent(S_ZERO, 'm')", 0);
+    expectReturn("accept.unlessPresent(S_BIGZERO, 'm') === 0n ? 1 : 2", 1);
     expectReturn("accept.unlessPresent(S_SEVEN, 'm')", 7);
     expectReturn("accept.unlessPresent(S_FALSE, 'm') ? 1 : 2", 2);
+    expectReturn("accept.unlessPresent(S_EMPTY, 'm').length", 0);
 }
 
 TEST_F(ControlTruthTable, UnlessPresentDirectCarrier)
@@ -231,7 +242,9 @@ TEST_F(ControlTruthTable, UnlessTruthyResultCarrier)
 {
     expectAccept("accept.unlessTruthy(FAILED, 'm')");
     expectAccept("accept.unlessTruthy(S_UNDEF, 'm')");
+    expectAccept("accept.unlessTruthy(S_NULL, 'm')");
     expectAccept("accept.unlessTruthy(S_ZERO, 'm')");
+    expectAccept("accept.unlessTruthy(S_BIGZERO, 'm')");
     expectAccept("accept.unlessTruthy(S_EMPTY, 'm')");
     expectAccept("accept.unlessTruthy(S_FALSE, 'm')");
     expectReturn("accept.unlessTruthy(S_SEVEN, 'm')", 7);
@@ -255,6 +268,12 @@ TEST_F(ControlTruthTable, OnFailPreservesFalsySuccesses)
     expectReturn("rollback.onFail(S_EMPTY, 'm').length", 0);
     expectReturn("rollback.onFail(S_UNDEF, 'm') === undefined ? 1 : 2", 1);
     expectRollback("rollback.onFail(FAILED, 'm')");
+    EXPECT_EQ(g_last_rollback_code, 12);
+    // Contract pin: a domain failure with no code on the error and no
+    // explicit code argument is a TypeError, not a terminal.
+    expectThrow("rollback.onFail(UNCODED, 'm')");
+    expectRollback("rollback.onFail(UNCODED, 'm', 34)");
+    EXPECT_EQ(g_last_rollback_code, 34);
 }
 
 TEST_F(ControlTruthTable, PresenceIdiomDoesNotFireOnFalsySuccess)
@@ -278,6 +297,10 @@ TEST_F(ControlTruthTable, WhenIsPlainBooleanDispatch)
 {
     expectRollback("rollback.when(true, 'm')");
     expectAccept("accept.when(true, 'm')");
+    expectRollback("rollback.when(true, undefined, 56)");
+    EXPECT_EQ(g_last_rollback_code, 56);
+    expectAccept("accept.when(true, 'm', 78)");
+    EXPECT_EQ(g_last_accept_code, 78);
     auto out = eval("rollback.when(false, 'm'); accept.when(false, 'm'); 1");
     ASSERT_FALSE(out.isException());
     EXPECT_EQ(g_accepts, 0);

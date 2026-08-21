@@ -155,17 +155,22 @@ call_lifecycle(
     int message_index,
     JSValue (*terminal)(JSContext *, JSValueConst, int, JSValueConst *))
 {
-    if (argc <= message_index || JS_IsUndefined(argv[message_index]))
-        return terminal(ctx, this_val, 0, nullptr);
+    bool const has_code = argc > message_index + 1 &&
+        !JS_IsUndefined(argv[message_index + 1]);
+    if (argc <= message_index || JS_IsUndefined(argv[message_index])) {
+        if (!has_code)
+            return terminal(ctx, this_val, 0, nullptr);
+        /* No message, explicit contract-owned code: the terminal reads the
+         * code from its second slot and treats the undefined message as
+         * absent (review finding: the code was silently dropped here). */
+        JSValueConst coded[2] = {JS_UNDEFINED, argv[message_index + 1]};
+        return terminal(ctx, this_val, 2, coded);
+    }
     JSValueConst args[2] = {
         argv[message_index],
         argc > message_index + 1 ? argv[message_index + 1] : JS_UNDEFINED,
     };
-    int const n = argc > message_index + 1 &&
-            !JS_IsUndefined(argv[message_index + 1])
-        ? 2
-        : 1;
-    return terminal(ctx, this_val, n, args);
+    return terminal(ctx, this_val, has_code ? 2 : 1, args);
 }
 
 /* The named predicates are total over both carriers (0072:892-935): the
