@@ -170,29 +170,53 @@ call_lifecycle(
 
 // 1 = continue with owned *out, 0 = missing, -1 = exception.
 int
-take_present_value(JSContext *ctx, JSValueConst value, JSValue *out,
-                   const char *function_name)
+take_result_present(JSContext *ctx, JSValueConst value, JSValue *out,
+                    const char *function_name)
 {
+    /* requirePresent accepts only provider Results; the split replaced the
+     * overloaded `require`, whose predicate changed with the argument's
+     * static type (0070 review findings 4 and 11, resolved 2026-08-21). */
     if (isEffectResult(value)) {
         JS_ThrowTypeError(
             ctx, "%s: void-effect Result has no value to require",
             function_name);
         return -1;
     }
-    if (isResult(value)) {
-        int const success = get_result_success(ctx, value, function_name);
-        if (success < 0)
+    if (!isResult(value)) {
+        JS_ThrowTypeError(
+            ctx, "%s: expected a provider Result; use requireTruthy for "
+            "direct values",
+            function_name);
+        return -1;
+    }
+    int const success = get_result_success(ctx, value, function_name);
+    if (success < 0)
+        return -1;
+    if (success) {
+        qjs::OwnedValue inner = qjs::property(ctx, value, "value");
+        if (inner.isException())
             return -1;
-        if (success) {
-            qjs::OwnedValue inner = qjs::property(ctx, value, "value");
-            if (inner.isException())
-                return -1;
-            if (!JS_IsUndefined(inner.get()) && !JS_IsNull(inner.get())) {
-                *out = inner.release();
-                return 1;
-            }
+        if (!JS_IsUndefined(inner.get()) && !JS_IsNull(inner.get())) {
+            *out = inner.release();
+            return 1;
         }
-        return 0;
+    }
+    return 0;
+}
+
+static int
+take_truthy_value(JSContext *ctx, JSValueConst value, JSValue *out,
+                  const char *function_name)
+{
+    /* Runtime provenance guard: a Result object is truthy, so accepting one
+     * here would silently change its predicate — exactly the trap the split
+     * exists to remove. */
+    if (isResult(value) || isEffectResult(value)) {
+        JS_ThrowTypeError(
+            ctx, "%s: expected a direct value; use requirePresent for "
+            "provider Results",
+            function_name);
+        return -1;
     }
     int const truthy = JS_ToBool(ctx, value);
     if (truthy < 0)
@@ -203,18 +227,32 @@ take_present_value(JSContext *ctx, JSValueConst value, JSValue *out,
     return 1;
 }
 
+static int
+take_present_value(JSContext *ctx, JSValueConst value, JSValue *out,
+                   const char *function_name)
+{
+    /* accept.unless still carries the dual contract the require split
+     * removed: one name, predicate chosen by the argument's runtime kind.
+     * Retained knowingly — see the @revisit on accept.unless in the
+     * declaration; splitting it is a separate migration. */
+    if (isResult(value) || isEffectResult(value))
+        return take_result_present(ctx, value, out, function_name);
+    return take_truthy_value(ctx, value, out, function_name);
+}
+
+
 JSValue
-// @binding provider:rollback.require
-js_rollback_require(JSContext *ctx, JSValueConst this_val,
-                    int argc, JSValueConst *argv)
+// @binding provider:rollback.requirePresent
+js_rollback_require_present(JSContext *ctx, JSValueConst this_val,
+                            int argc, JSValueConst *argv)
 {
     if (argc < 1)
         return JS_ThrowTypeError(
-            ctx, "rollback.require: expected Result or optional value");
+            ctx, "rollback.requirePresent: expected a provider Result");
 
     JSValue present = JS_UNDEFINED;
-    int const status =
-        take_present_value(ctx, argv[0], &present, "rollback.require");
+    int const status = take_result_present(
+        ctx, argv[0], &present, "rollback.requirePresent");
     if (status < 0)
         return JS_EXCEPTION;
     if (status > 0)
@@ -222,7 +260,31 @@ js_rollback_require(JSContext *ctx, JSValueConst this_val,
 
     if (argc < 2 || JS_IsUndefined(argv[1]))
         return JS_ThrowTypeError(
-            ctx, "rollback.require: expected rollback message");
+            ctx, "rollback.requirePresent: expected rollback message");
+    return call_lifecycle(
+        ctx, this_val, argc, argv, 1, js_hook_rollback);
+}
+
+JSValue
+// @binding provider:rollback.requireTruthy
+js_rollback_require_truthy(JSContext *ctx, JSValueConst this_val,
+                           int argc, JSValueConst *argv)
+{
+    if (argc < 1)
+        return JS_ThrowTypeError(
+            ctx, "rollback.requireTruthy: expected a direct value");
+
+    JSValue present = JS_UNDEFINED;
+    int const status = take_truthy_value(
+        ctx, argv[0], &present, "rollback.requireTruthy");
+    if (status < 0)
+        return JS_EXCEPTION;
+    if (status > 0)
+        return present;
+
+    if (argc < 2 || JS_IsUndefined(argv[1]))
+        return JS_ThrowTypeError(
+            ctx, "rollback.requireTruthy: expected rollback message");
     return call_lifecycle(
         ctx, this_val, argc, argv, 1, js_hook_rollback);
 }
@@ -401,8 +463,12 @@ registerControl(JSContext *ctx, JSValue global)
         return false;
     if (JS_SetPropertyStr(ctx, rollback.get(), "onFail",
             JS_NewCFunction(ctx, js_rollback_on_fail, "onFail", 3)) < 0 ||
-        JS_SetPropertyStr(ctx, rollback.get(), "require",
-            JS_NewCFunction(ctx, js_rollback_require, "require", 3)) < 0 ||
+        JS_SetPropertyStr(ctx, rollback.get(), "requirePresent",
+            JS_NewCFunction(
+                ctx, js_rollback_require_present, "requirePresent", 3)) < 0 ||
+        JS_SetPropertyStr(ctx, rollback.get(), "requireTruthy",
+            JS_NewCFunction(
+                ctx, js_rollback_require_truthy, "requireTruthy", 3)) < 0 ||
         JS_SetPropertyStr(ctx, rollback.get(), "when",
             JS_NewCFunction(ctx, js_rollback_when, "when", 3)) < 0 ||
         JS_SetPropertyStr(ctx, rollback.get(), "onAnyFail",

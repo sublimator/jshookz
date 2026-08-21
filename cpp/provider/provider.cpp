@@ -58,7 +58,14 @@ callbackInfo(JSContext *context, uint32_t rawFlags)
     if (JS_DefinePropertyValueStr(
             context,
             info.get(),
-            "failed",
+            "applied",
+            JS_NewBool(context, rawFlags == 0U),
+            JS_PROP_ENUMERABLE) < 0)
+        return JS_EXCEPTION;
+    if (JS_DefinePropertyValueStr(
+            context,
+            info.get(),
+            "failureBitSet",
             JS_NewBool(context, (rawFlags & 1U) != 0),
             JS_PROP_ENUMERABLE) < 0)
         return JS_EXCEPTION;

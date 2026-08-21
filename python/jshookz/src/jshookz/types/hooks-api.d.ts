@@ -1648,13 +1648,6 @@ interface CallbackInfo {
    * this is retained for diagnostics and forward-compatible expert use.
    */
   readonly rawFlags: number;
-
-  /**
-   * The emitted transaction's hash for correlating pending state: the
-   * originating id when applied; otherwise `sfEmittedTxnID` when present,
-   * else the originating id when available. May be absent.
-   */
-  emittedTransactionId(): HostResult<Hash256 | undefined>;
 }
 
 /**
@@ -2116,39 +2109,18 @@ declare namespace rollback {
   ): T;
 
   /**
-   * Require a successful, present value. A failed result and a successful
-   * `undefined` or `null` are translated into the supplied contract-owned
-   * rollback policy rather than preserving an incidental failure status.
-   * Other falsy successes (`0`, `0n`, `false`, and `""`) remain valid values.
+   * Require a successful Result carrying a present (non-nullish) value.
+   * A failed result and a successful `undefined` or `null` apply the
+   * contract-owned rollback policy; other falsy successes (`0`, `0n`,
+   * `false`, and `""`) remain valid values.
    */
-  function require<T, Error>(
+  function requirePresent<T, Error>(
     result: Result<T, Error>,
     message: [T] extends [void]
       ? [void] extends [T]
         ? never
         : string | BytesLike | STBlob
       : string | BytesLike | STBlob,
-    code?: number,
-  ): Exclude<T, null | undefined>;
-
-  /**
-   * Require a truthy direct value. `false`, `0`, `0n`, `""`, `null`,
-   * `undefined`, and `NaN` therefore apply the rollback policy.
-   */
-  function require<T>(
-    value: T,
-    message: string | BytesLike | STBlob,
-    code?: number,
-  ): Exclude<T, Falsy>;
-
-  /**
-   * Require a successful Result carrying a present (non-nullish) value —
-   * the Result behaviour of `require` under a name that says so. Falsy
-   * successes such as `0`, `0n`, `false`, and `""` remain valid values.
-   */
-  function requirePresent<T, Error>(
-    result: Result<T, Error>,
-    message: string | BytesLike | STBlob,
     code?: number,
   ): Exclude<T, null | undefined>;
 

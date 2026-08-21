@@ -43,7 +43,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "a1cb6d4c8f290f989bec7adc4351b8b30334871a54b352511aac3552e2f21f42"
+    "sha256": "e8bb007515a9539c9191224622a66587c04588a270cdc5ced6cc30ca5b803548"
   },
   "globals": {
     "AccountID": "function",
@@ -87,7 +87,6 @@
       "onAllFail": "function",
       "onAnyFail": "function",
       "onFail": "function",
-      "require": "function",
       "requirePresent": "function",
       "requireTruthy": "function",
       "when": "function"
