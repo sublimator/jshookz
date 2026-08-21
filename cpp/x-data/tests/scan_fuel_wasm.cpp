@@ -180,6 +180,43 @@ main(int argc, char** argv)
         }
         std::puts("amount_view_repeat");
     };
+    auto raw_repeat = [&] {
+        uint8_t payload_buf[64]{};
+        size_t payload_n = 0;
+        {
+            auto certified = certify_indexed(amount_backing, 0, protocol);
+            if (!certified)
+            {
+                std::puts("FAIL certify_indexed raw");
+                return;
+            }
+            for (size_t i = 0; i < certified->frame_count(); ++i)
+            {
+                auto const& fr = certified->frame(i);
+                auto const* fd =
+                    protocol.get_field_by_code(fr.field_code);
+                if (!fd || fd->meta.type != FieldTypes::Amount)
+                    continue;
+                payload_n = fr.wire_end - fr.payload_begin;
+                if (payload_n > sizeof(payload_buf))
+                    payload_n = sizeof(payload_buf);
+                std::memcpy(
+                    payload_buf,
+                    amount_backing.data() + fr.payload_begin,
+                    payload_n);
+                break;
+            }
+        }
+        Slice payload{payload_buf, payload_n};
+        for (int i = 0; i < kIters; ++i)
+        {
+            if (AmountRules::certify(payload))
+                sink += 1;
+            else
+                sink += AmountRules::parts(payload).magnitude;
+        }
+        std::puts("amount_raw_recertify_repeat");
+    };
 
     if (which[0] == '0' || std::strcmp(which, "locate_no_index") == 0)
         loc();
@@ -191,6 +228,8 @@ main(int argc, char** argv)
         eager();
     else if (which[0] == '4' || std::strcmp(which, "amount_view_repeat") == 0)
         view_repeat();
+    else if (which[0] == '5' || std::strcmp(which, "amount_raw_recertify_repeat") == 0)
+        raw_repeat();
     else
     {
         loc();
@@ -198,6 +237,7 @@ main(int argc, char** argv)
         idx();
         eager();
         view_repeat();
+        raw_repeat();
     }
     if (sink == 0xffffffffffffull)
         std::puts("never");

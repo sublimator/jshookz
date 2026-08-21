@@ -34,7 +34,8 @@ run_case(Protocol const& protocol, boost::json::object const& c)
     auto const type = std::string(c.at("codec_type").as_string());
     auto const blob = std::string(c.at("blob").as_string());
     if (type == "amount")
-        return oracle_run::run_amount(protocol, blob, c.if_contains("fields"));
+        return oracle_run::run_amount(
+            protocol, blob, c.if_contains("fields"), c.if_contains("json"));
     if (type == "pathset")
         return oracle_run::run_pathset(blob);
     auto const* fields = c.if_contains("fields");
@@ -152,6 +153,12 @@ TEST(ScanCorpus, RequiredIdsPresent)
              "amount-native-neg-zero",
              "stobject-iou-negative",
              "amount-mpt-negative",
+             "amount-iou-exp-m96",
+             "amount-iou-exp-80",
+             "amount-iou-exp-m97",
+             "amount-iou-exp-81",
+             "amount-iou-mant-max",
+             "amount-iou-mant-over",
              "stobject-vl-blob",
              "stobject-nested-memos",
              "stobject-array-nop-1",
@@ -164,6 +171,59 @@ TEST(ScanCorpus, RequiredIdsPresent)
     {
         EXPECT_TRUE(ids.count(need)) << need;
     }
+}
+
+TEST(ScanCorpus, AmountBoundaryIdsPresent)
+{
+    auto const root = load_corpus().as_object();
+    std::string err;
+    EXPECT_TRUE(oracle_run::amount_boundary_complete(root, err)) << err;
+}
+
+TEST(ScanCorpus, NegativeMptJsonMatchesView)
+{
+    auto const protocol = Protocol::load_embedded_xahau_protocol();
+    auto const root = load_corpus().as_object();
+    for (auto const& item : root.at("cases").as_array())
+    {
+        auto const& c = item.as_object();
+        if (std::string(c.at("id").as_string()) != "amount-mpt-negative")
+            continue;
+        auto o = oracle_run::run_amount(
+            protocol,
+            std::string(c.at("blob").as_string()),
+            c.if_contains("fields"),
+            c.if_contains("json"));
+        EXPECT_TRUE(o.certify_null_ok);
+        EXPECT_TRUE(o.json_ok) << o.json_err;
+        return;
+    }
+    FAIL() << "amount-mpt-negative missing";
+}
+
+TEST(ScanCorpus, NegativeMptUnsignedJsonFails)
+{
+    auto const protocol = Protocol::load_embedded_xahau_protocol();
+    auto const root = load_corpus().as_object();
+    for (auto const& item : root.at("cases").as_array())
+    {
+        auto c = item.as_object();
+        if (std::string(c.at("id").as_string()) != "amount-mpt-negative")
+            continue;
+        boost::json::object unsigned_json;
+        unsigned_json["value"] = "1";
+        unsigned_json["mpt_issuance_id"] =
+            "000000000000000000000000000000000000000000000000";
+        boost::json::value jv = unsigned_json;
+        auto o = oracle_run::run_amount(
+            protocol,
+            std::string(c.at("blob").as_string()),
+            c.if_contains("fields"),
+            &jv);
+        EXPECT_FALSE(o.json_ok);
+        return;
+    }
+    FAIL() << "amount-mpt-negative missing";
 }
 
 TEST(ScanNoThrow, MalformedUnknownFieldIsError)

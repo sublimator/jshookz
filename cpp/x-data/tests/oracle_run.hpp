@@ -106,6 +106,46 @@ header_enum_ids()
     return ids;
 }
 
+inline std::set<std::string>
+amount_boundary_ids()
+{
+    return {
+        "amount-iou-exp-m96",
+        "amount-iou-exp-80",
+        "amount-iou-exp-m97",
+        "amount-iou-exp-81",
+        "amount-iou-mant-max",
+        "amount-iou-mant-over",
+        "amount-mpt-negative",
+    };
+}
+
+inline bool
+amount_boundary_complete(boost::json::object const& root, std::string& err)
+{
+    if (!root.contains("cases") || !root.at("cases").is_array())
+    {
+        err = "missing cases";
+        return false;
+    }
+    std::set<std::string> have;
+    for (auto const& item : root.at("cases").as_array())
+    {
+        auto const& c = item.as_object();
+        if (c.contains("id") && c.at("id").is_string())
+            have.insert(std::string(c.at("id").as_string()));
+    }
+    for (auto const& id : amount_boundary_ids())
+    {
+        if (!have.count(id))
+        {
+            err = "missing amount boundary " + id;
+            return false;
+        }
+    }
+    return true;
+}
+
 inline bool
 header_enum_complete(boost::json::object const& root, std::string& err)
 {
@@ -309,8 +349,7 @@ decode_leaf_frames(catl::xdata::CertifiedIndex const& idx, std::string& err)
                 err = "amount bind failed";
                 return false;
             }
-            (void)codecs::AmountCodec::json_from_parts(
-                view->parts(), view->payload());
+            (void)codecs::AmountCodec::json_from_parts(view->parts());
             continue;
         }
         Slice payload{
@@ -510,7 +549,8 @@ inline Outcomes
 run_amount(
     catl::xdata::Protocol const& protocol,
     std::string_view hex,
-    boost::json::value const* fields = nullptr)
+    boost::json::value const* fields = nullptr,
+    boost::json::value const* oracle_json = nullptr)
 {
     using namespace catl::xdata;
     Outcomes o;
@@ -545,11 +585,23 @@ run_amount(
         }
         else
         {
-            (void)codecs::AmountCodec::json_from_parts(
-                view->parts(), view->payload());
+            auto got = codecs::AmountCodec::json_from_parts(view->parts());
             o.decode_frames_ok = true;
             o.amount_parts_ok =
                 compare_amount_parts(*idx, fields, o.amount_parts_err);
+            if (oracle_json)
+            {
+                auto want = *oracle_json;
+                normalize_json(got);
+                normalize_json(want);
+                o.json_ok = json_equiv(got, want);
+                if (!o.json_ok)
+                {
+                    o.json_err = "amount json mismatch got=" +
+                        boost::json::serialize(got) +
+                        " want=" + boost::json::serialize(want);
+                }
+            }
         }
     }
     return o;

@@ -629,6 +629,120 @@
       "oracle_error": "Error decoding: invalid currency value"
     },
     {
+      "id": "amount-iou-exp-m96",
+      "expect": "accept",
+      "codec_type": "amount",
+      "blob": "C0438D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "IOU exponent -96 inclusive lower bound.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "C0438D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "fields": [
+        {
+          "parts": {
+            "currency": "USD",
+            "exponent": "-96",
+            "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+            "mantissa": "1000000000000000",
+            "negative": false,
+            "type": "iou"
+          },
+          "value": "C0438D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        }
+      ],
+      "json": {
+        "currency": "USD",
+        "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+        "value": "1000000000000000e-96"
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "amount"
+    },
+    {
+      "id": "amount-iou-exp-80",
+      "expect": "accept",
+      "codec_type": "amount",
+      "blob": "EC438D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "IOU exponent 80 inclusive upper bound.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "EC438D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "fields": [
+        {
+          "parts": {
+            "currency": "USD",
+            "exponent": "80",
+            "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+            "mantissa": "1000000000000000",
+            "negative": false,
+            "type": "iou"
+          },
+          "value": "EC438D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        }
+      ],
+      "json": {
+        "currency": "USD",
+        "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+        "value": "1000000000000000e80"
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "amount"
+    },
+    {
+      "id": "amount-iou-exp-m97",
+      "expect": "reject",
+      "codec_type": "amount",
+      "blob": "C0038D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "IOU exponent -97 is out of range.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid currency value"
+    },
+    {
+      "id": "amount-iou-exp-81",
+      "expect": "reject",
+      "codec_type": "amount",
+      "blob": "EC838D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "IOU exponent 81 is out of range.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid currency value"
+    },
+    {
+      "id": "amount-iou-mant-max",
+      "expect": "accept",
+      "codec_type": "amount",
+      "blob": "D4A386F26FC0FFFF0000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "IOU mantissa 9999999999999999 inclusive upper bound.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "canonical_blob": "D4A386F26FC0FFFF0000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "fields": [
+        {
+          "parts": {
+            "currency": "USD",
+            "exponent": "-15",
+            "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+            "mantissa": "9999999999999999",
+            "negative": false,
+            "type": "iou"
+          },
+          "value": "D4A386F26FC0FFFF0000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        }
+      ],
+      "json": {
+        "currency": "USD",
+        "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+        "value": "9.999999999999999"
+      },
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "amount"
+    },
+    {
+      "id": "amount-iou-mant-over",
+      "expect": "reject",
+      "codec_type": "amount",
+      "blob": "D4A386F26FC100000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "IOU mantissa 10000000000000000 is out of range.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid currency value"
+    },
+    {
       "id": "amount-mpt-zero",
       "expect": "accept",
       "codec_type": "amount",

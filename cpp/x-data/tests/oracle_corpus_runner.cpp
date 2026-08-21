@@ -35,6 +35,11 @@ main(int argc, char** argv)
             std::cerr << "FAIL header-enum " << prov_err << "\n";
             return 1;
         }
+        if (!oracle_run::amount_boundary_complete(root, prov_err))
+        {
+            std::cerr << "FAIL amount-boundary " << prov_err << "\n";
+            return 1;
+        }
     }
     auto const protocol = catl::xdata::Protocol::load_embedded_xahau_protocol();
 
@@ -55,7 +60,8 @@ main(int argc, char** argv)
         }
         oracle_run::Outcomes o;
         if (type == "amount")
-            o = oracle_run::run_amount(protocol, blob, c.if_contains("fields"));
+            o = oracle_run::run_amount(
+                protocol, blob, c.if_contains("fields"), c.if_contains("json"));
         else if (type == "pathset")
             o = oracle_run::run_pathset(blob);
         else

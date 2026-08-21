@@ -11,6 +11,9 @@
 #ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
 #endif
+#include <algorithm>
+#include <iterator>
+#include <string>
 
 namespace catl::xdata::codecs {
 
@@ -223,21 +226,79 @@ struct AmountCodec
         }
     }
 
-    static boost::json::value
-    json_from_parts(AmountRules::Parts const& p, Slice const& payload)
+    static std::string
+    text_from_parts(AmountRules::Parts const& p)
     {
         using Kind = AmountRules::Kind;
-        if (p.kind == Kind::Native)
+        if (p.kind == Kind::Native || p.kind == Kind::Mpt)
         {
             std::string s = std::to_string(p.magnitude);
             if (p.negative && p.magnitude != 0)
                 s.insert(s.begin(), '-');
-            return boost::json::string(s);
+            return s;
         }
+        if (p.zero || p.magnitude == 0)
+            return "0";
+        std::string const raw_value = std::to_string(p.magnitude);
+        int const offset = p.exponent;
+        std::string ret;
+        if (p.negative)
+            ret += '-';
+        bool const scientific =
+            (offset != 0) && ((offset < -25) || (offset > -5));
+        if (scientific)
+        {
+            ret += raw_value;
+            ret += 'e';
+            ret += std::to_string(offset);
+            return ret;
+        }
+        static constexpr size_t pad_prefix = 27;
+        static constexpr size_t pad_suffix = 23;
+        std::string val;
+        val.append(pad_prefix, '0');
+        val.append(raw_value);
+        val.append(pad_suffix, '0');
+        size_t const split = static_cast<size_t>(offset + 43);
+        auto pre_from = val.begin();
+        auto pre_to = val.begin() + static_cast<std::ptrdiff_t>(split);
+        if (std::distance(pre_from, pre_to) >
+            static_cast<std::ptrdiff_t>(pad_prefix))
+            pre_from += static_cast<std::ptrdiff_t>(pad_prefix);
+        pre_from = std::find_if(
+            pre_from, pre_to, [](char c) { return c != '0'; });
+        auto post_from = val.begin() + static_cast<std::ptrdiff_t>(split);
+        auto post_to = val.end();
+        if (std::distance(post_from, post_to) >
+            static_cast<std::ptrdiff_t>(pad_suffix))
+            post_to -= static_cast<std::ptrdiff_t>(pad_suffix);
+        post_to = std::find_if(
+                      std::make_reverse_iterator(post_to),
+                      std::make_reverse_iterator(post_from),
+                      [](char c) { return c != '0'; })
+                      .base();
+        if (pre_from == pre_to)
+            ret += '0';
+        else
+            ret.append(pre_from, pre_to);
+        if (post_to != post_from)
+        {
+            ret += '.';
+            ret.append(post_from, post_to);
+        }
+        return ret;
+    }
+
+    static boost::json::value
+    json_from_parts(AmountRules::Parts const& p)
+    {
+        using Kind = AmountRules::Kind;
+        if (p.kind == Kind::Native)
+            return boost::json::string(text_from_parts(p));
         if (p.kind == Kind::Mpt)
         {
             boost::json::object obj;
-            obj["value"] = boost::json::string(std::to_string(p.magnitude));
+            obj["value"] = boost::json::string(text_from_parts(p));
             if (p.mpt_id.size() == 24)
             {
                 obj["mpt_issuance_id"] = boost::json::string(
@@ -248,11 +309,7 @@ struct AmountCodec
         boost::json::object obj;
         if (p.currency.size() == 20)
             obj["currency"] = CurrencyCodec::decode(p.currency);
-        if (payload.size() >= 8)
-        {
-            IOUValue iou = IOUValue::from_bytes(payload.data());
-            obj["value"] = boost::json::string(iou.to_string());
-        }
+        obj["value"] = boost::json::string(text_from_parts(p));
         if (p.issuer.size() == 20)
         {
             obj["issuer"] = boost::json::string(
@@ -309,7 +366,7 @@ struct AmountCodec
         {
             CATL_XDATA_THROW(std::runtime_error(e));
         }
-        return json_from_parts(AmountRules::parts(data), data);
+        return json_from_parts(AmountRules::parts(data));
     }
 #endif
 

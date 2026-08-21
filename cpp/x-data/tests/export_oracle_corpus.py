@@ -255,6 +255,33 @@ def main() -> int:
     cases.append(case("stobject-iou-tiny-mantissa", tiny_mant, expect="reject",
                       notes="IOU mantissa 1 is not canonical."))
 
+    min_mant = 10**15
+    max_mant = 10**16 - 1
+
+    def iou_payload(exponent: int, mantissa: int, positive: bool = True) -> str:
+        ten = 512 + (256 if positive else 0) + (exponent + 97)
+        word = (ten << 54) | mantissa
+        return f"{word:016X}{USD_CURRENCY}{GENESIS_HEX}"
+
+    cases.append(case("amount-iou-exp-m96", iou_payload(-96, min_mant),
+                      expect="accept", codec_type="amount",
+                      notes="IOU exponent -96 inclusive lower bound."))
+    cases.append(case("amount-iou-exp-80", iou_payload(80, min_mant),
+                      expect="accept", codec_type="amount",
+                      notes="IOU exponent 80 inclusive upper bound."))
+    cases.append(case("amount-iou-exp-m97", iou_payload(-97, min_mant),
+                      expect="reject", codec_type="amount",
+                      notes="IOU exponent -97 is out of range."))
+    cases.append(case("amount-iou-exp-81", iou_payload(81, min_mant),
+                      expect="reject", codec_type="amount",
+                      notes="IOU exponent 81 is out of range."))
+    cases.append(case("amount-iou-mant-max", iou_payload(-15, max_mant),
+                      expect="accept", codec_type="amount",
+                      notes="IOU mantissa 9999999999999999 inclusive upper bound."))
+    cases.append(case("amount-iou-mant-over", iou_payload(-15, max_mant + 1),
+                      expect="reject", codec_type="amount",
+                      notes="IOU mantissa 10000000000000000 is out of range."))
+
     mpt0 = {
         "value": "0",
         "mpt_issuance_id": "000000000000000000000000000000000000000000000000",
