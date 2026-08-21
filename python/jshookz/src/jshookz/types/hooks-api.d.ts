@@ -1667,7 +1667,7 @@ declare namespace otxn {
    *
    * Blob batch is `{ localAlias: wireName }` because both sides are names.
    * Schema batch is `{ wireName: codec }` because the value is not a name.
-   * Quoted keys cover any UTF-8 name (`"DAO-BPS"`). Singular
+   * Quoted keys cover any UTF-8 name (`"FEE-BPS"`). Singular
    * `param(name, schema)` is for names that are not valid UTF-8
    * (`BytesLike` wire names that cannot round-trip through a JS string).
    */
