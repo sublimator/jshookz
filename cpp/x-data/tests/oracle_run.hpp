@@ -220,6 +220,60 @@ account_id_boundary_complete(boost::json::object const& root, std::string& err)
     return true;
 }
 
+inline std::set<std::string>
+pathset_boundary_ids()
+{
+    return {
+        "pathset-mask-a",
+        "pathset-mask-c",
+        "pathset-mask-i",
+        "pathset-mask-ac",
+        "pathset-mask-ai",
+        "pathset-mask-ci",
+        "pathset-mask-aci",
+        "pathset-multiple-hops",
+        "pathset-multiple-paths",
+        "pathset-empty",
+        "pathset-leading-separator",
+        "pathset-doubled-separator",
+        "pathset-trailing-separator",
+        "pathset-illegal-low-bit",
+        "pathset-illegal-high-bit",
+        "pathset-truncated-account",
+        "pathset-truncated-currency",
+        "pathset-truncated-issuer",
+        "pathset-aci-truncated-account",
+        "pathset-aci-truncated-currency",
+        "pathset-aci-truncated-issuer",
+        "pathset-missing-end"};
+}
+
+inline bool
+pathset_boundary_complete(boost::json::object const& root, std::string& err)
+{
+    if (!root.contains("cases") || !root.at("cases").is_array())
+    {
+        err = "missing cases";
+        return false;
+    }
+    std::set<std::string> have;
+    for (auto const& item : root.at("cases").as_array())
+    {
+        auto const& c = item.as_object();
+        if (c.contains("id") && c.at("id").is_string())
+            have.insert(std::string(c.at("id").as_string()));
+    }
+    for (auto const& id : pathset_boundary_ids())
+    {
+        if (!have.count(id))
+        {
+            err = "missing PathSet boundary " + id;
+            return false;
+        }
+    }
+    return true;
+}
+
 inline bool
 header_enum_complete(boost::json::object const& root, std::string& err)
 {
@@ -329,7 +383,9 @@ normalize_json(boost::json::value& v)
     if (v.is_object())
     {
         auto& o = v.as_object();
-        if (o.contains("account") && o.contains("type"))
+        if ((o.contains("account") || o.contains("currency") ||
+             o.contains("issuer")) &&
+            o.contains("type"))
             o.erase("type");
         std::vector<std::string> empty_arrays;
         for (auto& kv : o)
@@ -783,7 +839,9 @@ run_amount(
 }
 
 inline Outcomes
-run_pathset(std::string_view hex)
+run_pathset(
+    std::string_view hex,
+    boost::json::value const* oracle_json = nullptr)
 {
     using namespace catl::xdata;
     Outcomes o;
@@ -810,8 +868,22 @@ run_pathset(std::string_view hex)
     {
         try
         {
-            (void)codecs::PathSetCodec::decode(Slice{bytes.data(), bytes.size()});
+            auto got =
+                codecs::PathSetCodec::decode(Slice{bytes.data(), bytes.size()});
             o.decode_frames_ok = true;
+            if (oracle_json)
+            {
+                auto want = *oracle_json;
+                normalize_json(got);
+                normalize_json(want);
+                o.json_ok = json_equiv(got, want);
+                if (!o.json_ok)
+                {
+                    o.json_err = "PathSet json mismatch got=" +
+                        boost::json::serialize(got) + " want=" +
+                        boost::json::serialize(want);
+                }
+            }
         }
         catch (std::exception const& e)
         {

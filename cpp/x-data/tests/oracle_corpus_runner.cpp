@@ -73,7 +73,7 @@ main(int argc, char** argv)
             o = oracle_run::run_amount(
                 protocol, blob, c.if_contains("fields"), c.if_contains("json"));
         else if (type == "pathset")
-            o = oracle_run::run_pathset(blob);
+            o = oracle_run::run_pathset(blob, c.if_contains("json"));
         else
         {
             auto const* fields = c.if_contains("fields");

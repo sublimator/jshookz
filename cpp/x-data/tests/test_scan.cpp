@@ -37,7 +37,7 @@ run_case(Protocol const& protocol, boost::json::object const& c)
         return oracle_run::run_amount(
             protocol, blob, c.if_contains("fields"), c.if_contains("json"));
     if (type == "pathset")
-        return oracle_run::run_pathset(blob);
+        return oracle_run::run_pathset(blob, c.if_contains("json"));
     auto const* fields = c.if_contains("fields");
     auto const* js = c.if_contains("json");
     std::string canonical;
@@ -234,6 +234,31 @@ TEST(ScanCorpus, AccountIDBoundaryDeletionIsRejected)
     std::string err;
     EXPECT_FALSE(oracle_run::account_id_boundary_complete(root, err));
     EXPECT_EQ(err, "missing AccountID boundary stobject-account-vl-21");
+}
+
+TEST(ScanCorpus, PathSetBoundaryIdsPresent)
+{
+    auto const root = load_corpus().as_object();
+    std::string err;
+    EXPECT_TRUE(oracle_run::pathset_boundary_complete(root, err)) << err;
+}
+
+TEST(ScanCorpus, PathSetBoundaryDeletionIsRejected)
+{
+    auto root = load_corpus().as_object();
+    auto& cases = root.at("cases").as_array();
+    auto const found = std::find_if(
+        cases.begin(), cases.end(), [](boost::json::value const& item) {
+            auto const& c = item.as_object();
+            return c.contains("id") &&
+                c.at("id").as_string() == "pathset-mask-aci";
+        });
+    ASSERT_NE(found, cases.end());
+    cases.erase(found);
+
+    std::string err;
+    EXPECT_FALSE(oracle_run::pathset_boundary_complete(root, err));
+    EXPECT_EQ(err, "missing PathSet boundary pathset-mask-aci");
 }
 
 TEST(ScanCorpus, NegativeMptJsonMatchesView)

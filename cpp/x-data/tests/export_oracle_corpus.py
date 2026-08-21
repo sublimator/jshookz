@@ -36,6 +36,17 @@ XCHAIN_ISSUE_MISMATCH = (
 ISSUE_USD_ZERO_ACCOUNT = "0118" + USD_CURRENCY + ZERO20
 
 
+def path_hop(mask: int, *, account=False, currency=False, issuer=False) -> str:
+    payload = f"{mask:02X}"
+    if account:
+        payload += GENESIS_HEX
+    if currency:
+        payload += USD_CURRENCY
+    if issuer:
+        payload += GENESIS_HEX
+    return payload
+
+
 def run_codec(args: list[str], input_text: str | None = None) -> tuple[int, str, str]:
     proc = subprocess.run(
         [str(CODEC), *args],
@@ -348,6 +359,96 @@ def main() -> int:
 
     cases.append(case("pathset-empty", "00", expect="reject", codec_type="pathset",
                       notes="Empty PathSet (lone 0x00)."))
+
+    pathset_masks = [
+        ("a", path_hop(0x01, account=True),
+         [[{"account": GENESIS}]]),
+        ("c", path_hop(0x10, currency=True),
+         [[{"currency": "USD"}]]),
+        ("i", path_hop(0x20, issuer=True),
+         [[{"issuer": GENESIS}]]),
+        ("ac", path_hop(0x11, account=True, currency=True),
+         [[{"account": GENESIS, "currency": "USD"}]]),
+        ("ai", path_hop(0x21, account=True, issuer=True),
+         [[{"account": GENESIS, "issuer": GENESIS}]]),
+        ("ci", path_hop(0x30, currency=True, issuer=True),
+         [[{"currency": "USD", "issuer": GENESIS}]]),
+        ("aci", path_hop(
+            0x31, account=True, currency=True, issuer=True),
+         [[{
+             "account": GENESIS,
+             "currency": "USD",
+             "issuer": GENESIS,
+         }]]),
+    ]
+    for suffix, payload, wanted_json in pathset_masks:
+        cases.append(case(
+            f"pathset-mask-{suffix}", payload + "00", expect="accept",
+            codec_type="pathset", json_src=wanted_json,
+            notes=f"Legal nonzero PathSet component mask 0x{payload[:2]}."))
+
+    hop_a = path_hop(0x01, account=True)
+    hop_c = path_hop(0x10, currency=True)
+    hop_ci = path_hop(0x30, currency=True, issuer=True)
+    cases.append(case(
+        "pathset-multiple-hops", hop_a + hop_c + "00", expect="accept",
+        codec_type="pathset",
+        json_src=[[{"account": GENESIS}, {"currency": "USD"}]],
+        notes="Two hops in one path."))
+    cases.append(case(
+        "pathset-multiple-paths", hop_a + "FF" + hop_ci + "00",
+        expect="accept", codec_type="pathset",
+        json_src=[
+            [{"account": GENESIS}],
+            [{"currency": "USD", "issuer": GENESIS}],
+        ], notes="Two nonempty paths separated by 0xFF."))
+
+    cases.append(case(
+        "pathset-leading-separator", "FF" + hop_a + "00", expect="reject",
+        codec_type="pathset", notes="Leading separator creates an empty path."))
+    cases.append(case(
+        "pathset-doubled-separator", hop_a + "FFFF" + hop_a + "00",
+        expect="reject", codec_type="pathset",
+        notes="Doubled separator creates an empty middle path."))
+    cases.append(case(
+        "pathset-trailing-separator", hop_a + "FF00", expect="reject",
+        codec_type="pathset", notes="Separator before END creates an empty final path."))
+    cases.append(case(
+        "pathset-illegal-low-bit", "0200", expect="reject",
+        codec_type="pathset", notes="0x02 is outside the legal component mask."))
+    cases.append(case(
+        "pathset-illegal-high-bit", "8000", expect="reject",
+        codec_type="pathset", notes="0x80 is outside the legal component mask."))
+
+    cases.append(case(
+        "pathset-truncated-account", "01" + GENESIS_HEX[:-2],
+        expect="reject", codec_type="pathset",
+        notes="Account component supplies 19 of 20 bytes."))
+    cases.append(case(
+        "pathset-truncated-currency", "10" + USD_CURRENCY[:-2],
+        expect="reject", codec_type="pathset",
+        notes="Currency component supplies 19 of 20 bytes."))
+    cases.append(case(
+        "pathset-truncated-issuer", "20" + GENESIS_HEX[:-2],
+        expect="reject", codec_type="pathset",
+        notes="Issuer component supplies 19 of 20 bytes."))
+    cases.append(case(
+        "pathset-aci-truncated-account", "31" + GENESIS_HEX[:-2],
+        expect="reject", codec_type="pathset",
+        notes="ACI hop truncates inside its first component."))
+    cases.append(case(
+        "pathset-aci-truncated-currency",
+        "31" + GENESIS_HEX + USD_CURRENCY[:-2], expect="reject",
+        codec_type="pathset",
+        notes="ACI hop truncates inside its second component."))
+    cases.append(case(
+        "pathset-aci-truncated-issuer",
+        "31" + GENESIS_HEX + USD_CURRENCY + GENESIS_HEX[:-2],
+        expect="reject", codec_type="pathset",
+        notes="ACI hop truncates inside its third component."))
+    cases.append(case(
+        "pathset-missing-end", hop_a, expect="reject", codec_type="pathset",
+        notes="Complete hop without required PathSet END byte."))
 
     cases.append(case("stobject-xchain-bridge", XCHAIN_NATIVE, expect="accept",
                       notes="XChainBridge: two VL-AccountID + two Issue (native)."))

@@ -1021,6 +1021,353 @@
       "oracle_error": "Error decoding: empty path"
     },
     {
+      "id": "pathset-mask-a",
+      "expect": "accept",
+      "codec_type": "pathset",
+      "blob": "01B5F762798A53D543A014CAF8B297CFF8F2F937E800",
+      "notes": "Legal nonzero PathSet component mask 0x01.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": [
+        [
+          {
+            "account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+          }
+        ]
+      ],
+      "canonical_blob": "011201B5F762798A53D543A014CAF8B297CFF8F2F937E800",
+      "fields": [
+        {
+          "header": "0112",
+          "name": "Paths",
+          "value": "01B5F762798A53D543A014CAF8B297CFF8F2F937E800"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "pathset"
+    },
+    {
+      "id": "pathset-mask-c",
+      "expect": "accept",
+      "codec_type": "pathset",
+      "blob": "10000000000000000000000000555344000000000000",
+      "notes": "Legal nonzero PathSet component mask 0x10.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": [
+        [
+          {
+            "currency": "USD"
+          }
+        ]
+      ],
+      "canonical_blob": "011210000000000000000000000000555344000000000000",
+      "fields": [
+        {
+          "header": "0112",
+          "name": "Paths",
+          "value": "10000000000000000000000000555344000000000000"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "pathset"
+    },
+    {
+      "id": "pathset-mask-i",
+      "expect": "accept",
+      "codec_type": "pathset",
+      "blob": "20B5F762798A53D543A014CAF8B297CFF8F2F937E800",
+      "notes": "Legal nonzero PathSet component mask 0x20.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": [
+        [
+          {
+            "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+          }
+        ]
+      ],
+      "canonical_blob": "011220B5F762798A53D543A014CAF8B297CFF8F2F937E800",
+      "fields": [
+        {
+          "header": "0112",
+          "name": "Paths",
+          "value": "20B5F762798A53D543A014CAF8B297CFF8F2F937E800"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "pathset"
+    },
+    {
+      "id": "pathset-mask-ac",
+      "expect": "accept",
+      "codec_type": "pathset",
+      "blob": "11B5F762798A53D543A014CAF8B297CFF8F2F937E8000000000000000000000000555344000000000000",
+      "notes": "Legal nonzero PathSet component mask 0x11.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": [
+        [
+          {
+            "account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+            "currency": "USD"
+          }
+        ]
+      ],
+      "canonical_blob": "011211B5F762798A53D543A014CAF8B297CFF8F2F937E8000000000000000000000000555344000000000000",
+      "fields": [
+        {
+          "header": "0112",
+          "name": "Paths",
+          "value": "11B5F762798A53D543A014CAF8B297CFF8F2F937E8000000000000000000000000555344000000000000"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "pathset"
+    },
+    {
+      "id": "pathset-mask-ai",
+      "expect": "accept",
+      "codec_type": "pathset",
+      "blob": "21B5F762798A53D543A014CAF8B297CFF8F2F937E8B5F762798A53D543A014CAF8B297CFF8F2F937E800",
+      "notes": "Legal nonzero PathSet component mask 0x21.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": [
+        [
+          {
+            "account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+            "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+          }
+        ]
+      ],
+      "canonical_blob": "011221B5F762798A53D543A014CAF8B297CFF8F2F937E8B5F762798A53D543A014CAF8B297CFF8F2F937E800",
+      "fields": [
+        {
+          "header": "0112",
+          "name": "Paths",
+          "value": "21B5F762798A53D543A014CAF8B297CFF8F2F937E8B5F762798A53D543A014CAF8B297CFF8F2F937E800"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "pathset"
+    },
+    {
+      "id": "pathset-mask-ci",
+      "expect": "accept",
+      "codec_type": "pathset",
+      "blob": "300000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E800",
+      "notes": "Legal nonzero PathSet component mask 0x30.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": [
+        [
+          {
+            "currency": "USD",
+            "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+          }
+        ]
+      ],
+      "canonical_blob": "0112300000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E800",
+      "fields": [
+        {
+          "header": "0112",
+          "name": "Paths",
+          "value": "300000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E800"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "pathset"
+    },
+    {
+      "id": "pathset-mask-aci",
+      "expect": "accept",
+      "codec_type": "pathset",
+      "blob": "31B5F762798A53D543A014CAF8B297CFF8F2F937E80000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E800",
+      "notes": "Legal nonzero PathSet component mask 0x31.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": [
+        [
+          {
+            "account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+            "currency": "USD",
+            "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+          }
+        ]
+      ],
+      "canonical_blob": "011231B5F762798A53D543A014CAF8B297CFF8F2F937E80000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E800",
+      "fields": [
+        {
+          "header": "0112",
+          "name": "Paths",
+          "value": "31B5F762798A53D543A014CAF8B297CFF8F2F937E80000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E800"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "pathset"
+    },
+    {
+      "id": "pathset-multiple-hops",
+      "expect": "accept",
+      "codec_type": "pathset",
+      "blob": "01B5F762798A53D543A014CAF8B297CFF8F2F937E810000000000000000000000000555344000000000000",
+      "notes": "Two hops in one path.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": [
+        [
+          {
+            "account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+          },
+          {
+            "currency": "USD"
+          }
+        ]
+      ],
+      "canonical_blob": "011201B5F762798A53D543A014CAF8B297CFF8F2F937E810000000000000000000000000555344000000000000",
+      "fields": [
+        {
+          "header": "0112",
+          "name": "Paths",
+          "value": "01B5F762798A53D543A014CAF8B297CFF8F2F937E810000000000000000000000000555344000000000000"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "pathset"
+    },
+    {
+      "id": "pathset-multiple-paths",
+      "expect": "accept",
+      "codec_type": "pathset",
+      "blob": "01B5F762798A53D543A014CAF8B297CFF8F2F937E8FF300000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E800",
+      "notes": "Two nonempty paths separated by 0xFF.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": [
+        [
+          {
+            "account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+          }
+        ],
+        [
+          {
+            "currency": "USD",
+            "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+          }
+        ]
+      ],
+      "canonical_blob": "011201B5F762798A53D543A014CAF8B297CFF8F2F937E8FF300000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E800",
+      "fields": [
+        {
+          "header": "0112",
+          "name": "Paths",
+          "value": "01B5F762798A53D543A014CAF8B297CFF8F2F937E8FF300000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E800"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "pathset"
+    },
+    {
+      "id": "pathset-leading-separator",
+      "expect": "reject",
+      "codec_type": "pathset",
+      "blob": "FF01B5F762798A53D543A014CAF8B297CFF8F2F937E800",
+      "notes": "Leading separator creates an empty path.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: empty path"
+    },
+    {
+      "id": "pathset-doubled-separator",
+      "expect": "reject",
+      "codec_type": "pathset",
+      "blob": "01B5F762798A53D543A014CAF8B297CFF8F2F937E8FFFF01B5F762798A53D543A014CAF8B297CFF8F2F937E800",
+      "notes": "Doubled separator creates an empty middle path.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: empty path"
+    },
+    {
+      "id": "pathset-trailing-separator",
+      "expect": "reject",
+      "codec_type": "pathset",
+      "blob": "01B5F762798A53D543A014CAF8B297CFF8F2F937E8FF00",
+      "notes": "Separator before END creates an empty final path.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: empty path"
+    },
+    {
+      "id": "pathset-illegal-low-bit",
+      "expect": "reject",
+      "codec_type": "pathset",
+      "blob": "0200",
+      "notes": "0x02 is outside the legal component mask.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: bad path element"
+    },
+    {
+      "id": "pathset-illegal-high-bit",
+      "expect": "reject",
+      "codec_type": "pathset",
+      "blob": "8000",
+      "notes": "0x80 is outside the legal component mask.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: bad path element"
+    },
+    {
+      "id": "pathset-truncated-account",
+      "expect": "reject",
+      "codec_type": "pathset",
+      "blob": "01B5F762798A53D543A014CAF8B297CFF8F2F937",
+      "notes": "Account component supplies 19 of 20 bytes.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "pathset-truncated-currency",
+      "expect": "reject",
+      "codec_type": "pathset",
+      "blob": "1000000000000000000000000055534400000000",
+      "notes": "Currency component supplies 19 of 20 bytes.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "pathset-truncated-issuer",
+      "expect": "reject",
+      "codec_type": "pathset",
+      "blob": "20B5F762798A53D543A014CAF8B297CFF8F2F937",
+      "notes": "Issuer component supplies 19 of 20 bytes.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "pathset-aci-truncated-account",
+      "expect": "reject",
+      "codec_type": "pathset",
+      "blob": "31B5F762798A53D543A014CAF8B297CFF8F2F937",
+      "notes": "ACI hop truncates inside its first component.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "pathset-aci-truncated-currency",
+      "expect": "reject",
+      "codec_type": "pathset",
+      "blob": "31B5F762798A53D543A014CAF8B297CFF8F2F937E800000000000000000000000055534400000000",
+      "notes": "ACI hop truncates inside its second component.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "pathset-aci-truncated-issuer",
+      "expect": "reject",
+      "codec_type": "pathset",
+      "blob": "31B5F762798A53D543A014CAF8B297CFF8F2F937E80000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937",
+      "notes": "ACI hop truncates inside its third component.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
+      "id": "pathset-missing-end",
+      "expect": "reject",
+      "codec_type": "pathset",
+      "blob": "01B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "Complete hop without required PathSet END byte.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get8"
+    },
+    {
       "id": "stobject-xchain-bridge",
       "expect": "accept",
       "codec_type": "stobject",
