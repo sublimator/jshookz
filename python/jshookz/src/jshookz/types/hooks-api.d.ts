@@ -1648,6 +1648,14 @@ interface CallbackInfo {
    * this is retained for diagnostics and forward-compatible expert use.
    */
   readonly rawFlags: number;
+
+  /**
+   * Correlation id for this callback's transaction. When `applied`, the
+   * originating transaction id. When not applied, `sfEmittedTxnID` when
+   * present, else the originating id when available. Returns `undefined`
+   * when neither source is available.
+   */
+  emittedTransactionId(): Hash256 | undefined;
 }
 
 /**

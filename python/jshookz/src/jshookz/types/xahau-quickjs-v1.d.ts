@@ -326,17 +326,15 @@ declare const enum TransactionType {
 }
 
 /** Information supplied to an emitted-transaction callback entry point. */
-interface CallbackInfo {
+declare interface CallbackInfo {
   /** Exact whole-word applied predicate: `rawFlags === 0`. */
   readonly applied: boolean;
-
   /**
    * Exact bit-zero observation of the callback word. Not the inverse of
    * `applied`: a non-zero word with bit zero clear is neither applied nor
    * flagged here.
    */
   readonly failureBitSet: boolean;
-
   /**
    * Exact uint32 callback word supplied by Xahau. Prefer named properties;
    * this is retained for diagnostics and forward-compatible expert use.
