@@ -25,8 +25,10 @@ type LedgerSequence = number;
 type RippleTime = number;
 type HashWidth = 16 | 20 | 24 | 32 | 48 | 64;
 type UInt32OrHash = UInt32 | Hash256;
-type Falsy = false | 0 | 0n | "" | null | undefined;
-type Truthy<T> = Exclude<T, Falsy>;
+type JSFalsy = false | 0 | 0n | "" | null | undefined;
+type JSTruthy<T> = Exclude<T, JSFalsy>;
+/** A successful, non-nullish value; falsy-but-present values qualify. */
+type Present<T> = Exclude<T, null | undefined>;
 /** A value with one canonical serialized-ledger byte representation. */
 interface SerializedType {
   toBytes(options?: SerializationOptions): Uint8Array;
@@ -2103,7 +2105,7 @@ declare namespace accept {
         ? [never]
         : []
       : []
-  ): Exclude<T, null | undefined>;
+  ): Present<T>;
   /**
    * Continue only when this direct value is truthy; otherwise `accept`.
    * `false`, `0`, `0n`, `""`, `null`, `undefined`, and `NaN` accept.
@@ -2112,12 +2114,12 @@ declare namespace accept {
     value: T,
     message?: string | BytesLike | STBlob,
     code?: number,
-  ): Exclude<T, Falsy>;
+  ): JSTruthy<T>;
   /**
    * If `condition` is true, `accept`. If false, return and continue.
    */
   function when(
-    condition: unknown,
+    condition: boolean,
     message?: string | BytesLike | STBlob,
     code?: number,
   ): void;
@@ -2167,7 +2169,7 @@ declare namespace rollback {
         : string | BytesLike | STBlob
       : string | BytesLike | STBlob,
     code?: number,
-  ): Exclude<T, null | undefined>;
+  ): Present<T>;
 
   /**
    * Require an ordinarily truthy direct value — the direct-value behaviour
@@ -2178,13 +2180,13 @@ declare namespace rollback {
     value: T,
     message: string | BytesLike | STBlob,
     code?: number,
-  ): Exclude<T, Falsy>;
+  ): JSTruthy<T>;
 
   /**
    * If `condition` is true, `rollback`. If false, return and continue.
    */
   function when(
-    condition: unknown,
+    condition: boolean,
     message?: string | BytesLike | STBlob,
     code?: number,
   ): void;
