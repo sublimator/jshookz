@@ -338,13 +338,6 @@ interface CallbackInfo {
   readonly failureBitSet: boolean;
 
   /**
-   * Bit-zero observation, retained for compatibility.
-   * @deprecated This name reads as the inverse of `applied` and is not:
-   * it is exactly bit zero. Use `applied` or `failureBitSet`.
-   */
-  readonly failed: boolean;
-
-  /**
    * Exact uint32 callback word supplied by Xahau. Prefer named properties;
    * this is retained for diagnostics and forward-compatible expert use.
    */

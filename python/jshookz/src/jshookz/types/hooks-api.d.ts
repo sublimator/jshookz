@@ -1644,13 +1644,6 @@ interface CallbackInfo {
   readonly failureBitSet: boolean;
 
   /**
-   * Bit-zero observation, retained for compatibility.
-   * @deprecated This name reads as the inverse of `applied` and is not:
-   * it is exactly bit zero. Use `applied` or `failureBitSet`.
-   */
-  readonly failed: boolean;
-
-  /**
    * Exact uint32 callback word supplied by Xahau. Prefer named properties;
    * this is retained for diagnostics and forward-compatible expert use.
    */
@@ -2006,25 +1999,6 @@ declare namespace ledger {
   function nextKeylet(lo: LedgerKeylet, hi: LedgerKeylet): HostResult<LedgerKeylet | undefined>;
 }
 
-/**
- * Legacy compatibility with the C Hooks `_g` verifier surface.
- *
- * This is not the target execution meter. Runtime pricing may count cheap
- * interpreter/wasm instructions, complexity-priced host calls, or both; the
- * executor and tariff are still design choices. Ports must not mechanically
- * translate entry `_g(1, 1)` calls or ordinary loop guards into this
- * namespace. Use normal bounded JavaScript control flow, and require every
- * host operation to be bounded and charged by the eventual consensus meter.
- * Keep these helpers only for a deliberate, observable C-guard-parity case or
- * a diagnostic probe.
- *
- * @deprecated Prefer normal JavaScript control flow under runtime metering.
- * Remove this compatibility surface if no explicit guard-parity case remains.
- */
-declare namespace guard {
-  function hit(id: number, maxIterations: number): number;
-  function loop<T>(id: number, maxIterations: number, body: (index: number) => T | void): void;
-}
 
 /** Metadata and configuration for the currently executing Hook. */
 declare namespace hook {
