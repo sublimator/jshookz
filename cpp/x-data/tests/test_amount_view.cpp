@@ -7,13 +7,12 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
-#include <fstream>
 #include <new>
 #include <span>
-#include <sstream>
 #include <stdlib.h>
 #include <string>
 #include <type_traits>
@@ -21,6 +20,18 @@
 #include <vector>
 
 using namespace catl::xdata;
+
+namespace catl::xdata {
+
+std::atomic<int> g_amount_parts_calls{0};
+
+void
+amount_rules_parts_test_hook() noexcept
+{
+    g_amount_parts_calls.fetch_add(1, std::memory_order_relaxed);
+}
+
+}  // namespace catl::xdata
 
 namespace {
 
@@ -30,85 +41,39 @@ constexpr uint8_t kNativeAmtObj[] = {
     0xb5, 0xf7, 0x62, 0x79, 0x8a, 0x53, 0xd5, 0x43, 0xa0, 0x14, 0xca,
     0xf8, 0xb2, 0x97, 0xcf, 0xf8, 0xf2, 0xf9, 0x37, 0xe8};
 
-constexpr uint8_t kNativeAmt[] = {
-    0x40, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x42, 0x40};
+constexpr uint8_t kNativeAmt[] =
+    {0x40, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x42, 0x40};
 
 std::atomic<int> g_heap{0};
 std::atomic<std::size_t> g_heap_bytes{0};
 bool g_track = false;
 
-// Clang treats a deleted overload as satisfying a simple requires-expression.
-// std::is_invocable is false for those deleted rvalue overloads.
-struct BindRoot {
+struct BindRoot
+{
     template <class T>
-    auto operator()(T&& t) const
+    auto
+    operator()(T&& t) const
         -> decltype(AmountView::bind(std::forward<T>(t), size_t{0}));
 };
-struct ObjectAmount {
-    template <class T>
-    auto operator()(T&& t) const
-        -> decltype(std::forward<T>(t).amount(0));
-};
-struct AnchorParts {
-    template <class T>
-    auto operator()(T&& t) const
-        -> decltype(std::forward<T>(t).parts());
-};
-struct AnchorPayload {
-    template <class T>
-    auto operator()(T&& t) const
-        -> decltype(std::forward<T>(t).payload());
-};
-struct BindThenParts {
-    template <class T>
-    auto operator()(T&& t) const
-        -> decltype(AnchoredAmount::bind(std::forward<T>(t), 0).parts());
-};
-struct ObjectRoot {
-    template <class T>
-    auto operator()(T&& t) const
-        -> decltype(std::forward<T>(t).root());
-};
-struct RootIndex {
-    template <class T>
-    auto operator()(T&& t) const
-        -> decltype(std::forward<T>(t).index());
-};
-
-std::string
-brace_body(std::string const& text, std::string const& sig)
+struct ObjectMaterialize
 {
-    auto pos = text.find(sig);
-    if (pos == std::string::npos)
-        return {};
-    auto brace = text.find('{', pos);
-    if (brace == std::string::npos)
-        return {};
-    int depth = 0;
-    for (size_t i = brace; i < text.size(); ++i)
-    {
-        if (text[i] == '{')
-            ++depth;
-        else if (text[i] == '}')
-        {
-            --depth;
-            if (depth == 0)
-                return text.substr(brace, i - brace + 1);
-        }
-    }
-    return {};
-}
-
-std::string
-read_file(char const* path)
+    template <class T>
+    auto
+    operator()(T&& t) const
+        -> decltype(std::forward<T>(t).materialize_amount(0));
+};
+struct RootIndex
 {
-    std::ifstream in(path);
-    if (!in)
-        return {};
-    std::ostringstream oss;
-    oss << in.rdbuf();
-    return oss.str();
-}
+    template <class T>
+    auto
+    operator()(T&& t) const -> decltype(std::forward<T>(t).index());
+};
+struct RootBacking
+{
+    template <class T>
+    auto
+    operator()(T&& t) const -> decltype(std::forward<T>(t).backing());
+};
 
 }  // namespace
 
@@ -220,8 +185,8 @@ TEST(AmountView, LocateOnlyDoesNotProduceIndex)
 TEST(AmountView, BindWrongOrdinalAndWrongTypeFail)
 {
     auto const protocol = Protocol::load_embedded_xahau_protocol();
-    auto idx =
-        certify_indexed(Slice{kNativeAmtObj, sizeof(kNativeAmtObj)}, 0, protocol);
+    auto idx = certify_indexed(
+        Slice{kNativeAmtObj, sizeof(kNativeAmtObj)}, 0, protocol);
     ASSERT_TRUE(idx.has_value());
     EXPECT_FALSE(AmountView::bind(*idx, idx->frame_count()));
     EXPECT_FALSE(AmountView::bind(*idx, 99));
@@ -242,8 +207,8 @@ TEST(AmountView, BindWrongOrdinalAndWrongTypeFail)
 TEST(AmountView, BindAmountPartsAreTotal)
 {
     auto const protocol = Protocol::load_embedded_xahau_protocol();
-    auto idx =
-        certify_indexed(Slice{kNativeAmtObj, sizeof(kNativeAmtObj)}, 0, protocol);
+    auto idx = certify_indexed(
+        Slice{kNativeAmtObj, sizeof(kNativeAmtObj)}, 0, protocol);
     ASSERT_TRUE(idx.has_value());
     std::optional<AmountView> view;
     for (size_t i = 0; i < idx->frame_count(); ++i)
@@ -273,8 +238,8 @@ TEST(AmountView, StandaloneSpanBind)
 TEST(AmountView, BindAndPartsDoNotHeapAllocate)
 {
     auto const protocol = Protocol::load_embedded_xahau_protocol();
-    auto idx =
-        certify_indexed(Slice{kNativeAmtObj, sizeof(kNativeAmtObj)}, 0, protocol);
+    auto idx = certify_indexed(
+        Slice{kNativeAmtObj, sizeof(kNativeAmtObj)}, 0, protocol);
     ASSERT_TRUE(idx.has_value());
     size_t amt_ord = 0;
     for (size_t i = 0; i < idx->frame_count(); ++i)
@@ -304,7 +269,9 @@ TEST(AmountView, NegativeZeroNativeRejected)
     std::uint8_t const z[] = {0, 0, 0, 0, 0, 0, 0, 0};
     auto idx = certify_amount_span(Slice{z, sizeof(z)}, protocol);
     EXPECT_FALSE(idx.has_value());
-    EXPECT_NE(std::string(idx.error().message).find("negative zero"), std::string::npos);
+    EXPECT_NE(
+        std::string(idx.error().message).find("negative zero"),
+        std::string::npos);
 }
 
 TEST(AmountView, KindDoesNotRequireParts)
@@ -315,47 +282,32 @@ TEST(AmountView, KindDoesNotRequireParts)
     ASSERT_TRUE(idx.has_value());
     auto view = AmountView::bind(*idx, 0);
     ASSERT_TRUE(view.has_value());
+    catl::xdata::g_amount_parts_calls.store(0);
     EXPECT_EQ(view->kind(), AmountRules::Kind::Native);
+    EXPECT_EQ(catl::xdata::g_amount_parts_calls.load(), 0);
     EXPECT_EQ(view->kind(), view->parts().kind);
-    EXPECT_EQ(AmountRules::kind(Slice{kNativeAmt, sizeof(kNativeAmt)}),
+    EXPECT_EQ(catl::xdata::g_amount_parts_calls.load(), 1);
+    EXPECT_EQ(
+        AmountRules::kind(Slice{kNativeAmt, sizeof(kNativeAmt)}),
         AmountRules::Kind::Native);
-#ifndef JSHOOKZ_AMOUNT_VIEW_H
-    FAIL() << "JSHOOKZ_AMOUNT_VIEW_H must be defined";
-#else
-    auto text = read_file(JSHOOKZ_AMOUNT_VIEW_H);
-    ASSERT_FALSE(text.empty()) << JSHOOKZ_AMOUNT_VIEW_H;
-    auto body = brace_body(text, "    kind() const noexcept");
-    ASSERT_FALSE(body.empty());
-    EXPECT_NE(body.find("AmountRules::kind(payload_)"), std::string::npos);
-    EXPECT_EQ(body.find("parts("), std::string::npos)
-        << "AmountView::kind() must not call parts(";
-    std::string rules_path{JSHOOKZ_AMOUNT_VIEW_H};
-    auto slash = rules_path.find_last_of('/');
-    ASSERT_NE(slash, std::string::npos);
-    rules_path.replace(slash + 1, std::string::npos, "amount-rules.h");
-    auto rules = read_file(rules_path.c_str());
-    ASSERT_FALSE(rules.empty()) << rules_path;
-    auto rules_kind = brace_body(rules, "kind(Slice payload) noexcept");
-    ASSERT_FALSE(rules_kind.empty());
-    EXPECT_EQ(rules_kind.find("parts("), std::string::npos)
-        << "AmountRules::kind must not call parts(";
-#endif
 }
 
-TEST(AmountView, TemporaryRootBindIsIllFormed)
+TEST(AmountView, OwnedBoundaryDoesNotExposeBorrow)
 {
-    static_assert(std::is_invocable_v<BindRoot, CertifiedRoot const&>);
     static_assert(std::is_invocable_v<BindRoot, CertifiedIndex const&>);
+    static_assert(!std::is_invocable_v<BindRoot, CertifiedRoot const&>);
     static_assert(!std::is_invocable_v<BindRoot, CertifiedRoot&&>);
     static_assert(!std::is_invocable_v<BindRoot, CertifiedRoot const&&>);
-    static_assert(!std::is_invocable_v<BindThenParts, CertifiedRoot>);
-    static_assert(!std::is_invocable_v<BindThenParts, CertifiedRoot&&>);
-    static_assert(std::is_invocable_v<ObjectRoot, CertifiedObject const&>);
-    static_assert(!std::is_invocable_v<ObjectRoot, CertifiedObject&&>);
-    static_assert(!std::is_invocable_v<ObjectRoot, CertifiedObject const&&>);
     static_assert(!std::is_invocable_v<RootIndex, CertifiedRoot const&>);
     static_assert(!std::is_invocable_v<RootIndex, CertifiedRoot&&>);
     static_assert(!std::is_invocable_v<RootIndex, CertifiedRoot const&&>);
+    static_assert(!std::is_invocable_v<RootBacking, CertifiedRoot const&>);
+    static_assert(!std::is_invocable_v<RootBacking, CertifiedRoot&&>);
+    static_assert(
+        std::is_invocable_v<ObjectMaterialize, CertifiedObject const&>);
+    static_assert(std::is_invocable_v<ObjectMaterialize, CertifiedObject&&>);
+    static_assert(!std::is_reference_v<OwnedAmountParts>);
+    static_assert(std::is_trivially_copyable_v<OwnedAmountParts>);
 }
 
 TEST(AmountView, BindSurvivesProtocolTemporary)
@@ -367,67 +319,42 @@ TEST(AmountView, BindSurvivesProtocolTemporary)
     };
     auto root = make_root();
     ASSERT_TRUE(root.has_value());
-    auto view = AmountView::bind(*root, 0);
-    ASSERT_TRUE(view.has_value());
-    EXPECT_EQ(view->parts().magnitude, 1000000u);
-    EXPECT_EQ(view->kind(), AmountRules::Kind::Native);
+    CertifiedObject object{std::move(*root)};
+    auto amount = object.materialize_amount(0);
+    ASSERT_TRUE(amount.has_value());
+    EXPECT_EQ(amount->magnitude, 1000000u);
+    EXPECT_EQ(amount->kind, AmountRules::Kind::Native);
 }
 
-TEST(AmountView, AnchoredAmountOutlivesLocals)
-{
-    auto make = []() -> std::optional<AnchoredAmount> {
-        auto protocol = Protocol::load_embedded_xahau_protocol();
-        auto root = CertifiedRoot::copy_and_certify(
-            Slice{kNativeAmtObj, sizeof(kNativeAmtObj)}, 0, protocol);
-        if (!root)
-            return std::nullopt;
-        for (size_t i = 0; i < root->frame_count(); ++i)
-        {
-            auto a = AnchoredAmount::bind(std::move(*root), i);
-            if (a)
-                return a;
-        }
-        return std::nullopt;
-    };
-    auto a = make();
-    ASSERT_TRUE(a.has_value());
-    EXPECT_EQ(a->parts().magnitude, 1000000u);
-    EXPECT_EQ(a->kind(), AmountRules::Kind::Native);
-    auto payload = a->payload();
-    EXPECT_FALSE(payload.empty());
-}
-
-TEST(AmountView, RootOwnsBytesAndBindBorrows)
+TEST(AmountView, RootOwnsBytesAndPublicOutputIsOwned)
 {
     auto const protocol = Protocol::load_embedded_xahau_protocol();
+    std::array<uint8_t, sizeof(kNativeAmtObj)> source{};
+    std::copy(
+        std::begin(kNativeAmtObj), std::end(kNativeAmtObj), source.begin());
     auto root = CertifiedRoot::copy_and_certify(
-        Slice{kNativeAmtObj, sizeof(kNativeAmtObj)}, 0, protocol);
+        Slice{source.data(), source.size()}, 0, protocol);
     ASSERT_TRUE(root.has_value()) << root.error().message;
-    EXPECT_EQ(root->backing().size(), sizeof(kNativeAmtObj));
-    EXPECT_NE(root->backing().data(), kNativeAmtObj);
-    std::optional<AmountView> view;
-    for (size_t i = 0; i < root->frame_count(); ++i)
+    CertifiedObject object{std::move(*root)};
+    source.fill(0xff);
+    std::optional<OwnedAmountParts> amount;
+    for (size_t i = 0; i < object.frame_count(); ++i)
     {
-        view = AmountView::bind(*root, i);
-        if (view)
+        amount = object.materialize_amount(i);
+        if (amount)
             break;
     }
-    ASSERT_TRUE(view.has_value());
-    auto payload = view->payload();
-    EXPECT_GE(payload.data(), root->backing().data());
-    EXPECT_LE(
-        payload.data() + payload.size(),
-        root->backing().data() + root->backing().size());
-    EXPECT_EQ(view->parts().magnitude, 1000000u);
-    EXPECT_EQ(view->kind(), AmountRules::Kind::Native);
+    ASSERT_TRUE(amount.has_value());
+    EXPECT_EQ(amount->magnitude, 1000000u);
+    EXPECT_EQ(amount->kind, AmountRules::Kind::Native);
 }
 
 TEST(AmountView, RootBelowMinMantissaRejected)
 {
     auto const protocol = Protocol::load_embedded_xahau_protocol();
     uint8_t iou[48]{};
-    uint64_t const word = AmountRules::kIssued | AmountRules::kPositive |
-        (97ull << 54) | 1ull;
+    uint64_t const word =
+        AmountRules::kIssued | AmountRules::kPositive | (97ull << 54) | 1ull;
     for (int i = 0; i < 8; ++i)
         iou[i] = static_cast<uint8_t>(word >> (56 - 8 * i));
     iou[8 + 12] = 'U';
@@ -450,16 +377,20 @@ TEST(AmountView, RepresentationSizes)
     EXPECT_EQ(sizeof(CertifiedIndex), 28u);
     EXPECT_EQ(sizeof(CertifiedRoot), 40u);
     EXPECT_EQ(sizeof(CertifiedObject), 40u);
-    EXPECT_EQ(sizeof(AnchoredAmount), 48u);
     EXPECT_EQ(sizeof(AmountRules::Parts), 48u);
+    EXPECT_EQ(sizeof(OwnedAmountParts), 64u);
+    EXPECT_EQ(sizeof(std::optional<OwnedAmountParts>), 72u);
+    EXPECT_EQ(sizeof(IndexSink), 144u);
 #elif defined(__aarch64__) || defined(__x86_64__)
     EXPECT_EQ(sizeof(AmountView), 16u);
     EXPECT_EQ(sizeof(std::optional<AmountView>), 24u);
     EXPECT_EQ(sizeof(CertifiedIndex), 48u);
     EXPECT_EQ(sizeof(CertifiedRoot), 72u);
     EXPECT_EQ(sizeof(CertifiedObject), 72u);
-    EXPECT_EQ(sizeof(AnchoredAmount), 88u);
     EXPECT_EQ(sizeof(AmountRules::Parts), 72u);
+    EXPECT_EQ(sizeof(OwnedAmountParts), 64u);
+    EXPECT_EQ(sizeof(std::optional<OwnedAmountParts>), 72u);
+    EXPECT_EQ(sizeof(IndexSink), 160u);
 #endif
 }
 
@@ -468,9 +399,9 @@ TEST(AmountView, CertifyIndexAllocatesFramesBindDoesNot)
     auto const protocol = Protocol::load_embedded_xahau_protocol();
 
     constexpr uint8_t kNestedMemos[] = {
-        0x81, 0x14, 0xB5, 0xF7, 0x62, 0x79, 0x8A, 0x53, 0xD5, 0x43, 0xA0,
-        0x14, 0xCA, 0xF8, 0xB2, 0x97, 0xCF, 0xF8, 0xF2, 0xF9, 0x37, 0xE8,
-        0xF9, 0xEA, 0x7D, 0x02, 0xDE, 0xAD, 0xE1, 0xF1};
+        0x81, 0x14, 0xB5, 0xF7, 0x62, 0x79, 0x8A, 0x53, 0xD5, 0x43,
+        0xA0, 0x14, 0xCA, 0xF8, 0xB2, 0x97, 0xCF, 0xF8, 0xF2, 0xF9,
+        0x37, 0xE8, 0xF9, 0xEA, 0x7D, 0x02, 0xDE, 0xAD, 0xE1, 0xF1};
     constexpr uint8_t kNop63[] = {
         0x81, 0x14, 0xB5, 0xF7, 0x62, 0x79, 0x8A, 0x53, 0xD5, 0x43, 0xA0,
         0x14, 0xCA, 0xF8, 0xB2, 0x97, 0xCF, 0xF8, 0xF2, 0xF9, 0x37, 0xE8};
@@ -509,7 +440,7 @@ TEST(AmountView, CertifyIndexAllocatesFramesBindDoesNot)
         g_heap_bytes.load());
     EXPECT_EQ(obj->frame_count(), 2u);
     EXPECT_EQ(g_heap.load(), 1);
-    EXPECT_EQ(g_heap_bytes.load(), 128u);
+    EXPECT_EQ(g_heap_bytes.load(), 32u);
 
     auto memos = measure(kNestedMemos, sizeof(kNestedMemos));
     ASSERT_TRUE(memos.has_value()) << memos.error().message;
@@ -520,7 +451,7 @@ TEST(AmountView, CertifyIndexAllocatesFramesBindDoesNot)
         g_heap_bytes.load());
     EXPECT_EQ(memos->frame_count(), 4u);
     EXPECT_EQ(g_heap.load(), 1);
-    EXPECT_EQ(g_heap_bytes.load(), 128u);
+    EXPECT_EQ(g_heap_bytes.load(), 64u);
 
     auto nop = measure(kNop63, sizeof(kNop63));
     ASSERT_TRUE(nop.has_value());
@@ -531,7 +462,7 @@ TEST(AmountView, CertifyIndexAllocatesFramesBindDoesNot)
         g_heap_bytes.load());
     EXPECT_EQ(nop->frame_count(), 1u);
     EXPECT_EQ(g_heap.load(), 1);
-    EXPECT_EQ(g_heap_bytes.load(), 128u);
+    EXPECT_EQ(g_heap_bytes.load(), 16u);
 
     size_t amt_ord = 0;
     for (size_t i = 0; i < obj->frame_count(); ++i)
@@ -570,10 +501,10 @@ TEST(AmountView, CertifyIndexAllocatesFramesBindDoesNot)
         g_heap_bytes.load(),
         sizeof(CertifiedRoot));
     EXPECT_EQ(g_heap.load(), 2);
-    EXPECT_EQ(g_heap_bytes.load(), 159u);
+    EXPECT_EQ(g_heap_bytes.load(), 63u);
 }
 
-TEST(AmountView, IndexSinkLazyReserveEight)
+TEST(AmountView, IndexSinkInlineThenSingleAllocation)
 {
     FieldFrame f{};
     g_heap.store(0);
@@ -589,9 +520,9 @@ TEST(AmountView, IndexSinkLazyReserveEight)
     IndexSink s;
     s.emit(f);
     g_track = false;
-    EXPECT_EQ(s.frames.size(), 1u);
-    EXPECT_EQ(g_heap.load(), 1);
-    EXPECT_EQ(g_heap_bytes.load(), 128u);
+    EXPECT_EQ(s.size(), 1u);
+    EXPECT_EQ(g_heap.load(), 0);
+    EXPECT_EQ(g_heap_bytes.load(), 0u);
 
     g_heap.store(0);
     g_heap_bytes.store(0);
@@ -599,73 +530,148 @@ TEST(AmountView, IndexSinkLazyReserveEight)
     for (int i = 0; i < 7; ++i)
         s.emit(f);
     g_track = false;
-    EXPECT_EQ(s.frames.size(), 8u);
+    EXPECT_EQ(s.size(), 8u);
     EXPECT_EQ(g_heap.load(), 0);
+    EXPECT_EQ(g_heap_bytes.load(), 0u);
 
     g_heap.store(0);
     g_heap_bytes.store(0);
     g_track = true;
-    s.emit(f);
+    auto exact = std::move(s).finish();
     g_track = false;
-    EXPECT_EQ(s.frames.size(), 9u);
+    EXPECT_EQ(exact.size(), 8u);
+    EXPECT_EQ(exact.capacity(), 8u);
+    EXPECT_EQ(g_heap.load(), 1);
+    EXPECT_EQ(g_heap_bytes.load(), 128u);
+
+    g_heap.store(0);
+    g_heap_bytes.store(0);
+    g_track = true;
+    IndexSink nine;
+    for (int i = 0; i < 9; ++i)
+        nine.emit(f);
+    g_track = false;
+    EXPECT_EQ(nine.size(), 9u);
     EXPECT_EQ(g_heap.load(), 1);
     EXPECT_EQ(g_heap_bytes.load(), 256u);
+
+    g_heap.store(0);
+    g_heap_bytes.store(0);
+    g_track = true;
+    auto spilled = std::move(nine).finish();
+    g_track = false;
+    EXPECT_EQ(spilled.size(), 9u);
+    EXPECT_EQ(spilled.capacity(), 16u);
+    EXPECT_EQ(g_heap.load(), 0);
+    EXPECT_EQ(g_heap_bytes.load(), 0u);
 }
 
-TEST(AmountView, CertifiedObjectBindsManyFieldsFromOneRoot)
+TEST(AmountView, CertifiedObjectMaterializesManyFieldsWithoutAllocation)
 {
+    constexpr uint8_t two_amounts[] = {
+        0x61, 0x40, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x42, 0x40, 0x68,
+        0x40, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x84, 0x80, 0x81, 0x14,
+        0xb5, 0xf7, 0x62, 0x79, 0x8a, 0x53, 0xd5, 0x43, 0xa0, 0x14,
+        0xca, 0xf8, 0xb2, 0x97, 0xcf, 0xf8, 0xf2, 0xf9, 0x37, 0xe8};
     auto protocol = Protocol::load_embedded_xahau_protocol();
     auto root = CertifiedRoot::copy_and_certify(
-        Slice{kNativeAmtObj, sizeof(kNativeAmtObj)}, 0, protocol);
+        Slice{two_amounts, sizeof(two_amounts)}, 0, protocol);
     ASSERT_TRUE(root.has_value());
+
+    g_heap.store(0);
+    g_heap_bytes.store(0);
+    catl::xdata::g_amount_parts_calls.store(0);
+    g_track = true;
     CertifiedObject host{std::move(*root)};
-    std::optional<AmountView> amount;
+    std::array<OwnedAmountParts, 2> amounts{};
     size_t n_amt = 0;
     for (size_t i = 0; i < host.frame_count(); ++i)
     {
-        auto v = host.amount(i);
-        if (v)
-        {
-            ++n_amt;
-            amount = v;
-        }
+        auto value = host.materialize_amount(i);
+        if (value)
+            amounts[n_amt++] = *value;
     }
-    EXPECT_EQ(n_amt, 1u);
-    ASSERT_TRUE(amount.has_value());
-    EXPECT_EQ(amount->parts().magnitude, 1000000u);
-    static_assert(std::is_invocable_v<ObjectAmount, CertifiedObject const&>);
-    static_assert(!std::is_invocable_v<ObjectAmount, CertifiedObject&&>);
-    static_assert(!std::is_invocable_v<ObjectAmount, CertifiedObject const&&>);
+    CertifiedObject moved{std::move(host)};
+    auto again = moved.materialize_amount(0);
+    auto kind = moved.amount_kind(1);
+    g_track = false;
+
+    EXPECT_EQ(n_amt, 2u);
+    EXPECT_EQ(amounts[0].magnitude, 1000000u);
+    EXPECT_EQ(amounts[1].magnitude, 2000000u);
+    ASSERT_TRUE(again.has_value());
+    EXPECT_EQ(again->magnitude, 1000000u);
+    ASSERT_TRUE(kind.has_value());
+    EXPECT_EQ(*kind, AmountRules::Kind::Native);
+    EXPECT_EQ(catl::xdata::g_amount_parts_calls.load(), 3);
+    EXPECT_EQ(g_heap.load(), 0);
+    EXPECT_EQ(g_heap_bytes.load(), 0u);
 }
 
-TEST(AmountView, AnchoredMoveLeavesSourceVacant)
+TEST(AmountView, TemporaryOwnerReturnsOnlyOwnedMaterialization)
+{
+    auto make = []() -> std::optional<CertifiedObject> {
+        auto protocol = Protocol::load_embedded_xahau_protocol();
+        auto root = CertifiedRoot::copy_and_certify_amount(
+            Slice{kNativeAmt, sizeof(kNativeAmt)}, protocol);
+        if (!root)
+            return std::nullopt;
+        return CertifiedObject{std::move(*root)};
+    };
+    auto amount = make()->materialize_amount(0);
+    ASSERT_TRUE(amount.has_value());
+    EXPECT_EQ(amount->kind, AmountRules::Kind::Native);
+    EXPECT_EQ(amount->magnitude, 1000000u);
+}
+
+TEST(AmountView, OwnedMaterializationCopiesIouAndMptIdentity)
 {
     auto protocol = Protocol::load_embedded_xahau_protocol();
-    auto root = CertifiedRoot::copy_and_certify(
-        Slice{kNativeAmtObj, sizeof(kNativeAmtObj)}, 0, protocol);
-    ASSERT_TRUE(root.has_value());
-    std::optional<AnchoredAmount> src;
-    for (size_t i = 0; i < root->frame_count(); ++i)
-    {
-        auto a = AnchoredAmount::bind(std::move(*root), i);
-        if (a)
-        {
-            src = std::move(a);
-            break;
-        }
-    }
-    ASSERT_TRUE(src.has_value());
-    ASSERT_TRUE(static_cast<bool>(*src));
-    auto dst = std::move(*src);
-    EXPECT_EQ(dst.parts().magnitude, 1000000u);
-    EXPECT_TRUE(src->payload().empty());
-    EXPECT_FALSE(static_cast<bool>(*src));
-    static_assert(std::is_invocable_v<AnchorParts, AnchoredAmount const&>);
-    static_assert(!std::is_invocable_v<AnchorParts, AnchoredAmount&&>);
-    static_assert(!std::is_invocable_v<AnchorParts, AnchoredAmount const&&>);
-    static_assert(std::is_invocable_v<AnchorPayload, AnchoredAmount const&>);
-    static_assert(!std::is_invocable_v<AnchorPayload, AnchoredAmount&&>);
-    static_assert(!std::is_invocable_v<AnchorPayload, AnchoredAmount const&&>);
+    std::array<uint8_t, 48> iou{};
+    uint64_t const iou_word = AmountRules::kIssued | AmountRules::kPositive |
+        (97ull << 54) | AmountRules::kMinMant;
+    for (int i = 0; i < 8; ++i)
+        iou[i] = static_cast<uint8_t>(iou_word >> (56 - 8 * i));
+    iou[20] = 'U';
+    iou[21] = 'S';
+    iou[22] = 'D';
+    for (size_t i = 0; i < 20; ++i)
+        iou[28 + i] = static_cast<uint8_t>(i + 1);
+
+    auto iou_root = CertifiedRoot::copy_and_certify_amount(
+        Slice{iou.data(), iou.size()}, protocol);
+    ASSERT_TRUE(iou_root.has_value());
+    auto iou_value =
+        CertifiedObject{std::move(*iou_root)}.materialize_amount(0);
+    ASSERT_TRUE(iou_value.has_value());
+    auto identity = iou_value->iou_identity();
+    ASSERT_TRUE(identity.has_value());
+    EXPECT_EQ(identity->currency[12], 'U');
+    EXPECT_EQ(identity->currency[13], 'S');
+    EXPECT_EQ(identity->currency[14], 'D');
+    EXPECT_EQ(identity->issuer[0], 1);
+    EXPECT_EQ(identity->issuer[19], 20);
+    EXPECT_FALSE(iou_value->mpt_id().has_value());
+
+    std::array<uint8_t, 33> mpt{};
+    uint64_t const mpt_word = AmountRules::kMpt | AmountRules::kPositive;
+    for (int i = 0; i < 8; ++i)
+        mpt[i] = static_cast<uint8_t>(mpt_word >> (56 - 8 * i));
+    mpt[8] = 42;
+    for (size_t i = 0; i < 24; ++i)
+        mpt[9 + i] = static_cast<uint8_t>(0xa0 + i);
+
+    auto mpt_root = CertifiedRoot::copy_and_certify_amount(
+        Slice{mpt.data(), mpt.size()}, protocol);
+    ASSERT_TRUE(mpt_root.has_value());
+    auto mpt_value =
+        CertifiedObject{std::move(*mpt_root)}.materialize_amount(0);
+    ASSERT_TRUE(mpt_value.has_value());
+    auto mpt_id = mpt_value->mpt_id();
+    ASSERT_TRUE(mpt_id.has_value());
+    EXPECT_EQ((*mpt_id)[0], 0xa0);
+    EXPECT_EQ((*mpt_id)[23], 0xb7);
+    EXPECT_FALSE(mpt_value->iou_identity().has_value());
 }
 
 TEST(AmountView, RealObjectsLockSevenEightNineFrameAllocs)
@@ -722,7 +728,7 @@ TEST(AmountView, RealObjectsLockSevenEightNineFrameAllocs)
     ASSERT_TRUE(seven.has_value()) << seven.error().message;
     EXPECT_EQ(seven->frame_count(), 7u);
     EXPECT_EQ(g_heap.load(), 1);
-    EXPECT_EQ(g_heap_bytes.load(), 128u);
+    EXPECT_EQ(g_heap_bytes.load(), 112u);
 
     auto eight = measure_n(8);
     ASSERT_TRUE(eight.has_value()) << eight.error().message;
@@ -733,6 +739,6 @@ TEST(AmountView, RealObjectsLockSevenEightNineFrameAllocs)
     auto nine = measure_n(9);
     ASSERT_TRUE(nine.has_value()) << nine.error().message;
     EXPECT_EQ(nine->frame_count(), 9u);
-    EXPECT_EQ(g_heap.load(), 2);
-    EXPECT_EQ(g_heap_bytes.load(), 384u);
+    EXPECT_EQ(g_heap.load(), 1);
+    EXPECT_EQ(g_heap_bytes.load(), 256u);
 }

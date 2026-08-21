@@ -58,8 +58,6 @@ private:
     friend std::expected<CertifiedIndex, CodecErrorValue>
     certify_amount_span(Slice, Protocol const&);
     friend class CertifiedRoot;
-    friend class AnchoredAmount;
-
     CertifiedIndex(
         Slice backing,
         uint32_t begin,
@@ -88,7 +86,7 @@ certify_indexed(
     auto end = scan_scope<ScanMode::CertifyWire>(backing, begin, protocol, sink);
     if (!end)
         return std::unexpected(end.error());
-    return CertifiedIndex{backing, begin, *end, std::move(sink.frames)};
+    return CertifiedIndex{backing, begin, *end, std::move(sink).finish()};
 }
 
 // Standalone Amount payload (no STObject header). One synthetic Amount frame.
@@ -165,15 +163,6 @@ public:
         return CertifiedRoot{std::move(bytes), std::move(*idx)};
     }
 
-    Slice
-    backing() const& noexcept
-    {
-        return index_.backing();
-    }
-
-    Slice
-    backing() const&& = delete;
-
     size_t
     frame_count() const noexcept
     {
@@ -189,7 +178,6 @@ private:
     {
     }
 
-    friend class AnchoredAmount;
     friend class AmountView;
 
     // Private: copy_and_certify(...)->index() would feed AmountView::bind a

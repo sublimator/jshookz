@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Registered Amount fuel lanes: compile two-TU probe and check slopes.
 
-Ceilings lock the 2026-08-21 reproduced slopes (retained 97, mask 148,
-prebound 258, rebind 326, raw 429) with a few units of headroom. Raising
+Ceilings lock the 2026-08-21 reproduced slopes (retained 97, mask 142,
+prebound 258, rebind 324, raw 423) with a few units of headroom. Raising
 a ceiling or lowering a delta floor is a review trigger, not a silent
-rebaseline.
+rebaseline. The full four-frame certified-index value is separately capped
+at 3150 against its reproduced 3023 slope.
 """
 
 from __future__ import annotations
@@ -16,7 +17,6 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-
 
 MODES = (
     "amount_mask_only_repeat",
@@ -34,17 +34,11 @@ HELPERS = (
     "retained_parts_c",
 )
 
-START_SEEDS = (
-    "_start",
-    "__main_argc_argv",
-    "__original_main",
-    "__main_void",
-    "main",
-)
-
 BUDGET = 80_000_000
+INDEX_MODE = "certified_index_value"
+INDEX_CEILING = 3_150
 
-# Measured 97 / 148 / 258 / 326 / 429. Caps are review-locked.
+# Measured 97 / 142 / 258 / 324 / 423. Caps are review-locked.
 CEILINGS = {
     "retained": 105,
     "mask": 155,
@@ -53,7 +47,7 @@ CEILINGS = {
     "raw": 445,
 }
 
-# Measured 68 / 161 / 103. Floors are review-locked.
+# Measured 66 / 161 / 99. Floors are review-locked.
 DELTA_FLOORS = {
     "rebind-prebound": 60,
     "prebound-retained": 145,
@@ -62,6 +56,16 @@ DELTA_FLOORS = {
 
 FUNC_HDR = re.compile(r"^[0-9a-fA-F]+ <([^>]*)>:\s*$")
 CALL_IDX = re.compile(r"\bcall\t(\d+)\b")
+HELPER_COUNTS = re.compile(
+    r"helper_counts view=(\d+) raw=(\d+) mask=(\d+) parts=(\d+) retained=(\d+)"
+)
+EXPECTED_HELPER = {
+    "amount_view_repeat": "view",
+    "amount_raw_recertify_repeat": "raw",
+    "amount_mask_only_repeat": "mask",
+    "amount_prebound_parts_repeat": "parts",
+    "amount_retained_parts_repeat": "retained",
+}
 
 
 def read_uleb(buf: bytes, i: int) -> tuple[int, int]:
@@ -122,7 +126,9 @@ def wasm_func_import_count(path: Path) -> int:
     return 0
 
 
-def compile_wasm(src: Path, wasi: Path, out: Path) -> None:
+def compile_wasm(
+    src: Path, wasi: Path, out: Path, *, instrumented: bool = False
+) -> None:
     clang = wasi / "bin" / "clang++"
     sysroot = wasi / "share" / "wasi-sysroot"
     includes = [
@@ -143,6 +149,8 @@ def compile_wasm(src: Path, wasi: Path, out: Path) -> None:
         "-DCATL_XDATA_NO_BOOST_JSON",
         *includes,
     ]
+    if instrumented:
+        common.append("-DCATL_XDATA_HELPER_CALL_COUNTS")
     tus = [
         src / "src" / "protocol.cpp",
         src / "src" / "embedded_protocol.cpp",
@@ -177,22 +185,25 @@ def run_mode(wasm: Path, mode: str, n: int) -> tuple[int, str]:
     store.set_fuel(BUDGET)
     wasi = WasiConfig()
     wasi.argv = ["scan_fuel", mode, str(n)]
-    out = tempfile.NamedTemporaryFile(delete=False)
-    err = tempfile.NamedTemporaryFile(delete=False)
-    out.close()
-    err.close()
-    wasi.stdout_file = out.name
-    wasi.stderr_file = err.name
-    linker = Linker(engine)
-    linker.define_wasi()
-    store.set_wasi(wasi)
-    instance = linker.instantiate(store, module)
-    instance.exports(store)["_start"](store)
-    used = BUDGET - store.get_fuel()
-    stdout = Path(out.name).read_text()
-    os.unlink(out.name)
-    os.unlink(err.name)
-    return used, stdout
+    with (
+        tempfile.NamedTemporaryFile(delete=False) as out_file,
+        tempfile.NamedTemporaryFile(delete=False) as err_file,
+    ):
+        out_path = Path(out_file.name)
+        err_path = Path(err_file.name)
+    try:
+        wasi.stdout_file = str(out_path)
+        wasi.stderr_file = str(err_path)
+        linker = Linker(engine)
+        linker.define_wasi()
+        store.set_wasi(wasi)
+        instance = linker.instantiate(store, module)
+        instance.exports(store)["_start"](store)
+        used = BUDGET - store.get_fuel()
+        return used, out_path.read_text()
+    finally:
+        out_path.unlink(missing_ok=True)
+        err_path.unlink(missing_ok=True)
 
 
 def parse_objdump_functions(
@@ -235,13 +246,10 @@ def reachable_from_start(
     names: dict[int, str], bodies: dict[int, str]
 ) -> tuple[set[int], set[int]]:
     name_to_idx = {n: i for i, n in names.items()}
-    seeds = [name_to_idx[s] for s in START_SEEDS if s in name_to_idx]
     if "_start" not in name_to_idx:
         raise ValueError("llvm-objdump listing has no _start")
-    if not seeds:
-        seeds = [name_to_idx["_start"]]
     seen: set[int] = set()
-    stack = list(seeds)
+    stack = [name_to_idx["_start"]]
     targets: set[int] = set()
     while stack:
         idx = stack.pop()
@@ -296,6 +304,22 @@ def require_helpers_from_start(wasi: Path, wasm: Path) -> None:
         print(f"helper_from_start {name}")
 
 
+def require_mode_helper_counts(wasm: Path) -> None:
+    n = 37
+    labels = ("view", "raw", "mask", "parts", "retained")
+    for mode in MODES:
+        _, stdout = run_mode(wasm, mode, n)
+        match = HELPER_COUNTS.search(stdout)
+        if match is None:
+            raise ValueError(f"{mode}: missing helper counts: {stdout!r}")
+        got = dict(zip(labels, (int(v) for v in match.groups()), strict=True))
+        expected = {label: 0 for label in labels}
+        expected[EXPECTED_HELPER[mode]] = n
+        if got != expected:
+            raise ValueError(f"{mode}: helper calls {got}, expected {expected}")
+        print(f"mode_helper {mode}={EXPECTED_HELPER[mode]}:{n}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--src", type=Path, required=True)
@@ -320,6 +344,13 @@ def main() -> int:
     out = args.keep_wasm or Path(tempfile.mkdtemp()) / "scan_fuel.wasm"
     compile_wasm(args.src, wasi, out)
     require_helpers_from_start(wasi, out)
+    counts_out = out.with_name(f"{out.stem}_counts.wasm")
+    compile_wasm(args.src, wasi, counts_out, instrumented=True)
+    try:
+        require_mode_helper_counts(counts_out)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
 
     used_inv, out_inv = run_mode(out, "amount_invalid_setup", 1)
     if "FAIL certify_amount_span" not in out_inv or "FAIL invalid accepted" in out_inv:
@@ -327,16 +358,36 @@ def main() -> int:
         return 1
     print(f"invalid_setup used={used_inv} stdout={out_inv.strip()!r}")
 
+    indexed_rows = {}
+    for n in (2000, 4000):
+        used, stdout = run_mode(out, INDEX_MODE, n)
+        print(f"{INDEX_MODE} n={n} used={used} stdout={stdout.strip()!r}")
+        if INDEX_MODE not in stdout or "FAIL" in stdout:
+            print(f"indexed certificate probe failed: {stdout!r}", file=sys.stderr)
+            return 1
+        indexed_rows[n] = used
+    indexed_slope = (indexed_rows[4000] - indexed_rows[2000]) / 2000
+    print(f"slope {INDEX_MODE}={indexed_slope:.3f}")
+    if indexed_slope > INDEX_CEILING:
+        print(
+            f"indexed certificate slope {indexed_slope} exceeds budget {INDEX_CEILING}",
+            file=sys.stderr,
+        )
+        return 1
+
     rows: dict[tuple[str, int], int] = {}
     for mode in MODES:
         for n in (2000, 4000):
             used, stdout = run_mode(out, mode, n)
             print(f"{mode} n={n} used={used} stdout={stdout.strip()!r}")
-            if "FAIL" in stdout and "FAIL certify" not in stdout:
-                if any(line.startswith("FAIL") for line in stdout.splitlines()):
-                    print("probe failed", file=sys.stderr)
-                    return 1
-            if f"coverage_32" not in stdout or mode not in stdout:
+            if (
+                "FAIL" in stdout
+                and "FAIL certify" not in stdout
+                and any(line.startswith("FAIL") for line in stdout.splitlines())
+            ):
+                print("probe failed", file=sys.stderr)
+                return 1
+            if "coverage_32" not in stdout or mode not in stdout:
                 print(f"missing markers: {stdout!r}", file=sys.stderr)
                 return 1
             rows[(mode, n)] = used

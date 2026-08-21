@@ -8,8 +8,10 @@
 #include "catl/xdata/types/issue.h"
 #include "catl/xdata/types/pathset.h"
 
+#include <array>
 #include <cstdint>
 #include <expected>
+#include <utility>
 #include <vector>
 
 namespace catl::xdata {
@@ -18,10 +20,10 @@ enum class ScanMode { Locate, CertifyWire };
 
 struct FieldFrame
 {
-    uint32_t field_code = 0;
-    uint32_t header_begin = 0;
-    uint32_t payload_begin = 0;
-    uint32_t wire_end = 0;
+    uint32_t field_code;
+    uint32_t header_begin;
+    uint32_t payload_begin;
+    uint32_t wire_end;
 };
 
 struct NullSink
@@ -36,14 +38,48 @@ struct NullSink
 struct IndexSink
 {
     static constexpr bool kRecords = true;
-    std::vector<FieldFrame> frames;
+
     void
     emit(FieldFrame const& f)
     {
-        if (frames.capacity() == 0)
-            frames.reserve(8);
-        frames.push_back(f);
+        if (spill_.empty() && inline_size_ < inline_.size())
+        {
+            inline_[inline_size_++] = f;
+            return;
+        }
+        if (spill_.empty())
+        {
+            spill_.reserve(2 * inline_.size());
+            spill_.insert(
+                spill_.end(), inline_.begin(), inline_.begin() + inline_size_);
+        }
+        spill_.push_back(f);
     }
+
+    size_t
+    size() const noexcept
+    {
+        return spill_.empty() ? inline_size_ : spill_.size();
+    }
+
+    // Successful certification keeps exactly-sized storage for the common
+    // 1..8-frame case. Nine or more frames reuse the single spill allocation.
+    std::vector<FieldFrame>
+    finish() &&
+    {
+        if (!spill_.empty())
+            return std::move(spill_);
+        std::vector<FieldFrame> frames;
+        frames.reserve(inline_size_);
+        frames.insert(
+            frames.end(), inline_.begin(), inline_.begin() + inline_size_);
+        return frames;
+    }
+
+private:
+    std::array<FieldFrame, 8> inline_;
+    size_t inline_size_ = 0;
+    std::vector<FieldFrame> spill_;
 };
 
 namespace scan_detail {
@@ -124,7 +160,8 @@ certify_issue(Slice payload)
     if (payload.size() == 20)
         return is_xrp_currency(payload.data()) ? nullptr : "invalid Issue size";
     if (payload.size() == 44)
-        return is_no_account(payload.data() + 20) ? nullptr : "invalid MPT Issue";
+        return is_no_account(payload.data() + 20) ? nullptr
+                                                  : "invalid MPT Issue";
     if (payload.size() != 40)
         return "invalid Issue size";
     bool const native_currency = is_xrp_currency(payload.data());
@@ -241,8 +278,8 @@ scan_pathset(ParserContext& ctx, ScanMode mode)
             extra += 20;
         if (mode == ScanMode::CertifyWire)
         {
-            uint8_t const legal = PathSet::TYPE_ACCOUNT | PathSet::TYPE_CURRENCY |
-                PathSet::TYPE_ISSUER;
+            uint8_t const legal = PathSet::TYPE_ACCOUNT |
+                PathSet::TYPE_CURRENCY | PathSet::TYPE_ISSUER;
             if ((t & ~legal) != 0)
             {
                 ctx.fail("unknown PathSet type bits");
@@ -378,11 +415,7 @@ scan_object(
 
 template <ScanMode M, class Sink>
 void
-scan_array(
-    ParserContext& ctx,
-    Protocol const& protocol,
-    Sink& sink,
-    int depth)
+scan_array(ParserContext& ctx, Protocol const& protocol, Sink& sink, int depth)
 {
     if (ctx.failed())
         return;
@@ -495,8 +528,7 @@ scan_object(
 
         FieldDef const* field = admitted.field;
         uint16_t const type = get_field_type_code(field_code);
-        bool const inferred_vl =
-            !field && protocol.is_inferred_vl_type(type);
+        bool const inferred_vl = !field && protocol.is_inferred_vl_type(type);
         bool const vl = field ? field->meta.is_vl_encoded : inferred_vl;
         size_t payload_begin = ctx.pos();
 
@@ -508,8 +540,7 @@ scan_object(
             payload_begin = ctx.pos();
             if constexpr (M == ScanMode::CertifyWire)
             {
-                if (type == FieldTypes::AccountID.code &&
-                    len != 0 && len != 20)
+                if (type == FieldTypes::AccountID.code && len != 0 && len != 20)
                 {
                     // xahaud-vectors:src/libxrpl/protocol/STAccount.cpp:38
                     // xahaud-vectors:src/libxrpl/protocol/STAccount.cpp:45
@@ -628,15 +659,11 @@ scan_object(
 
 template <ScanMode M, class Sink>
 std::expected<uint32_t, CodecErrorValue>
-scan_scope(
-    Slice backing,
-    uint32_t begin,
-    Protocol const& protocol,
-    Sink& sink)
+scan_scope(Slice backing, uint32_t begin, Protocol const& protocol, Sink& sink)
 {
     if (begin > backing.size())
-        return std::unexpected(CodecErrorValue{
-            CodecErrorCode::malformed_data, "begin past end"});
+        return std::unexpected(
+            CodecErrorValue{CodecErrorCode::malformed_data, "begin past end"});
     ParserContext ctx{backing};
     ctx.cursor.pos = begin;
     scan_detail::scan_object<M, Sink>(ctx, protocol, sink, 0, true);

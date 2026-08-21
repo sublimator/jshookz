@@ -6,6 +6,11 @@
 
 namespace catl::xdata {
 
+#if defined(CATL_XDATA_TEST_PARTS_HOOK)
+void
+amount_rules_parts_test_hook() noexcept;
+#endif
+
 // One no-throw authority for Amount extent, CertifyWire representation,
 // and raw part extraction. The scanner calls these statics without
 // constructing a view. AmountView accessors reuse the same parts().
@@ -132,6 +137,9 @@ struct AmountRules
     static Parts
     parts(Slice payload) noexcept
     {
+#if defined(CATL_XDATA_TEST_PARTS_HOOK)
+        amount_rules_parts_test_hook();
+#endif
         Parts p;
         if (payload.size() < 8)
             return p;

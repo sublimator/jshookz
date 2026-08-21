@@ -1,4 +1,5 @@
-// Compile this TU with -fno-exceptions. scan_scope and AmountView must not throw.
+// Compile this TU with -fno-exceptions. scan_scope and AmountView must not
+// throw.
 #include "catl/xdata/amount-view.h"
 #include "catl/xdata/certified-index.h"
 #include "catl/xdata/protocol.h"
@@ -19,10 +20,10 @@ main()
     if (r || c)
         return 2;
 
-    std::uint8_t const amt[] = {
-        0x61, 0x40, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x42, 0x40, 0x81, 0x14,
-        0xb5, 0xf7, 0x62, 0x79, 0x8a, 0x53, 0xd5, 0x43, 0xa0, 0x14, 0xca,
-        0xf8, 0xb2, 0x97, 0xcf, 0xf8, 0xf2, 0xf9, 0x37, 0xe8};
+    std::uint8_t const amt[] = {0x61, 0x40, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x42,
+                                0x40, 0x81, 0x14, 0xb5, 0xf7, 0x62, 0x79, 0x8a,
+                                0x53, 0xd5, 0x43, 0xa0, 0x14, 0xca, 0xf8, 0xb2,
+                                0x97, 0xcf, 0xf8, 0xf2, 0xf9, 0x37, 0xe8};
     auto idx = certify_indexed(Slice{amt, sizeof(amt)}, 0, protocol);
     if (!idx)
         return 3;
@@ -38,15 +39,16 @@ main()
     auto p = view->parts();
     if (p.kind != AmountRules::Kind::Native || p.magnitude != 1000000u)
         return 5;
-    auto root = CertifiedRoot::copy_and_certify(
-        Slice{amt, sizeof(amt)}, 0, protocol);
+    auto root =
+        CertifiedRoot::copy_and_certify(Slice{amt, sizeof(amt)}, 0, protocol);
     if (!root)
         return 6;
+    CertifiedObject object{std::move(*root)};
     bool found = false;
-    for (size_t i = 0; i < root->frame_count(); ++i)
+    for (size_t i = 0; i < object.frame_count(); ++i)
     {
-        auto b = AmountView::bind(*root, i);
-        if (b && b->parts().magnitude == 1000000u)
+        auto value = object.materialize_amount(i);
+        if (value && value->magnitude == 1000000u)
         {
             found = true;
             break;

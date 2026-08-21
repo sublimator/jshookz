@@ -9,11 +9,12 @@ main()
 {
     using catl::xdata::AmountRules;
     using catl::xdata::AmountView;
-    using catl::xdata::AnchoredAmount;
     using catl::xdata::CertifiedIndex;
     using catl::xdata::CertifiedObject;
     using catl::xdata::CertifiedRoot;
     using catl::xdata::FieldFrame;
+    using catl::xdata::IndexSink;
+    using catl::xdata::OwnedAmountParts;
 #if defined(__wasm32__)
     static_assert(sizeof(AmountView) == 8);
     static_assert(sizeof(std::optional<AmountView>) == 12);
@@ -21,16 +22,20 @@ main()
     static_assert(sizeof(CertifiedIndex) == 28);
     static_assert(sizeof(CertifiedRoot) == 40);
     static_assert(sizeof(CertifiedObject) == 40);
-    static_assert(sizeof(AnchoredAmount) == 48);
     static_assert(sizeof(AmountRules::Parts) == 48);
+    static_assert(sizeof(OwnedAmountParts) == 64);
+    static_assert(sizeof(std::optional<OwnedAmountParts>) == 72);
+    static_assert(sizeof(IndexSink) == 144);
 #else
     static_assert(sizeof(FieldFrame) == 16);
 #if defined(__aarch64__) || defined(__x86_64__)
     static_assert(sizeof(CertifiedIndex) == 48);
     static_assert(sizeof(CertifiedRoot) == 72);
     static_assert(sizeof(CertifiedObject) == 72);
-    static_assert(sizeof(AnchoredAmount) == 88);
     static_assert(sizeof(AmountView) == 16);
+    static_assert(sizeof(OwnedAmountParts) == 64);
+    static_assert(sizeof(std::optional<OwnedAmountParts>) == 72);
+    static_assert(sizeof(IndexSink) == 160);
 #else
     static_assert(sizeof(CertifiedIndex) <= 56);
 #endif

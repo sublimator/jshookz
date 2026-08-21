@@ -9,7 +9,6 @@
 
 #include "catl/xdata/amount-view.h"
 #include "catl/xdata/certified-index.h"
-#include "scan_fuel_once.h"
 #include "catl/xdata/codecs/account_id.h"
 #include "catl/xdata/codecs/int.h"
 #include "catl/xdata/codecs/uint.h"
@@ -18,6 +17,7 @@
 #include "catl/xdata/protocol.h"
 #include "catl/xdata/scan.h"
 #include "catl/xdata/slice-visitor.h"
+#include "scan_fuel_once.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -35,25 +35,35 @@ struct MaterializeVisitor
     std::vector<std::string> owned;
 
     bool
-    visit_object_start(catl::xdata::FieldPath const&, catl::xdata::FieldSlice const&)
+    visit_object_start(
+        catl::xdata::FieldPath const&,
+        catl::xdata::FieldSlice const&)
     {
         return true;
     }
     void
-    visit_object_end(catl::xdata::FieldPath const&, catl::xdata::FieldSlice const&)
+    visit_object_end(
+        catl::xdata::FieldPath const&,
+        catl::xdata::FieldSlice const&)
     {
     }
     bool
-    visit_array_start(catl::xdata::FieldPath const&, catl::xdata::FieldSlice const&)
+    visit_array_start(
+        catl::xdata::FieldPath const&,
+        catl::xdata::FieldSlice const&)
     {
         return true;
     }
     void
-    visit_array_end(catl::xdata::FieldPath const&, catl::xdata::FieldSlice const&)
+    visit_array_end(
+        catl::xdata::FieldPath const&,
+        catl::xdata::FieldSlice const&)
     {
     }
     void
-    visit_field(catl::xdata::FieldPath const&, catl::xdata::FieldSlice const& fs)
+    visit_field(
+        catl::xdata::FieldPath const&,
+        catl::xdata::FieldSlice const& fs)
     {
         using namespace catl::xdata;
         auto const& t = fs.get_field().meta.type;
@@ -98,14 +108,14 @@ struct MaterializeVisitor
     }
 };
 
-constexpr uint8_t kBlob[] = {
-    0x81, 0x14, 0xB5, 0xF7, 0x62, 0x79, 0x8A, 0x53, 0xD5, 0x43, 0xA0, 0x14,
-    0xCA, 0xF8, 0xB2, 0x97, 0xCF, 0xF8, 0xF2, 0xF9, 0x37, 0xE8, 0xF9, 0xEA,
-    0x7D, 0x02, 0xDE, 0xAD, 0xE1, 0xF1};
+constexpr uint8_t kBlob[] = {0x81, 0x14, 0xB5, 0xF7, 0x62, 0x79, 0x8A, 0x53,
+                             0xD5, 0x43, 0xA0, 0x14, 0xCA, 0xF8, 0xB2, 0x97,
+                             0xCF, 0xF8, 0xF2, 0xF9, 0x37, 0xE8, 0xF9, 0xEA,
+                             0x7D, 0x02, 0xDE, 0xAD, 0xE1, 0xF1};
 
-constexpr uint8_t kIssuer[20] = {
-    0xb5, 0xf7, 0x62, 0x79, 0x8a, 0x53, 0xd5, 0x43, 0xa0, 0x14,
-    0xca, 0xf8, 0xb2, 0x97, 0xcf, 0xf8, 0xf2, 0xf9, 0x37, 0xe8};
+constexpr uint8_t kIssuer[20] = {0xb5, 0xf7, 0x62, 0x79, 0x8a, 0x53, 0xd5,
+                                 0x43, 0xa0, 0x14, 0xca, 0xf8, 0xb2, 0x97,
+                                 0xcf, 0xf8, 0xf2, 0xf9, 0x37, 0xe8};
 
 void
 write_iou(uint8_t* p, uint64_t mant, int32_t exp, uint8_t cur_tag)
@@ -142,7 +152,8 @@ iou_for_slot(int i)
 struct IouBank
 {
     static constexpr int kN = 32;
-    std::vector<catl::xdata::CertifiedRoot> roots;
+    uint8_t payloads[kN][48]{};
+    std::vector<catl::xdata::CertifiedIndex> indices;
     IouExpect exp[kN]{};
 };
 
@@ -152,21 +163,20 @@ build_iou_bank(
     catl::xdata::Protocol const& protocol,
     bool invalid_mantissa)
 {
-    b.roots.clear();
-    b.roots.reserve(IouBank::kN);
+    b.indices.clear();
+    b.indices.reserve(IouBank::kN);
     for (int n = 0; n < IouBank::kN; ++n)
     {
         b.exp[n] = iou_for_slot(n);
         uint64_t mant = b.exp[n].mant;
         if (invalid_mantissa)
             mant = 1 + static_cast<uint64_t>(n % 9000);
-        uint8_t buf[48];
-        write_iou(buf, mant, b.exp[n].exp, b.exp[n].tag);
-        auto c = catl::xdata::CertifiedRoot::copy_and_certify_amount(
-            ::Slice{buf, 48}, protocol);
+        write_iou(b.payloads[n], mant, b.exp[n].exp, b.exp[n].tag);
+        auto c = catl::xdata::certify_amount_span(
+            ::Slice{b.payloads[n], 48}, protocol);
         if (!c)
             return false;
-        b.roots.push_back(std::move(*c));
+        b.indices.push_back(std::move(*c));
     }
     return true;
 }
@@ -206,6 +216,9 @@ main(int argc, char** argv)
     if (kIters < 0)
         kIters = 0;
     uint64_t sink = 0;
+#if defined(CATL_XDATA_HELPER_CALL_COUNTS)
+    helper_counts_reset_c();
+#endif
 
     auto loc = [&] {
         for (int i = 0; i < kIters; ++i)
@@ -233,9 +246,18 @@ main(int argc, char** argv)
             IndexSink s;
             auto r = scan_scope<ScanMode::CertifyWire>(backing, 0, protocol, s);
             if (r)
-                sink += *r + s.frames.size();
+                sink += *r + s.size();
         }
         std::puts("certify_index");
+    };
+    auto indexed = [&] {
+        for (int i = 0; i < kIters; ++i)
+        {
+            auto r = certify_indexed(backing, 0, protocol);
+            if (r)
+                sink += r->end() + r->frame_count();
+        }
+        std::puts("certified_index_value");
     };
     auto eager = [&] {
         for (int i = 0; i < kIters; ++i)
@@ -267,7 +289,7 @@ main(int argc, char** argv)
             int32_t got_exp = 0;
             uint8_t got_tag = 0;
             uint64_t const m =
-                view_once_c(&bank.roots[k], 0, &got_exp, &got_tag);
+                view_once_c(&bank.indices[k], 0, &got_exp, &got_tag);
             if (m != e.mant || got_exp != e.exp || got_tag != e.tag)
             {
                 std::puts("FAIL view iou");
@@ -294,11 +316,10 @@ main(int argc, char** argv)
         {
             size_t const k = pick_slot(i);
             auto const& e = bank.exp[k];
-            auto back = bank.roots[k].backing();
             int32_t got_exp = 0;
             uint8_t got_tag = 0;
             uint64_t const m =
-                raw_once_c(back.data(), back.size(), &got_exp, &got_tag);
+                raw_once_c(bank.payloads[k], 48, &got_exp, &got_tag);
             if (m != e.mant || got_exp != e.exp || got_tag != e.tag)
             {
                 std::puts("FAIL raw iou");
@@ -325,11 +346,10 @@ main(int argc, char** argv)
         {
             size_t const k = pick_slot(i);
             auto const& e = bank.exp[k];
-            auto back = bank.roots[k].backing();
             int32_t got_exp = 0;
             uint8_t got_tag = 0;
             uint64_t const m =
-                mask_once_c(back.data(), back.size(), &got_exp, &got_tag);
+                mask_once_c(bank.payloads[k], 48, &got_exp, &got_tag);
             if (m != e.mant || got_exp != e.exp || got_tag != e.tag)
             {
                 std::puts("FAIL mask iou");
@@ -354,7 +374,7 @@ main(int argc, char** argv)
         std::optional<AmountView> views[IouBank::kN];
         for (int n = 0; n < IouBank::kN; ++n)
         {
-            views[n] = AmountView::bind(bank.roots[n], 0);
+            views[n] = AmountView::bind(bank.indices[n], 0);
             if (!views[n])
             {
                 std::puts("FAIL prebind");
@@ -393,7 +413,7 @@ main(int argc, char** argv)
         AmountRules::Parts parts[IouBank::kN];
         for (int n = 0; n < IouBank::kN; ++n)
         {
-            auto v = AmountView::bind(bank.roots[n], 0);
+            auto v = AmountView::bind(bank.indices[n], 0);
             if (!v)
             {
                 std::puts("FAIL retain bind");
@@ -438,10 +458,16 @@ main(int argc, char** argv)
         eager();
     else if (which[0] == '4' || std::strcmp(which, "amount_view_repeat") == 0)
         view_repeat();
-    else if (which[0] == '5' || std::strcmp(which, "amount_raw_recertify_repeat") == 0)
+    else if (
+        which[0] == '5' ||
+        std::strcmp(which, "amount_raw_recertify_repeat") == 0)
         raw_repeat();
-    else if (which[0] == '6' || std::strcmp(which, "amount_mask_only_repeat") == 0)
+    else if (
+        which[0] == '6' || std::strcmp(which, "amount_mask_only_repeat") == 0)
         mask_repeat();
+    else if (
+        which[0] == '7' || std::strcmp(which, "certified_index_value") == 0)
+        indexed();
     else if (std::strcmp(which, "amount_prebound_parts_repeat") == 0)
         prebound_repeat();
     else if (std::strcmp(which, "amount_retained_parts_repeat") == 0)
@@ -453,6 +479,7 @@ main(int argc, char** argv)
         loc();
         cert();
         idx();
+        indexed();
         eager();
         view_repeat();
         raw_repeat();
@@ -462,5 +489,16 @@ main(int argc, char** argv)
     }
     if (sink == 0xffffffffffffull)
         std::puts("never");
+#if defined(CATL_XDATA_HELPER_CALL_COUNTS)
+    uint32_t counts[5]{};
+    helper_counts_read_c(counts);
+    std::printf(
+        "helper_counts view=%u raw=%u mask=%u parts=%u retained=%u\n",
+        counts[0],
+        counts[1],
+        counts[2],
+        counts[3],
+        counts[4]);
+#endif
     return 0;
 }
