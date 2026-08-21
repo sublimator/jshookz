@@ -1,5 +1,6 @@
 #pragma once
 
+#include "catl/xdata/account-id-view.h"
 #include "catl/xdata/amount-rules.h"
 #include "catl/xdata/certified-index.h"
 #include "catl/xdata/fields.h"
@@ -165,6 +166,15 @@ public:
         if (!view)
             return std::nullopt;
         return view->value();
+    }
+
+    std::optional<AccountIDBytes>
+    materialize_account_id(size_t ordinal) const noexcept
+    {
+        auto view = bind_view<AccountIDView>(ordinal);
+        if (!view)
+            return std::nullopt;
+        return view->normalized();
     }
 
 private:

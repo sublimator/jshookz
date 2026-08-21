@@ -1,3 +1,4 @@
+#include "catl/xdata/account-id-view.h"
 #include "catl/xdata/amount-view.h"
 #include "catl/xdata/certified-index.h"
 #include "catl/xdata/scan.h"
@@ -8,6 +9,8 @@
 int
 main()
 {
+    using catl::xdata::AccountIDBytes;
+    using catl::xdata::AccountIDView;
     using catl::xdata::AmountRules;
     using catl::xdata::AmountView;
     using catl::xdata::CertifiedIndex;
@@ -30,6 +33,8 @@ main()
     static_assert(sizeof(IndexSink) == 144);
     static_assert(sizeof(UInt32View) == 8);
     static_assert(sizeof(std::optional<UInt32View>) == 12);
+    static_assert(sizeof(AccountIDView) == 8);
+    static_assert(sizeof(std::optional<AccountIDView>) == 12);
 #else
     static_assert(sizeof(FieldFrame) == 16);
 #if defined(__aarch64__) || defined(__x86_64__)
@@ -42,11 +47,15 @@ main()
     static_assert(sizeof(IndexSink) == 160);
     static_assert(sizeof(UInt32View) == 16);
     static_assert(sizeof(std::optional<UInt32View>) == 24);
+    static_assert(sizeof(AccountIDView) == 16);
+    static_assert(sizeof(std::optional<AccountIDView>) == 24);
 #else
     static_assert(sizeof(CertifiedIndex) <= 56);
 #endif
 #endif
     static_assert(sizeof(AmountView) == sizeof(Slice));
     static_assert(sizeof(UInt32View) == sizeof(Slice));
+    static_assert(sizeof(AccountIDView) == sizeof(Slice));
+    static_assert(sizeof(AccountIDBytes) == 20);
     return 0;
 }

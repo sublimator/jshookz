@@ -145,6 +145,20 @@ def main() -> int:
 
     cases.append(case("stobject-account-vl-1", "8101FF", expect="reject",
                       notes="STAccount VL length 1 is invalid."))
+    cases.append(case("stobject-account-vl-1-truncated", "8101", expect="reject",
+                      notes="STAccount declares one payload byte but supplies none."))
+    cases.append(case("stobject-account-vl-19", "8113" + "00" * 19,
+                      expect="reject",
+                      notes="STAccount exact 19-byte payload is semantically invalid."))
+    cases.append(case("stobject-account-vl-19-truncated", "8113" + "00" * 18,
+                      expect="reject",
+                      notes="STAccount declares 19 payload bytes but supplies 18."))
+    cases.append(case("stobject-account-vl-21", "8115" + "00" * 21,
+                      expect="reject",
+                      notes="STAccount exact 21-byte payload is semantically invalid."))
+    cases.append(case("stobject-account-vl-21-truncated", "8115" + "00" * 20,
+                      expect="reject",
+                      notes="STAccount declares 21 payload bytes but supplies 20."))
 
     seq_acct = encode(json.dumps({"Account": GENESIS, "Sequence": 1}))
     cases.append(case("stobject-seq-account-sorted", seq_acct, expect="accept",

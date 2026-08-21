@@ -1,5 +1,6 @@
 #pragma once
 
+#include "catl/xdata/account-id-view.h"
 #include "catl/xdata/amount-view.h"
 #include "catl/xdata/certified-index.h"
 #include "catl/xdata/codecs/codecs.h"
@@ -178,6 +179,47 @@ uint32_boundary_complete(boost::json::object const& root, std::string& err)
     return true;
 }
 
+inline std::set<std::string>
+account_id_boundary_ids()
+{
+    return {
+        "stobject-account-20",
+        "stobject-account-zero-20",
+        "stobject-account-empty-vl",
+        "stobject-account-vl-1",
+        "stobject-account-vl-1-truncated",
+        "stobject-account-vl-19",
+        "stobject-account-vl-19-truncated",
+        "stobject-account-vl-21",
+        "stobject-account-vl-21-truncated"};
+}
+
+inline bool
+account_id_boundary_complete(boost::json::object const& root, std::string& err)
+{
+    if (!root.contains("cases") || !root.at("cases").is_array())
+    {
+        err = "missing cases";
+        return false;
+    }
+    std::set<std::string> have;
+    for (auto const& item : root.at("cases").as_array())
+    {
+        auto const& c = item.as_object();
+        if (c.contains("id") && c.at("id").is_string())
+            have.insert(std::string(c.at("id").as_string()));
+    }
+    for (auto const& id : account_id_boundary_ids())
+    {
+        if (!have.count(id))
+        {
+            err = "missing AccountID boundary " + id;
+            return false;
+        }
+    }
+    return true;
+}
+
 inline bool
 header_enum_complete(boost::json::object const& root, std::string& err)
 {
@@ -238,6 +280,7 @@ struct Outcomes
     bool names_ok = true;
     bool json_ok = true;
     bool amount_parts_ok = true;
+    bool account_id_ok = true;
     bool consumed_all = false;
     std::string locate_err;
     std::string certify_err;
@@ -245,6 +288,7 @@ struct Outcomes
     std::string names_err;
     std::string json_err;
     std::string amount_parts_err;
+    std::string account_id_err;
     std::size_t frame_count = 0;
     std::uint32_t locate_end = 0;
     std::uint32_t certify_end = 0;
@@ -387,6 +431,17 @@ decode_leaf_frames(
             (void)codecs::AmountCodec::json_from_parts(view->parts());
             continue;
         }
+        if (t == FieldTypes::AccountID)
+        {
+            auto view = AccountIDView::bind(idx, i);
+            if (!view)
+            {
+                err = "AccountID bind failed";
+                return false;
+            }
+            (void)view->normalized();
+            continue;
+        }
         Slice payload{
             idx.backing().data() + f.payload_begin,
             f.wire_end - f.payload_begin};
@@ -458,6 +513,88 @@ compare_amount_parts(
         if (!matched)
         {
             err = "oracle Amount parts with no bindable frame";
+            return false;
+        }
+    }
+    return true;
+}
+
+inline bool
+compare_account_id_values(
+    catl::xdata::CertifiedIndex const& idx,
+    catl::xdata::Protocol const& protocol,
+    boost::json::value const* fields,
+    std::string& err)
+{
+    using namespace catl::xdata;
+    if (!fields || !fields->is_array())
+        return true;
+    for (auto const& item : fields->as_array())
+    {
+        if (!item.is_object())
+            continue;
+        auto const& o = item.as_object();
+        auto const* name = o.if_contains("name");
+        if (!name || !name->is_string())
+            continue;
+        std::string const want_name(name->as_string());
+        auto const wanted = protocol.find_field(want_name);
+        if (!wanted || wanted->meta.type != FieldTypes::AccountID)
+            continue;
+        auto const* value = o.if_contains("value");
+        if (!value || !value->is_string())
+        {
+            err = "AccountID oracle value missing for " + want_name;
+            return false;
+        }
+        auto const raw = decode_hex(std::string_view(value->as_string()));
+        if (!codecs::AccountIDCodec::valid_vl_payload_size(raw.size()))
+        {
+            err = "AccountID oracle value invalid for " + want_name;
+            return false;
+        }
+        bool matched = false;
+        for (size_t i = 0; i < idx.frame_count(); ++i)
+        {
+            FieldDef const* field =
+                protocol.get_field_by_code(idx.frame(i).field_code);
+            if (!field || field->name != want_name)
+                continue;
+            auto view = AccountIDView::bind(idx, i);
+            if (!view)
+            {
+                err = "AccountID bind failed for " + want_name;
+                return false;
+            }
+            Slice const got_raw = view->bytes();
+            if (got_raw.size() != raw.size())
+            {
+                err = "AccountID raw size mismatch for " + want_name;
+                return false;
+            }
+            for (size_t j = 0; j < raw.size(); ++j)
+            {
+                if (got_raw.data()[j] != raw[j])
+                {
+                    err = "AccountID raw value mismatch for " + want_name;
+                    return false;
+                }
+            }
+            AccountIDBytes want_normalized{};
+            for (size_t j = 0; j < raw.size(); ++j)
+                want_normalized[j] = raw[j];
+            if (view->normalized() != want_normalized ||
+                view->is_default() != raw.empty())
+            {
+                err = "AccountID normalization mismatch for " + want_name;
+                return false;
+            }
+            matched = true;
+            break;
+        }
+        if (!matched)
+        {
+            err = "no AccountID frame for " + want_name;
             return false;
         }
     }
@@ -572,6 +709,8 @@ run_stobject(
         o.names_ok = compare_frame_names(*idx, protocol, fields, o.names_err);
         o.amount_parts_ok =
             compare_amount_parts(*idx, protocol, fields, o.amount_parts_err);
+        o.account_id_ok = compare_account_id_values(
+            *idx, protocol, fields, o.account_id_err);
         auto canon = canonical_hex.empty() ? std::vector<std::uint8_t>{}
                                            : decode_hex(canonical_hex);
         Slice json_backing = canon.empty() ? backing

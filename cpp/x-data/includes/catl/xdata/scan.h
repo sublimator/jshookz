@@ -2,6 +2,7 @@
 
 #include "catl/xdata/amount-rules.h"
 #include "catl/xdata/codec-error.h"
+#include "catl/xdata/codecs/account_id.h"
 #include "catl/xdata/parser-context.h"
 #include "catl/xdata/protocol.h"
 #include "catl/xdata/types.h"
@@ -311,7 +312,8 @@ skip_xchain_bridge(ParserContext& ctx, ScanMode mode)
         size_t len = 0;
         if (!ctx.read_vl_length(len))
             return;
-        if (mode == ScanMode::CertifyWire && len != 0 && len != 20)
+        if (mode == ScanMode::CertifyWire &&
+            !codecs::AccountIDCodec::valid_vl_payload_size(len))
         {
             // xahaud-vectors:src/libxrpl/protocol/STAccount.cpp:45
             ctx.fail("Invalid STAccount size");
@@ -540,7 +542,8 @@ scan_object(
             payload_begin = ctx.pos();
             if constexpr (M == ScanMode::CertifyWire)
             {
-                if (type == FieldTypes::AccountID.code && len != 0 && len != 20)
+                if (type == FieldTypes::AccountID.code &&
+                    !codecs::AccountIDCodec::valid_vl_payload_size(len))
                 {
                     // xahaud-vectors:src/libxrpl/protocol/STAccount.cpp:38
                     // xahaud-vectors:src/libxrpl/protocol/STAccount.cpp:45

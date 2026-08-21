@@ -139,6 +139,12 @@ TEST(ScanCorpus, RequiredIdsPresent)
              "stobject-account-20",
              "stobject-account-empty-vl",
              "stobject-account-zero-20",
+             "stobject-account-vl-1",
+             "stobject-account-vl-1-truncated",
+             "stobject-account-vl-19",
+             "stobject-account-vl-19-truncated",
+             "stobject-account-vl-21",
+             "stobject-account-vl-21-truncated",
              "stobject-nop-63",
              "stobject-nop-64",
              "stobject-duplicate-account",
@@ -203,6 +209,31 @@ TEST(ScanCorpus, UInt32BoundaryDeletionIsRejected)
     std::string err;
     EXPECT_FALSE(oracle_run::uint32_boundary_complete(root, err));
     EXPECT_EQ(err, "missing UInt32 boundary stobject-uint32-max");
+}
+
+TEST(ScanCorpus, AccountIDBoundaryIdsPresent)
+{
+    auto const root = load_corpus().as_object();
+    std::string err;
+    EXPECT_TRUE(oracle_run::account_id_boundary_complete(root, err)) << err;
+}
+
+TEST(ScanCorpus, AccountIDBoundaryDeletionIsRejected)
+{
+    auto root = load_corpus().as_object();
+    auto& cases = root.at("cases").as_array();
+    auto const found = std::find_if(
+        cases.begin(), cases.end(), [](boost::json::value const& item) {
+            auto const& c = item.as_object();
+            return c.contains("id") &&
+                c.at("id").as_string() == "stobject-account-vl-21";
+        });
+    ASSERT_NE(found, cases.end());
+    cases.erase(found);
+
+    std::string err;
+    EXPECT_FALSE(oracle_run::account_id_boundary_complete(root, err));
+    EXPECT_EQ(err, "missing AccountID boundary stobject-account-vl-21");
 }
 
 TEST(ScanCorpus, NegativeMptJsonMatchesView)

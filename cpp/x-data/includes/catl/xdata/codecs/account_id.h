@@ -6,6 +6,8 @@
 #ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
 #endif
+#include <array>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -14,6 +16,12 @@ namespace catl::xdata::codecs {
 struct AccountIDCodec
 {
     static constexpr size_t fixed_size = 20;
+    using Normalized = std::array<uint8_t, fixed_size>;
+
+#if defined(CATL_XDATA_TEST_ACCOUNT_BASE58_HOOK)
+    static void
+    base58_test_hook() noexcept;
+#endif
 
     static constexpr std::string_view ZERO_ACCOUNT_B58 =
         "rrrrrrrrrrrrrrrrrrrrrhoLvTp";
@@ -53,6 +61,23 @@ struct AccountIDCodec
                 return false;
         }
         return true;
+    }
+
+    static constexpr bool
+    valid_vl_payload_size(size_t size) noexcept
+    {
+        return size == 0 || size == fixed_size;
+    }
+
+    static std::optional<Normalized>
+    normalize_vl_payload(Slice data) noexcept
+    {
+        if (!valid_vl_payload_size(data.size()))
+            return std::nullopt;
+        Normalized out{};
+        for (size_t i = 0; i < data.size(); ++i)
+            out[i] = data.data()[i];
+        return out;
     }
 
     /// Size of the VL *payload* for an STAccount field: zero for the default
@@ -168,19 +193,19 @@ struct AccountIDCodec
     static std::expected<std::string, CodecErrorValue>
     decode_string_expected(Slice const& data)
     {
-        if (data.empty())
-        {
-            static const uint8_t zeros[fixed_size] = {};
-            return base58::encode_account_id(zeros, fixed_size);
-        }
-        if (data.size() != fixed_size)
+        auto normalized = normalize_vl_payload(data);
+        if (!normalized)
         {
             return encode_error(
                 CodecErrorCode::malformed_data,
                 "AccountID",
-                "expected 20 bytes, got " + std::to_string(data.size()));
+                "expected 0 or 20 bytes, got " +
+                    std::to_string(data.size()));
         }
-        return base58::encode_account_id(data.data(), data.size());
+#if defined(CATL_XDATA_TEST_ACCOUNT_BASE58_HOOK)
+        base58_test_hook();
+#endif
+        return base58::encode_account_id(normalized->data(), normalized->size());
     }
 
 #ifndef CATL_XDATA_NO_BOOST_JSON

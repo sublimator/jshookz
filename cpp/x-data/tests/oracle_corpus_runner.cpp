@@ -45,6 +45,11 @@ main(int argc, char** argv)
             std::cerr << "FAIL uint32-boundary " << prov_err << "\n";
             return 1;
         }
+        if (!oracle_run::account_id_boundary_complete(root, prov_err))
+        {
+            std::cerr << "FAIL account-id-boundary " << prov_err << "\n";
+            return 1;
+        }
     }
     auto const protocol = catl::xdata::Protocol::load_embedded_xahau_protocol();
 
@@ -90,7 +95,7 @@ main(int argc, char** argv)
                  ? certify_ok
                  : (expect == "accept"
                         ? (o.locate_ok && certify_ok && o.decode_frames_ok &&
-                           o.names_ok && o.amount_parts_ok &&
+                           o.names_ok && o.amount_parts_ok && o.account_id_ok &&
                            (header_enum || o.json_ok) &&
                            (trailing_ok || o.consumed_all))
                         : !certify_ok));
@@ -113,6 +118,8 @@ main(int argc, char** argv)
             std::cout << " names_err=" << o.names_err;
         if (!o.amount_parts_err.empty())
             std::cout << " parts_err=" << o.amount_parts_err;
+        if (!o.account_id_err.empty())
+            std::cout << " account_id_err=" << o.account_id_err;
         std::cout << "\n";
     }
     std::cout << "fallbacks=" << protocol.fast_lookup_fallback_count()

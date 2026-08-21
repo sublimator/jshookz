@@ -79,6 +79,51 @@
       "oracle_error": "Error decoding: Invalid STAccount size"
     },
     {
+      "id": "stobject-account-vl-1-truncated",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "8101",
+      "notes": "STAccount declares one payload byte but supplies none.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getRaw"
+    },
+    {
+      "id": "stobject-account-vl-19",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "811300000000000000000000000000000000000000",
+      "notes": "STAccount exact 19-byte payload is semantically invalid.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Invalid STAccount size"
+    },
+    {
+      "id": "stobject-account-vl-19-truncated",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "8113000000000000000000000000000000000000",
+      "notes": "STAccount declares 19 payload bytes but supplies 18.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getRaw"
+    },
+    {
+      "id": "stobject-account-vl-21",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "8115000000000000000000000000000000000000000000",
+      "notes": "STAccount exact 21-byte payload is semantically invalid.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: Invalid STAccount size"
+    },
+    {
+      "id": "stobject-account-vl-21-truncated",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "81150000000000000000000000000000000000000000",
+      "notes": "STAccount declares 21 payload bytes but supplies 20.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getRaw"
+    },
+    {
       "id": "stobject-seq-account-sorted",
       "expect": "accept",
       "codec_type": "stobject",

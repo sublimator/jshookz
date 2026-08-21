@@ -1,5 +1,6 @@
 // Compile this TU with -fno-exceptions. scan_scope and AmountView must not
 // throw.
+#include "catl/xdata/account-id-view.h"
 #include "catl/xdata/amount-view.h"
 #include "catl/xdata/certified-index.h"
 #include "catl/xdata/protocol.h"
@@ -74,5 +75,26 @@ main()
         CertifiedObject{std::move(*seq_root)}.uint32_value(0);
     if (!seq_value || *seq_value != 0x12345678u)
         return 11;
+
+    std::uint8_t const account[] = {
+        0x81, 0x14, 0xb5, 0xf7, 0x62, 0x79, 0x8a, 0x53, 0xd5, 0x43, 0xa0,
+        0x14, 0xca, 0xf8, 0xb2, 0x97, 0xcf, 0xf8, 0xf2, 0xf9, 0x37, 0xe8};
+    auto account_idx =
+        certify_indexed(Slice{account, sizeof(account)}, 0, protocol);
+    if (!account_idx)
+        return 12;
+    auto account_view = AccountIDView::bind(*account_idx, 0);
+    if (!account_view || account_view->is_default() ||
+        account_view->bytes().size() != 20)
+        return 13;
+    auto account_root = CertifiedRoot::copy_and_certify(
+        Slice{account, sizeof(account)}, 0, protocol);
+    if (!account_root)
+        return 14;
+    auto account_value = CertifiedObject{std::move(*account_root)}
+                             .materialize_account_id(0);
+    if (!account_value || (*account_value)[0] != 0xb5 ||
+        (*account_value)[19] != 0xe8)
+        return 15;
     return 0;
 }
