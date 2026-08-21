@@ -44,9 +44,10 @@ type BatchValues<T extends Record<string, unknown>> = { readonly [K in keyof T]:
 /**
  * Type-only surface shared by every nominal provider-produced Result.
  *
- * There are six ways to leave a Result; anything else is a bug: `okOr`,
- * `okOrHandle`, `okMapOr`, `moot`, exhaustive `.ok` narrowing, or a
- * `rollback.*` consumer.
+ * There are five ways to leave a value Result; anything else is a bug:
+ * `okOr`, `okOrHandle`, `okMapOr`, exhaustive `.ok` narrowing, or a
+ * `rollback.*` consumer. `moot` lives on the effect family
+ * (`VoidResultInstance`), which is nominally not a Result.
  */
 declare abstract class ResultInstance<T, Error> {
   private readonly __resultBrand: [T, Error];

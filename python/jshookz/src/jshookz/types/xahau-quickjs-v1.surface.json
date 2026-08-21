@@ -43,7 +43,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "db09c0d2ab6b4417ba6a9f4cea332a67ac5b73ea162453eb32590b815f419ae5"
+    "sha256": "4f5fc09d91023ef04b4aba7d91a83b84936df0a8f9455ffafd695400dbd0385a"
   },
   "globals": {
     "AccountID": "function",
@@ -249,7 +249,6 @@
         "okOrHandle": "function"
       },
       "own": [
-        "__voidResultBrand",
         "moot"
       ],
       "probe": "state.set('surface-probe', new Uint8Array(0))"
