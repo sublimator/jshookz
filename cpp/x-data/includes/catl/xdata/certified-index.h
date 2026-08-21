@@ -126,9 +126,77 @@ certify_amount_span(Slice payload, Protocol const& protocol)
     f.payload_begin = 0;
     f.wire_end = static_cast<uint32_t>(payload.size());
     std::vector<FieldFrame> frames;
+    frames.reserve(1);
     frames.push_back(f);
     return CertifiedIndex{
         payload, 0, f.wire_end, &protocol, std::move(frames)};
 }
+
+// Owns an immutable copy of the certified bytes plus the frame index.
+// AmountView borrows a payload Slice from this object; it does not own,
+// copy, or refcount the backing. Native scoped CertifiedIndex remains
+// valid for caller-owned Slices.
+class CertifiedRoot
+{
+public:
+    CertifiedRoot() = delete;
+    CertifiedRoot(CertifiedRoot const&) = delete;
+    CertifiedRoot& operator=(CertifiedRoot const&) = delete;
+    CertifiedRoot(CertifiedRoot&&) noexcept = default;
+    CertifiedRoot& operator=(CertifiedRoot&&) noexcept = default;
+
+    static std::expected<CertifiedRoot, CodecErrorValue>
+    copy_and_certify(
+        Slice src,
+        uint32_t begin,
+        Protocol const& protocol)
+    {
+        std::vector<uint8_t> bytes(src.data(), src.data() + src.size());
+        auto idx = certify_indexed(
+            Slice{bytes.data(), bytes.size()}, begin, protocol);
+        if (!idx)
+            return std::unexpected(idx.error());
+        return CertifiedRoot{std::move(bytes), std::move(*idx)};
+    }
+
+    static std::expected<CertifiedRoot, CodecErrorValue>
+    copy_and_certify_amount(Slice src, Protocol const& protocol)
+    {
+        std::vector<uint8_t> bytes(src.data(), src.data() + src.size());
+        auto idx =
+            certify_amount_span(Slice{bytes.data(), bytes.size()}, protocol);
+        if (!idx)
+            return std::unexpected(idx.error());
+        return CertifiedRoot{std::move(bytes), std::move(*idx)};
+    }
+
+    CertifiedIndex const&
+    index() const noexcept
+    {
+        return index_;
+    }
+
+    Slice
+    backing() const noexcept
+    {
+        return index_.backing();
+    }
+
+    size_t
+    frame_count() const noexcept
+    {
+        return index_.frame_count();
+    }
+
+private:
+    CertifiedRoot(std::vector<uint8_t> bytes, CertifiedIndex idx)
+        : bytes_(std::move(bytes))
+        , index_(std::move(idx))
+    {
+    }
+
+    std::vector<uint8_t> bytes_;
+    CertifiedIndex index_;
+};
 
 }  // namespace catl::xdata

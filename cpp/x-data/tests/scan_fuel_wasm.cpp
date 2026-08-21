@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -141,39 +142,53 @@ iou_for_slot(int i)
 struct IouBank
 {
     static constexpr int kN = 32;
-    uint8_t pay[kN][48]{};
-    std::vector<catl::xdata::CertifiedIndex> idx;
+    std::vector<catl::xdata::CertifiedRoot> roots;
     IouExpect exp[kN]{};
 };
 
 bool
-build_iou_bank(IouBank& b, catl::xdata::Protocol const& protocol)
+build_iou_bank(
+    IouBank& b,
+    catl::xdata::Protocol const& protocol,
+    bool invalid_mantissa)
 {
-    using catl::xdata::AmountRules;
-    b.idx.clear();
-    b.idx.reserve(IouBank::kN);
+    b.roots.clear();
+    b.roots.reserve(IouBank::kN);
     for (int n = 0; n < IouBank::kN; ++n)
     {
         b.exp[n] = iou_for_slot(n);
-        write_iou(b.pay[n], b.exp[n].mant, b.exp[n].exp, b.exp[n].tag);
-        auto c = catl::xdata::certify_amount_span(
-            ::Slice{b.pay[n], 48}, protocol);
+        uint64_t mant = b.exp[n].mant;
+        if (invalid_mantissa)
+            mant = 1 + static_cast<uint64_t>(n % 9000);
+        uint8_t buf[48];
+        write_iou(buf, mant, b.exp[n].exp, b.exp[n].tag);
+        auto c = catl::xdata::CertifiedRoot::copy_and_certify_amount(
+            ::Slice{buf, 48}, protocol);
         if (!c)
             return false;
-        if (AmountRules::certify(::Slice{b.pay[n], 48}))
-            return false;
-        b.idx.push_back(std::move(*c));
+        b.roots.push_back(std::move(*c));
     }
     return true;
 }
 
 size_t
-pick_slot(int i, unsigned& sel)
+pick_slot(int i)
 {
-    size_t const k =
-        (static_cast<size_t>(i) * 17u + sel) % IouBank::kN;
-    sel += static_cast<unsigned>(k) + 1u;
-    return k;
+    return (static_cast<size_t>(i) * 7u) % IouBank::kN;
+}
+
+bool
+covers_all_slots()
+{
+    bool seen[IouBank::kN]{};
+    for (int i = 0; i < IouBank::kN; ++i)
+        seen[pick_slot(i)] = true;
+    for (int n = 0; n < IouBank::kN; ++n)
+    {
+        if (!seen[n])
+            return false;
+    }
+    return true;
 }
 
 }  // namespace
@@ -233,21 +248,26 @@ main(int argc, char** argv)
         std::puts("full_eager_decode");
     };
     auto view_repeat = [&] {
+        if (!covers_all_slots())
+        {
+            std::puts("FAIL coverage");
+            return;
+        }
         IouBank bank;
-        if (!build_iou_bank(bank, protocol))
+        if (!build_iou_bank(bank, protocol, false))
         {
             std::puts("FAIL certify_amount_span");
             return;
         }
-        unsigned sel = 1;
+        std::puts("coverage_32");
         for (int i = 0; i < kIters; ++i)
         {
-            size_t const k = pick_slot(i, sel);
+            size_t const k = pick_slot(i);
             auto const& e = bank.exp[k];
             int32_t got_exp = 0;
             uint8_t got_tag = 0;
             uint64_t const m =
-                view_once_c(&bank.idx[k], 0, &got_exp, &got_tag);
+                view_once_c(&bank.roots[k].index(), 0, &got_exp, &got_tag);
             if (m != e.mant || got_exp != e.exp || got_tag != e.tag)
             {
                 std::puts("FAIL view iou");
@@ -258,21 +278,27 @@ main(int argc, char** argv)
         std::puts("amount_view_repeat");
     };
     auto raw_repeat = [&] {
+        if (!covers_all_slots())
+        {
+            std::puts("FAIL coverage");
+            return;
+        }
         IouBank bank;
-        if (!build_iou_bank(bank, protocol))
+        if (!build_iou_bank(bank, protocol, false))
         {
             std::puts("FAIL certify_amount_span");
             return;
         }
-        unsigned sel = 1;
+        std::puts("coverage_32");
         for (int i = 0; i < kIters; ++i)
         {
-            size_t const k = pick_slot(i, sel);
+            size_t const k = pick_slot(i);
             auto const& e = bank.exp[k];
+            auto back = bank.roots[k].backing();
             int32_t got_exp = 0;
             uint8_t got_tag = 0;
             uint64_t const m =
-                raw_once_c(bank.pay[k], 48, &got_exp, &got_tag);
+                raw_once_c(back.data(), back.size(), &got_exp, &got_tag);
             if (m != e.mant || got_exp != e.exp || got_tag != e.tag)
             {
                 std::puts("FAIL raw iou");
@@ -283,19 +309,25 @@ main(int argc, char** argv)
         std::puts("amount_raw_recertify_repeat");
     };
     auto mask_repeat = [&] {
+        if (!covers_all_slots())
+        {
+            std::puts("FAIL coverage");
+            return;
+        }
         IouBank bank;
-        if (!build_iou_bank(bank, protocol))
+        if (!build_iou_bank(bank, protocol, false))
         {
             std::puts("FAIL certify_amount_span");
             return;
         }
-        unsigned sel = 1;
+        std::puts("coverage_32");
         for (int i = 0; i < kIters; ++i)
         {
-            size_t const k = pick_slot(i, sel);
+            size_t const k = pick_slot(i);
             auto const& e = bank.exp[k];
+            auto back = bank.roots[k].backing();
             uint8_t got_tag = 0;
-            uint64_t const m = mask_once_c(bank.pay[k], 48, &got_tag);
+            uint64_t const m = mask_once_c(back.data(), back.size(), &got_tag);
             if (m != e.mant || got_tag != e.tag)
             {
                 std::puts("FAIL mask iou");
@@ -304,6 +336,94 @@ main(int argc, char** argv)
             sink += m + got_tag;
         }
         std::puts("amount_mask_only_repeat");
+    };
+    auto prebound_repeat = [&] {
+        if (!covers_all_slots())
+        {
+            std::puts("FAIL coverage");
+            return;
+        }
+        IouBank bank;
+        if (!build_iou_bank(bank, protocol, false))
+        {
+            std::puts("FAIL certify_amount_span");
+            return;
+        }
+        std::optional<AmountView> views[IouBank::kN];
+        for (int n = 0; n < IouBank::kN; ++n)
+        {
+            views[n] = AmountView::bind(bank.roots[n], 0);
+            if (!views[n])
+            {
+                std::puts("FAIL prebind");
+                return;
+            }
+        }
+        std::puts("coverage_32");
+        for (int i = 0; i < kIters; ++i)
+        {
+            size_t const k = pick_slot(i);
+            auto const& e = bank.exp[k];
+            int32_t got_exp = 0;
+            uint8_t got_tag = 0;
+            uint64_t const m = parts_once_c(&*views[k], &got_exp, &got_tag);
+            if (m != e.mant || got_exp != e.exp || got_tag != e.tag)
+            {
+                std::puts("FAIL prebound iou");
+                return;
+            }
+            sink += m + static_cast<uint64_t>(got_exp) + got_tag;
+        }
+        std::puts("amount_prebound_parts_repeat");
+    };
+    auto retained_repeat = [&] {
+        if (!covers_all_slots())
+        {
+            std::puts("FAIL coverage");
+            return;
+        }
+        IouBank bank;
+        if (!build_iou_bank(bank, protocol, false))
+        {
+            std::puts("FAIL certify_amount_span");
+            return;
+        }
+        AmountRules::Parts parts[IouBank::kN];
+        for (int n = 0; n < IouBank::kN; ++n)
+        {
+            auto v = AmountView::bind(bank.roots[n], 0);
+            if (!v)
+            {
+                std::puts("FAIL retain bind");
+                return;
+            }
+            parts[n] = v->parts();
+        }
+        std::puts("coverage_32");
+        for (int i = 0; i < kIters; ++i)
+        {
+            size_t const k = pick_slot(i);
+            auto const& e = bank.exp[k];
+            int32_t got_exp = 0;
+            uint8_t got_tag = 0;
+            uint64_t const m = retained_parts_c(&parts[k], &got_exp, &got_tag);
+            if (m != e.mant || got_exp != e.exp || got_tag != e.tag)
+            {
+                std::puts("FAIL retained iou");
+                return;
+            }
+            sink += m + static_cast<uint64_t>(got_exp) + got_tag;
+        }
+        std::puts("amount_retained_parts_repeat");
+    };
+    auto invalid_setup = [&] {
+        IouBank bank;
+        if (build_iou_bank(bank, protocol, true))
+        {
+            std::puts("FAIL invalid accepted");
+            return;
+        }
+        std::puts("FAIL certify_amount_span");
     };
 
     if (which[0] == '0' || std::strcmp(which, "locate_no_index") == 0)
@@ -320,6 +440,12 @@ main(int argc, char** argv)
         raw_repeat();
     else if (which[0] == '6' || std::strcmp(which, "amount_mask_only_repeat") == 0)
         mask_repeat();
+    else if (std::strcmp(which, "amount_prebound_parts_repeat") == 0)
+        prebound_repeat();
+    else if (std::strcmp(which, "amount_retained_parts_repeat") == 0)
+        retained_repeat();
+    else if (std::strcmp(which, "amount_invalid_setup") == 0)
+        invalid_setup();
     else
     {
         loc();
@@ -329,6 +455,8 @@ main(int argc, char** argv)
         view_repeat();
         raw_repeat();
         mask_repeat();
+        prebound_repeat();
+        retained_repeat();
     }
     if (sink == 0xffffffffffffull)
         std::puts("never");

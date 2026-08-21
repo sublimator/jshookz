@@ -38,5 +38,21 @@ main()
     auto p = view->parts();
     if (p.kind != AmountRules::Kind::Native || p.magnitude != 1000000u)
         return 5;
+    auto root = CertifiedRoot::copy_and_certify(
+        Slice{amt, sizeof(amt)}, 0, protocol);
+    if (!root)
+        return 6;
+    bool found = false;
+    for (size_t i = 0; i < root->frame_count(); ++i)
+    {
+        auto b = AmountView::bind(*root, i);
+        if (b && b->parts().magnitude == 1000000u)
+        {
+            found = true;
+            break;
+        }
+    }
+    if (!found)
+        return 7;
     return 0;
 }

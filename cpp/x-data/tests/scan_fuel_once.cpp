@@ -63,4 +63,25 @@ mask_once_c(uint8_t const* bytes, size_t n, uint8_t* tag)
     return mant;
 }
 
+uint64_t
+parts_once_c(void const* view, int32_t* exp, uint8_t* tag)
+{
+    auto const* v = static_cast<catl::xdata::AmountView const*>(view);
+    auto p = v->parts();
+    *exp = p.exponent;
+    *tag = (p.currency.size() >= 20) ? p.currency.data()[19] : 0;
+    g_escape = p.magnitude;
+    return p.magnitude;
+}
+
+uint64_t
+retained_parts_c(void const* parts, int32_t* exp, uint8_t* tag)
+{
+    auto const* p = static_cast<catl::xdata::AmountRules::Parts const*>(parts);
+    *exp = p->exponent;
+    *tag = (p->currency.size() >= 20) ? p->currency.data()[19] : 0;
+    g_escape = p->magnitude;
+    return p->magnitude;
+}
+
 }

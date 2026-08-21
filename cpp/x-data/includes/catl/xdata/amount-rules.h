@@ -47,6 +47,20 @@ struct AmountRules
         return 8;
     }
 
+    // First-byte kind only. Does not decode mantissa, currency, or issuer.
+    static Kind
+    kind(Slice payload) noexcept
+    {
+        if (payload.empty())
+            return Kind::Native;
+        uint8_t const first = payload.data()[0];
+        if (first & 0x80)
+            return Kind::Iou;
+        if (first & 0x20)
+            return Kind::Mpt;
+        return Kind::Native;
+    }
+
     static uint64_t
     read_be64(uint8_t const* p) noexcept
     {

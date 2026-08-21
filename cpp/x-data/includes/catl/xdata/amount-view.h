@@ -35,16 +35,23 @@ public:
         return AmountView{payload};
     }
 
+    static std::optional<AmountView>
+    bind(CertifiedRoot const& root, size_t ordinal) noexcept
+    {
+        return bind(root.index(), ordinal);
+    }
+
     AmountRules::Parts
     parts() const noexcept
     {
         return AmountRules::parts(payload_);
     }
 
+    // First-byte kind. Does not call parts().
     AmountRules::Kind
     kind() const noexcept
     {
-        return parts().kind;
+        return AmountRules::kind(payload_);
     }
 
     Slice

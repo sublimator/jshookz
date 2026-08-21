@@ -94,6 +94,10 @@ if(BUILD_TESTING)
         target_link_libraries(test_amount_view PRIVATE jshookz_xdata GTest::gtest_main)
         gtest_discover_tests(test_amount_view DISCOVERY_TIMEOUT 30)
 
+        add_executable(test_view_sizes tests/view_sizes_probe.cpp)
+        target_link_libraries(test_view_sizes PRIVATE jshookz_xdata)
+        add_test(NAME test_view_sizes COMMAND test_view_sizes)
+
         add_executable(test_scan_recover tests/scan_recover_wasm.cpp)
         target_link_libraries(test_scan_recover PRIVATE jshookz_xdata)
         add_test(NAME test_scan_recover
@@ -122,6 +126,26 @@ if(BUILD_TESTING)
                 -DOUT=${CMAKE_CURRENT_BINARY_DIR}/throwing_cursor_poison_probe.o
                 -P ${CMAKE_CURRENT_LIST_DIR}/tests/check_throwing_cursor_poison.cmake
         )
+
+        set(_wasi_sdk "$ENV{WASI_SDK_PATH}")
+        if(NOT _wasi_sdk)
+            set(_wasi_sdk "$ENV{HOME}/.local/share/mise/installs/wasi-sdk/32/wasi-sdk")
+        endif()
+        if(EXISTS "${_wasi_sdk}/bin/clang++")
+            add_test(NAME view_sizes_wasm32
+                COMMAND "${_wasi_sdk}/bin/clang++"
+                    --sysroot "${_wasi_sdk}/share/wasi-sysroot"
+                    -std=c++23 -c -fno-exceptions
+                    -DCATL_XDATA_NO_BOOST_JSON
+                    -I${CMAKE_CURRENT_LIST_DIR}/includes
+                    -I${CMAKE_CURRENT_LIST_DIR}/core/includes
+                    -I${CMAKE_CURRENT_LIST_DIR}/base58/includes
+                    -I${CMAKE_CURRENT_LIST_DIR}/generated
+                    -I${CMAKE_CURRENT_LIST_DIR}/stubs
+                    ${CMAKE_CURRENT_LIST_DIR}/tests/view_sizes_probe.cpp
+                    -o ${CMAKE_CURRENT_BINARY_DIR}/view_sizes_wasm32.o
+            )
+        endif()
 
         find_package(Python3 COMPONENTS Interpreter)
         if(Python3_Interpreter_FOUND)
@@ -159,6 +183,18 @@ if(BUILD_TESTING)
             )
             add_dependencies(test_protocol_tables jshookz_cleaned_protocol_json)
             gtest_discover_tests(test_protocol_tables)
+
+            set(_fuel_python ${Python3_EXECUTABLE})
+            if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../../python/jshookz/.venv/bin/python")
+                set(_fuel_python
+                    "${CMAKE_CURRENT_LIST_DIR}/../../python/jshookz/.venv/bin/python")
+            endif()
+            add_test(NAME amount_fuel_lanes
+                COMMAND ${_fuel_python}
+                    ${CMAKE_CURRENT_LIST_DIR}/tests/run_amount_fuel.py
+                    --src ${CMAKE_CURRENT_LIST_DIR}
+            )
+            set_tests_properties(amount_fuel_lanes PROPERTIES TIMEOUT 240)
         endif()
     endif()
 endif()
