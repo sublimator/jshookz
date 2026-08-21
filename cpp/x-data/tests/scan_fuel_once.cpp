@@ -48,16 +48,19 @@ raw_once_c(uint8_t const* bytes, size_t n, int32_t* exp, uint8_t* tag)
 }
 
 uint64_t
-mask_once_c(uint8_t const* bytes, size_t n, uint8_t* tag)
+mask_once_c(uint8_t const* bytes, size_t n, int32_t* exp, uint8_t* tag)
 {
     if (n < 28)
     {
+        *exp = 0;
         *tag = 0;
         g_escape = 0;
         return 0;
     }
     uint64_t const word = catl::xdata::AmountRules::read_be64(bytes);
     uint64_t const mant = word & ~(1023ull << 54);
+    int const offset = static_cast<int>(word >> 54);
+    *exp = mant ? (offset & 255) - 97 : 0;
     *tag = bytes[27];
     g_escape = mant;
     return mant;

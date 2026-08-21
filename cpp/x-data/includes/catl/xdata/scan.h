@@ -37,15 +37,11 @@ struct IndexSink
 {
     static constexpr bool kRecords = true;
     std::vector<FieldFrame> frames;
-    IndexSink()
-    {
-        // 2-frame objects already grew 16 then 32 (2 allocs / 48 bytes).
-        // Eight frames is one 128-byte allocation for typical STObjects.
-        frames.reserve(8);
-    }
     void
     emit(FieldFrame const& f)
     {
+        if (frames.capacity() == 0)
+            frames.reserve(8);
         frames.push_back(f);
     }
 };

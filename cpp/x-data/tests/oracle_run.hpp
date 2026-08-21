@@ -321,7 +321,10 @@ json_equiv(boost::json::value const& got, boost::json::value const& want)
 }
 
 inline bool
-decode_leaf_frames(catl::xdata::CertifiedIndex const& idx, std::string& err)
+decode_leaf_frames(
+    catl::xdata::CertifiedIndex const& idx,
+    catl::xdata::Protocol const& protocol,
+    std::string& err)
 {
     using namespace catl::xdata;
     for (size_t i = 0; i < idx.frame_count(); ++i)
@@ -332,7 +335,7 @@ decode_leaf_frames(catl::xdata::CertifiedIndex const& idx, std::string& err)
             err = "frame out of range";
             return false;
         }
-        FieldDef const* field = idx.protocol().get_field_by_code(f.field_code);
+        FieldDef const* field = protocol.get_field_by_code(f.field_code);
         if (!field)
         {
             err = "missing field def";
@@ -357,8 +360,7 @@ decode_leaf_frames(catl::xdata::CertifiedIndex const& idx, std::string& err)
             f.wire_end - f.payload_begin};
         try
         {
-            (void)codecs::decode_field_value(
-                *field, payload, idx.protocol());
+            (void)codecs::decode_field_value(*field, payload, protocol);
         }
         catch (std::exception const& e)
         {
@@ -372,6 +374,7 @@ decode_leaf_frames(catl::xdata::CertifiedIndex const& idx, std::string& err)
 inline bool
 compare_amount_parts(
     catl::xdata::CertifiedIndex const& idx,
+    catl::xdata::Protocol const& protocol,
     boost::json::value const* fields,
     std::string& err)
 {
@@ -393,7 +396,7 @@ compare_amount_parts(
         for (size_t i = 0; i < idx.frame_count(); ++i)
         {
             FieldDef const* field =
-                idx.protocol().get_field_by_code(idx.frame(i).field_code);
+                protocol.get_field_by_code(idx.frame(i).field_code);
             if (!field || field->meta.type != FieldTypes::Amount)
                 continue;
             if (!want_name.empty() && field->name != want_name)
@@ -432,6 +435,7 @@ compare_amount_parts(
 inline bool
 compare_frame_names(
     catl::xdata::CertifiedIndex const& idx,
+    catl::xdata::Protocol const& protocol,
     boost::json::value const* fields,
     std::string& err)
 {
@@ -441,7 +445,7 @@ compare_frame_names(
     for (size_t i = 0; i < idx.frame_count(); ++i)
     {
         auto const* field =
-            idx.protocol().get_field_by_code(idx.frame(i).field_code);
+            protocol.get_field_by_code(idx.frame(i).field_code);
         if (!field)
         {
             err = "frame missing field def";
@@ -532,10 +536,10 @@ run_stobject(
 
     if (idx)
     {
-        o.decode_frames_ok = decode_leaf_frames(*idx, o.decode_err);
-        o.names_ok = compare_frame_names(*idx, fields, o.names_err);
+        o.decode_frames_ok = decode_leaf_frames(*idx, protocol, o.decode_err);
+        o.names_ok = compare_frame_names(*idx, protocol, fields, o.names_err);
         o.amount_parts_ok =
-            compare_amount_parts(*idx, fields, o.amount_parts_err);
+            compare_amount_parts(*idx, protocol, fields, o.amount_parts_err);
         auto canon = canonical_hex.empty() ? std::vector<std::uint8_t>{}
                                            : decode_hex(canonical_hex);
         Slice json_backing = canon.empty() ? backing
@@ -588,7 +592,7 @@ run_amount(
             auto got = codecs::AmountCodec::json_from_parts(view->parts());
             o.decode_frames_ok = true;
             o.amount_parts_ok =
-                compare_amount_parts(*idx, fields, o.amount_parts_err);
+                compare_amount_parts(*idx, protocol, fields, o.amount_parts_err);
             if (oracle_json)
             {
                 auto want = *oracle_json;

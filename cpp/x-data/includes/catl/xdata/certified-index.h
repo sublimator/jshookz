@@ -35,12 +35,6 @@ public:
         return end_;
     }
 
-    Protocol const&
-    protocol() const noexcept
-    {
-        return *protocol_;
-    }
-
     size_t
     frame_count() const noexcept
     {
@@ -63,12 +57,10 @@ private:
         Slice backing,
         uint32_t begin,
         uint32_t end,
-        Protocol const* protocol,
         std::vector<FieldFrame> frames)
         : backing_(backing)
         , begin_(begin)
         , end_(end)
-        , protocol_(protocol)
         , frames_(std::move(frames))
     {
     }
@@ -76,7 +68,6 @@ private:
     Slice backing_{};
     uint32_t begin_ = 0;
     uint32_t end_ = 0;
-    Protocol const* protocol_ = nullptr;
     std::vector<FieldFrame> frames_;
 };
 
@@ -90,8 +81,7 @@ certify_indexed(
     auto end = scan_scope<ScanMode::CertifyWire>(backing, begin, protocol, sink);
     if (!end)
         return std::unexpected(end.error());
-    return CertifiedIndex{
-        backing, begin, *end, &protocol, std::move(sink.frames)};
+    return CertifiedIndex{backing, begin, *end, std::move(sink.frames)};
 }
 
 // Standalone Amount payload (no STObject header). One synthetic Amount frame.
@@ -128,8 +118,7 @@ certify_amount_span(Slice payload, Protocol const& protocol)
     std::vector<FieldFrame> frames;
     frames.reserve(1);
     frames.push_back(f);
-    return CertifiedIndex{
-        payload, 0, f.wire_end, &protocol, std::move(frames)};
+    return CertifiedIndex{payload, 0, f.wire_end, std::move(frames)};
 }
 
 // Owns an immutable copy of the certified bytes plus the frame index.

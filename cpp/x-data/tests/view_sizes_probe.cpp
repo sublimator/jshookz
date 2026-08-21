@@ -16,10 +16,11 @@ main()
     static_assert(sizeof(AmountView) == 8);
     static_assert(sizeof(std::optional<AmountView>) == 12);
     static_assert(sizeof(FieldFrame) == 16);
-    static_assert(sizeof(CertifiedIndex) == 32);
+    static_assert(sizeof(CertifiedIndex) <= 32);
     static_assert(sizeof(AmountRules::Parts) == 48);
 #else
     static_assert(sizeof(FieldFrame) == 16);
+    static_assert(sizeof(CertifiedIndex) <= 56);
 #endif
     static_assert(sizeof(AmountView) == sizeof(Slice));
     (void)sizeof(CertifiedRoot);

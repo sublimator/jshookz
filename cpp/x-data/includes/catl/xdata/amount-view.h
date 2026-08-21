@@ -2,6 +2,7 @@
 
 #include "catl/xdata/amount-rules.h"
 #include "catl/xdata/certified-index.h"
+#include "catl/xdata/fields.h"
 #include "catl/xdata/types.h"
 
 #include <optional>
@@ -26,8 +27,7 @@ public:
             return std::nullopt;
         if (f.wire_end > idx.backing().size())
             return std::nullopt;
-        FieldDef const* field = idx.protocol().get_field_by_code(f.field_code);
-        if (!field || field->meta.type != FieldTypes::Amount)
+        if (get_field_type_code(f.field_code) != FieldTypes::Amount.code)
             return std::nullopt;
         Slice payload{
             idx.backing().data() + f.payload_begin,
@@ -40,6 +40,11 @@ public:
     {
         return bind(root.index(), ordinal);
     }
+
+    // Temporary root would dangle the returned Slice. Escaping
+    // consumers use AnchoredAmount::bind(CertifiedRoot&&, ordinal).
+    static std::optional<AmountView>
+    bind(CertifiedRoot&& root, size_t ordinal) = delete;
 
     AmountRules::Parts
     parts() const noexcept
@@ -64,6 +69,56 @@ private:
     explicit AmountView(Slice payload) noexcept : payload_(payload) {}
 
     Slice payload_{};
+};
+
+// Escaping/JS aggregate: owns the certified bytes and a bound Amount view
+// into them. Does not heap-allocate per view, copy bytes, or refcount.
+// Native AmountView remains the nonescaping borrow.
+class AnchoredAmount
+{
+public:
+    AnchoredAmount() = delete;
+    AnchoredAmount(AnchoredAmount const&) = delete;
+    AnchoredAmount& operator=(AnchoredAmount const&) = delete;
+    AnchoredAmount(AnchoredAmount&&) noexcept = default;
+    AnchoredAmount& operator=(AnchoredAmount&&) noexcept = default;
+
+    static std::optional<AnchoredAmount>
+    bind(CertifiedRoot&& root, size_t ordinal) noexcept
+    {
+        auto v = AmountView::bind(root, ordinal);
+        if (!v)
+            return std::nullopt;
+        return AnchoredAmount{std::move(root), *v};
+    }
+
+    AmountRules::Parts
+    parts() const noexcept
+    {
+        return view_.parts();
+    }
+
+    AmountRules::Kind
+    kind() const noexcept
+    {
+        return view_.kind();
+    }
+
+    Slice
+    payload() const noexcept
+    {
+        return view_.payload();
+    }
+
+private:
+    AnchoredAmount(CertifiedRoot root, AmountView view) noexcept
+        : root_(std::move(root))
+        , view_(view)
+    {
+    }
+
+    CertifiedRoot root_;
+    AmountView view_;
 };
 
 }  // namespace catl::xdata

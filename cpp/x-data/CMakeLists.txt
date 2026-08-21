@@ -92,7 +92,9 @@ if(BUILD_TESTING)
 
         add_executable(test_amount_view tests/test_amount_view.cpp)
         target_link_libraries(test_amount_view PRIVATE jshookz_xdata GTest::gtest_main)
-        gtest_discover_tests(test_amount_view DISCOVERY_TIMEOUT 30)
+        target_compile_definitions(test_amount_view PRIVATE
+            JSHOOKZ_AMOUNT_VIEW_H="${CMAKE_CURRENT_LIST_DIR}/includes/catl/xdata/amount-view.h")
+        gtest_discover_tests(test_amount_view DISCOVERY_TIMEOUT 30 DISCOVERY_MODE PRE_TEST)
 
         add_executable(test_view_sizes tests/view_sizes_probe.cpp)
         target_link_libraries(test_view_sizes PRIVATE jshookz_xdata)

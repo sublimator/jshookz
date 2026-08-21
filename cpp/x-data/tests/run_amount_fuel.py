@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -108,16 +109,37 @@ def main() -> int:
         )
     )
     if not (wasi / "bin" / "clang++").exists():
-        print("skip: wasi-sdk not found", file=sys.stderr)
-        return 0
+        print("error: wasi-sdk not found", file=sys.stderr)
+        return 2
     try:
         import wasmtime  # noqa: F401
     except ImportError:
-        print("skip: wasmtime not installed", file=sys.stderr)
-        return 0
+        print("error: wasmtime not installed", file=sys.stderr)
+        return 2
 
     out = args.keep_wasm or Path(tempfile.mkdtemp()) / "scan_fuel.wasm"
     compile_wasm(args.src, wasi, out)
+    dump_bin = shutil.which("wasm-objdump")
+    if not dump_bin:
+        print("error: wasm-objdump not found", file=sys.stderr)
+        return 2
+    dump = subprocess.check_output([dump_bin, "-d", str(out)], text=True)
+    for name in (
+        "view_once_c",
+        "raw_once_c",
+        "mask_once_c",
+        "parts_once_c",
+        "retained_parts_c",
+    ):
+        if f"call " not in dump or not any(
+            line.find(f"<{name}>") != -1 and "call " in line
+            for line in dump.splitlines()
+        ):
+            print(
+                f"error: wasm dump has no direct call to {name}",
+                file=sys.stderr,
+            )
+            return 1
 
     used_inv, out_inv = run_mode(out, "amount_invalid_setup", 1)
     if "FAIL certify_amount_span" not in out_inv or "FAIL invalid accepted" in out_inv:
@@ -162,8 +184,25 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    if raw - rebind < 1:
-        print("raw-view collapsed", file=sys.stderr)
+    ceilings = {
+        "retained": (retained, 120),
+        "mask": (mask, 180),
+        "prebound": (prebound, 310),
+        "rebind": (rebind, 420),
+        "raw": (raw, 520),
+    }
+    for name, (got, cap) in ceilings.items():
+        if got > cap:
+            print(f"{name} slope {got} exceeds budget {cap}", file=sys.stderr)
+            return 1
+    if rebind - prebound < 50:
+        print("rebind-prebound delta collapsed", file=sys.stderr)
+        return 1
+    if prebound - retained < 100:
+        print("prebound-retained delta collapsed", file=sys.stderr)
+        return 1
+    if raw - rebind < 50:
+        print("raw-rebind delta collapsed", file=sys.stderr)
         return 1
     return 0
 

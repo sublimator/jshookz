@@ -8,8 +8,11 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <new>
+#include <sstream>
 #include <stdlib.h>
+#include <string>
 
 using namespace catl::xdata;
 
@@ -237,6 +240,61 @@ TEST(AmountView, KindDoesNotRequireParts)
     EXPECT_EQ(view->kind(), view->parts().kind);
     EXPECT_EQ(AmountRules::kind(Slice{kNativeAmt, sizeof(kNativeAmt)}),
         AmountRules::Kind::Native);
+#ifndef JSHOOKZ_AMOUNT_VIEW_H
+    GTEST_SKIP();
+#else
+    std::ifstream in(JSHOOKZ_AMOUNT_VIEW_H);
+    ASSERT_TRUE(in) << JSHOOKZ_AMOUNT_VIEW_H;
+    std::ostringstream oss;
+    oss << in.rdbuf();
+    auto text = oss.str();
+    auto kind = text.find("kind() const noexcept");
+    ASSERT_NE(kind, std::string::npos);
+    auto body = text.find("AmountRules::kind(payload_)", kind);
+    auto parts = text.find("parts()", kind);
+    ASSERT_NE(body, std::string::npos);
+    EXPECT_TRUE(parts == std::string::npos || parts > body + 40)
+        << "kind() must not call parts()";
+#endif
+}
+
+TEST(AmountView, BindSurvivesProtocolTemporary)
+{
+    auto make_root = [] {
+        auto protocol = Protocol::load_embedded_xahau_protocol();
+        return CertifiedRoot::copy_and_certify_amount(
+            Slice{kNativeAmt, sizeof(kNativeAmt)}, protocol);
+    };
+    auto root = make_root();
+    ASSERT_TRUE(root.has_value());
+    auto view = AmountView::bind(*root, 0);
+    ASSERT_TRUE(view.has_value());
+    EXPECT_EQ(view->parts().magnitude, 1000000u);
+    EXPECT_EQ(view->kind(), AmountRules::Kind::Native);
+}
+
+TEST(AmountView, AnchoredAmountOutlivesLocals)
+{
+    auto make = []() -> std::optional<AnchoredAmount> {
+        auto protocol = Protocol::load_embedded_xahau_protocol();
+        auto root = CertifiedRoot::copy_and_certify(
+            Slice{kNativeAmtObj, sizeof(kNativeAmtObj)}, 0, protocol);
+        if (!root)
+            return std::nullopt;
+        for (size_t i = 0; i < root->frame_count(); ++i)
+        {
+            auto a = AnchoredAmount::bind(std::move(*root), i);
+            if (a)
+                return a;
+        }
+        return std::nullopt;
+    };
+    auto a = make();
+    ASSERT_TRUE(a.has_value());
+    EXPECT_EQ(a->parts().magnitude, 1000000u);
+    EXPECT_EQ(a->kind(), AmountRules::Kind::Native);
+    auto payload = a->payload();
+    EXPECT_FALSE(payload.empty());
 }
 
 TEST(AmountView, RootOwnsBytesAndBindBorrows)
@@ -291,10 +349,10 @@ TEST(AmountView, RepresentationSizes)
     EXPECT_EQ(sizeof(std::optional<AmountView>), 12u);
     EXPECT_EQ(sizeof(CertifiedIndex), 32u);
     EXPECT_EQ(sizeof(AmountRules::Parts), 48u);
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) || defined(__x86_64__)
     EXPECT_EQ(sizeof(AmountView), 16u);
     EXPECT_EQ(sizeof(std::optional<AmountView>), 24u);
-    EXPECT_EQ(sizeof(CertifiedIndex), 56u);
+    EXPECT_EQ(sizeof(CertifiedIndex), 48u);
     EXPECT_EQ(sizeof(AmountRules::Parts), 72u);
 #endif
 }
@@ -407,4 +465,42 @@ TEST(AmountView, CertifyIndexAllocatesFramesBindDoesNot)
         sizeof(CertifiedRoot));
     EXPECT_EQ(g_heap.load(), 2);
     EXPECT_EQ(g_heap_bytes.load(), 159u);
+}
+
+TEST(AmountView, IndexSinkLazyReserveEight)
+{
+    FieldFrame f{};
+    g_heap.store(0);
+    g_heap_bytes.store(0);
+    g_track = true;
+    IndexSink empty;
+    g_track = false;
+    EXPECT_EQ(g_heap.load(), 0);
+
+    g_heap.store(0);
+    g_heap_bytes.store(0);
+    g_track = true;
+    IndexSink s;
+    s.emit(f);
+    g_track = false;
+    EXPECT_EQ(s.frames.size(), 1u);
+    EXPECT_EQ(g_heap.load(), 1);
+    EXPECT_EQ(g_heap_bytes.load(), 128u);
+
+    g_heap.store(0);
+    g_heap_bytes.store(0);
+    g_track = true;
+    for (int i = 0; i < 7; ++i)
+        s.emit(f);
+    g_track = false;
+    EXPECT_EQ(s.frames.size(), 8u);
+    EXPECT_EQ(g_heap.load(), 0);
+
+    g_heap.store(0);
+    g_heap_bytes.store(0);
+    g_track = true;
+    s.emit(f);
+    g_track = false;
+    EXPECT_EQ(s.frames.size(), 9u);
+    EXPECT_GE(g_heap.load(), 1);
 }

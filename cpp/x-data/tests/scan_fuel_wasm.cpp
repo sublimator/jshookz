@@ -326,14 +326,16 @@ main(int argc, char** argv)
             size_t const k = pick_slot(i);
             auto const& e = bank.exp[k];
             auto back = bank.roots[k].backing();
+            int32_t got_exp = 0;
             uint8_t got_tag = 0;
-            uint64_t const m = mask_once_c(back.data(), back.size(), &got_tag);
-            if (m != e.mant || got_tag != e.tag)
+            uint64_t const m =
+                mask_once_c(back.data(), back.size(), &got_exp, &got_tag);
+            if (m != e.mant || got_exp != e.exp || got_tag != e.tag)
             {
                 std::puts("FAIL mask iou");
                 return;
             }
-            sink += m + got_tag;
+            sink += m + static_cast<uint64_t>(got_exp) + got_tag;
         }
         std::puts("amount_mask_only_repeat");
     };
