@@ -29,7 +29,7 @@ type Truthy<T> = Exclude<T, Falsy>;
  */
 declare abstract class ResultInstance<T, Error> {
   private readonly __resultBrand: [T, Error];
-  protected constructor();
+  private constructor();
 
   /**
    * Return `.value` whenever `.ok` is true, including a successful

@@ -48,7 +48,7 @@ type BatchValues<T extends Record<string, unknown>> = { readonly [K in keyof T]:
  */
 declare abstract class ResultInstance<T, Error> {
   private readonly __resultBrand: [T, Error];
-  protected constructor();
+  private constructor();
 
   /**
    * Return `.value` whenever `.ok` is true, including a successful
@@ -281,7 +281,7 @@ type BatchSchemaValues<T extends Record<string, BatchSchemaField>> = {
 /** Width-known element codec. Offset is not part of the unit; composition assigns it. */
 declare abstract class RecordField<T, Width extends number = number> {
   private readonly __recordFieldBrand: T;
-  protected constructor();
+  private constructor();
   readonly byteLength: Width;
 }
 
@@ -855,7 +855,7 @@ declare abstract class SerializedField<
   FieldCode extends number = number,
 > {
   private readonly __valueType: T;
-  protected constructor();
+  private constructor();
   readonly code: Code;
   readonly typeCode: TypeCode;
   readonly fieldCode: FieldCode;
