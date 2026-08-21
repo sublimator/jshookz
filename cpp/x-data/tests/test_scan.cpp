@@ -180,6 +180,31 @@ TEST(ScanCorpus, AmountBoundaryIdsPresent)
     EXPECT_TRUE(oracle_run::amount_boundary_complete(root, err)) << err;
 }
 
+TEST(ScanCorpus, UInt32BoundaryIdsPresent)
+{
+    auto const root = load_corpus().as_object();
+    std::string err;
+    EXPECT_TRUE(oracle_run::uint32_boundary_complete(root, err)) << err;
+}
+
+TEST(ScanCorpus, UInt32BoundaryDeletionIsRejected)
+{
+    auto root = load_corpus().as_object();
+    auto& cases = root.at("cases").as_array();
+    auto const found = std::find_if(
+        cases.begin(), cases.end(), [](boost::json::value const& item) {
+            auto const& c = item.as_object();
+            return c.contains("id") &&
+                c.at("id").as_string() == "stobject-uint32-max";
+        });
+    ASSERT_NE(found, cases.end());
+    cases.erase(found);
+
+    std::string err;
+    EXPECT_FALSE(oracle_run::uint32_boundary_complete(root, err));
+    EXPECT_EQ(err, "missing UInt32 boundary stobject-uint32-max");
+}
+
 TEST(ScanCorpus, NegativeMptJsonMatchesView)
 {
     auto const protocol = Protocol::load_embedded_xahau_protocol();

@@ -4,6 +4,7 @@
 #include "catl/xdata/certified-index.h"
 #include "catl/xdata/protocol.h"
 #include "catl/xdata/scan.h"
+#include "catl/xdata/uint32-view.h"
 
 #include <optional>
 
@@ -56,5 +57,22 @@ main()
     }
     if (!found)
         return 7;
+
+    std::uint8_t const sequence[] = {0x24, 0x12, 0x34, 0x56, 0x78};
+    auto seq_idx =
+        certify_indexed(Slice{sequence, sizeof(sequence)}, 0, protocol);
+    if (!seq_idx)
+        return 8;
+    auto seq_view = UInt32View::bind(*seq_idx, 0);
+    if (!seq_view || seq_view->value() != 0x12345678u)
+        return 9;
+    auto seq_root = CertifiedRoot::copy_and_certify(
+        Slice{sequence, sizeof(sequence)}, 0, protocol);
+    if (!seq_root)
+        return 10;
+    auto seq_value =
+        CertifiedObject{std::move(*seq_root)}.uint32_value(0);
+    if (!seq_value || *seq_value != 0x12345678u)
+        return 11;
     return 0;
 }

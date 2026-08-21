@@ -40,6 +40,11 @@ main(int argc, char** argv)
             std::cerr << "FAIL amount-boundary " << prov_err << "\n";
             return 1;
         }
+        if (!oracle_run::uint32_boundary_complete(root, prov_err))
+        {
+            std::cerr << "FAIL uint32-boundary " << prov_err << "\n";
+            return 1;
+        }
     }
     auto const protocol = catl::xdata::Protocol::load_embedded_xahau_protocol();
 

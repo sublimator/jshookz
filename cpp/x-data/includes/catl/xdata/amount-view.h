@@ -4,6 +4,7 @@
 #include "catl/xdata/certified-index.h"
 #include "catl/xdata/fields.h"
 #include "catl/xdata/types.h"
+#include "catl/xdata/uint32-view.h"
 
 #include <array>
 #include <optional>
@@ -20,21 +21,11 @@ public:
     static std::optional<AmountView>
     bind(CertifiedIndex const& idx, size_t ordinal) noexcept
     {
-        if (ordinal >= idx.frame_count())
+        auto payload = detail::bind_certified_payload(
+            idx, ordinal, FieldTypes::Amount.code);
+        if (!payload)
             return std::nullopt;
-        FieldFrame const& f = idx.frame(ordinal);
-        if (f.header_begin < idx.begin() || f.wire_end > idx.end())
-            return std::nullopt;
-        if (f.payload_begin < f.header_begin || f.wire_end < f.payload_begin)
-            return std::nullopt;
-        if (f.wire_end > idx.backing().size())
-            return std::nullopt;
-        if (get_field_type_code(f.field_code) != FieldTypes::Amount.code)
-            return std::nullopt;
-        Slice payload{
-            idx.backing().data() + f.payload_begin,
-            f.wire_end - f.payload_begin};
-        return AmountView{payload};
+        return AmountView{*payload};
     }
 
     AmountRules::Parts
@@ -61,15 +52,7 @@ private:
     {
     }
 
-    static std::optional<AmountView>
-    bind(CertifiedRoot const& root, size_t ordinal) noexcept
-    {
-        return bind(root.index(), ordinal);
-    }
-
     Slice payload_{};
-
-    friend class CertifiedObject;
 };
 
 // Owned adapter result. It deliberately contains no Slice: currency, issuer,
@@ -147,7 +130,7 @@ public:
     std::optional<AmountRules::Kind>
     amount_kind(size_t ordinal) const noexcept
     {
-        auto view = AmountView::bind(root_, ordinal);
+        auto view = bind_view<AmountView>(ordinal);
         if (!view)
             return std::nullopt;
         return view->kind();
@@ -156,7 +139,7 @@ public:
     std::optional<OwnedAmountParts>
     materialize_amount(size_t ordinal) const noexcept
     {
-        auto view = AmountView::bind(root_, ordinal);
+        auto view = bind_view<AmountView>(ordinal);
         if (!view)
             return std::nullopt;
         auto const parts = view->parts();
@@ -175,7 +158,23 @@ public:
         return out;
     }
 
+    std::optional<uint32_t>
+    uint32_value(size_t ordinal) const noexcept
+    {
+        auto view = bind_view<UInt32View>(ordinal);
+        if (!view)
+            return std::nullopt;
+        return view->value();
+    }
+
 private:
+    template <class View>
+    std::optional<View>
+    bind_view(size_t ordinal) const noexcept
+    {
+        return View::bind(root_.index(), ordinal);
+    }
+
     CertifiedRoot root_;
 };
 

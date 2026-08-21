@@ -107,6 +107,48 @@
       "oracle_codec_type": "stobject"
     },
     {
+      "id": "stobject-uint32-zero",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "2400000000",
+      "notes": "UInt32 inclusive lower bound.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": {
+        "Sequence": 0
+      },
+      "canonical_blob": "2400000000",
+      "fields": [
+        {
+          "header": "24",
+          "name": "Sequence",
+          "value": "00000000"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "stobject-uint32-max",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "24FFFFFFFF",
+      "notes": "UInt32 inclusive upper bound.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": {
+        "Sequence": 4294967295
+      },
+      "canonical_blob": "24FFFFFFFF",
+      "fields": [
+        {
+          "header": "24",
+          "name": "Sequence",
+          "value": "FFFFFFFF"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
       "id": "stobject-seq-account-out-of-order",
       "expect": "accept",
       "codec_type": "stobject",

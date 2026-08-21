@@ -150,6 +150,16 @@ def main() -> int:
     cases.append(case("stobject-seq-account-sorted", seq_acct, expect="accept",
                       json_src={"Account": GENESIS, "Sequence": 1}))
 
+    seq_zero = encode(json.dumps({"Sequence": 0}))
+    cases.append(case("stobject-uint32-zero", seq_zero, expect="accept",
+                      json_src={"Sequence": 0},
+                      notes="UInt32 inclusive lower bound."))
+
+    seq_max = encode(json.dumps({"Sequence": 0xFFFFFFFF}))
+    cases.append(case("stobject-uint32-max", seq_max, expect="accept",
+                      json_src={"Sequence": 0xFFFFFFFF},
+                      notes="UInt32 inclusive upper bound."))
+
     if not seq_acct.upper().startswith("24"):
         raise RuntimeError("unexpected Sequence header")
     unsorted = seq_acct[10:] + seq_acct[:10]

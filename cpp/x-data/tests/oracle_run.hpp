@@ -146,6 +146,38 @@ amount_boundary_complete(boost::json::object const& root, std::string& err)
     return true;
 }
 
+inline std::set<std::string>
+uint32_boundary_ids()
+{
+    return {"stobject-uint32-zero", "stobject-uint32-max"};
+}
+
+inline bool
+uint32_boundary_complete(boost::json::object const& root, std::string& err)
+{
+    if (!root.contains("cases") || !root.at("cases").is_array())
+    {
+        err = "missing cases";
+        return false;
+    }
+    std::set<std::string> have;
+    for (auto const& item : root.at("cases").as_array())
+    {
+        auto const& c = item.as_object();
+        if (c.contains("id") && c.at("id").is_string())
+            have.insert(std::string(c.at("id").as_string()));
+    }
+    for (auto const& id : uint32_boundary_ids())
+    {
+        if (!have.count(id))
+        {
+            err = "missing UInt32 boundary " + id;
+            return false;
+        }
+    }
+    return true;
+}
+
 inline bool
 header_enum_complete(boost::json::object const& root, std::string& err)
 {

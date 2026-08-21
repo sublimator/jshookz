@@ -6,10 +6,13 @@
 
 #include <cstdint>
 #include <expected>
+#include <optional>
 #include <utility>
 #include <vector>
 
 namespace catl::xdata {
+
+class CertifiedObject;
 
 // Non-owning certificate: one successful CertifyWire+IndexSink pass.
 // Frames are only bindable through this object; caller-authored FieldFrame
@@ -75,6 +78,35 @@ private:
     uint32_t end_ = 0;
     std::vector<FieldFrame> frames_;
 };
+
+namespace detail {
+
+// Shared native typed-view binder. The certificate proves the frame came from
+// one successful CertifyWire pass; this performs capability/range/type checks
+// only and deliberately does not recertify caller-owned bytes.
+inline std::optional<Slice>
+bind_certified_payload(
+    CertifiedIndex const& idx,
+    size_t ordinal,
+    uint16_t expected_type) noexcept
+{
+    if (ordinal >= idx.frame_count())
+        return std::nullopt;
+    FieldFrame const& f = idx.frame(ordinal);
+    if (f.header_begin < idx.begin() || f.wire_end > idx.end())
+        return std::nullopt;
+    if (f.payload_begin < f.header_begin || f.wire_end < f.payload_begin)
+        return std::nullopt;
+    Slice const backing = idx.backing();
+    if (f.wire_end > backing.size())
+        return std::nullopt;
+    if (get_field_type_code(f.field_code) != expected_type)
+        return std::nullopt;
+    return Slice{
+        backing.data() + f.payload_begin, f.wire_end - f.payload_begin};
+}
+
+}  // namespace detail
 
 inline std::expected<CertifiedIndex, CodecErrorValue>
 certify_indexed(
@@ -178,10 +210,10 @@ private:
     {
     }
 
-    friend class AmountView;
+    friend class CertifiedObject;
 
-    // Private: copy_and_certify(...)->index() would feed AmountView::bind a
-    // lvalue index into a dying expected. Named-root bind uses this.
+    // Private: copy_and_certify(...)->index() would expose a non-owning index
+    // into a dying expected. CertifiedObject consumes views synchronously.
     CertifiedIndex const&
     index() const& noexcept
     {

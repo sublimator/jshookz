@@ -54,6 +54,10 @@ if(BUILD_TESTING)
         CATL_XDATA_TEST_PARTS_HOOK)
     gtest_discover_tests(test_amount_view DISCOVERY_TIMEOUT 30 DISCOVERY_MODE PRE_TEST)
 
+    add_executable(test_uint32_view tests/test_uint32_view.cpp)
+    target_link_libraries(test_uint32_view PRIVATE jshookz_xdata GTest::gtest_main)
+    gtest_discover_tests(test_uint32_view DISCOVERY_TIMEOUT 30 DISCOVERY_MODE PRE_TEST)
+
     add_executable(test_view_sizes tests/view_sizes_probe.cpp)
     target_link_libraries(test_view_sizes PRIVATE jshookz_xdata)
     add_test(NAME test_view_sizes COMMAND test_view_sizes)
@@ -94,6 +98,13 @@ if(BUILD_TESTING)
             --src ${CMAKE_CURRENT_LIST_DIR}
     )
     set_tests_properties(amount_fuel_lanes PROPERTIES TIMEOUT 240)
+
+    add_test(NAME uint32_fuel_lanes
+        COMMAND ${_fuel_python}
+            ${CMAKE_CURRENT_LIST_DIR}/tests/run_uint32_fuel.py
+            --src ${CMAKE_CURRENT_LIST_DIR}
+    )
+    set_tests_properties(uint32_fuel_lanes PROPERTIES TIMEOUT 240)
 
     if(Boost_INCLUDE_DIR)
         # Also the only target that compiles the codec headers at all: the

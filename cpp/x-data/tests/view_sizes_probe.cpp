@@ -1,6 +1,7 @@
 #include "catl/xdata/amount-view.h"
 #include "catl/xdata/certified-index.h"
 #include "catl/xdata/scan.h"
+#include "catl/xdata/uint32-view.h"
 
 #include <optional>
 
@@ -15,6 +16,7 @@ main()
     using catl::xdata::FieldFrame;
     using catl::xdata::IndexSink;
     using catl::xdata::OwnedAmountParts;
+    using catl::xdata::UInt32View;
 #if defined(__wasm32__)
     static_assert(sizeof(AmountView) == 8);
     static_assert(sizeof(std::optional<AmountView>) == 12);
@@ -26,6 +28,8 @@ main()
     static_assert(sizeof(OwnedAmountParts) == 64);
     static_assert(sizeof(std::optional<OwnedAmountParts>) == 72);
     static_assert(sizeof(IndexSink) == 144);
+    static_assert(sizeof(UInt32View) == 8);
+    static_assert(sizeof(std::optional<UInt32View>) == 12);
 #else
     static_assert(sizeof(FieldFrame) == 16);
 #if defined(__aarch64__) || defined(__x86_64__)
@@ -36,10 +40,13 @@ main()
     static_assert(sizeof(OwnedAmountParts) == 64);
     static_assert(sizeof(std::optional<OwnedAmountParts>) == 72);
     static_assert(sizeof(IndexSink) == 160);
+    static_assert(sizeof(UInt32View) == 16);
+    static_assert(sizeof(std::optional<UInt32View>) == 24);
 #else
     static_assert(sizeof(CertifiedIndex) <= 56);
 #endif
 #endif
     static_assert(sizeof(AmountView) == sizeof(Slice));
+    static_assert(sizeof(UInt32View) == sizeof(Slice));
     return 0;
 }
