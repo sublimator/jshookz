@@ -6,6 +6,7 @@
 #include "catl/xdata/types.h"
 
 #include <optional>
+#include <utility>
 
 namespace catl::xdata {
 
@@ -42,9 +43,11 @@ public:
     }
 
     // Temporary root would dangle the returned Slice. Escaping
-    // consumers use AnchoredAmount::bind(CertifiedRoot&&, ordinal).
+    // consumers use CertifiedObject / AnchoredAmount.
     static std::optional<AmountView>
     bind(CertifiedRoot&& root, size_t ordinal) = delete;
+    static std::optional<AmountView>
+    bind(CertifiedRoot const&& root, size_t ordinal) = delete;
 
     AmountRules::Parts
     parts() const noexcept
@@ -68,35 +71,111 @@ public:
 private:
     explicit AmountView(Slice payload) noexcept : payload_(payload) {}
 
+    void
+    vacate() noexcept
+    {
+        payload_ = {};
+    }
+
     Slice payload_{};
+
+    friend class AnchoredAmount;
 };
 
-// Escaping/JS aggregate: owns the certified bytes and a bound Amount view
-// into them. Does not heap-allocate per view, copy bytes, or refcount.
-// Native AmountView remains the nonescaping borrow.
+// One owned certification. Bind many typed views while *this is live.
+class CertifiedObject
+{
+public:
+    CertifiedObject() = delete;
+    CertifiedObject(CertifiedObject const&) = delete;
+    CertifiedObject& operator=(CertifiedObject const&) = delete;
+    CertifiedObject(CertifiedObject&&) noexcept = default;
+    CertifiedObject& operator=(CertifiedObject&&) noexcept = default;
+
+    explicit CertifiedObject(CertifiedRoot&& root) noexcept
+        : root_(std::move(root))
+    {
+    }
+
+    CertifiedRoot const&
+    root() const& noexcept
+    {
+        return root_;
+    }
+
+    CertifiedRoot const&
+    root() const&& = delete;
+
+    size_t
+    frame_count() const noexcept
+    {
+        return root_.frame_count();
+    }
+
+    std::optional<AmountView>
+    amount(size_t ordinal) const& noexcept
+    {
+        return AmountView::bind(root_, ordinal);
+    }
+
+    std::optional<AmountView>
+    amount(size_t ordinal) const&& = delete;
+
+private:
+    CertifiedRoot root_;
+};
+
+// One-field owned Amount. Moved-from objects are vacant. Borrowed parts
+// and payload are lvalue-only so they cannot outlive a temporary owner.
 class AnchoredAmount
 {
 public:
-    AnchoredAmount() = delete;
     AnchoredAmount(AnchoredAmount const&) = delete;
     AnchoredAmount& operator=(AnchoredAmount const&) = delete;
-    AnchoredAmount(AnchoredAmount&&) noexcept = default;
-    AnchoredAmount& operator=(AnchoredAmount&&) noexcept = default;
 
-    static std::optional<AnchoredAmount>
+    AnchoredAmount(AnchoredAmount&& other) noexcept
+        : root_(std::move(other.root_))
+        , view_(other.view_)
+    {
+        other.view_.vacate();
+    }
+
+    AnchoredAmount&
+    operator=(AnchoredAmount&& other) noexcept
+    {
+        if (this != &other)
+        {
+            root_ = std::move(other.root_);
+            view_ = other.view_;
+            other.view_.vacate();
+        }
+        return *this;
+    }
+
+    // Returns a vacant object on bind failure. Not optional: bind(...)->parts()
+    // would be an lvalue call on a dying owner.
+    static AnchoredAmount
     bind(CertifiedRoot&& root, size_t ordinal) noexcept
     {
         auto v = AmountView::bind(root, ordinal);
         if (!v)
-            return std::nullopt;
+            return AnchoredAmount{};
         return AnchoredAmount{std::move(root), *v};
     }
 
+    explicit operator bool() const noexcept
+    {
+        return !view_.payload().empty();
+    }
+
     AmountRules::Parts
-    parts() const noexcept
+    parts() const& noexcept
     {
         return view_.parts();
     }
+
+    AmountRules::Parts
+    parts() const&& = delete;
 
     AmountRules::Kind
     kind() const noexcept
@@ -105,12 +184,17 @@ public:
     }
 
     Slice
-    payload() const noexcept
+    payload() const& noexcept
     {
         return view_.payload();
     }
 
+    Slice
+    payload() const&& = delete;
+
 private:
+    AnchoredAmount() noexcept : root_{}, view_{Slice{}} {}
+
     AnchoredAmount(CertifiedRoot root, AmountView view) noexcept
         : root_(std::move(root))
         , view_(view)

@@ -18,10 +18,13 @@ class CertifiedIndex
 {
 public:
     Slice
-    backing() const noexcept
+    backing() const& noexcept
     {
         return backing_;
     }
+
+    Slice
+    backing() const&& = delete;
 
     uint32_t
     begin() const noexcept
@@ -48,10 +51,14 @@ public:
     }
 
 private:
+    CertifiedIndex() = default;
+
     friend std::expected<CertifiedIndex, CodecErrorValue>
     certify_indexed(Slice, uint32_t, Protocol const&);
     friend std::expected<CertifiedIndex, CodecErrorValue>
     certify_amount_span(Slice, Protocol const&);
+    friend class CertifiedRoot;
+    friend class AnchoredAmount;
 
     CertifiedIndex(
         Slice backing,
@@ -128,7 +135,6 @@ certify_amount_span(Slice payload, Protocol const& protocol)
 class CertifiedRoot
 {
 public:
-    CertifiedRoot() = delete;
     CertifiedRoot(CertifiedRoot const&) = delete;
     CertifiedRoot& operator=(CertifiedRoot const&) = delete;
     CertifiedRoot(CertifiedRoot&&) noexcept = default;
@@ -160,16 +166,22 @@ public:
     }
 
     CertifiedIndex const&
-    index() const noexcept
+    index() const& noexcept
     {
         return index_;
     }
 
+    CertifiedIndex const&
+    index() const&& = delete;
+
     Slice
-    backing() const noexcept
+    backing() const& noexcept
     {
         return index_.backing();
     }
+
+    Slice
+    backing() const&& = delete;
 
     size_t
     frame_count() const noexcept
@@ -178,11 +190,15 @@ public:
     }
 
 private:
+    CertifiedRoot() = default;
+
     CertifiedRoot(std::vector<uint8_t> bytes, CertifiedIndex idx)
         : bytes_(std::move(bytes))
         , index_(std::move(idx))
     {
     }
+
+    friend class AnchoredAmount;
 
     std::vector<uint8_t> bytes_;
     CertifiedIndex index_;

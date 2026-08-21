@@ -1,7 +1,9 @@
 #include "catl/xdata/amount-view.h"
 #include "catl/xdata/certified-index.h"
+#include "catl/xdata/fields.h"
 #include "catl/xdata/protocol.h"
 #include "catl/xdata/scan.h"
+#include "catl/xdata/serializer.h"
 
 #include <gtest/gtest.h>
 
@@ -10,9 +12,13 @@
 #include <cstdlib>
 #include <fstream>
 #include <new>
+#include <span>
 #include <sstream>
 #include <stdlib.h>
 #include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 using namespace catl::xdata;
 
@@ -30,6 +36,79 @@ constexpr uint8_t kNativeAmt[] = {
 std::atomic<int> g_heap{0};
 std::atomic<std::size_t> g_heap_bytes{0};
 bool g_track = false;
+
+// Clang treats a deleted overload as satisfying a simple requires-expression.
+// std::is_invocable is false for those deleted rvalue overloads.
+struct BindRoot {
+    template <class T>
+    auto operator()(T&& t) const
+        -> decltype(AmountView::bind(std::forward<T>(t), size_t{0}));
+};
+struct ObjectAmount {
+    template <class T>
+    auto operator()(T&& t) const
+        -> decltype(std::forward<T>(t).amount(0));
+};
+struct AnchorParts {
+    template <class T>
+    auto operator()(T&& t) const
+        -> decltype(std::forward<T>(t).parts());
+};
+struct AnchorPayload {
+    template <class T>
+    auto operator()(T&& t) const
+        -> decltype(std::forward<T>(t).payload());
+};
+struct BindThenParts {
+    template <class T>
+    auto operator()(T&& t) const
+        -> decltype(AnchoredAmount::bind(std::forward<T>(t), 0).parts());
+};
+struct ObjectRoot {
+    template <class T>
+    auto operator()(T&& t) const
+        -> decltype(std::forward<T>(t).root());
+};
+struct RootIndex {
+    template <class T>
+    auto operator()(T&& t) const
+        -> decltype(std::forward<T>(t).index());
+};
+
+std::string
+brace_body(std::string const& text, std::string const& sig)
+{
+    auto pos = text.find(sig);
+    if (pos == std::string::npos)
+        return {};
+    auto brace = text.find('{', pos);
+    if (brace == std::string::npos)
+        return {};
+    int depth = 0;
+    for (size_t i = brace; i < text.size(); ++i)
+    {
+        if (text[i] == '{')
+            ++depth;
+        else if (text[i] == '}')
+        {
+            --depth;
+            if (depth == 0)
+                return text.substr(brace, i - brace + 1);
+        }
+    }
+    return {};
+}
+
+std::string
+read_file(char const* path)
+{
+    std::ifstream in(path);
+    if (!in)
+        return {};
+    std::ostringstream oss;
+    oss << in.rdbuf();
+    return oss.str();
+}
 
 }  // namespace
 
@@ -241,21 +320,42 @@ TEST(AmountView, KindDoesNotRequireParts)
     EXPECT_EQ(AmountRules::kind(Slice{kNativeAmt, sizeof(kNativeAmt)}),
         AmountRules::Kind::Native);
 #ifndef JSHOOKZ_AMOUNT_VIEW_H
-    GTEST_SKIP();
+    FAIL() << "JSHOOKZ_AMOUNT_VIEW_H must be defined";
 #else
-    std::ifstream in(JSHOOKZ_AMOUNT_VIEW_H);
-    ASSERT_TRUE(in) << JSHOOKZ_AMOUNT_VIEW_H;
-    std::ostringstream oss;
-    oss << in.rdbuf();
-    auto text = oss.str();
-    auto kind = text.find("kind() const noexcept");
-    ASSERT_NE(kind, std::string::npos);
-    auto body = text.find("AmountRules::kind(payload_)", kind);
-    auto parts = text.find("parts()", kind);
-    ASSERT_NE(body, std::string::npos);
-    EXPECT_TRUE(parts == std::string::npos || parts > body + 40)
-        << "kind() must not call parts()";
+    auto text = read_file(JSHOOKZ_AMOUNT_VIEW_H);
+    ASSERT_FALSE(text.empty()) << JSHOOKZ_AMOUNT_VIEW_H;
+    auto body = brace_body(text, "    kind() const noexcept");
+    ASSERT_FALSE(body.empty());
+    EXPECT_NE(body.find("AmountRules::kind(payload_)"), std::string::npos);
+    EXPECT_EQ(body.find("parts("), std::string::npos)
+        << "AmountView::kind() must not call parts(";
+    std::string rules_path{JSHOOKZ_AMOUNT_VIEW_H};
+    auto slash = rules_path.find_last_of('/');
+    ASSERT_NE(slash, std::string::npos);
+    rules_path.replace(slash + 1, std::string::npos, "amount-rules.h");
+    auto rules = read_file(rules_path.c_str());
+    ASSERT_FALSE(rules.empty()) << rules_path;
+    auto rules_kind = brace_body(rules, "kind(Slice payload) noexcept");
+    ASSERT_FALSE(rules_kind.empty());
+    EXPECT_EQ(rules_kind.find("parts("), std::string::npos)
+        << "AmountRules::kind must not call parts(";
 #endif
+}
+
+TEST(AmountView, TemporaryRootBindIsIllFormed)
+{
+    static_assert(std::is_invocable_v<BindRoot, CertifiedRoot const&>);
+    static_assert(std::is_invocable_v<BindRoot, CertifiedIndex const&>);
+    static_assert(!std::is_invocable_v<BindRoot, CertifiedRoot&&>);
+    static_assert(!std::is_invocable_v<BindRoot, CertifiedRoot const&&>);
+    static_assert(!std::is_invocable_v<BindThenParts, CertifiedRoot>);
+    static_assert(!std::is_invocable_v<BindThenParts, CertifiedRoot&&>);
+    static_assert(std::is_invocable_v<ObjectRoot, CertifiedObject const&>);
+    static_assert(!std::is_invocable_v<ObjectRoot, CertifiedObject&&>);
+    static_assert(!std::is_invocable_v<ObjectRoot, CertifiedObject const&&>);
+    static_assert(std::is_invocable_v<RootIndex, CertifiedRoot const&>);
+    static_assert(!std::is_invocable_v<RootIndex, CertifiedRoot&&>);
+    static_assert(!std::is_invocable_v<RootIndex, CertifiedRoot const&&>);
 }
 
 TEST(AmountView, BindSurvivesProtocolTemporary)
@@ -347,12 +447,18 @@ TEST(AmountView, RepresentationSizes)
 #if defined(__wasm32__)
     EXPECT_EQ(sizeof(AmountView), 8u);
     EXPECT_EQ(sizeof(std::optional<AmountView>), 12u);
-    EXPECT_EQ(sizeof(CertifiedIndex), 32u);
+    EXPECT_EQ(sizeof(CertifiedIndex), 28u);
+    EXPECT_EQ(sizeof(CertifiedRoot), 40u);
+    EXPECT_EQ(sizeof(CertifiedObject), 40u);
+    EXPECT_EQ(sizeof(AnchoredAmount), 48u);
     EXPECT_EQ(sizeof(AmountRules::Parts), 48u);
 #elif defined(__aarch64__) || defined(__x86_64__)
     EXPECT_EQ(sizeof(AmountView), 16u);
     EXPECT_EQ(sizeof(std::optional<AmountView>), 24u);
     EXPECT_EQ(sizeof(CertifiedIndex), 48u);
+    EXPECT_EQ(sizeof(CertifiedRoot), 72u);
+    EXPECT_EQ(sizeof(CertifiedObject), 72u);
+    EXPECT_EQ(sizeof(AnchoredAmount), 88u);
     EXPECT_EQ(sizeof(AmountRules::Parts), 72u);
 #endif
 }
@@ -412,7 +518,7 @@ TEST(AmountView, CertifyIndexAllocatesFramesBindDoesNot)
         memos->frame_count(),
         g_heap.load(),
         g_heap_bytes.load());
-    EXPECT_GE(memos->frame_count(), 4u);
+    EXPECT_EQ(memos->frame_count(), 4u);
     EXPECT_EQ(g_heap.load(), 1);
     EXPECT_EQ(g_heap_bytes.load(), 128u);
 
@@ -502,5 +608,131 @@ TEST(AmountView, IndexSinkLazyReserveEight)
     s.emit(f);
     g_track = false;
     EXPECT_EQ(s.frames.size(), 9u);
-    EXPECT_GE(g_heap.load(), 1);
+    EXPECT_EQ(g_heap.load(), 1);
+    EXPECT_EQ(g_heap_bytes.load(), 256u);
+}
+
+TEST(AmountView, CertifiedObjectBindsManyFieldsFromOneRoot)
+{
+    auto protocol = Protocol::load_embedded_xahau_protocol();
+    auto root = CertifiedRoot::copy_and_certify(
+        Slice{kNativeAmtObj, sizeof(kNativeAmtObj)}, 0, protocol);
+    ASSERT_TRUE(root.has_value());
+    CertifiedObject host{std::move(*root)};
+    std::optional<AmountView> amount;
+    size_t n_amt = 0;
+    for (size_t i = 0; i < host.frame_count(); ++i)
+    {
+        auto v = host.amount(i);
+        if (v)
+        {
+            ++n_amt;
+            amount = v;
+        }
+    }
+    EXPECT_EQ(n_amt, 1u);
+    ASSERT_TRUE(amount.has_value());
+    EXPECT_EQ(amount->parts().magnitude, 1000000u);
+    static_assert(std::is_invocable_v<ObjectAmount, CertifiedObject const&>);
+    static_assert(!std::is_invocable_v<ObjectAmount, CertifiedObject&&>);
+    static_assert(!std::is_invocable_v<ObjectAmount, CertifiedObject const&&>);
+}
+
+TEST(AmountView, AnchoredMoveLeavesSourceVacant)
+{
+    auto protocol = Protocol::load_embedded_xahau_protocol();
+    auto root = CertifiedRoot::copy_and_certify(
+        Slice{kNativeAmtObj, sizeof(kNativeAmtObj)}, 0, protocol);
+    ASSERT_TRUE(root.has_value());
+    std::optional<AnchoredAmount> src;
+    for (size_t i = 0; i < root->frame_count(); ++i)
+    {
+        auto a = AnchoredAmount::bind(std::move(*root), i);
+        if (a)
+        {
+            src = std::move(a);
+            break;
+        }
+    }
+    ASSERT_TRUE(src.has_value());
+    ASSERT_TRUE(static_cast<bool>(*src));
+    auto dst = std::move(*src);
+    EXPECT_EQ(dst.parts().magnitude, 1000000u);
+    EXPECT_TRUE(src->payload().empty());
+    EXPECT_FALSE(static_cast<bool>(*src));
+    static_assert(std::is_invocable_v<AnchorParts, AnchoredAmount const&>);
+    static_assert(!std::is_invocable_v<AnchorParts, AnchoredAmount&&>);
+    static_assert(!std::is_invocable_v<AnchorParts, AnchoredAmount const&&>);
+    static_assert(std::is_invocable_v<AnchorPayload, AnchoredAmount const&>);
+    static_assert(!std::is_invocable_v<AnchorPayload, AnchoredAmount&&>);
+    static_assert(!std::is_invocable_v<AnchorPayload, AnchoredAmount const&&>);
+}
+
+TEST(AmountView, RealObjectsLockSevenEightNineFrameAllocs)
+{
+    using catl::xdata::Serializer;
+    using catl::xdata::VectorSink;
+    auto const protocol = Protocol::load_embedded_xahau_protocol();
+    auto append = [&](std::vector<uint8_t>& buf,
+                      char const* name,
+                      std::span<uint8_t const> payload) {
+        auto f = protocol.find_field(name);
+        if (!f.has_value())
+        {
+            ADD_FAILURE() << "missing field " << name;
+            return;
+        }
+        VectorSink sink(buf);
+        Serializer<VectorSink> ser(sink);
+        ser.add_field_header(*f);
+        if (f->meta.is_vl_encoded)
+            ser.add_vl(payload);
+        else
+            ser.add_raw(payload);
+    };
+    uint8_t acct[20]{};
+    acct[0] = 0xb5;
+    uint8_t drops[8] = {0x40, 0, 0, 0, 0, 0x0f, 0x42, 0x40};
+    uint8_t u16[2] = {0, 0};
+    uint8_t u32[4] = {0, 0, 0, 1};
+    uint8_t key[1] = {0x02};
+
+    auto measure_n = [&](int nfields) {
+        std::vector<uint8_t> buf;
+        append(buf, "TransactionType", u16);
+        append(buf, "Sequence", u32);
+        append(buf, "Fee", drops);
+        append(buf, "SigningPubKey", key);
+        append(buf, "Account", acct);
+        append(buf, "Destination", acct);
+        append(buf, "Amount", drops);
+        if (nfields >= 8)
+            append(buf, "Flags", u32);
+        if (nfields >= 9)
+            append(buf, "LastLedgerSequence", u32);
+        g_heap.store(0);
+        g_heap_bytes.store(0);
+        g_track = true;
+        auto idx = certify_indexed(Slice{buf.data(), buf.size()}, 0, protocol);
+        g_track = false;
+        return idx;
+    };
+
+    auto seven = measure_n(7);
+    ASSERT_TRUE(seven.has_value()) << seven.error().message;
+    EXPECT_EQ(seven->frame_count(), 7u);
+    EXPECT_EQ(g_heap.load(), 1);
+    EXPECT_EQ(g_heap_bytes.load(), 128u);
+
+    auto eight = measure_n(8);
+    ASSERT_TRUE(eight.has_value()) << eight.error().message;
+    EXPECT_EQ(eight->frame_count(), 8u);
+    EXPECT_EQ(g_heap.load(), 1);
+    EXPECT_EQ(g_heap_bytes.load(), 128u);
+
+    auto nine = measure_n(9);
+    ASSERT_TRUE(nine.has_value()) << nine.error().message;
+    EXPECT_EQ(nine->frame_count(), 9u);
+    EXPECT_EQ(g_heap.load(), 2);
+    EXPECT_EQ(g_heap_bytes.load(), 384u);
 }
