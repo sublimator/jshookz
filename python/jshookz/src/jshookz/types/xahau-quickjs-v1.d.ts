@@ -68,15 +68,44 @@ declare abstract class ResultInstance<T, Error> {
 
 }
 
-/** Capability exposed only by Results whose success type is exactly void. */
-interface MootableResultInstance<Error> {
+/**
+ * Nominal family of effect Results: host writes whose success carries no
+ * value. Deliberately NOT assignable to `Result<T, Error>` — an effect
+ * outcome is consumed by `moot`, an eliminator, or `rollback.onFail`,
+ * never by a value verb.
+ */
+declare abstract class VoidResultInstance<Error> {
+  private readonly __voidResultBrand: Error;
+  private constructor();
+
   /**
-   * Declare the failure of this void Result moot: neither outcome bears on
-   * contract correctness. JavaScript exceptions and provider faults are not
-   * Result failures and are not suppressed.
+   * Declare the failure of this effect Result moot: neither outcome bears
+   * on contract correctness. JavaScript exceptions and provider faults are
+   * not Result failures and are not suppressed.
    */
-  moot(this: Result<void, Error>): void;
+  moot(): void;
+
+  /** As on value Results; a successful effect yields `undefined`. */
+  okOr<Fallback>(fallback: Fallback): undefined | Fallback;
+  okOrHandle<Fallback>(handler: (error: Error) => Fallback): undefined | Fallback;
+  okMapOr<Value, Fallback>(
+    handler: (value: void) => Value,
+    fallback: Fallback,
+  ): Value | Fallback;
 }
+
+type VoidResultSuccess<Error> = VoidResultInstance<Error> & {
+  readonly ok: true;
+};
+
+type VoidResultFailure<Error> = VoidResultInstance<Error> & {
+  readonly ok: false;
+  readonly error: Error;
+};
+
+type VoidResult<Error> = VoidResultSuccess<Error> | VoidResultFailure<Error>;
+
+type HostVoidResult = VoidResult<HostError>;
 
 /** Shared discriminated carrier; each domain owns its error payload. */
 type ResultSuccess<T, Error> = ResultInstance<T, Error> & {
@@ -89,13 +118,7 @@ type ResultFailure<T, Error> = ResultInstance<T, Error> & {
   readonly error: Error;
 };
 
-type Result<T, Error> =
-  ([T] extends [void]
-    ? [void] extends [T]
-      ? MootableResultInstance<Error>
-      : unknown
-    : unknown) &
-  (ResultSuccess<T, Error> | ResultFailure<T, Error>);
+type Result<T, Error> = ResultSuccess<T, Error> | ResultFailure<T, Error>;
 
 interface HostError {
   readonly domain: "host";
@@ -354,11 +377,11 @@ declare namespace state {
   function set(
     key: string | BytesLike | STBlob | Hash256 | AccountID,
     value: string | BytesLike | STBlob | Hash256 | AccountID,
-  ): HostResult<void>;
+  ): HostVoidResult;
 }
 
 declare namespace emit {
-  function reserve(count: number): HostResult<void>;
+  function reserve(count: number): HostVoidResult;
   function tx(transaction: BytesLike | STBlob): HostResult<Hash256>;
   function prepare(partial: BytesLike | STBlob): HostResult<STBlob>;
 }
@@ -404,11 +427,6 @@ declare namespace accept {
     result: Result<T, Error>,
     message?: string | BytesLike | STBlob,
     code?: number,
-    ...voidResultsAreIneligible: [T] extends [void]
-      ? [void] extends [T]
-        ? [never]
-        : []
-      : []
   ): Present<T>;
   /**
    * Continue only when this direct value is present (non-nullish);
@@ -418,11 +436,6 @@ declare namespace accept {
     value: T,
     message?: string | BytesLike | STBlob,
     code?: number,
-    ...resultsTakeTheResultOverload: [
-      Extract<T, Result<unknown, unknown>>
-    ] extends [never]
-      ? []
-      : [never]
   ): Present<T>;
   /**
    * Continue only when this Result succeeded with an ordinarily truthy
@@ -432,11 +445,6 @@ declare namespace accept {
     result: Result<T, Error>,
     message?: string | BytesLike | STBlob,
     code?: number,
-    ...voidResultsAreIneligible: [T] extends [void]
-      ? [void] extends [T]
-        ? [never]
-        : []
-      : []
   ): JSTruthy<T>;
   /**
    * Continue only when this direct value is truthy; otherwise `accept`.
@@ -446,11 +454,6 @@ declare namespace accept {
     value: T,
     message?: string | BytesLike | STBlob,
     code?: number,
-    ...resultsTakeTheResultOverload: [
-      Extract<T, Result<unknown, unknown>>
-    ] extends [never]
-      ? []
-      : [never]
   ): JSTruthy<T>;
   /**
    * If `condition` is true, `accept`. If false, return and continue.
@@ -482,6 +485,14 @@ declare namespace rollback {
     message?: string | BytesLike | STBlob,
   ): T;
   /**
+   * Effect form: roll back with the exact failed host status; a
+   * successful effect returns nothing.
+   */
+  function onFail(
+    result: HostVoidResult,
+    message?: string | BytesLike | STBlob,
+  ): void;
+  /**
    * Apply a contract-owned terminal policy to a result whose failure does not
    * already carry a Hook status.
    */
@@ -490,6 +501,12 @@ declare namespace rollback {
     message: string | BytesLike | STBlob,
     code?: number,
   ): T;
+  /** Effect form with a contract-owned policy for uncoded domains. */
+  function onFail<Error>(
+    result: VoidResult<Error>,
+    message: string | BytesLike | STBlob,
+    code?: number,
+  ): void;
   /**
    * Require a present (non-nullish) value from a Result. Failure and a
    * nullish success both apply the contract-owned rollback policy; falsy
@@ -497,11 +514,7 @@ declare namespace rollback {
    */
   function requirePresent<T, Error>(
     result: Result<T, Error>,
-    message: [T] extends [void]
-      ? [void] extends [T]
-        ? never
-        : string | BytesLike | STBlob
-      : string | BytesLike | STBlob,
+    message: string | BytesLike | STBlob,
     code?: number,
   ): Present<T>;
   /**
@@ -513,11 +526,6 @@ declare namespace rollback {
     value: T,
     message: string | BytesLike | STBlob,
     code?: number,
-    ...resultsTakeTheResultOverload: [
-      Extract<T, Result<unknown, unknown>>
-    ] extends [never]
-      ? []
-      : [never]
   ): Present<T>;
   /**
    * Require a Result to have succeeded with an ordinarily truthy value.
@@ -525,11 +533,7 @@ declare namespace rollback {
    */
   function requireTruthy<T, Error>(
     result: Result<T, Error>,
-    message: [T] extends [void]
-      ? [void] extends [T]
-        ? never
-        : string | BytesLike | STBlob
-      : string | BytesLike | STBlob,
+    message: string | BytesLike | STBlob,
     code?: number,
   ): JSTruthy<T>;
   /**
@@ -540,11 +544,6 @@ declare namespace rollback {
     value: T,
     message: string | BytesLike | STBlob,
     code?: number,
-    ...resultsTakeTheResultOverload: [
-      Extract<T, Result<unknown, unknown>>
-    ] extends [never]
-      ? []
-      : [never]
   ): JSTruthy<T>;
   /**
    * If `condition` is true, `rollback`. If false, return and continue.

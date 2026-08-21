@@ -43,7 +43,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "e11f34a5a9c09f949993c1620d937c4f4c32ea24565679e786e9c89a470cd02d"
+    "sha256": "db09c0d2ab6b4417ba6a9f4cea332a67ac5b73ea162453eb32590b815f419ae5"
   },
   "globals": {
     "AccountID": "function",
@@ -241,7 +241,7 @@
     "VoidResult": {
       "frozen": true,
       "members": {
-        "__resultBrand": "value",
+        "__voidResultBrand": "value",
         "constructor": "function",
         "moot": "function",
         "okMapOr": "function",
@@ -249,6 +249,7 @@
         "okOrHandle": "function"
       },
       "own": [
+        "__voidResultBrand",
         "moot"
       ],
       "probe": "state.set('surface-probe', new Uint8Array(0))"
