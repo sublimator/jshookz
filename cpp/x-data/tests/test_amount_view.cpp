@@ -353,7 +353,7 @@ TEST(AmountView, TemporaryRootBindIsIllFormed)
     static_assert(std::is_invocable_v<ObjectRoot, CertifiedObject const&>);
     static_assert(!std::is_invocable_v<ObjectRoot, CertifiedObject&&>);
     static_assert(!std::is_invocable_v<ObjectRoot, CertifiedObject const&&>);
-    static_assert(std::is_invocable_v<RootIndex, CertifiedRoot const&>);
+    static_assert(!std::is_invocable_v<RootIndex, CertifiedRoot const&>);
     static_assert(!std::is_invocable_v<RootIndex, CertifiedRoot&&>);
     static_assert(!std::is_invocable_v<RootIndex, CertifiedRoot const&&>);
 }

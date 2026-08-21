@@ -267,7 +267,7 @@ main(int argc, char** argv)
             int32_t got_exp = 0;
             uint8_t got_tag = 0;
             uint64_t const m =
-                view_once_c(&bank.roots[k].index(), 0, &got_exp, &got_tag);
+                view_once_c(&bank.roots[k], 0, &got_exp, &got_tag);
             if (m != e.mant || got_exp != e.exp || got_tag != e.tag)
             {
                 std::puts("FAIL view iou");

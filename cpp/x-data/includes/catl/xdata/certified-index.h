@@ -165,15 +165,6 @@ public:
         return CertifiedRoot{std::move(bytes), std::move(*idx)};
     }
 
-    CertifiedIndex const&
-    index() const& noexcept
-    {
-        return index_;
-    }
-
-    CertifiedIndex const&
-    index() const&& = delete;
-
     Slice
     backing() const& noexcept
     {
@@ -199,6 +190,18 @@ private:
     }
 
     friend class AnchoredAmount;
+    friend class AmountView;
+
+    // Private: copy_and_certify(...)->index() would feed AmountView::bind a
+    // lvalue index into a dying expected. Named-root bind uses this.
+    CertifiedIndex const&
+    index() const& noexcept
+    {
+        return index_;
+    }
+
+    CertifiedIndex const&
+    index() const&& = delete;
 
     std::vector<uint8_t> bytes_;
     CertifiedIndex index_;

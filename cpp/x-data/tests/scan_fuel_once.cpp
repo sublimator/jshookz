@@ -13,8 +13,8 @@ extern "C" {
 uint64_t
 view_once_c(void const* idx, size_t ord, int32_t* exp, uint8_t* tag)
 {
-    auto const* cidx = static_cast<catl::xdata::CertifiedIndex const*>(idx);
-    auto v = catl::xdata::AmountView::bind(*cidx, ord);
+    auto const* root = static_cast<catl::xdata::CertifiedRoot const*>(idx);
+    auto v = catl::xdata::AmountView::bind(*root, ord);
     if (!v)
     {
         *exp = 0;
