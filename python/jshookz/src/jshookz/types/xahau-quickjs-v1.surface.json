@@ -12,9 +12,6 @@
     "Hash256.fromHex": {
       "0": "hexString"
     },
-    "LedgerKeylet.fromRaw": {
-      "0": "bytesLikeOrSTBlob"
-    },
     "STBlob.equals": {
       "0": "bytesLikeOrSTBlob"
     },
@@ -135,6 +132,24 @@
       ],
       "probe": "Hash256.from(new Uint8Array(32))"
     },
+    "Result": {
+      "frozen": true,
+      "members": {
+        "__resultBrand": "value",
+        "constructor": "function",
+        "okMapOr": "function",
+        "okOr": "function",
+        "okOrHandle": "function"
+      },
+      "own": [
+        "__resultBrand",
+        "constructor",
+        "okMapOr",
+        "okOr",
+        "okOrHandle"
+      ],
+      "probe": "UInt64.from(0n)"
+    },
     "STBlob": {
       "members": {
         "byteAt": "function",
@@ -153,6 +168,39 @@
         "toHex"
       ],
       "probe": "STBlob.from(new Uint8Array(0))"
+    },
+    "UInt": {
+      "members": {
+        "add": "function",
+        "bits": "value",
+        "byteLength": "value",
+        "compare": "function",
+        "constructor": "function",
+        "equals": "function",
+        "isZero": "function",
+        "saturatingAdd": "function",
+        "saturatingSubtract": "function",
+        "subtract": "function",
+        "toBigInt": "function",
+        "toNumber": "function",
+        "toString": "function"
+      },
+      "own": [
+        "add",
+        "bits",
+        "byteLength",
+        "compare",
+        "constructor",
+        "equals",
+        "isZero",
+        "saturatingAdd",
+        "saturatingSubtract",
+        "subtract",
+        "toBigInt",
+        "toNumber",
+        "toString"
+      ],
+      "probe": "UInt8.zero"
     },
     "UInt16": {
       "members": {
@@ -189,6 +237,21 @@
         "constructor"
       ],
       "probe": "UInt8.zero"
+    },
+    "VoidResult": {
+      "frozen": true,
+      "members": {
+        "__resultBrand": "value",
+        "constructor": "function",
+        "moot": "function",
+        "okMapOr": "function",
+        "okOr": "function",
+        "okOrHandle": "function"
+      },
+      "own": [
+        "moot"
+      ],
+      "probe": "state.set('surface-probe', new Uint8Array(0))"
     }
   },
   "schema": "jshookz.javascript-surface.v1",
