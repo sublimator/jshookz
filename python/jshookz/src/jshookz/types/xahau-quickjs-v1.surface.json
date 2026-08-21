@@ -12,6 +12,9 @@
     "Hash256.fromHex": {
       "0": "hexString"
     },
+    "LedgerKeylet.fromRaw": {
+      "0": "bytesLikeOrSTBlob"
+    },
     "STBlob.equals": {
       "0": "bytesLikeOrSTBlob"
     },
@@ -43,7 +46,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "0d1204ecb53503610f7c51a8f4816a64c6b45f140202f1565f0fcf2f5baa8c83"
+    "sha256": "0080e7804ddcd10efcf7343151ee9716fd8fac0f87828949e9751b0dbdd31920"
   },
   "globals": {
     "AccountID": "function",
@@ -88,6 +91,8 @@
       "onAnyFail": "function",
       "onFail": "function",
       "require": "function",
+      "requirePresent": "function",
+      "requireTruthy": "function",
       "when": "function"
     },
     "state": {
@@ -129,20 +134,6 @@
         "toHex"
       ],
       "probe": "Hash256.from(new Uint8Array(32))"
-    },
-    "Result": {
-      "frozen": true,
-      "members": {
-        "okMapOr": "function",
-        "okOr": "function",
-        "okOrHandle": "function"
-      },
-      "own": [
-        "okMapOr",
-        "okOr",
-        "okOrHandle"
-      ],
-      "probe": "UInt64.from(0n)"
     },
     "STBlob": {
       "members": {
@@ -198,19 +189,6 @@
         "constructor"
       ],
       "probe": "UInt8.zero"
-    },
-    "VoidResult": {
-      "frozen": true,
-      "members": {
-        "moot": "function",
-        "okMapOr": "function",
-        "okOr": "function",
-        "okOrHandle": "function"
-      },
-      "own": [
-        "moot"
-      ],
-      "probe": "state.set('surface-probe', new Uint8Array(0))"
     }
   },
   "schema": "jshookz.javascript-surface.v1",

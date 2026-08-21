@@ -32,7 +32,9 @@ interface SerializedType {
   toBytes(options?: SerializationOptions): Uint8Array;
 }
 type BytePart = BytesLike | SerializedType;
+/** State-key input: octets, string text encoded as UTF-8, or a serial value. */
 type StateKeyLike = BytesLike | string | SerializedType;
+/** State-value input: octets, string text encoded as UTF-8, or a serial value. */
 type StateValueLike = BytesLike | string | SerializedType;
 type BatchKeys = Record<string, StateKeyLike>;
 type BatchValues<T extends Record<string, unknown>> = { readonly [K in keyof T]: STBlob | undefined };
@@ -44,7 +46,9 @@ type BatchValues<T extends Record<string, unknown>> = { readonly [K in keyof T]:
  * `okOrHandle`, `okMapOr`, `moot`, exhaustive `.ok` narrowing, or a
  * `rollback.*` consumer.
  */
-interface ResultInstance<T, Error> {
+declare abstract class ResultInstance<T, Error> {
+  private readonly __resultBrand: [T, Error];
+  protected constructor();
 
   /**
    * Return `.value` whenever `.ok` is true, including a successful
@@ -58,9 +62,9 @@ interface ResultInstance<T, Error> {
    * Return `.value` whenever `.ok` is true; otherwise invoke `handler` once
    * with `.error` and return the value it produces.
    *
-   * The compiler rejects handlers whose inferred return type is `never`.
-   * Termination is explicit control flow: use `rollback.onFail` for failure
-   * rollback, or exhaustive `.ok` narrowing for another terminal.
+   * A handler may terminate instead of producing a fallback — a
+   * `never`-returning handler is legitimate Result elimination, and
+   * `rollback.onFail` is the idiomatic spelling of that pattern.
    */
   okOrHandle<Fallback>(handler: (error: Error) => Fallback): T | Fallback;
 
@@ -275,7 +279,9 @@ type BatchSchemaValues<T extends Record<string, BatchSchemaField>> = {
 };
 
 /** Width-known element codec. Offset is not part of the unit; composition assigns it. */
-interface RecordField<T, Width extends number = number> {
+declare abstract class RecordField<T, Width extends number = number> {
+  private readonly __recordFieldBrand: T;
+  protected constructor();
   readonly byteLength: Width;
 }
 
@@ -292,6 +298,12 @@ interface ScalarSchema<
   readonly byteLength: Width;
   safeParse(value: BytesLike | STBlob): ParseResult<T>;
   parse(value: BytesLike | STBlob): T;
+  /** Result-valued encode: rejects out-of-domain values as ParseError. */
+  safeEncode(value: T): ParseResult<STBlob>;
+  /**
+   * Assertion form for programmer-guaranteed values. Throws when the value
+   * leaves the codec's domain; prefer `safeEncode` for data-driven values.
+   */
   encode(value: T): STBlob;
 }
 
@@ -357,6 +369,17 @@ interface RecordSchema<
    */
   parse(value: BytesLike | STBlob): Value;
 
+  /**
+   * Result-valued encode: validates every field against its codec domain
+   * and returns the exact record bytes, or a ParseError naming the first
+   * out-of-domain field.
+   */
+  safeEncode(value: Value): ParseResult<STBlob>;
+
+  /**
+   * Assertion form for programmer-guaranteed values. Throws on
+   * out-of-domain field values; prefer `safeEncode` for data-driven values.
+   */
   encode(value: Value): STBlob;
   patch(
     source: BytesLike | STBlob,
@@ -370,6 +393,7 @@ interface RecordSchema<
  * an assertion about the derived cursor, never a position. Reserved bytes
  * are `record.padding(n)` as a bare entry (no dummy name). Accidental overlap is unrepresentable; use
  * `record.overlay({ ... })` for equal-width reinterpretations of one range.
+ * Construction rejects duplicate entry names.
  *
  * Construction refuses when the derived extent is not `byteLength`.
  */
@@ -487,6 +511,7 @@ declare class STBlob {
   toHash384(): Hash384;
   toHash512(): Hash512;
   isZero(): boolean;
+  /** Whole-value byte equality; values of differing lengths are unequal. */
   equals(other: BytesLike | STBlob): boolean;
   compare(other: BytesLike | STBlob, options?: ByteCompareOptions): -1 | 0 | 1;
   indexOf(needle: BytesLike | STBlob, options?: ByteFindOptions): number | undefined;
@@ -823,16 +848,17 @@ declare class PathSet implements Iterable<Path> {
  * TypeScript cannot express that numeric-literal arithmetic directly. The
  * declaration checker enforces the relationship instead.
  */
-declare interface SerializedField<
+declare abstract class SerializedField<
   T,
   Code extends number = number,
   TypeCode extends number = number,
   FieldCode extends number = number,
 > {
+  private readonly __valueType: T;
+  protected constructor();
   readonly code: Code;
   readonly typeCode: TypeCode;
   readonly fieldCode: FieldCode;
-  readonly __valueType?: T;
 }
 
 type SerializedFieldValue<T> =
@@ -1607,7 +1633,21 @@ declare const enum HookExecutionMode {
 
 /** Information supplied to an emitted-transaction callback entry point. */
 interface CallbackInfo {
-  /** Whether the emitted transaction failed. */
+  /** Exact whole-word applied predicate: `rawFlags === 0`. */
+  readonly applied: boolean;
+
+  /**
+   * Exact bit-zero observation of the callback word. Not the inverse of
+   * `applied`: a non-zero word with bit zero clear is neither applied nor
+   * flagged here.
+   */
+  readonly failureBitSet: boolean;
+
+  /**
+   * Bit-zero observation, retained for compatibility.
+   * @deprecated This name reads as the inverse of `applied` and is not:
+   * it is exactly bit zero. Use `applied` or `failureBitSet`.
+   */
   readonly failed: boolean;
 
   /**
@@ -1615,6 +1655,13 @@ interface CallbackInfo {
    * this is retained for diagnostics and forward-compatible expert use.
    */
   readonly rawFlags: number;
+
+  /**
+   * The emitted transaction's hash for correlating pending state: the
+   * originating id when applied; otherwise `sfEmittedTxnID` when present,
+   * else the originating id when available. May be absent.
+   */
+  emittedTransactionId(): HostResult<Hash256 | undefined>;
 }
 
 /**
@@ -1623,10 +1670,12 @@ interface CallbackInfo {
  * `HostObject` subtype.
  */
 declare class LedgerKeylet<T extends STObject = STObject> {
-  private readonly __valueType?: T;
+  private readonly __valueType: T;
   readonly byteLength: 34;
   readonly type: number;
-  constructor(value: BytesLike);
+  private constructor();
+  /** Import a raw 34-byte locator carrying no minted object-type claim. */
+  static fromRaw(value: BytesLike | STBlob): ParseResult<LedgerKeylet>;
   toBytes(): Uint8Array;
   toHex(): HexString;
 }
@@ -2113,6 +2162,28 @@ declare namespace rollback {
    * `undefined`, and `NaN` therefore apply the rollback policy.
    */
   function require<T>(
+    value: T,
+    message: string | BytesLike | STBlob,
+    code?: number,
+  ): Exclude<T, Falsy>;
+
+  /**
+   * Require a successful Result carrying a present (non-nullish) value —
+   * the Result behaviour of `require` under a name that says so. Falsy
+   * successes such as `0`, `0n`, `false`, and `""` remain valid values.
+   */
+  function requirePresent<T, Error>(
+    result: Result<T, Error>,
+    message: string | BytesLike | STBlob,
+    code?: number,
+  ): Exclude<T, null | undefined>;
+
+  /**
+   * Require an ordinarily truthy direct value — the direct-value behaviour
+   * of `require` under a name that says so. `false`, `0`, `0n`, `""`,
+   * `null`, `undefined`, and `NaN` apply the rollback policy.
+   */
+  function requireTruthy<T>(
     value: T,
     message: string | BytesLike | STBlob,
     code?: number,

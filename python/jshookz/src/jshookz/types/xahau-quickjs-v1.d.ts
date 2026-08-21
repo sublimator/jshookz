@@ -27,7 +27,9 @@ type Truthy<T> = Exclude<T, Falsy>;
  * `okOrHandle`, `okMapOr`, `moot`, exhaustive `.ok` narrowing, or a
  * `rollback.*` consumer.
  */
-interface ResultInstance<T, Error> {
+declare abstract class ResultInstance<T, Error> {
+  private readonly __resultBrand: [T, Error];
+  protected constructor();
 
   /**
    * Return `.value` whenever `.ok` is true, including a successful
@@ -41,9 +43,9 @@ interface ResultInstance<T, Error> {
    * Return `.value` whenever `.ok` is true; otherwise invoke `handler` once
    * with `.error` and return the value it produces.
    *
-   * The compiler rejects handlers whose inferred return type is `never`.
-   * Termination is explicit control flow: use `rollback.onFail` for failure
-   * rollback, or exhaustive `.ok` narrowing for another terminal.
+   * A handler may terminate instead of producing a fallback — a
+   * `never`-returning handler is legitimate Result elimination, and
+   * `rollback.onFail` is the idiomatic spelling of that pattern.
    */
   okOrHandle<Fallback>(handler: (error: Error) => Fallback): T | Fallback;
 
@@ -207,6 +209,7 @@ declare class STBlob {
   byteAt(index: number): number;
   toBytes(): Uint8Array;
   toHex(): HexString;
+  /** Whole-value byte equality; values of differing lengths are unequal. */
   equals(other: BytesLike | STBlob): boolean;
   static from(value: BytesLike): STBlob;
   /** Decode an even-length hexadecimal literal. */
@@ -324,7 +327,21 @@ declare const enum TransactionType {
 
 /** Information supplied to an emitted-transaction callback entry point. */
 interface CallbackInfo {
-  /** Whether the emitted transaction failed. */
+  /** Exact whole-word applied predicate: `rawFlags === 0`. */
+  readonly applied: boolean;
+
+  /**
+   * Exact bit-zero observation of the callback word. Not the inverse of
+   * `applied`: a non-zero word with bit zero clear is neither applied nor
+   * flagged here.
+   */
+  readonly failureBitSet: boolean;
+
+  /**
+   * Bit-zero observation, retained for compatibility.
+   * @deprecated This name reads as the inverse of `applied` and is not:
+   * it is exactly bit zero. Use `applied` or `failureBitSet`.
+   */
   readonly failed: boolean;
 
   /**
@@ -332,6 +349,13 @@ interface CallbackInfo {
    * this is retained for diagnostics and forward-compatible expert use.
    */
   readonly rawFlags: number;
+
+  /**
+   * The emitted transaction's hash for correlating pending state: the
+   * originating id when applied; otherwise `sfEmittedTxnID` when present,
+   * else the originating id when available. May be absent.
+   */
+  emittedTransactionId(): HostResult<Hash256 | undefined>;
 }
 
 declare namespace otxn {
@@ -455,6 +479,26 @@ declare namespace rollback {
    * `undefined`, and `NaN` therefore apply the rollback policy.
    */
   function require<T>(
+    value: T,
+    message: string | BytesLike | STBlob,
+    code?: number,
+  ): Exclude<T, Falsy>;
+  /**
+   * Require a successful Result carrying a present (non-nullish) value —
+   * the Result behaviour of `require` under a name that says so. Falsy
+   * successes such as `0`, `0n`, `false`, and `""` remain valid values.
+   */
+  function requirePresent<T, Error>(
+    result: Result<T, Error>,
+    message: string | BytesLike | STBlob,
+    code?: number,
+  ): Exclude<T, null | undefined>;
+  /**
+   * Require an ordinarily truthy direct value — the direct-value behaviour
+   * of `require` under a name that says so. `false`, `0`, `0n`, `""`,
+   * `null`, `undefined`, and `NaN` apply the rollback policy.
+   */
+  function requireTruthy<T>(
     value: T,
     message: string | BytesLike | STBlob,
     code?: number,
