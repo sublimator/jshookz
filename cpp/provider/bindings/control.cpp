@@ -171,22 +171,21 @@ call_lifecycle(
 // 1 = continue with owned *out, 0 = missing, -1 = exception.
 int
 take_result_present(JSContext *ctx, JSValueConst value, JSValue *out,
-                    const char *function_name)
+                    const char *function_name, const char *direct_form)
 {
-    /* requirePresent accepts only provider Results; the split replaced the
-     * overloaded `require`, whose predicate changed with the argument's
-     * static type (0070 review findings 4 and 11, resolved 2026-08-21). */
+    /* The Present verbs accept only provider Results; the splits replaced
+     * the overloaded `require` and `unless`, whose predicates changed with
+     * the argument's static type (0070 review findings 4 and 11;
+     * symmetric grid ratified 2026-08-21, 0072:471-511). */
     if (isEffectResult(value)) {
         JS_ThrowTypeError(
-            ctx, "%s: void-effect Result has no value to require",
-            function_name);
+            ctx, "%s: a void-effect Result has no value", function_name);
         return -1;
     }
     if (!isResult(value)) {
         JS_ThrowTypeError(
-            ctx, "%s: expected a provider Result; use requireTruthy for "
-            "direct values",
-            function_name);
+            ctx, "%s: expected a provider Result; use %s for direct values",
+            function_name, direct_form);
         return -1;
     }
     int const success = get_result_success(ctx, value, function_name);
@@ -206,16 +205,15 @@ take_result_present(JSContext *ctx, JSValueConst value, JSValue *out,
 
 static int
 take_truthy_value(JSContext *ctx, JSValueConst value, JSValue *out,
-                  const char *function_name)
+                  const char *function_name, const char *result_form)
 {
     /* Runtime provenance guard: a Result object is truthy, so accepting one
      * here would silently change its predicate — exactly the trap the split
      * exists to remove. */
     if (isResult(value) || isEffectResult(value)) {
         JS_ThrowTypeError(
-            ctx, "%s: expected a direct value; use requirePresent for "
-            "provider Results",
-            function_name);
+            ctx, "%s: expected a direct value; use %s for provider Results",
+            function_name, result_form);
         return -1;
     }
     int const truthy = JS_ToBool(ctx, value);
@@ -226,20 +224,6 @@ take_truthy_value(JSContext *ctx, JSValueConst value, JSValue *out,
     *out = JS_DupValue(ctx, value);
     return 1;
 }
-
-static int
-take_present_value(JSContext *ctx, JSValueConst value, JSValue *out,
-                   const char *function_name)
-{
-    /* accept.unless still carries the dual contract the require split
-     * removed: one name, predicate chosen by the argument's runtime kind.
-     * Retained knowingly — see the @revisit on accept.unless in the
-     * declaration; splitting it is a separate migration. */
-    if (isResult(value) || isEffectResult(value))
-        return take_result_present(ctx, value, out, function_name);
-    return take_truthy_value(ctx, value, out, function_name);
-}
-
 
 JSValue
 // @binding provider:rollback.requirePresent
@@ -252,7 +236,8 @@ js_rollback_require_present(JSContext *ctx, JSValueConst this_val,
 
     JSValue present = JS_UNDEFINED;
     int const status = take_result_present(
-        ctx, argv[0], &present, "rollback.requirePresent");
+        ctx, argv[0], &present, "rollback.requirePresent",
+        "rollback.requireTruthy");
     if (status < 0)
         return JS_EXCEPTION;
     if (status > 0)
@@ -276,7 +261,8 @@ js_rollback_require_truthy(JSContext *ctx, JSValueConst this_val,
 
     JSValue present = JS_UNDEFINED;
     int const status = take_truthy_value(
-        ctx, argv[0], &present, "rollback.requireTruthy");
+        ctx, argv[0], &present, "rollback.requireTruthy",
+        "rollback.requirePresent");
     if (status < 0)
         return JS_EXCEPTION;
     if (status > 0)
@@ -307,21 +293,43 @@ js_rollback_when(JSContext *ctx, JSValueConst this_val,
 }
 
 JSValue
-// @binding provider:accept.unless
-js_accept_unless(JSContext *ctx, JSValueConst this_val,
-                 int argc, JSValueConst *argv)
+// @binding provider:accept.unlessPresent
+js_accept_unless_present(JSContext *ctx, JSValueConst this_val,
+                         int argc, JSValueConst *argv)
 {
     if (argc < 1)
         return JS_ThrowTypeError(
-            ctx, "accept.unless: expected Result or optional value");
+            ctx, "accept.unlessPresent: expected a provider Result");
 
     JSValue present = JS_UNDEFINED;
-    int const status =
-        take_present_value(ctx, argv[0], &present, "accept.unless");
+    int const status = take_result_present(
+        ctx, argv[0], &present, "accept.unlessPresent",
+        "accept.unlessTruthy");
     if (status < 0)
         return JS_EXCEPTION;
     if (status > 0)
         return present;
+    return call_lifecycle(
+        ctx, this_val, argc, argv, 1, js_hook_accept);
+}
+
+JSValue
+// @binding provider:accept.unlessTruthy
+js_accept_unless_truthy(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv)
+{
+    if (argc < 1)
+        return JS_ThrowTypeError(
+            ctx, "accept.unlessTruthy: expected a direct value");
+
+    JSValue truthy = JS_UNDEFINED;
+    int const status = take_truthy_value(
+        ctx, argv[0], &truthy, "accept.unlessTruthy",
+        "accept.unlessPresent");
+    if (status < 0)
+        return JS_EXCEPTION;
+    if (status > 0)
+        return truthy;
     return call_lifecycle(
         ctx, this_val, argc, argv, 1, js_hook_accept);
 }
@@ -449,8 +457,12 @@ registerControl(JSContext *ctx, JSValue global)
         ctx, JS_NewCFunction(ctx, js_hook_accept, "accept", 2));
     if (accept.isException())
         return false;
-    if (JS_SetPropertyStr(ctx, accept.get(), "unless",
-            JS_NewCFunction(ctx, js_accept_unless, "unless", 3)) < 0 ||
+    if (JS_SetPropertyStr(ctx, accept.get(), "unlessPresent",
+            JS_NewCFunction(
+                ctx, js_accept_unless_present, "unlessPresent", 3)) < 0 ||
+        JS_SetPropertyStr(ctx, accept.get(), "unlessTruthy",
+            JS_NewCFunction(
+                ctx, js_accept_unless_truthy, "unlessTruthy", 3)) < 0 ||
         JS_SetPropertyStr(ctx, accept.get(), "when",
             JS_NewCFunction(ctx, js_accept_when, "when", 3)) < 0)
         return false;

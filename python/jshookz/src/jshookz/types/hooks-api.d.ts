@@ -2054,16 +2054,27 @@ declare function accept(message?: string | BytesLike | STBlob, code?: number): n
 
 declare namespace accept {
   /**
-   * Continue only if this is present/successful. Otherwise `accept` —
-   * this invocation succeeded and did nothing.
+   * Continue only when this Result succeeded with a present (non-nullish)
+   * value; otherwise `accept` — this invocation is done, nothing to act
+   * on. Falsy-but-present successes (`0`, `0n`, `false`, and `""`) are
+   * values and continue.
    * There is no `accept.require`; that name is a compile error on purpose.
    */
-  function unless<T, Error>(
+  function unlessPresent<T, Error>(
     result: Result<T, Error>,
     message?: string | BytesLike | STBlob,
     code?: number,
+    ...voidResultsAreIneligible: [T] extends [void]
+      ? [void] extends [T]
+        ? [never]
+        : []
+      : []
   ): Exclude<T, null | undefined>;
-  function unless<T>(
+  /**
+   * Continue only when this direct value is truthy; otherwise `accept`.
+   * `false`, `0`, `0n`, `""`, `null`, `undefined`, and `NaN` accept.
+   */
+  function unlessTruthy<T>(
     value: T,
     message?: string | BytesLike | STBlob,
     code?: number,
