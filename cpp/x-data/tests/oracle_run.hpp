@@ -1,5 +1,7 @@
 #pragma once
 
+#include "catl/xdata/amount-view.h"
+#include "catl/xdata/certified-index.h"
 #include "catl/xdata/codecs/codecs.h"
 #include "catl/xdata/json-visitor.h"
 #include "catl/xdata/parser-context.h"
@@ -163,12 +165,14 @@ struct Outcomes
     bool decode_frames_ok = false;
     bool names_ok = true;
     bool json_ok = true;
+    bool amount_parts_ok = true;
     bool consumed_all = false;
     std::string locate_err;
     std::string certify_err;
     std::string decode_err;
     std::string names_err;
     std::string json_err;
+    std::string amount_parts_err;
     std::size_t frame_count = 0;
     std::uint32_t locate_end = 0;
     std::uint32_t certify_end = 0;
@@ -277,22 +281,18 @@ json_equiv(boost::json::value const& got, boost::json::value const& want)
 }
 
 inline bool
-decode_leaf_frames(
-    catl::xdata::Protocol const& protocol,
-    std::uint8_t const* bytes,
-    std::size_t size,
-    std::vector<catl::xdata::FieldFrame> const& frames,
-    std::string& err)
+decode_leaf_frames(catl::xdata::CertifiedIndex const& idx, std::string& err)
 {
     using namespace catl::xdata;
-    for (auto const& f : frames)
+    for (size_t i = 0; i < idx.frame_count(); ++i)
     {
-        if (f.wire_end < f.payload_begin || f.wire_end > size)
+        FieldFrame const& f = idx.frame(i);
+        if (f.wire_end < f.payload_begin || f.wire_end > idx.backing().size())
         {
             err = "frame out of range";
             return false;
         }
-        FieldDef const* field = protocol.get_field_by_code(f.field_code);
+        FieldDef const* field = idx.protocol().get_field_by_code(f.field_code);
         if (!field)
         {
             err = "missing field def";
@@ -301,10 +301,25 @@ decode_leaf_frames(
         auto const& t = field->meta.type;
         if (t == FieldTypes::STObject || t == FieldTypes::STArray)
             continue;
-        Slice payload{bytes + f.payload_begin, f.wire_end - f.payload_begin};
+        if (t == FieldTypes::Amount)
+        {
+            auto view = AmountView::bind(idx, i);
+            if (!view)
+            {
+                err = "amount bind failed";
+                return false;
+            }
+            (void)codecs::AmountCodec::json_from_parts(
+                view->parts(), view->payload());
+            continue;
+        }
+        Slice payload{
+            idx.backing().data() + f.payload_begin,
+            f.wire_end - f.payload_begin};
         try
         {
-            (void)codecs::decode_field_value(*field, payload, protocol);
+            (void)codecs::decode_field_value(
+                *field, payload, idx.protocol());
         }
         catch (std::exception const& e)
         {
@@ -316,18 +331,78 @@ decode_leaf_frames(
 }
 
 inline bool
+compare_amount_parts(
+    catl::xdata::CertifiedIndex const& idx,
+    boost::json::value const* fields,
+    std::string& err)
+{
+    using namespace catl::xdata;
+    if (!fields || !fields->is_array())
+        return true;
+    for (auto const& item : fields->as_array())
+    {
+        if (!item.is_object())
+            continue;
+        auto const& o = item.as_object();
+        auto const* parts = o.if_contains("parts");
+        if (!parts || !parts->is_object())
+            continue;
+        std::string want_name;
+        if (auto const* n = o.if_contains("name"); n && n->is_string())
+            want_name = std::string(n->as_string());
+        bool matched = false;
+        for (size_t i = 0; i < idx.frame_count(); ++i)
+        {
+            FieldDef const* field =
+                idx.protocol().get_field_by_code(idx.frame(i).field_code);
+            if (!field || field->meta.type != FieldTypes::Amount)
+                continue;
+            if (!want_name.empty() && field->name != want_name)
+                continue;
+            auto view = AmountView::bind(idx, i);
+            if (!view)
+            {
+                err = "amount bind failed for " + field->name;
+                return false;
+            }
+            auto got = codecs::AmountCodec::oracle_parts(view->parts());
+            if (!json_equiv(got, *parts))
+            {
+                err = "amount parts mismatch for " + field->name +
+                    " got=" + boost::json::serialize(got) +
+                    " want=" + boost::json::serialize(*parts);
+                return false;
+            }
+            matched = true;
+            break;
+        }
+        if (!matched && !want_name.empty())
+        {
+            err = "no Amount frame for " + want_name;
+            return false;
+        }
+        if (!matched)
+        {
+            err = "oracle Amount parts with no bindable frame";
+            return false;
+        }
+    }
+    return true;
+}
+
+inline bool
 compare_frame_names(
-    catl::xdata::Protocol const& protocol,
-    std::vector<catl::xdata::FieldFrame> const& frames,
+    catl::xdata::CertifiedIndex const& idx,
     boost::json::value const* fields,
     std::string& err)
 {
     if (!fields)
         return true;
     std::set<std::string> got;
-    for (auto const& f : frames)
+    for (size_t i = 0; i < idx.frame_count(); ++i)
     {
-        auto const* field = protocol.get_field_by_code(f.field_code);
+        auto const* field =
+            idx.protocol().get_field_by_code(idx.frame(i).field_code);
         if (!field)
         {
             err = "frame missing field def";
@@ -409,20 +484,19 @@ run_stobject(
     else
         o.certify_err = cn.error().message;
 
-    IndexSink index_sink;
-    auto ci = scan_scope<ScanMode::CertifyWire>(backing, 0, protocol, index_sink);
-    o.certify_index_ok = ci.has_value();
+    auto idx = certify_indexed(backing, 0, protocol);
+    o.certify_index_ok = idx.has_value();
     o.sinks_agree = o.certify_null_ok == o.certify_index_ok;
-    o.frame_count = index_sink.frames.size();
+    o.frame_count = idx ? idx->frame_count() : 0;
     o.consumed_all = o.locate_ok && o.certify_null_ok &&
         o.locate_end == bytes.size() && o.certify_end == bytes.size();
 
-    if (o.certify_index_ok)
+    if (idx)
     {
-        o.decode_frames_ok = decode_leaf_frames(
-            protocol, bytes.data(), bytes.size(), index_sink.frames, o.decode_err);
-        o.names_ok = compare_frame_names(
-            protocol, index_sink.frames, fields, o.names_err);
+        o.decode_frames_ok = decode_leaf_frames(*idx, o.decode_err);
+        o.names_ok = compare_frame_names(*idx, fields, o.names_err);
+        o.amount_parts_ok =
+            compare_amount_parts(*idx, fields, o.amount_parts_err);
         auto canon = canonical_hex.empty() ? std::vector<std::uint8_t>{}
                                            : decode_hex(canonical_hex);
         Slice json_backing = canon.empty() ? backing
@@ -433,7 +507,10 @@ run_stobject(
 }
 
 inline Outcomes
-run_amount(std::string_view hex)
+run_amount(
+    catl::xdata::Protocol const& protocol,
+    std::string_view hex,
+    boost::json::value const* fields = nullptr)
 {
     using namespace catl::xdata;
     Outcomes o;
@@ -444,29 +521,35 @@ run_amount(std::string_view hex)
         o.locate_err = "empty";
         return o;
     }
-    size_t n = get_amount_size(bytes[0]);
+    Slice payload{bytes.data(), bytes.size()};
+    size_t n = AmountRules::extent(bytes[0]);
     o.locate_ok = bytes.size() == n;
     o.locate_end = o.locate_ok ? static_cast<std::uint32_t>(bytes.size()) : 0;
-    char const* c =
-        scan_detail::certify_amount(Slice{bytes.data(), bytes.size()});
+    char const* c = AmountRules::certify(payload);
     o.certify_null_ok = c == nullptr;
-    o.certify_index_ok = o.certify_null_ok;
-    o.sinks_agree = true;
-    o.consumed_all = o.locate_ok && o.certify_null_ok;
     if (c)
         o.certify_err = c;
     if (!o.locate_ok)
         o.locate_err = "amount extent mismatch";
-    if (o.certify_null_ok)
+    auto idx = certify_amount_span(payload, protocol);
+    o.certify_index_ok = idx.has_value();
+    o.sinks_agree = o.certify_null_ok == o.certify_index_ok;
+    o.consumed_all = o.locate_ok && o.certify_null_ok;
+    if (idx)
     {
-        try
+        o.frame_count = idx->frame_count();
+        auto view = AmountView::bind(*idx, 0);
+        if (!view)
         {
-            (void)codecs::AmountCodec::decode(Slice{bytes.data(), bytes.size()});
-            o.decode_frames_ok = true;
+            o.decode_err = "amount bind failed";
         }
-        catch (std::exception const& e)
+        else
         {
-            o.decode_err = e.what();
+            (void)codecs::AmountCodec::json_from_parts(
+                view->parts(), view->payload());
+            o.decode_frames_ok = true;
+            o.amount_parts_ok =
+                compare_amount_parts(*idx, fields, o.amount_parts_err);
         }
     }
     return o;

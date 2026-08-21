@@ -1,8 +1,10 @@
 #pragma once
 
+#include "catl/xdata/amount-rules.h"
 #include "catl/xdata/codec-error.h"
 #include "catl/xdata/codecs/account_id.h"
 #include "catl/xdata/codecs/currency.h"
+#include "catl/xdata/hex.h"
 #include "catl/xdata/serializer.h"
 #include "catl/xdata/types/amount.h"
 #include "catl/xdata/types/iou-value.h"
@@ -221,44 +223,93 @@ struct AmountCodec
         }
     }
 
-    // Decode binary amount to JSON
+    static boost::json::value
+    json_from_parts(AmountRules::Parts const& p, Slice const& payload)
+    {
+        using Kind = AmountRules::Kind;
+        if (p.kind == Kind::Native)
+        {
+            std::string s = std::to_string(p.magnitude);
+            if (p.negative && p.magnitude != 0)
+                s.insert(s.begin(), '-');
+            return boost::json::string(s);
+        }
+        if (p.kind == Kind::Mpt)
+        {
+            boost::json::object obj;
+            obj["value"] = boost::json::string(std::to_string(p.magnitude));
+            if (p.mpt_id.size() == 24)
+            {
+                obj["mpt_issuance_id"] = boost::json::string(
+                    hex_encode(p.mpt_id.data(), p.mpt_id.size()));
+            }
+            return obj;
+        }
+        boost::json::object obj;
+        if (p.currency.size() == 20)
+            obj["currency"] = CurrencyCodec::decode(p.currency);
+        if (payload.size() >= 8)
+        {
+            IOUValue iou = IOUValue::from_bytes(payload.data());
+            obj["value"] = boost::json::string(iou.to_string());
+        }
+        if (p.issuer.size() == 20)
+        {
+            obj["issuer"] = boost::json::string(
+                base58::encode_account_id(p.issuer.data(), 20));
+        }
+        return obj;
+    }
+
+    static boost::json::object
+    oracle_parts(AmountRules::Parts const& p)
+    {
+        using Kind = AmountRules::Kind;
+        boost::json::object o;
+        if (p.kind == Kind::Native)
+        {
+            o["type"] = "native";
+            o["drops"] = std::to_string(p.magnitude);
+            o["negative"] = p.negative;
+            return o;
+        }
+        if (p.kind == Kind::Mpt)
+        {
+            o["type"] = "mpt";
+            o["value"] = std::to_string(p.magnitude);
+            o["negative"] = p.negative;
+            if (p.mpt_id.size() == 24)
+                o["mpt_id"] = hex_encode(p.mpt_id.data(), p.mpt_id.size());
+            return o;
+        }
+        o["type"] = "iou";
+        if (p.currency.size() == 20)
+            o["currency"] = CurrencyCodec::decode(p.currency);
+        if (p.issuer.size() == 20)
+        {
+            o["issuer"] =
+                base58::encode_account_id(p.issuer.data(), 20);
+        }
+        if (p.zero)
+        {
+            o["zero"] = true;
+            return o;
+        }
+        o["negative"] = p.negative;
+        o["exponent"] = std::to_string(p.exponent);
+        o["mantissa"] = std::to_string(p.magnitude);
+        return o;
+    }
+
+    // Decode binary amount to JSON via AmountRules, not a second walk.
     static boost::json::value
     decode(Slice const& data)
     {
-        if (is_native_amount(data))
+        if (char const* e = AmountRules::certify(data))
         {
-            return boost::json::string(parse_native_drops_string(data));
+            CATL_XDATA_THROW(std::runtime_error(e));
         }
-        // IOU: 48 bytes
-        if (data.size() == 48)
-        {
-            IOUValue iou = IOUValue::from_bytes(data.data());
-            Slice currency_slice = get_currency_raw(data);
-            std::string issuer =
-                base58::encode_account_id(data.data() + 28, 20);
-
-            boost::json::object obj;
-            obj["currency"] = CurrencyCodec::decode(currency_slice);
-            obj["value"] = boost::json::string(iou.to_string());
-            obj["issuer"] = boost::json::string(issuer);
-            return obj;
-        }
-        // MPT: 33 bytes (1 flag + 8 value + 24 mptid)
-        if (data.size() == 33)
-        {
-            uint64_t val = 0;
-            for (int i = 1; i < 9; ++i)
-            {
-                val = (val << 8) | data.data()[i];
-            }
-            boost::json::object obj;
-            obj["value"] = boost::json::string(std::to_string(val));
-            obj["mpt_issuance_id"] =
-                boost::json::string(hex_encode(data.data() + 9, 24));
-            return obj;
-        }
-        // Fallback
-        return boost::json::string(hex_encode(data));
+        return json_from_parts(AmountRules::parts(data), data);
     }
 #endif
 

@@ -34,7 +34,7 @@ run_case(Protocol const& protocol, boost::json::object const& c)
     auto const type = std::string(c.at("codec_type").as_string());
     auto const blob = std::string(c.at("blob").as_string());
     if (type == "amount")
-        return oracle_run::run_amount(blob);
+        return oracle_run::run_amount(protocol, blob, c.if_contains("fields"));
     if (type == "pathset")
         return oracle_run::run_pathset(blob);
     auto const* fields = c.if_contains("fields");
@@ -103,6 +103,8 @@ TEST(ScanCorpus, LocateCertifyDecodeMatchOracleExpect)
             EXPECT_TRUE(o.decode_frames_ok)
                 << id << " decode " << o.decode_err;
             EXPECT_TRUE(o.names_ok) << id << " names " << o.names_err;
+            EXPECT_TRUE(o.amount_parts_ok)
+                << id << " parts " << o.amount_parts_err;
             if (!header_enum)
             {
                 EXPECT_TRUE(o.json_ok) << id << " json " << o.json_err;
@@ -145,6 +147,11 @@ TEST(ScanCorpus, RequiredIdsPresent)
              "stobject-pathset-truncated",
              "stobject-native-amount",
              "stobject-iou-amount",
+             "amount-native-zero",
+             "amount-native-negative",
+             "amount-native-neg-zero",
+             "stobject-iou-negative",
+             "amount-mpt-negative",
              "stobject-vl-blob",
              "stobject-nested-memos",
              "stobject-array-nop-1",

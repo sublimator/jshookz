@@ -1,10 +1,10 @@
 #pragma once
 
+#include "catl/xdata/amount-rules.h"
 #include "catl/xdata/codec-error.h"
 #include "catl/xdata/parser-context.h"
 #include "catl/xdata/protocol.h"
 #include "catl/xdata/types.h"
-#include "catl/xdata/types/amount.h"
 #include "catl/xdata/types/issue.h"
 #include "catl/xdata/types/pathset.h"
 
@@ -54,15 +54,6 @@ inline bool
 fits_u32(size_t n)
 {
     return n <= 0xffffffffu;
-}
-
-inline uint64_t
-read_be64(uint8_t const* p)
-{
-    uint64_t v = 0;
-    for (int i = 0; i < 8; ++i)
-        v = (v << 8) | p[i];
-    return v;
 }
 
 inline bool
@@ -139,57 +130,6 @@ certify_issue(Slice payload)
     if (native_currency != native_account)
         return "invalid issue: currency and account native mismatch";
     return nullptr;
-}
-
-inline char const*
-certify_amount(Slice payload)
-{
-    if (payload.size() < 8)
-        return "truncated Amount";
-    uint64_t const value = read_be64(payload.data());
-    constexpr uint64_t kIssued = 0x8000000000000000ull;
-    constexpr uint64_t kPositive = 0x4000000000000000ull;
-    constexpr uint64_t kMpt = 0x2000000000000000ull;
-    constexpr uint64_t kValueMask = ~(kPositive | kMpt);
-    constexpr uint64_t kMinMant = 1000000000000000ull;
-    constexpr uint64_t kMaxMant = 9999999999999999ull;
-
-    // xahaud-vectors:src/libxrpl/protocol/STAmount.cpp:117
-    if ((value & kIssued) == 0)
-    {
-        if ((value & kMpt) != 0)
-            return payload.size() != 33 ? "MPT Amount size" : nullptr;
-        if (payload.size() != 8)
-            return "native Amount size";
-        if ((value & kPositive) != 0)
-            return nullptr;
-        // xahaud-vectors:src/libxrpl/protocol/STAmount.cpp:140
-        if ((value & kValueMask) == 0)
-            return "negative zero is not canonical";
-        return nullptr;
-    }
-
-    if (payload.size() != 48)
-        return "IOU Amount size";
-    uint8_t const* currency = payload.data() + 8;
-    uint8_t const* account = payload.data() + 28;
-    // xahaud-vectors:src/libxrpl/protocol/STAmount.cpp:153
-    if (all_zero20(currency))
-        return "invalid native currency";
-    // xahaud-vectors:src/libxrpl/protocol/STAmount.cpp:158
-    if (all_zero20(account))
-        return "invalid native account";
-
-    int offset = static_cast<int>(value >> (64 - 10));
-    uint64_t mant = value & ~(1023ull << (64 - 10));
-    if (mant)
-    {
-        offset = (offset & 255) - 97;
-        if (mant < kMinMant || mant > kMaxMant || offset < -96 || offset > 80)
-            return "invalid currency value";
-        return nullptr;
-    }
-    return offset != 512 ? "invalid currency value" : nullptr;
 }
 
 template <bool Track>
@@ -583,7 +523,7 @@ scan_object(
             uint8_t first = 0;
             if (!ctx.peek_u8(first))
                 return;
-            size_t const n = get_amount_size(first);
+            size_t const n = AmountRules::extent(first);
             if (ctx.remaining() < n)
             {
                 ctx.fail("truncated Amount");
@@ -592,7 +532,7 @@ scan_object(
             Slice payload{ctx.at(), n};
             if constexpr (M == ScanMode::CertifyWire)
             {
-                if (char const* e = certify_amount(payload))
+                if (char const* e = AmountRules::certify(payload))
                 {
                     ctx.fail(e);
                     return;

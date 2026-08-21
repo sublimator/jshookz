@@ -1,6 +1,7 @@
 #pragma once
 
 #include "catl/core/types.h"  // for Slice
+#include "catl/xdata/amount-rules.h"
 #include "catl/xdata/exception_policy.h"
 #include <cstddef>
 #include <cstdint>
@@ -16,11 +17,7 @@ static constexpr uint8_t NATIVE_CURRENCY[20] = {0};
 inline size_t
 get_amount_size(uint8_t first_byte)
 {
-    if (first_byte & 0x80)
-        return 48;  // IOU: 8 value + 20 currency + 20 issuer
-    if (first_byte & 0x20)
-        return 33;  // MPT: 1 flag + 8 value + 24 MPTID
-    return 8;       // Native (XRP/XAH): 8 bytes
+    return AmountRules::extent(first_byte);
 }
 
 // Check if an amount is native (XRP/XAH) or IOU

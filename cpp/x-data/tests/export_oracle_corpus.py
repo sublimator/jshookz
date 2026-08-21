@@ -215,6 +215,65 @@ def main() -> int:
     cases.append(case("amount-native", native, expect="accept", codec_type="amount",
                       json_src="1000000"))
 
+    native0 = encode('"0"', "amount")
+    cases.append(case("amount-native-zero", native0, expect="accept", codec_type="amount",
+                      json_src="0", notes="Positive native zero."))
+
+    native_neg = encode('"-1000000"', "amount")
+    cases.append(case("amount-native-negative", native_neg, expect="accept",
+                      codec_type="amount", json_src="-1000000"))
+
+    cases.append(case("amount-native-neg-zero", "0000000000000000", expect="reject",
+                      codec_type="amount",
+                      notes="Native zero without positive bit is not canonical."))
+
+    cases.append(case("amount-native-trunc", "40000000000F42", expect="reject",
+                      codec_type="amount", notes="7-byte native payload."))
+
+    st_neg = encode(json.dumps({"Account": GENESIS, "Amount": "-5"}))
+    cases.append(case("stobject-native-negative", st_neg, expect="accept",
+                      json_src={"Account": GENESIS, "Amount": "-5"}))
+
+    iou_neg = {"value": "-1", "currency": "USD", "issuer": GENESIS}
+    iou_neg_obj = encode(json.dumps({"Account": GENESIS, "Amount": iou_neg}))
+    cases.append(case("stobject-iou-negative", iou_neg_obj, expect="accept",
+                      json_src={"Account": GENESIS, "Amount": iou_neg}))
+
+    # IOU with XRP currency is native-currency and rejected.
+    bad_cur = (
+        "61D4838D7EA4C68000" + ZERO20 + GENESIS_HEX
+        + "8114" + GENESIS_HEX
+    )
+    cases.append(case("stobject-iou-native-currency", bad_cur, expect="reject",
+                      notes="IOU currency all-zero (native) is rejected."))
+
+    # Mantissa 1 is below cMinValue.
+    tiny_mant = (
+        "61C000000000000001" + USD_CURRENCY + GENESIS_HEX
+        + "8114" + GENESIS_HEX
+    )
+    cases.append(case("stobject-iou-tiny-mantissa", tiny_mant, expect="reject",
+                      notes="IOU mantissa 1 is not canonical."))
+
+    mpt0 = {
+        "value": "0",
+        "mpt_issuance_id": "000000000000000000000000000000000000000000000000",
+    }
+    mpt0_blob = encode(json.dumps(mpt0), "amount")
+    cases.append(case("amount-mpt-zero", mpt0_blob, expect="accept",
+                      codec_type="amount", json_src=mpt0))
+
+    mpt_neg = {
+        "value": "-1",
+        "mpt_issuance_id": "000000000000000000000000000000000000000000000000",
+    }
+    mpt_neg_blob = encode(json.dumps(mpt_neg), "amount")
+    cases.append(case("amount-mpt-negative", mpt_neg_blob, expect="accept",
+                      codec_type="amount", json_src=mpt_neg))
+
+    cases.append(case("amount-mpt-trunc", mpt_blob[:64], expect="reject",
+                      codec_type="amount", notes="32-byte truncated MPT."))
+
     blob_obj = encode(json.dumps({"Account": GENESIS, "Blob": "DEAD"}))
     cases.append(case("stobject-vl-blob", blob_obj, expect="accept",
                       json_src={"Account": GENESIS, "Blob": "DEAD"}))

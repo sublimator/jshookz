@@ -90,6 +90,10 @@ if(BUILD_TESTING)
         target_link_libraries(test_parser_context PRIVATE jshookz_xdata GTest::gtest_main)
         gtest_discover_tests(test_parser_context DISCOVERY_TIMEOUT 30)
 
+        add_executable(test_amount_view tests/test_amount_view.cpp)
+        target_link_libraries(test_amount_view PRIVATE jshookz_xdata GTest::gtest_main)
+        gtest_discover_tests(test_amount_view DISCOVERY_TIMEOUT 30)
+
         add_executable(test_scan_recover tests/scan_recover_wasm.cpp)
         target_link_libraries(test_scan_recover PRIVATE jshookz_xdata)
         add_test(NAME test_scan_recover

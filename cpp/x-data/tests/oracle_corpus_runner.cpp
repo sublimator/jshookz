@@ -55,7 +55,7 @@ main(int argc, char** argv)
         }
         oracle_run::Outcomes o;
         if (type == "amount")
-            o = oracle_run::run_amount(blob);
+            o = oracle_run::run_amount(protocol, blob, c.if_contains("fields"));
         else if (type == "pathset")
             o = oracle_run::run_pathset(blob);
         else
@@ -79,7 +79,8 @@ main(int argc, char** argv)
                  ? certify_ok
                  : (expect == "accept"
                         ? (o.locate_ok && certify_ok && o.decode_frames_ok &&
-                           o.names_ok && (header_enum || o.json_ok) &&
+                           o.names_ok && o.amount_parts_ok &&
+                           (header_enum || o.json_ok) &&
                            (trailing_ok || o.consumed_all))
                         : !certify_ok));
         if (!pass)
@@ -99,6 +100,8 @@ main(int argc, char** argv)
             std::cout << " json_err=" << o.json_err;
         if (!o.names_err.empty())
             std::cout << " names_err=" << o.names_err;
+        if (!o.amount_parts_err.empty())
+            std::cout << " parts_err=" << o.amount_parts_err;
         std::cout << "\n";
     }
     std::cout << "fallbacks=" << protocol.fast_lookup_fallback_count()

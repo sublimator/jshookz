@@ -3,6 +3,8 @@
 // path and materializes every leaf with shipped decode_raw / AccountID
 // decode_string_expected / Amount certify — not a skip visitor.
 
+#include "catl/xdata/amount-view.h"
+#include "catl/xdata/certified-index.h"
 #include "catl/xdata/codecs/account_id.h"
 #include "catl/xdata/codecs/int.h"
 #include "catl/xdata/codecs/uint.h"
@@ -68,7 +70,7 @@ struct MaterializeVisitor
         }
         else if (t == FieldTypes::Amount)
         {
-            (void)scan_detail::certify_amount(d);
+            (void)catl::xdata::AmountRules::certify(d);
             if (d.size() >= 8)
             {
                 uint64_t v = 0;
@@ -93,6 +95,11 @@ constexpr uint8_t kBlob[] = {
     0x81, 0x14, 0xB5, 0xF7, 0x62, 0x79, 0x8A, 0x53, 0xD5, 0x43, 0xA0, 0x14,
     0xCA, 0xF8, 0xB2, 0x97, 0xCF, 0xF8, 0xF2, 0xF9, 0x37, 0xE8, 0xF9, 0xEA,
     0x7D, 0x02, 0xDE, 0xAD, 0xE1, 0xF1};
+
+constexpr uint8_t kAmountObj[] = {
+    0x61, 0x40, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x42, 0x40, 0x81, 0x14,
+    0xb5, 0xf7, 0x62, 0x79, 0x8a, 0x53, 0xd5, 0x43, 0xa0, 0x14, 0xca,
+    0xf8, 0xb2, 0x97, 0xcf, 0xf8, 0xf2, 0xf9, 0x37, 0xe8};
 
 }  // namespace
 
@@ -146,6 +153,33 @@ main(int argc, char** argv)
         }
         std::puts("full_eager_decode");
     };
+    Slice amount_backing{kAmountObj, sizeof(kAmountObj)};
+    auto view_repeat = [&] {
+        auto certified = certify_indexed(amount_backing, 0, protocol);
+        if (!certified)
+        {
+            std::puts("FAIL certify_indexed");
+            return;
+        }
+        size_t amt = certified->frame_count();
+        for (size_t i = 0; i < certified->frame_count(); ++i)
+        {
+            auto const* f = protocol.get_field_by_code(
+                certified->frame(i).field_code);
+            if (f && f->meta.type == FieldTypes::Amount)
+            {
+                amt = i;
+                break;
+            }
+        }
+        for (int i = 0; i < kIters; ++i)
+        {
+            auto v = AmountView::bind(*certified, amt);
+            if (v)
+                sink += v->parts().magnitude;
+        }
+        std::puts("amount_view_repeat");
+    };
 
     if (which[0] == '0' || std::strcmp(which, "locate_no_index") == 0)
         loc();
@@ -155,12 +189,15 @@ main(int argc, char** argv)
         idx();
     else if (which[0] == '3' || std::strcmp(which, "full_eager_decode") == 0)
         eager();
+    else if (which[0] == '4' || std::strcmp(which, "amount_view_repeat") == 0)
+        view_repeat();
     else
     {
         loc();
         cert();
         idx();
         eager();
+        view_repeat();
     }
     if (sink == 0xffffffffffffull)
         std::puts("never");

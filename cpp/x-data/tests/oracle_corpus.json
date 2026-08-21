@@ -476,6 +476,220 @@
       "oracle_codec_type": "amount"
     },
     {
+      "id": "amount-native-zero",
+      "expect": "accept",
+      "codec_type": "amount",
+      "blob": "4000000000000000",
+      "notes": "Positive native zero.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": "0",
+      "canonical_blob": "4000000000000000",
+      "fields": [
+        {
+          "parts": {
+            "drops": "0",
+            "negative": false,
+            "type": "native"
+          },
+          "value": "4000000000000000"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "amount"
+    },
+    {
+      "id": "amount-native-negative",
+      "expect": "accept",
+      "codec_type": "amount",
+      "blob": "00000000000F4240",
+      "notes": "",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": "-1000000",
+      "canonical_blob": "00000000000F4240",
+      "fields": [
+        {
+          "parts": {
+            "drops": "1000000",
+            "negative": true,
+            "type": "native"
+          },
+          "value": "00000000000F4240"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "amount"
+    },
+    {
+      "id": "amount-native-neg-zero",
+      "expect": "reject",
+      "codec_type": "amount",
+      "blob": "0000000000000000",
+      "notes": "Native zero without positive bit is not canonical.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: negative zero is not canonical"
+    },
+    {
+      "id": "amount-native-trunc",
+      "expect": "reject",
+      "codec_type": "amount",
+      "blob": "40000000000F42",
+      "notes": "7-byte native payload.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter get64"
+    },
+    {
+      "id": "stobject-native-negative",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "6100000000000000058114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": {
+        "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+        "Amount": "-5"
+      },
+      "canonical_blob": "6100000000000000058114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "fields": [
+        {
+          "header": "61",
+          "name": "Amount",
+          "parts": {
+            "drops": "5",
+            "negative": true,
+            "type": "native"
+          },
+          "value": "0000000000000005"
+        },
+        {
+          "header": "81",
+          "name": "Account",
+          "value": "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+          "vl": "14"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "stobject-iou-negative",
+      "expect": "accept",
+      "codec_type": "stobject",
+      "blob": "6194838D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E88114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": {
+        "Account": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+        "Amount": {
+          "value": "-1",
+          "currency": "USD",
+          "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+        }
+      },
+      "canonical_blob": "6194838D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E88114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "fields": [
+        {
+          "header": "61",
+          "name": "Amount",
+          "parts": {
+            "currency": "USD",
+            "exponent": "-15",
+            "issuer": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+            "mantissa": "1000000000000000",
+            "negative": true,
+            "type": "iou"
+          },
+          "value": "94838D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        },
+        {
+          "header": "81",
+          "name": "Account",
+          "value": "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+          "vl": "14"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "stobject"
+    },
+    {
+      "id": "stobject-iou-native-currency",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "61D4838D7EA4C680000000000000000000000000000000000000000000B5F762798A53D543A014CAF8B297CFF8F2F937E88114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "IOU currency all-zero (native) is rejected.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid native currency"
+    },
+    {
+      "id": "stobject-iou-tiny-mantissa",
+      "expect": "reject",
+      "codec_type": "stobject",
+      "blob": "61C0000000000000010000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E88114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+      "notes": "IOU mantissa 1 is not canonical.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid currency value"
+    },
+    {
+      "id": "amount-mpt-zero",
+      "expect": "accept",
+      "codec_type": "amount",
+      "blob": "600000000000000000000000000000000000000000000000000000000000000000",
+      "notes": "",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": {
+        "value": "0",
+        "mpt_issuance_id": "000000000000000000000000000000000000000000000000"
+      },
+      "canonical_blob": "600000000000000000000000000000000000000000000000000000000000000000",
+      "fields": [
+        {
+          "parts": {
+            "mpt_id": "000000000000000000000000000000000000000000000000",
+            "negative": false,
+            "type": "mpt",
+            "value": "0"
+          },
+          "value": "600000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "amount"
+    },
+    {
+      "id": "amount-mpt-negative",
+      "expect": "accept",
+      "codec_type": "amount",
+      "blob": "200000000000000001000000000000000000000000000000000000000000000000",
+      "notes": "",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "json": {
+        "value": "-1",
+        "mpt_issuance_id": "000000000000000000000000000000000000000000000000"
+      },
+      "canonical_blob": "200000000000000001000000000000000000000000000000000000000000000000",
+      "fields": [
+        {
+          "parts": {
+            "mpt_id": "000000000000000000000000000000000000000000000000",
+            "negative": true,
+            "type": "mpt",
+            "value": "1"
+          },
+          "value": "200000000000000001000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "oracle_branch": "hookz-test-vectors",
+      "oracle_codec_type": "amount"
+    },
+    {
+      "id": "amount-mpt-trunc",
+      "expect": "reject",
+      "codec_type": "amount",
+      "blob": "6000000000000000010000000000000000000000000000000000000000000000",
+      "notes": "32-byte truncated MPT.",
+      "oracle_commit": "cb829d7657607643f0bdc29c65f9a41fbd86a688",
+      "oracle_error": "Error decoding: invalid SerialIter getBitString"
+    },
+    {
       "id": "stobject-vl-blob",
       "expect": "accept",
       "codec_type": "stobject",
