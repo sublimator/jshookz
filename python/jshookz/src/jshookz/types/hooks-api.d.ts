@@ -498,17 +498,29 @@ declare class STBlob {
   slice(start: number, end?: number): STBlob;
   toBytes(): Uint8Array;
   toHex(): HexString;
+  /** Asserts exactly 1 byte. */
   toUint8(): number;
+  /** Asserts exactly 4 bytes. */
   toUint32(endian?: "big" | "little"): number;
+  /** Asserts exactly 8 bytes. */
   toUint64(endian?: "big" | "little"): bigint;
+  /** Asserts exactly 8 bytes. */
   toXFL(endian?: "big" | "little"): XFLDecimal;
+  /** Asserts exactly 20 bytes. */
   toAccountID(): AccountID;
+  /** Asserts exactly 20 bytes. */
   toCurrency(): Currency;
+  /** Asserts exactly 16 bytes. */
   toHash128(): Hash128;
+  /** Asserts exactly 20 bytes. */
   toHash160(): Hash160;
+  /** Asserts exactly 24 bytes. */
   toHash192(): Hash192;
+  /** Asserts exactly 32 bytes. */
   toHash256(): Hash256;
+  /** Asserts exactly 48 bytes. */
   toHash384(): Hash384;
+  /** Asserts exactly 64 bytes. */
   toHash512(): Hash512;
   isZero(): boolean;
   /** Whole-value byte equality; values of differing lengths are unequal. */
@@ -519,8 +531,11 @@ declare class STBlob {
   /** Decode an even-length hexadecimal literal. */
   static fromHex(value: HexString): STBlob;
   static concat(...parts: (BytesLike | STBlob)[]): STBlob;
+  /** Asserts an integer in 0..255. */
   static fromUint8(value: number): STBlob;
+  /** Asserts an integer in 0..2**32-1. */
   static fromUint32(value: number, endian?: "big" | "little"): STBlob;
+  /** Asserts an integer in 0..2**64-1. */
   static fromUint64(value: bigint | number, endian?: "big" | "little"): STBlob;
 }
 
@@ -1970,9 +1985,20 @@ declare namespace util {
   /** Concatenate byte parts; string parts are encoded as UTF-8 text. */
   function bytes(...parts: readonly (string | BytePart)[]): STBlob;
   function toRAddress(account: AccountID | BytesLike): string;
+  /**
+   * Asserts a well-formed r-address (checksummed base58); throws
+   * TypeError otherwise. Intended for source literals — no port consumes
+   * r-addresses as data; a Result-shaped variant waits until one does.
+   */
   function fromRAddress(account: string): AccountID;
   function encodeObject(value: STObject): STBlob;
+  /**
+   * Decode ledger-serialized bytes. Assertion form: malformed input
+   * throws TypeError. Gate untrusted bytes with `util.validateObject`
+   * first — the total predicate exists exactly so decode can assert.
+   */
   function decodeObject(value: BytesLike | STBlob): STObject;
+  /** Total validity predicate over serialized-object bytes; never throws. */
   function validateObject(value: BytesLike | STBlob): boolean;
 }
 
