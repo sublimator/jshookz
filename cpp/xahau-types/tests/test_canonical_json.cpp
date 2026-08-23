@@ -747,6 +747,45 @@ TEST(CanonicalJSONOOM, RecursiveObjectArrayRichTreeRetriesInOneRuntime) {
   ASSERT_NE(context, nullptr);
   ASSERT_TRUE(types::registerObjectTypes(context));
 
+  EXPECT_TRUE(JS_IsException(JS_ThrowOutOfMemory(context)));
+  expectOnePendingOOM(context, 0);
+
+  // Warm runtime-owned atoms and shapes on a sacrificial owner. The measured
+  // owner below has never traversed JSON when its source-state baseline is
+  // captured, so retained-block equality also detects illicit cache writes.
+  {
+    LocalValue warmRoot(
+        context, types::makeCertifiedObjectCopy(context, wire, wireSize));
+    ASSERT_FALSE(JS_IsException(warmRoot.get()));
+    void const *warmIdentity = JS_VALUE_GET_PTR(warmRoot.get());
+    LocalValue warmToJSON(context,
+                          JS_GetPropertyStr(context, warmRoot.get(), "toJSON"));
+    LocalValue warmToBytes(
+        context, JS_GetPropertyStr(context, warmRoot.get(), "toBytes"));
+    LocalValue warmMemos(context,
+                         JS_GetPropertyStr(context, warmRoot.get(), "Memos"));
+    LocalValue warmElement(context,
+                           JS_GetPropertyUint32(context, warmMemos.get(), 0));
+    LocalValue warmMemo(context,
+                        JS_GetPropertyStr(context, warmElement.get(), "Memo"));
+    ASSERT_FALSE(JS_IsException(warmToJSON.get()));
+    ASSERT_FALSE(JS_IsException(warmToBytes.get()));
+    ASSERT_FALSE(JS_IsException(warmMemos.get()));
+    ASSERT_FALSE(JS_IsException(warmElement.get()));
+    ASSERT_FALSE(JS_IsException(warmMemo.get()));
+    for (int pass = 0; pass < 2; ++pass) {
+      LocalValue warm(context, JS_Call(context, warmToJSON.get(),
+                                       warmRoot.get(), 0, nullptr));
+      ASSERT_FALSE(JS_IsException(warm.get()));
+      expectJSONValue(context, warm.get(), expectedJSON);
+      expectCertifiedSourceUnchanged(context, warmRoot.get(), warmIdentity,
+                                     warmToBytes.get(), warmMemos.get(),
+                                     warmElement.get(), warmMemo.get(),
+                                     original.data(), wireSize, 0);
+    }
+  }
+  std::size_t const liveAfterWarmOwner = allocator.liveBlocks;
+
   {
     LocalValue root(context,
                     types::makeCertifiedObjectCopy(context, wire, wireSize));
@@ -764,19 +803,6 @@ TEST(CanonicalJSONOOM, RecursiveObjectArrayRichTreeRetriesInOneRuntime) {
     ASSERT_FALSE(JS_IsException(memos.get()));
     ASSERT_FALSE(JS_IsException(element.get()));
     ASSERT_FALSE(JS_IsException(memo.get()));
-
-    EXPECT_TRUE(JS_IsException(JS_ThrowOutOfMemory(context)));
-    expectOnePendingOOM(context, 0);
-
-    for (int pass = 0; pass < 2; ++pass) {
-      LocalValue warm(context,
-                      JS_Call(context, toJSON.get(), root.get(), 0, nullptr));
-      ASSERT_FALSE(JS_IsException(warm.get()));
-      expectJSONValue(context, warm.get(), expectedJSON);
-      expectCertifiedSourceUnchanged(context, root.get(), rootIdentity,
-                                     toBytes.get(), memos.get(), element.get(),
-                                     memo.get(), original.data(), wireSize, 0);
-    }
     std::size_t const liveBefore = allocator.liveBlocks;
 
     std::size_t const requestBefore = allocator.requests;
@@ -822,6 +848,7 @@ TEST(CanonicalJSONOOM, RecursiveObjectArrayRichTreeRetriesInOneRuntime) {
       EXPECT_EQ(allocator.liveBlocks, liveBefore);
     }
   }
+  EXPECT_EQ(allocator.liveBlocks, liveAfterWarmOwner);
 
   types::unregisterObjectTypes(runtime);
   JS_FreeContext(context);
