@@ -10,6 +10,7 @@ set(JSHOOKZ_XDATA_INCLUDE_DIRS
 # Keep dynamic Protocol and embedded_protocol.cpp out of this list.
 set(JSHOOKZ_XDATA_PROVIDER_STATIC_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/static_protocol.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/recursive_index.cpp
 )
 
 set(JSHOOKZ_XDATA_WASM_SOURCES

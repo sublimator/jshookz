@@ -160,6 +160,14 @@ if(BUILD_TESTING)
     _xdata_provider_static_poison(
         pre_main_malloc JSHOOKZ_POISON_MALLOC "C allocation")
 
+    add_executable(test_recursive_index tests/test_recursive_index.cpp)
+    target_link_libraries(test_recursive_index PRIVATE
+        jshookz_xdata GTest::gtest_main)
+    target_compile_options(test_recursive_index PRIVATE
+        -fno-exceptions -fno-rtti)
+    gtest_discover_tests(test_recursive_index
+        DISCOVERY_TIMEOUT 30 DISCOVERY_MODE PRE_TEST)
+
     add_executable(test_pathset_quickjs
         tests/pathset_quickjs_fixture.cpp
         tests/test_pathset_quickjs.cpp

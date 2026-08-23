@@ -3,10 +3,12 @@
 #include <catl/xdata/json-visitor.h>
 #include <catl/xdata/parser.h>
 #include <catl/xdata/protocol.h>
+#include <catl/xdata/recursive_index.h>
 
 #include <boost/json.hpp>
 
 #include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -16,8 +18,22 @@
 #error "JSHOOKZ_ORACLE_CORPUS_JSON is required"
 #endif
 
-int
-main(int argc, char** argv)
+namespace
+{
+
+void *corpus_realloc(void *, void *pointer, std::size_t size) noexcept
+{
+    return std::realloc(pointer, size);
+}
+
+void corpus_free(void *, void *pointer) noexcept
+{
+    std::free(pointer);
+}
+
+} // namespace
+
+int main(int argc, char **argv)
 {
     std::ifstream in(JSHOOKZ_ORACLE_CORPUS_JSON);
     std::ostringstream ss;
@@ -59,9 +75,9 @@ main(int argc, char** argv)
     auto const protocol = catl::xdata::Protocol::load_embedded_xahau_protocol();
 
     int fail = 0;
-    for (auto const& item : root.at("cases").as_array())
+    for (auto const &item : root.at("cases").as_array())
     {
-        auto const& c = item.as_object();
+        auto const &c = item.as_object();
         auto const id = std::string(c.at("id").as_string());
         auto const expect = std::string(c.at("expect").as_string());
         auto const type = std::string(c.at("codec_type").as_string());
@@ -75,28 +91,54 @@ main(int argc, char** argv)
         }
         oracle_run::Outcomes o;
         if (type == "amount")
-            o = oracle_run::run_amount(
-                protocol, blob, c.if_contains("fields"), c.if_contains("json"));
+            o = oracle_run::run_amount(protocol, blob, c.if_contains("fields"),
+                                       c.if_contains("json"));
         else if (type == "pathset")
-            o = oracle_run::run_pathset(
-                protocol, blob, c.if_contains("json"));
+            o = oracle_run::run_pathset(protocol, blob, c.if_contains("json"));
         else
         {
-            auto const* fields = c.if_contains("fields");
-            auto const* js = c.if_contains("json");
+            auto const *fields = c.if_contains("fields");
+            auto const *js = c.if_contains("json");
             std::string canonical;
             if (c.contains("canonical_blob"))
                 canonical = std::string(c.at("canonical_blob").as_string());
             o = oracle_run::run_stobject(protocol, blob, fields, js, canonical);
         }
 
+        bool recursive_agree = true;
+        if (type == "stobject")
+        {
+            auto const wire = oracle_run::decode_hex(blob);
+            Slice const backing{wire.data(), wire.size()};
+            auto const recursive =
+                catl::xdata::constructor_parity_scan(backing, 0, {});
+            recursive_agree =
+                recursive.status.ok() == o.certify_null_ok &&
+                (!recursive.status.ok() || recursive.consumed == o.locate_end);
+
+            catl::xdata::ScanAllocator const allocator{nullptr, corpus_realloc,
+                                                       corpus_free};
+            auto indexed = catl::xdata::constructor_parity_index(backing, 0, {},
+                                                                 allocator);
+            recursive_agree =
+                recursive_agree &&
+                indexed.status.ok() == recursive.status.ok() &&
+                (!indexed.status.ok() ||
+                 (indexed.consumed == recursive.consumed &&
+                  catl::xdata::RecursiveIndexView{
+                      indexed.index, indexed.index_size, indexed.consumed}
+                      .structurally_valid()));
+            if (indexed.index != nullptr)
+                allocator.free(allocator.opaque, indexed.index);
+        }
+
         bool const trailing_ok =
             c.contains("trailing_ok") && c.at("trailing_ok").as_bool();
         bool const header_enum = id.rfind("hdr-", 0) == 0;
-        bool const wire_ok =
-            c.contains("wire_ok") && c.at("wire_ok").as_bool();
+        bool const wire_ok = c.contains("wire_ok") && c.at("wire_ok").as_bool();
         bool const certify_ok = o.certify_null_ok;
-        bool const pass = o.sinks_agree &&
+        bool const pass =
+            o.sinks_agree && recursive_agree &&
             (wire_ok
                  ? certify_ok
                  : (expect == "accept"
@@ -111,9 +153,10 @@ main(int argc, char** argv)
                   << " expect=" << expect << " locate=" << o.locate_ok
                   << " certify=" << certify_ok
                   << " sinks_agree=" << o.sinks_agree
-                  << " decode=" << o.decode_frames_ok
-                  << " names=" << o.names_ok << " json=" << o.json_ok
-                  << " end=" << o.locate_end << "/" << o.blob_size;
+                  << " recursive_agree=" << recursive_agree
+                  << " decode=" << o.decode_frames_ok << " names=" << o.names_ok
+                  << " json=" << o.json_ok << " end=" << o.locate_end << "/"
+                  << o.blob_size;
         if (!certify_ok && !o.certify_err.empty())
             std::cout << " err=" << o.certify_err;
         if (!o.decode_err.empty())
@@ -136,9 +179,9 @@ main(int argc, char** argv)
     if (argc > 1 && std::string(argv[1]) == "--fuel")
     {
         std::string blob;
-        for (auto const& item : root.at("cases").as_array())
+        for (auto const &item : root.at("cases").as_array())
         {
-            auto const& c = item.as_object();
+            auto const &c = item.as_object();
             if (std::string(c.at("id").as_string()) == "stobject-nested-memos")
             {
                 blob = std::string(c.at("blob").as_string());
@@ -148,36 +191,50 @@ main(int argc, char** argv)
         auto bytes = oracle_run::decode_hex(blob);
         Slice backing{bytes.data(), bytes.size()};
         constexpr int kIters = 50000;
-        auto bench = [&](char const* name, auto&& fn) {
+        auto bench = [&](char const *name, auto &&fn)
+        {
             auto t0 = std::chrono::steady_clock::now();
             for (int i = 0; i < kIters; ++i)
                 fn();
             auto t1 = std::chrono::steady_clock::now();
-            auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0)
-                          .count();
+            auto ns =
+                std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0)
+                    .count();
             std::cout << "fuel " << name << " ns=" << ns
                       << " per=" << (ns / kIters) << "\n";
         };
-        bench("locate_no_index", [&] {
-            catl::xdata::NullSink s;
-            (void)catl::xdata::scan_scope<catl::xdata::ScanMode::Locate>(
-                backing, 0, protocol, s);
-        });
-        bench("certify_no_index", [&] {
-            catl::xdata::NullSink s;
-            (void)catl::xdata::scan_scope<catl::xdata::ScanMode::CertifyWire>(
-                backing, 0, protocol, s);
-        });
-        bench("certify_index", [&] {
-            catl::xdata::IndexSink s;
-            (void)catl::xdata::scan_scope<catl::xdata::ScanMode::CertifyWire>(
-                backing, 0, protocol, s);
-        });
-        bench("full_eager_decode", [&] {
-            catl::xdata::ParserContext ctx{backing};
-            catl::xdata::JsonVisitor visitor(protocol);
-            catl::xdata::parse_with_visitor(ctx, protocol, visitor);
-        });
+        bench("locate_no_index",
+              [&]
+              {
+                  catl::xdata::NullSink s;
+                  (void)catl::xdata::scan_scope<catl::xdata::ScanMode::Locate>(
+                      backing, 0, protocol, s);
+              });
+        bench(
+            "certify_no_index",
+            [&]
+            {
+                catl::xdata::NullSink s;
+                (void)
+                    catl::xdata::scan_scope<catl::xdata::ScanMode::CertifyWire>(
+                        backing, 0, protocol, s);
+            });
+        bench(
+            "certify_index",
+            [&]
+            {
+                catl::xdata::IndexSink s;
+                (void)
+                    catl::xdata::scan_scope<catl::xdata::ScanMode::CertifyWire>(
+                        backing, 0, protocol, s);
+            });
+        bench("full_eager_decode",
+              [&]
+              {
+                  catl::xdata::ParserContext ctx{backing};
+                  catl::xdata::JsonVisitor visitor(protocol);
+                  catl::xdata::parse_with_visitor(ctx, protocol, visitor);
+              });
     }
     return fail == 0 ? 0 : 1;
 }
