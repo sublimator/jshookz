@@ -1,5 +1,10 @@
-#include "result.hpp"
+#include "amount/amount_js.hpp"
+#include "js.hpp"
+#include "leaf/leaf.hpp"
+#include "object/field_js.hpp"
 #include "object/object.hpp"
+#include "pathset/pathset_js.hpp"
+#include "result.hpp"
 
 #include <jshookz/qjs.hpp>
 
@@ -12,6 +17,54 @@
 
 extern "C" bool register_cpp_types(JSContext *ctx);
 extern "C" bool register_uint_types(JSContext *ctx);
+
+namespace {
+
+std::vector<std::uint8_t>
+hexBytes(char const* text)
+{
+    auto nibble = [](char value) -> std::uint8_t {
+        if (value >= '0' && value <= '9')
+            return static_cast<std::uint8_t>(value - '0');
+        if (value >= 'A' && value <= 'F')
+            return static_cast<std::uint8_t>(value - 'A' + 10);
+        return static_cast<std::uint8_t>(value - 'a' + 10);
+    };
+    std::size_t const length = std::strlen(text);
+    std::vector<std::uint8_t> bytes(length / 2);
+    for (std::size_t i = 0; i < bytes.size(); ++i)
+        bytes[i] = static_cast<std::uint8_t>(
+            (nibble(text[i * 2]) << 4) | nibble(text[i * 2 + 1]));
+    return bytes;
+}
+
+JSValue
+makeIssueForAmount(
+    JSContext* ctx,
+    jshookz::provider::types::AmountIssueKind kind,
+    std::uint8_t const* identity,
+    std::uint32_t length)
+{
+    namespace types = jshookz::provider::types;
+    if (kind == types::AmountIssueKind::native) {
+        std::uint8_t native[20] = {};
+        return types::makeIssueBytes(ctx, native, sizeof(native));
+    }
+    if (kind == types::AmountIssueKind::iou)
+        return types::makeIssueBytes(ctx, identity, length);
+    if (identity == nullptr || length != 24)
+        return JS_ThrowInternalError(ctx, "invalid certified MPT issue identity");
+    std::uint8_t issue[44] = {};
+    std::memcpy(issue, identity + 4, 20);
+    issue[39] = 1;
+    issue[40] = identity[3];
+    issue[41] = identity[2];
+    issue[42] = identity[1];
+    issue[43] = identity[0];
+    return types::makeIssueBytes(ctx, issue, sizeof(issue));
+}
+
+}  // namespace
 
 class XahauTypes : public ::testing::Test
 {
@@ -29,7 +82,39 @@ protected:
         ASSERT_TRUE(jshookz::provider::bindings::registerResult(ctx));
         ASSERT_TRUE(register_cpp_types(ctx));
         ASSERT_TRUE(register_uint_types(ctx));
+        ASSERT_TRUE(jshookz::provider::types::registerRichLeafTypes(ctx));
+        {
+            namespace types = jshookz::provider::types;
+            jshookz::qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
+            ASSERT_FALSE(global.isException());
+            types::AmountLeafMaterializers const amountLeaves{
+                types::makeAccountIDBytes,
+                types::makeCurrencyBytes,
+                types::makeHash192Bytes,
+                types::makeXFLDecimalParts,
+                makeIssueForAmount,
+                types::readAccountIDBytes,
+                types::readCurrencyBytes,
+                types::readHash192Bytes,
+                types::readXFLDecimalParts,
+            };
+            ASSERT_TRUE(types::registerAmount(
+                ctx, global.get(), amountLeaves));
+        }
         ASSERT_TRUE(jshookz::provider::types::registerObjectTypes(ctx));
+        {
+            namespace types = jshookz::provider::types;
+            jshookz::qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
+            ASSERT_FALSE(global.isException());
+            types::PathSetLeafMaterializers const pathLeaves{
+                types::makeAccountIDBytes,
+                types::makeCurrencyBytes,
+                types::isCertifiedObjectRange,
+            };
+            ASSERT_TRUE(types::registerPathSet(
+                ctx, global.get(), pathLeaves));
+            ASSERT_TRUE(types::registerFieldDescriptors(ctx, global.get()));
+        }
         ASSERT_FALSE(JS_HasException(ctx));
     }
 
@@ -40,6 +125,7 @@ protected:
             JS_FreeContext(ctx);
         if (rt) {
             jshookz::provider::types::unregisterObjectTypes(rt);
+            jshookz::provider::types::unregisterRichLeafTypes(rt);
             JS_FreeRuntime(rt);
         }
     }
@@ -326,4 +412,172 @@ TEST_F(XahauTypes, ObjectByteUtilitiesPublishExactWrongTerminatorAndTypeErrors)
         "Reflect.ownKeys(contractError).length === 1");
     ASSERT_FALSE(contract.isException());
     EXPECT_TRUE(JS_ToBool(ctx, contract.get()));
+}
+
+TEST_F(XahauTypes, GeneratedFieldDescriptorsAreExactNominalAndComplete)
+{
+    installRoot({0x22, 0x00, 0x00, 0x00, 0x09});
+    auto value = eval(R"JS(
+        (() => {
+          const descriptor = Field.Flags;
+          return JSON.stringify({
+            count: Object.keys(Field).length,
+            code: descriptor.code,
+            typeCode: descriptor.typeCode,
+            fieldCode: descriptor.fieldCode,
+            frozen: Object.isFrozen(Field),
+            descriptorExtensible: Object.isExtensible(descriptor),
+            lookup: root.get(descriptor).toNumber(),
+            structuralMiss: root.get({code: descriptor.code}) === undefined,
+          });
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException());
+    EXPECT_EQ(
+        to_string(value.get()),
+        R"({"count":325,"code":131074,"typeCode":2,"fieldCode":2,"frozen":true,"descriptorExtensible":false,"lookup":9,"structuralMiss":true})");
+}
+
+TEST_F(XahauTypes, RichFixedIssueVectorAndBridgeLeavesAreNominalAndImmutable)
+{
+    std::uint8_t hash192[24] = {};
+    hash192[0] = 0x12;
+    hash192[23] = 0xEF;
+    std::uint8_t currency[20] = {};
+    currency[12] = 'U';
+    currency[13] = 'S';
+    currency[14] = 'D';
+    std::uint8_t issue[40] = {};
+    std::memcpy(issue, currency, sizeof(currency));
+    issue[20] = 0xB5;
+    issue[39] = 0xE8;
+    std::uint8_t vector[64] = {};
+    vector[0] = 1;
+    vector[32] = 2;
+    std::uint8_t bridge[82] = {};
+    bridge[0] = 20;
+    bridge[1] = 3;
+    bridge[41] = 20;
+    bridge[42] = 4;
+
+    installValue(
+        "hash192",
+        jshookz::provider::types::makeHash192Bytes(
+            ctx, hash192, sizeof(hash192)));
+    installValue(
+        "currency",
+        jshookz::provider::types::makeCurrencyBytes(
+            ctx, currency, sizeof(currency)));
+    installValue(
+        "issue",
+        jshookz::provider::types::makeIssueBytes(
+            ctx, issue, sizeof(issue)));
+    installValue(
+        "vector",
+        jshookz::provider::types::makeVector256Bytes(
+            ctx, vector, sizeof(vector)));
+    installValue(
+        "bridge",
+        jshookz::provider::types::makeXChainBridgeBytes(
+            ctx, bridge, sizeof(bridge)));
+
+    auto value = eval(R"JS(
+        (() => {
+          const first = vector.at(0);
+          const iterated = [...vector];
+          const bytes = vector.toBytes();
+          bytes[0] = 9;
+          return JSON.stringify({
+            hash: hash192.toHex(),
+            currency: currency.toString(),
+            issueKind: issue.kind,
+            issueCurrencySame: issue.currency === issue.currency,
+            issueIssuerSame: issue.issuer === issue.issuer,
+            vectorLength: vector.length,
+            vectorKeys: Reflect.ownKeys(vector),
+            vectorIdentity: first === vector[0] && first === iterated[0],
+            vectorFresh: vector.toBytes()[0] === 1,
+            bridgeDoorSame:
+              bridge.LockingChainDoor === bridge.LockingChainDoor,
+            bridgeIssueSame:
+              bridge.LockingChainIssue === bridge.LockingChainIssue,
+            immutable: !Object.isExtensible(hash192) &&
+              !Object.isExtensible(currency) && !Object.isExtensible(issue) &&
+              !Object.isExtensible(vector) && !Object.isExtensible(bridge),
+          });
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException());
+    EXPECT_EQ(
+        to_string(value.get()),
+        R"({"hash":"1200000000000000000000000000000000000000000000EF","currency":"USD","issueKind":"iou","issueCurrencySame":true,"issueIssuerSame":true,"vectorLength":2,"vectorKeys":["0","1","length"],"vectorIdentity":true,"vectorFresh":true,"bridgeDoorSame":true,"bridgeIssueSame":true,"immutable":true})");
+
+    std::uint8_t copiedCurrency[20] = {};
+    std::uint8_t copiedHash192[24] = {};
+    auto currencyValue = eval("currency");
+    auto hashValue = eval("hash192");
+    ASSERT_FALSE(currencyValue.isException());
+    ASSERT_FALSE(hashValue.isException());
+    EXPECT_TRUE(jshookz::provider::types::readCurrencyBytes(
+        ctx, currencyValue.get(), copiedCurrency));
+    EXPECT_TRUE(jshookz::provider::types::readHash192Bytes(
+        ctx, hashValue.get(), copiedHash192));
+    EXPECT_EQ(std::memcmp(copiedCurrency, currency, sizeof(currency)), 0);
+    EXPECT_EQ(std::memcmp(copiedHash192, hash192, sizeof(hash192)), 0);
+}
+
+TEST_F(XahauTypes, ObjectMaterializesAmountPathSetAndBridgeWithExactIdentity)
+{
+    installRoot(hexBytes(
+        "61D4838D7EA4C680000000000000000000000000005553440000000000"
+        "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8"));
+    auto amount = eval(R"JS(
+        (() => {
+          const value = root.Amount;
+          return value === root.get(Field.Amount) && value === root.Amount &&
+            value.kind === "iou" && value.value.mantissa() === 1000000000000000n &&
+            value.currency.toString() === "USD" &&
+            value.issuer.toHex() === "B5F762798A53D543A014CAF8B297CFF8F2F937E8" &&
+            value.issue.kind === "iou" && !Object.isExtensible(value);
+        })()
+    )JS");
+    ASSERT_FALSE(amount.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, amount.get()));
+
+    installRoot(hexBytes(
+        "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        "011201B5F762798A53D543A014CAF8B297CFF8F2F937E800"));
+    auto paths = eval(R"JS(
+        (() => {
+          const value = root.Paths;
+          const path = value.at(0);
+          const hop = path.at(0);
+          return value === root.Paths && value.length === 1 &&
+            path !== value.at(0) && hop !== path.at(0) &&
+            hop.account.toHex() ===
+              "B5F762798A53D543A014CAF8B297CFF8F2F937E8" &&
+            [...value].length === 1 && [...path].length === 1;
+        })()
+    )JS");
+    ASSERT_FALSE(paths.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, paths.get()));
+
+    installRoot(hexBytes(
+        "011914B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        "0000000000000000000000000000000000000000"
+        "14B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        "0000000000000000000000000000000000000000"));
+    auto bridge = eval(R"JS(
+        (() => {
+          const value = root.XChainBridge;
+          return value === root.XChainBridge &&
+            value.LockingChainDoor.toHex() ===
+              "B5F762798A53D543A014CAF8B297CFF8F2F937E8" &&
+            value.LockingChainIssue.kind === "native" &&
+            value.IssuingChainIssue.kind === "native";
+        })()
+    )JS");
+    ASSERT_FALSE(bridge.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, bridge.get()));
 }

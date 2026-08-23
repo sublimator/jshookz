@@ -21,7 +21,14 @@ target_compile_features(jshookz_xahau_types PUBLIC cxx_std_23)
 if(BUILD_TESTING)
     find_package(GTest REQUIRED)
     include(GoogleTest)
-    add_executable(test_xahau_types tests/test_xahau_types.cpp)
+    add_executable(test_xahau_types
+        tests/test_xahau_types.cpp
+        tests/test_account_json.cpp
+    )
     target_link_libraries(test_xahau_types PRIVATE jshookz_xahau_types GTest::gtest_main)
     gtest_discover_tests(test_xahau_types)
+
+    add_executable(pathset_js_probe pathset/pathset_js_probe.cpp)
+    target_link_libraries(pathset_js_probe PRIVATE jshookz_xahau_types)
+    add_test(NAME PathSetJSProbe COMMAND pathset_js_probe)
 endif()

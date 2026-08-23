@@ -1,6 +1,10 @@
 #include "object.hpp"
+#include "field_js.hpp"
 
+#include "amount/amount_js.hpp"
 #include "js.hpp"
+#include "leaf/leaf.hpp"
+#include "pathset/pathset_js.hpp"
 #include "quickjs.hpp"
 #include "result.hpp"
 
@@ -809,21 +813,28 @@ materializeField(JSContext* ctx, JSValueConst ownerValue,
     }
     case Kind::number:
         return numberString(ctx, {payload, size});
+    case Kind::hash128:
+        return makeHash128Bytes(ctx, payload, size);
+    case Kind::hash160:
+        return makeHash160Bytes(ctx, payload, size);
+    case Kind::hash192:
+        return makeHash192Bytes(ctx, payload, size);
+    case Kind::amount:
+        return makeAmountBytes(ctx, payload, size);
+    case Kind::currency:
+        return makeCurrencyBytes(ctx, payload, size);
+    case Kind::issue:
+        return makeIssueBytes(ctx, payload, size);
+    case Kind::path_set:
+        return makePathSetBytes(ctx, ownerValue, payload, size);
+    case Kind::vector256:
+        return makeVector256Bytes(ctx, payload, size);
+    case Kind::xchain_bridge:
+        return makeXChainBridgeBytes(ctx, payload, size);
     case Kind::st_object:
         return newObjectWrapper(ctx, ownerValue, field.child_scope);
     case Kind::st_array:
         return newArrayWrapper(ctx, ownerValue, field.child_scope);
-    case Kind::hash128:
-    case Kind::hash160:
-    case Kind::hash192:
-    case Kind::amount:
-    case Kind::currency:
-    case Kind::issue:
-    case Kind::path_set:
-    case Kind::vector256:
-    case Kind::xchain_bridge:
-        return JS_ThrowInternalError(
-            ctx, "certified field materializer is not registered");
     case Kind::invalid:
         break;
     }
@@ -891,6 +902,8 @@ resolveFieldArgument(JSContext* ctx, int argc, JSValueConst* argv,
 {
     if (argc < 1)
         return false;
+    if (serializedFieldCode(argv[0], code))
+        return true;
     if (JS_IsNumber(argv[0])) {
         std::int64_t value = 0;
         if (JS_ToInt64(ctx, &value, argv[0]) < 0)
@@ -1930,6 +1943,25 @@ isSTArray(JSValueConst value) noexcept
     auto const* state = static_cast<ArrayState const*>(
         JS_GetOpaque(value, arrayClassId));
     return state != nullptr && ownerFrom(*state) != nullptr;
+}
+
+bool
+isCertifiedObjectRange(
+    JSContext* ctx, JSValueConst ownerValue, std::uint8_t const* bytes,
+    std::uint32_t length) noexcept
+{
+    if (ctx == nullptr || JS_GetRuntime(ctx) == nullptr)
+        return false;
+    auto const* owner = ownerFrom(ownerValue);
+    if (owner == nullptr || (length != 0 && bytes == nullptr))
+        return false;
+    auto const base = reinterpret_cast<std::uintptr_t>(owner->bytes);
+    auto const begin = reinterpret_cast<std::uintptr_t>(bytes);
+    if (begin < base)
+        return false;
+    auto const offset = begin - base;
+    return offset <= owner->byteCount &&
+        length <= owner->byteCount - offset;
 }
 
 }  // namespace jshookz::provider::types

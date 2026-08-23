@@ -33,4 +33,11 @@ void unregisterObjectTypes(JSRuntime* runtime) noexcept;
 [[nodiscard]] bool isSTObject(JSValueConst value) noexcept;
 [[nodiscard]] bool isSTArray(JSValueConst value) noexcept;
 
+// Allocation-free/no-JavaScript provenance proof used by borrowed child
+// facades such as PathSet. The owner must be the private certified root and
+// the complete range must lie inside its immutable byte domain.
+[[nodiscard]] bool isCertifiedObjectRange(
+    JSContext* ctx, JSValueConst owner, std::uint8_t const* bytes,
+    std::uint32_t length) noexcept;
+
 }  // namespace jshookz::provider::types

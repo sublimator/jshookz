@@ -60,6 +60,25 @@ registerClass(
 [[nodiscard]] JSValue makeAccountIDBytes(
     JSContext* ctx, std::uint8_t const* bytes, std::uint32_t length);
 
+// Provider-only nominal seams used by composite rich types. Readers perform
+// no allocation or JavaScript operation, accept only the exact registered
+// class/provenance, initialize their outputs, and do not throw on mismatch.
+[[nodiscard]] bool readAccountIDBytes(
+    JSContext* ctx,
+    JSValueConst input,
+    std::uint8_t output[20]) noexcept;
+[[nodiscard]] JSValue makeXFLDecimalParts(
+    JSContext* ctx,
+    bool negative,
+    std::uint64_t magnitude,
+    std::int32_t exponent);
+[[nodiscard]] bool readXFLDecimalParts(
+    JSContext* ctx,
+    JSValueConst input,
+    bool* negative,
+    std::uint64_t* magnitude,
+    std::int32_t* exponent) noexcept;
+
 // Exact STBlob counterpart to JS_GetObjectByteSpanNoThrow. Success returns
 // one owned duplicate of the STBlob wrapper. It allocates nothing, invokes no
 // JavaScript, initializes every output, and preserves the pending exception.

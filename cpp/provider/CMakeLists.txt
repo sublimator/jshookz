@@ -51,6 +51,7 @@ add_executable(jshookz_provider
 target_include_directories(jshookz_provider PRIVATE
     ${JSHOOKZ_QJS_CPP_INCLUDE_DIR}
     ${JSHOOKZ_QUICKJS_SOURCE_DIR}
+    ${JSHOOKZ_XDATA_INCLUDE_DIRS}
     ${JSHOOKZ_XAHAU_TYPES_INCLUDE_DIR}
 )
 

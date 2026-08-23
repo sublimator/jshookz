@@ -1,6 +1,8 @@
 #include "account/account.hpp"
 #include "js.hpp"
 
+#include <cstring>
+
 namespace jshookz::provider::types {
 namespace qjs = jshookz::provider::qjs;
 using hook::AccountID;
@@ -185,6 +187,24 @@ makeAccountIDBytes(
         return JS_ThrowInternalError(
             ctx, "AccountID construction requires 20 bytes");
     return nativeNew<AccountID>(ctx, js_accountid_class_id, bytes, length);
+}
+
+bool
+readAccountIDBytes(
+    JSContext*, JSValueConst input, std::uint8_t output[20]) noexcept
+{
+    if (output == nullptr)
+        return false;
+    std::memset(output, 0, 20);
+    if (!JS_IsObject(input) ||
+        JS_GetClassID(input) != js_accountid_class_id)
+        return false;
+    auto const* account = static_cast<AccountID const*>(
+        JS_GetOpaque(input, js_accountid_class_id));
+    if (account == nullptr)
+        return false;
+    std::memcpy(output, account->data(), 20);
+    return true;
 }
 
 }  // namespace jshookz::provider::types
