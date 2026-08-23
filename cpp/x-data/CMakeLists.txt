@@ -1,4 +1,5 @@
 include(${CMAKE_CURRENT_LIST_DIR}/xdata_wasm_sources.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/definitions.cmake)
 
 add_library(jshookz_xdata STATIC
     ${JSHOOKZ_XDATA_WASM_SOURCES}
@@ -14,6 +15,7 @@ target_compile_definitions(jshookz_xdata PUBLIC
     CODEC_BACKEND_XDATA
 )
 target_compile_features(jshookz_xdata PUBLIC cxx_std_23)
+add_dependencies(jshookz_xdata generate_xdata_definitions)
 
 find_path(Boost_INCLUDE_DIR
     boost/json.hpp
@@ -24,6 +26,7 @@ find_path(Boost_INCLUDE_DIR
 # jshookz_xdata — same symbols, different class layout.
 if(Boost_INCLUDE_DIR)
     add_library(jshookz_xdata_json STATIC
+        ${JSHOOKZ_XDATA_PROVIDER_STATIC_SOURCES}
         ${CMAKE_CURRENT_LIST_DIR}/src/protocol.cpp
         ${CMAKE_CURRENT_LIST_DIR}/src/embedded_protocol.cpp
         ${CMAKE_CURRENT_LIST_DIR}/src/protocol_json.cpp
@@ -37,6 +40,7 @@ if(Boost_INCLUDE_DIR)
         ${Boost_INCLUDE_DIR}
     )
     target_compile_features(jshookz_xdata_json PUBLIC cxx_std_23)
+    add_dependencies(jshookz_xdata_json generate_xdata_definitions)
 endif()
 
 if(BUILD_TESTING)
@@ -75,6 +79,18 @@ if(BUILD_TESTING)
     target_compile_options(test_pathset_noexcept PRIVATE
         -fno-exceptions -fno-rtti)
     add_test(NAME test_pathset_noexcept COMMAND test_pathset_noexcept)
+
+    add_executable(test_static_protocol_noexcept
+        tests/test_static_protocol_noexcept.cpp
+        ${JSHOOKZ_XDATA_PROVIDER_STATIC_SOURCES}
+    )
+    target_include_directories(test_static_protocol_noexcept PRIVATE
+        ${JSHOOKZ_XDATA_INCLUDE_DIRS}
+    )
+    target_compile_options(test_static_protocol_noexcept PRIVATE
+        -fno-exceptions -fno-rtti)
+    add_test(NAME test_static_protocol_noexcept
+        COMMAND test_static_protocol_noexcept)
 
     add_executable(test_pathset_quickjs
         tests/pathset_quickjs_fixture.cpp

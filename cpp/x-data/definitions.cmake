@@ -60,4 +60,24 @@ endfunction()
 _xdata_embed(xahau catl::xdata::xahau)
 _xdata_embed(xrpl catl::xdata::xrpl)
 
+set(_xdata_static_policy
+    ${_xdata_dir}/../../.ai-docs/engineering/hooks-api-proposal/richfields-policy.json)
+set(_xdata_static_hdr ${_xdata_dir}/generated/static_xahau_protocol.h)
+set(_xdata_static_tmp
+    ${CMAKE_CURRENT_BINARY_DIR}/static_xahau_protocol.h.tmp)
+add_custom_command(
+  OUTPUT ${_xdata_static_hdr}
+  COMMAND ${Python3_EXECUTABLE} ${_xdata_gen}
+          --input ${_xdata_dir}/definitions/xahau_definitions.json
+          --output ${_xdata_static_tmp}
+          --namespace catl::xdata::xahau_static_data
+          --provider-static
+          --materializer-policy ${_xdata_static_policy}
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          ${_xdata_static_tmp} ${_xdata_static_hdr}
+  DEPENDS ${_xdata_dir}/definitions/xahau_definitions.json
+          ${_xdata_gen} ${_xdata_static_policy}
+  COMMENT "Generating allocation-free Xahau provider protocol")
+list(APPEND _xdata_headers ${_xdata_static_hdr})
+
 add_custom_target(generate_xdata_definitions DEPENDS ${_xdata_headers})

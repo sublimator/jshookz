@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 XDATA = Path(__file__).resolve().parent.parent
 REPO = XDATA.parent.parent
 SCRIPT = XDATA / "scripts" / "generate_definitions.py"
@@ -194,3 +196,44 @@ def test_real_xahau_tables_match_cleaned_json() -> None:
     assert unknown["code"] == -2
     invalid = next(row for row in tables["FIELDS"] if row["name"] == "Invalid")
     assert invalid["nth"] == -1
+
+
+def test_real_xahau_provider_closure_is_exact_and_total() -> None:
+    src = XDATA / "definitions/xahau_definitions.json"
+    policy = REPO / ".ai-docs/engineering/hooks-api-proposal/richfields-policy.json"
+    defs = gen.clean_definitions(gen.unwrap_definitions(json.loads(src.read_text())))
+    overrides, policy_sha = gen.load_materializer_policy(policy)
+    tables = gen.provider_tables_from_defs(defs, overrides)
+
+    assert len(tables["names"]) == 337
+    assert len(tables["fields"]) == 327
+    assert len(tables["material"]) == 325
+    assert len(tables["types"]) == 19
+    assert tables["fallback"] == []
+    assert tables["duplicate_word_count"] == 6
+    assert len(tables["fast"]) * len(tables["fast"][0]) * 2 == 8192
+    assert policy_sha != "none"
+
+    admitted = tables["fields"]
+    for ordinal, row in enumerate(tables["material"]):
+        assert row["admission_ordinal"] < len(admitted)
+        field = admitted[row["admission_ordinal"]]
+        assert field["material_ordinal"] == ordinal
+        assert field["code"] == row["field_code"]
+        assert field["materializer"] == row["materializer"]
+        assert row["materializer"] != "invalid"
+
+    source_fields = defs["FIELDS"]
+    by_name = {source_fields[row["name_ordinal"]][0]: row for row in admitted}
+    assert by_name["TransactionType"]["materializer"] == "transaction_type"
+    assert by_name["TransactionResult"]["materializer"] == "transaction_result"
+    assert by_name["Number"]["materializer"] == "number"
+    assert tables["max_type_code"] == 26
+    assert tables["max_nth"] == 100
+
+
+def test_provider_override_deletion_control_turns_red() -> None:
+    src = XDATA / "definitions/xahau_definitions.json"
+    defs = gen.clean_definitions(gen.unwrap_definitions(json.loads(src.read_text())))
+    with pytest.raises(ValueError, match="overrides"):
+        gen.provider_tables_from_defs(defs, {"TransactionType": "transaction_type"})
