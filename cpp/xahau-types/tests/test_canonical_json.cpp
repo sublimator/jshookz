@@ -1,5 +1,7 @@
+#include "js.hpp"
 #include "object/canonical_json.hpp"
 #include "object/object.hpp"
+#include "quickjs.hpp"
 
 #include <gtest/gtest.h>
 
@@ -11,8 +13,11 @@
 #include <limits>
 #include <string>
 
+extern "C" bool register_uint_types(JSContext *ctx);
+
 namespace {
 
+namespace qjs = jshookz::provider::qjs;
 namespace types = jshookz::provider::types;
 
 using Factory = JSValue (*)(JSContext *, std::uint8_t const *,
@@ -299,11 +304,36 @@ struct alignas(std::max_align_t) AllocationHeader {
   std::size_t size;
 };
 
+enum class RequestKind : std::uint8_t {
+  allocate,
+  reallocate,
+};
+
+struct AllocationRequest {
+  std::size_t size = 0;
+  RequestKind kind = RequestKind::allocate;
+
+  friend bool operator==(AllocationRequest const &,
+                         AllocationRequest const &) = default;
+};
+
 struct AllocatorControl {
+  static constexpr std::size_t maxRecordedRequests = 128;
+
   std::size_t requests = 0;
   std::size_t rejectAt = 0;
   std::size_t rejections = 0;
   std::size_t liveBlocks = 0;
+  bool recording = false;
+  std::array<AllocationRequest, maxRecordedRequests> recorded{};
+  std::size_t recordedCount = 0;
+
+  void startRecording() noexcept {
+    recordedCount = 0;
+    recording = true;
+  }
+
+  void stopRecording() noexcept { recording = false; }
 };
 
 [[nodiscard]] bool wouldExceed(JSMallocState const *state, std::size_t oldSize,
@@ -315,9 +345,15 @@ struct AllocatorControl {
          retained > state->malloc_limit - newSize;
 }
 
-[[nodiscard]] bool reject(JSMallocState *state) noexcept {
+[[nodiscard]] bool recordAndReject(JSMallocState *state, std::size_t size,
+                                   RequestKind kind) noexcept {
   auto *control = static_cast<AllocatorControl *>(state->opaque);
   ++control->requests;
+  if (control->recording) {
+    if (control->recordedCount < control->recorded.size())
+      control->recorded[control->recordedCount] = {size, kind};
+    ++control->recordedCount;
+  }
   if (control->rejectAt == 0 || control->requests != control->rejectAt)
     return false;
   control->rejectAt = 0;
@@ -327,7 +363,7 @@ struct AllocatorControl {
 
 void *testMalloc(JSMallocState *state, std::size_t size) {
   auto *control = static_cast<AllocatorControl *>(state->opaque);
-  if (reject(state) || size == 0 ||
+  if (recordAndReject(state, size, RequestKind::allocate) || size == 0 ||
       size >
           std::numeric_limits<std::size_t>::max() - sizeof(AllocationHeader) ||
       wouldExceed(state, 0, size))
@@ -361,7 +397,7 @@ void *testRealloc(JSMallocState *state, void *pointer, std::size_t size) {
     testFree(state, pointer);
     return nullptr;
   }
-  if (reject(state))
+  if (recordAndReject(state, size, RequestKind::reallocate))
     return nullptr;
   auto *header = static_cast<AllocationHeader *>(pointer) - 1;
   std::size_t const oldSize = header->size;
@@ -694,6 +730,289 @@ void expectCertifiedSourceUnchanged(
   ASSERT_EQ(size, expectedSize);
   EXPECT_EQ(std::memcmp(data, expectedBytes, expectedSize), 0);
   EXPECT_FALSE(JS_HasException(context));
+}
+
+struct MaterializerOOMCase {
+  char const *name;
+  char const *fieldName;
+  char const *wireHex;
+  char const *expectedJSON;
+  char const *renderedString;
+  std::size_t temporaryProviderBytes = 0;
+};
+
+void expectMaterializerSourceUnchanged(
+    JSContext *context, JSValueConst root, void const *rootIdentity,
+    JSValueConst toBytes, char const *fieldName, JSValueConst expectedField,
+    void const *fieldIdentity, std::uint8_t const *expectedBytes,
+    std::uint32_t expectedSize, std::size_t ordinal) {
+  SCOPED_TRACE(ordinal);
+  ASSERT_TRUE(types::isSTObject(root));
+  EXPECT_EQ(JS_VALUE_GET_PTR(root), rootIdentity);
+
+  LocalValue field(context, JS_GetPropertyStr(context, root, fieldName));
+  ASSERT_FALSE(JS_IsException(field.get()));
+  EXPECT_EQ(JS_StrictEq(context, field.get(), expectedField), 1);
+  ASSERT_TRUE(JS_IsObject(field.get()) || JS_IsString(field.get()));
+  EXPECT_EQ(JS_VALUE_GET_PTR(field.get()), fieldIdentity);
+
+  LocalValue bytes(context, JS_Call(context, toBytes, root, 0, nullptr));
+  ASSERT_FALSE(JS_IsException(bytes.get()));
+  JSValue backing = JS_UNDEFINED;
+  std::uint8_t const *data = nullptr;
+  std::size_t size = 0;
+  ASSERT_EQ(
+      JS_GetObjectByteSpanNoThrow(context, bytes.get(), &backing, &data, &size),
+      JS_OBJECT_BYTES_OK);
+  LocalValue ownedBacking(context, backing);
+  ASSERT_EQ(size, expectedSize);
+  EXPECT_EQ(std::memcmp(data, expectedBytes, expectedSize), 0);
+  EXPECT_FALSE(JS_HasException(context));
+}
+
+void measureQuickJSStringRequest(JSContext *context,
+                                 AllocatorControl &allocator, char const *text,
+                                 std::size_t &requestSize) {
+  std::size_t const liveBefore = allocator.liveBlocks;
+  allocator.startRecording();
+  JSValue raw = JS_NewStringLen(context, text, std::strlen(text));
+  allocator.stopRecording();
+  {
+    LocalValue value(context, raw);
+    ASSERT_FALSE(JS_IsException(value.get()));
+    ASSERT_EQ(allocator.recordedCount, 1u);
+    ASSERT_LE(allocator.recordedCount, allocator.recorded.size());
+    EXPECT_EQ(allocator.recorded[0].kind, RequestKind::allocate);
+    requestSize = allocator.recorded[0].size;
+  }
+  EXPECT_EQ(allocator.liveBlocks, liveBefore);
+}
+
+void expectMaterializerAllocationProfile(AllocatorControl const &allocator,
+                                         MaterializerOOMCase const &testCase,
+                                         std::size_t quickJSStringRequestSize) {
+  ASSERT_GT(allocator.recordedCount, 0u);
+  ASSERT_LE(allocator.recordedCount, allocator.recorded.size());
+
+  std::size_t stringRequests = 0;
+  for (std::size_t i = 0; i < allocator.recordedCount; ++i) {
+    auto const &request = allocator.recorded[i];
+    if (request.kind == RequestKind::allocate &&
+        request.size == quickJSStringRequestSize)
+      ++stringRequests;
+  }
+  EXPECT_GT(stringRequests, 0u)
+      << testCase.name << ": calibrated QuickJS string request is absent";
+
+  if (testCase.temporaryProviderBytes == 0)
+    return;
+
+  std::size_t adjacentPairs = 0;
+  for (std::size_t i = 0; i + 1 < allocator.recordedCount; ++i) {
+    auto const &temporary = allocator.recorded[i];
+    auto const &string = allocator.recorded[i + 1];
+    if (temporary.kind == RequestKind::allocate &&
+        temporary.size == testCase.temporaryProviderBytes &&
+        string.kind == RequestKind::allocate &&
+        string.size == quickJSStringRequestSize)
+      ++adjacentPairs;
+  }
+  EXPECT_EQ(adjacentPairs, 1u)
+      << testCase.name
+      << ": long Blob must allocate its provider hex buffer immediately before "
+         "the QuickJS string";
+}
+
+void exerciseSameRuntimeMaterializerOOM(JSContext *context,
+                                        AllocatorControl &allocator,
+                                        MaterializerOOMCase const &testCase) {
+  SCOPED_TRACE(testCase.name);
+  std::uint8_t wire[1024];
+  auto const wireSize = decodeHex(testCase.wireHex, wire, sizeof(wire));
+  ASSERT_NE(wireSize, std::numeric_limits<std::uint32_t>::max());
+  std::array<std::uint8_t, sizeof(wire)> original{};
+  std::memcpy(original.data(), wire, wireSize);
+
+  // Stabilize field atoms, output shapes, and nominal field prototypes on a
+  // sacrificial owner. The measured owner and its selected cache entry are
+  // then immutable evidence throughout every injected attempt.
+  {
+    LocalValue warmRoot(
+        context, types::makeCertifiedObjectCopy(context, wire, wireSize));
+    ASSERT_FALSE(JS_IsException(warmRoot.get()));
+    void const *warmIdentity = JS_VALUE_GET_PTR(warmRoot.get());
+    LocalValue warmToJSON(context,
+                          JS_GetPropertyStr(context, warmRoot.get(), "toJSON"));
+    LocalValue warmToBytes(
+        context, JS_GetPropertyStr(context, warmRoot.get(), "toBytes"));
+    LocalValue warmField(context, JS_GetPropertyStr(context, warmRoot.get(),
+                                                    testCase.fieldName));
+    ASSERT_FALSE(JS_IsException(warmToJSON.get()));
+    ASSERT_FALSE(JS_IsException(warmToBytes.get()));
+    ASSERT_FALSE(JS_IsException(warmField.get()));
+    ASSERT_TRUE(JS_IsObject(warmField.get()) || JS_IsString(warmField.get()));
+    void const *warmFieldIdentity = JS_VALUE_GET_PTR(warmField.get());
+    for (int pass = 0; pass < 2; ++pass) {
+      LocalValue warm(context, JS_Call(context, warmToJSON.get(),
+                                       warmRoot.get(), 0, nullptr));
+      ASSERT_FALSE(JS_IsException(warm.get()));
+      expectJSONValue(context, warm.get(), testCase.expectedJSON);
+      expectMaterializerSourceUnchanged(context, warmRoot.get(), warmIdentity,
+                                        warmToBytes.get(), testCase.fieldName,
+                                        warmField.get(), warmFieldIdentity,
+                                        original.data(), wireSize, 0);
+    }
+  }
+  std::size_t const liveAfterWarmOwner = allocator.liveBlocks;
+
+  {
+    LocalValue root(context,
+                    types::makeCertifiedObjectCopy(context, wire, wireSize));
+    ASSERT_FALSE(JS_IsException(root.get()));
+    void const *rootIdentity = JS_VALUE_GET_PTR(root.get());
+    LocalValue toJSON(context,
+                      JS_GetPropertyStr(context, root.get(), "toJSON"));
+    LocalValue toBytes(context,
+                       JS_GetPropertyStr(context, root.get(), "toBytes"));
+    LocalValue cachedField(
+        context, JS_GetPropertyStr(context, root.get(), testCase.fieldName));
+    ASSERT_FALSE(JS_IsException(toJSON.get()));
+    ASSERT_FALSE(JS_IsException(toBytes.get()));
+    ASSERT_FALSE(JS_IsException(cachedField.get()));
+    ASSERT_TRUE(JS_IsObject(cachedField.get()) ||
+                JS_IsString(cachedField.get()));
+    void const *fieldIdentity = JS_VALUE_GET_PTR(cachedField.get());
+
+    std::size_t quickJSStringRequestSize = 0;
+    measureQuickJSStringRequest(context, allocator, testCase.renderedString,
+                                quickJSStringRequestSize);
+    ASSERT_GT(quickJSStringRequestSize, 0u);
+    std::size_t const liveBefore = allocator.liveBlocks;
+
+    allocator.startRecording();
+    JSValue measuredValue =
+        JS_Call(context, toJSON.get(), root.get(), 0, nullptr);
+    allocator.stopRecording();
+    ASSERT_LE(allocator.recordedCount, allocator.recorded.size());
+    std::size_t const requestCount = allocator.recordedCount;
+    auto const successfulRequests = allocator.recorded;
+    expectMaterializerAllocationProfile(allocator, testCase,
+                                        quickJSStringRequestSize);
+    {
+      LocalValue measured(context, measuredValue);
+      ASSERT_FALSE(JS_IsException(measured.get()));
+      expectJSONValue(context, measured.get(), testCase.expectedJSON);
+    }
+    expectMaterializerSourceUnchanged(
+        context, root.get(), rootIdentity, toBytes.get(), testCase.fieldName,
+        cachedField.get(), fieldIdentity, original.data(), wireSize, 0);
+    EXPECT_EQ(std::memcmp(wire, original.data(), wireSize), 0);
+    ASSERT_GT(requestCount, 0u);
+    ASSERT_EQ(allocator.liveBlocks, liveBefore);
+
+    for (std::size_t ordinal = 1; ordinal <= requestCount; ++ordinal) {
+      SCOPED_TRACE(ordinal);
+      std::size_t const rejectionsBefore = allocator.rejections;
+      allocator.startRecording();
+      allocator.rejectAt = allocator.requests + ordinal;
+      JSValue failed = JS_Call(context, toJSON.get(), root.get(), 0, nullptr);
+      allocator.stopRecording();
+      allocator.rejectAt = 0;
+
+      EXPECT_TRUE(JS_IsException(failed));
+      ASSERT_EQ(allocator.rejections, rejectionsBefore + 1);
+      ASSERT_GE(allocator.recordedCount, ordinal);
+      ASSERT_LE(ordinal, successfulRequests.size());
+      for (std::size_t i = 0; i < ordinal; ++i)
+        EXPECT_EQ(allocator.recorded[i], successfulRequests[i])
+            << "request prefix at ordinal " << ordinal;
+      expectOnePendingOOM(context, ordinal);
+      EXPECT_EQ(std::memcmp(wire, original.data(), wireSize), 0);
+      expectMaterializerSourceUnchanged(
+          context, root.get(), rootIdentity, toBytes.get(), testCase.fieldName,
+          cachedField.get(), fieldIdentity, original.data(), wireSize, ordinal);
+      EXPECT_EQ(allocator.liveBlocks, liveBefore)
+          << "partial JSON value escaped at ordinal " << ordinal;
+
+      std::size_t const retryBefore = allocator.requests;
+      JSValue retryValue =
+          JS_Call(context, toJSON.get(), root.get(), 0, nullptr);
+      std::size_t const retryRequestCount = allocator.requests - retryBefore;
+      {
+        LocalValue retry(context, retryValue);
+        ASSERT_FALSE(JS_IsException(retry.get()));
+        expectJSONValue(context, retry.get(), testCase.expectedJSON, ordinal);
+      }
+      EXPECT_EQ(retryRequestCount, requestCount);
+      EXPECT_FALSE(JS_HasException(context));
+      EXPECT_EQ(std::memcmp(wire, original.data(), wireSize), 0);
+      expectMaterializerSourceUnchanged(
+          context, root.get(), rootIdentity, toBytes.get(), testCase.fieldName,
+          cachedField.get(), fieldIdentity, original.data(), wireSize, ordinal);
+      EXPECT_EQ(allocator.liveBlocks, liveBefore);
+    }
+  }
+  EXPECT_EQ(allocator.liveBlocks, liveAfterWarmOwner);
+}
+
+TEST(CanonicalJSONOOM,
+     RemainingAllocationDistinctMaterializersRetryInOneRuntime) {
+  static constexpr char longBlob[] = "000102030405060708090A0B0C0D0E0F"
+                                     "101112131415161718191A1B1C1D1E1F20";
+  static constexpr MaterializerOOMCase cases[] = {
+      {
+          "UInt64DecimalString",
+          "IndexNext",
+          "31FFFFFFFFFFFFFFFF",
+          "{\"IndexNext\":\"18446744073709551615\"}",
+          "18446744073709551615",
+      },
+      {
+          "NumberCanonicalDecimalString",
+          "Number",
+          "91000470DE4DF82000FFFFFFF1",
+          "{\"Number\":\"1.25\"}",
+          "1.25",
+      },
+      {
+          "LongBlobProviderAndQuickJSString",
+          "MemoData",
+          "7D21"
+          "000102030405060708090A0B0C0D0E0F"
+          "101112131415161718191A1B1C1D1E1F20",
+          "{\"MemoData\":\""
+          "000102030405060708090A0B0C0D0E0F"
+          "101112131415161718191A1B1C1D1E1F20\"}",
+          longBlob,
+          sizeof(longBlob) - 1,
+      },
+  };
+
+  AllocatorControl allocator;
+  JSRuntime *runtime = JS_NewRuntime2(&testAllocator, &allocator);
+  ASSERT_NE(runtime, nullptr);
+  JSContext *context = JS_NewContext(runtime);
+  ASSERT_NE(context, nullptr);
+  qjs::resetByteClassRegistry();
+  {
+    LocalValue global(context, JS_GetGlobalObject(context));
+    ASSERT_FALSE(JS_IsException(global.get()));
+    ASSERT_TRUE(types::registerSTBlob(context, global.get()));
+  }
+  ASSERT_TRUE(register_uint_types(context));
+  ASSERT_TRUE(types::registerObjectTypes(context));
+  ASSERT_FALSE(JS_HasException(context));
+
+  EXPECT_TRUE(JS_IsException(JS_ThrowOutOfMemory(context)));
+  expectOnePendingOOM(context, 0);
+  for (auto const &testCase : cases)
+    exerciseSameRuntimeMaterializerOOM(context, allocator, testCase);
+
+  JS_FreeContext(context);
+  types::unregisterObjectTypes(runtime);
+  qjs::resetByteClassRegistry();
+  JS_FreeRuntime(runtime);
+  EXPECT_EQ(allocator.liveBlocks, 0u);
 }
 
 TEST(CanonicalJSONOOM, RecursiveObjectArrayRichTreeRetriesInOneRuntime) {
