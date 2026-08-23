@@ -3,6 +3,7 @@
 #include "catl/xdata/amount-rules.h"
 #include "catl/xdata/codec-error.h"
 #include "catl/xdata/codecs/account_id.h"
+#include "catl/xdata/pathset-rules.h"
 #include "catl/xdata/parser-context.h"
 #include "catl/xdata/protocol.h"
 #include "catl/xdata/types.h"
@@ -233,75 +234,6 @@ struct DupTracker<true>
         return dup;
     }
 };
-
-inline void
-scan_pathset(ParserContext& ctx, ScanMode mode)
-{
-    bool saw_hop = false;
-    bool empty_path = true;
-    while (!ctx.failed() && !ctx.empty())
-    {
-        uint8_t t = 0;
-        if (!ctx.read_u8(t))
-            return;
-        if (t == PathSet::END_BYTE)
-        {
-            if (mode == ScanMode::CertifyWire && !saw_hop)
-            {
-                ctx.fail("empty path");
-                return;
-            }
-            if (mode == ScanMode::CertifyWire && empty_path && saw_hop)
-            {
-                ctx.fail("empty path");
-                return;
-            }
-            if (!fits_u32(ctx.pos()))
-                ctx.fail("offset overflow");
-            return;
-        }
-        if (t == PathSet::PATH_SEPARATOR)
-        {
-            if (mode == ScanMode::CertifyWire && empty_path)
-            {
-                ctx.fail("empty path");
-                return;
-            }
-            empty_path = true;
-            continue;
-        }
-        unsigned extra = 0;
-        if (t & PathSet::TYPE_ACCOUNT)
-            extra += 20;
-        if (t & PathSet::TYPE_CURRENCY)
-            extra += 20;
-        if (t & PathSet::TYPE_ISSUER)
-            extra += 20;
-        if (mode == ScanMode::CertifyWire)
-        {
-            uint8_t const legal = PathSet::TYPE_ACCOUNT |
-                PathSet::TYPE_CURRENCY | PathSet::TYPE_ISSUER;
-            if ((t & ~legal) != 0)
-            {
-                ctx.fail("unknown PathSet type bits");
-                return;
-            }
-            if (extra == 0)
-            {
-                ctx.fail("empty PathSet hop");
-                return;
-            }
-        }
-        if (!ctx.advance(extra))
-            return;
-        saw_hop = true;
-        empty_path = false;
-    }
-    // xahaud-vectors:src/libxrpl/protocol/STPathSet.cpp:57
-    // xahaud-vectors:src/libxrpl/protocol/Serializer.cpp:342
-    if (!ctx.failed())
-        ctx.fail("truncated PathSet");
-}
 
 inline void
 skip_xchain_bridge(ParserContext& ctx, ScanMode mode)
@@ -579,7 +511,12 @@ scan_object(
         }
         else if (type == FieldTypes::PathSet.code)
         {
-            scan_pathset(ctx, M);
+            PathSetNullSink pathset_sink;
+            if constexpr (M == ScanMode::Locate)
+                PathSetRules::walk<PathSetRuleMode::Locate>(ctx, pathset_sink);
+            else
+                PathSetRules::walk<PathSetRuleMode::CertifyWire>(
+                    ctx, pathset_sink);
             if (ctx.failed())
                 return;
         }

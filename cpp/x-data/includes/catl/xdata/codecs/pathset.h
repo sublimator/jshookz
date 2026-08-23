@@ -2,11 +2,16 @@
 
 #include "catl/xdata/codecs/account_id.h"
 #include "catl/xdata/codecs/currency.h"
+#include "catl/xdata/exception_policy.h"
+#include "catl/xdata/parser-error.h"
+#include "catl/xdata/pathset-rules.h"
 #include "catl/xdata/serializer.h"
 #include "catl/xdata/types/pathset.h"
 #ifndef CATL_XDATA_NO_BOOST_JSON
 #include <boost/json.hpp>
 #endif
+
+#include <string>
 
 namespace catl::xdata::codecs {
 
@@ -87,77 +92,46 @@ struct PathSetCodec
     static boost::json::value
     decode(Slice const& data)
     {
-        boost::json::array paths;
-        boost::json::array current_path;
-
-        size_t pos = 0;
-        while (pos < data.size())
+        struct JsonSink
         {
-            uint8_t type_byte = data.data()[pos++];
+            boost::json::array paths;
+            boost::json::array current_path;
 
-            if (type_byte == PathSet::END_BYTE)
+            void
+            on_hop(PathSetHop const& value)
             {
-                if (!current_path.empty())
-                {
-                    paths.push_back(std::move(current_path));
-                }
-                break;
-            }
-
-            if (type_byte == PathSet::PATH_SEPARATOR)
-            {
-                if (!current_path.empty())
-                {
-                    paths.push_back(std::move(current_path));
-                    current_path = boost::json::array();
-                }
-                continue;
-            }
-
-            boost::json::object hop;
-
-            if (type_byte & PathSet::TYPE_ACCOUNT)
-            {
-                if (pos + 20 <= data.size())
-                {
-                    Slice s(data.data() + pos, 20);
-                    hop["account"] = AccountIDCodec::decode(s);
-                    pos += 20;
-                }
-            }
-
-            if (type_byte & PathSet::TYPE_CURRENCY)
-            {
-                if (pos + 20 <= data.size())
-                {
-                    Slice s(data.data() + pos, 20);
-                    hop["currency"] = CurrencyCodec::decode(s);
-                    pos += 20;
-                }
-            }
-
-            if (type_byte & PathSet::TYPE_ISSUER)
-            {
-                if (pos + 20 <= data.size())
-                {
-                    Slice s(data.data() + pos, 20);
-                    hop["issuer"] = AccountIDCodec::decode(s);
-                    pos += 20;
-                }
-            }
-
-            if (!hop.empty())
-            {
+                boost::json::object hop;
+                if (!value.account.empty())
+                    hop["account"] = AccountIDCodec::decode(value.account);
+                if (!value.currency.empty())
+                    hop["currency"] = CurrencyCodec::decode(value.currency);
+                if (!value.issuer.empty())
+                    hop["issuer"] = AccountIDCodec::decode(value.issuer);
                 current_path.push_back(std::move(hop));
             }
-        }
 
-        if (!current_path.empty())
+            void
+            on_path_end()
+            {
+                paths.push_back(std::move(current_path));
+                current_path = boost::json::array();
+            }
+
+            void
+            on_end() const noexcept
+            {
+            }
+        } sink;
+
+        ParserContext ctx{data};
+        if (!PathSetRules::walk<PathSetRuleMode::CertifyWire>(ctx, sink) ||
+            ctx.failed() || ctx.pos() != data.size())
         {
-            paths.push_back(std::move(current_path));
+            std::string const error =
+                ctx.failed() ? ctx.as_error().message : "PathSet trailing bytes";
+            CATL_XDATA_THROW(ParserError(error));
         }
-
-        return paths;
+        return std::move(sink.paths);
     }
 };
 #endif

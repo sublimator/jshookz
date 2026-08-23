@@ -308,8 +308,8 @@ TEST(ParserDepth, SkipPathIsCappedToo)
 TEST(TruncatedInput, PathSetAccountHopWithNoAccountThrows)
 {
     // Paths header (long type 18, field 1) then hop type Account with none of
-    // the 20 account bytes. skip_pathset is sticky; the legacy parser must
-    // throw rather than rewind and visit the truncated hop.
+    // the 20 account bytes. PathSetRules failure is sticky; the legacy visitor
+    // must throw without rewinding or visiting the truncated hop.
     auto const protocol = Protocol::load_embedded_xahau_protocol();
     std::uint8_t const blob[] = {0x01, 0x12, 0x01};
     ParserContext ctx{Slice{blob, sizeof(blob)}};

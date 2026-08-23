@@ -4,6 +4,7 @@
 #include "catl/xdata/amount-view.h"
 #include "catl/xdata/certified-index.h"
 #include "catl/xdata/protocol.h"
+#include "catl/xdata/pathset-view.h"
 #include "catl/xdata/scan.h"
 #include "catl/xdata/uint32-view.h"
 
@@ -96,5 +97,26 @@ main()
     if (!account_value || (*account_value)[0] != 0xb5 ||
         (*account_value)[19] != 0xe8)
         return 15;
+
+    std::uint8_t const paths[] = {
+        0x01, 0x12, 0x01, 0xb5, 0xf7, 0x62, 0x79, 0x8a, 0x53, 0xd5,
+        0x43, 0xa0, 0x14, 0xca, 0xf8, 0xb2, 0x97, 0xcf, 0xf8, 0xf2,
+        0xf9, 0x37, 0xe8, 0x00};
+    auto paths_idx =
+        certify_indexed(Slice{paths, sizeof(paths)}, 0, protocol);
+    if (!paths_idx)
+        return 16;
+    auto paths_view = PathSetView::bind(*paths_idx, 0);
+    if (!paths_view)
+        return 17;
+    struct CountPathSet
+    {
+        int hops = 0;
+        void on_hop(PathSetHop const&) noexcept { ++hops; }
+        void on_path_end() const noexcept {}
+        void on_end() const noexcept {}
+    } paths_sink;
+    if (!paths_view->traverse(paths_sink) || paths_sink.hops != 1)
+        return 18;
     return 0;
 }

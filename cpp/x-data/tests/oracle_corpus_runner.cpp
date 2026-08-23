@@ -50,6 +50,11 @@ main(int argc, char** argv)
             std::cerr << "FAIL account-id-boundary " << prov_err << "\n";
             return 1;
         }
+        if (!oracle_run::pathset_boundary_complete(root, prov_err))
+        {
+            std::cerr << "FAIL pathset-boundary " << prov_err << "\n";
+            return 1;
+        }
     }
     auto const protocol = catl::xdata::Protocol::load_embedded_xahau_protocol();
 
@@ -73,7 +78,8 @@ main(int argc, char** argv)
             o = oracle_run::run_amount(
                 protocol, blob, c.if_contains("fields"), c.if_contains("json"));
         else if (type == "pathset")
-            o = oracle_run::run_pathset(blob, c.if_contains("json"));
+            o = oracle_run::run_pathset(
+                protocol, blob, c.if_contains("json"));
         else
         {
             auto const* fields = c.if_contains("fields");

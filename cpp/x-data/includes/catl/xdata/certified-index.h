@@ -1,11 +1,13 @@
 #pragma once
 
 #include "catl/xdata/amount-rules.h"
+#include "catl/xdata/pathset-rules.h"
 #include "catl/xdata/protocol.h"
 #include "catl/xdata/scan.h"
 
 #include <cstdint>
 #include <expected>
+#include <limits>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -60,6 +62,8 @@ private:
     certify_indexed(Slice, uint32_t, Protocol const&);
     friend std::expected<CertifiedIndex, CodecErrorValue>
     certify_amount_span(Slice, Protocol const&);
+    friend std::expected<CertifiedIndex, CodecErrorValue>
+    certify_pathset_span(Slice, Protocol const&);
     friend class CertifiedRoot;
     CertifiedIndex(
         Slice backing,
@@ -149,6 +153,42 @@ certify_amount_span(Slice payload, Protocol const& protocol)
     }
     FieldFrame f;
     f.field_code = amt->code;
+    f.header_begin = 0;
+    f.payload_begin = 0;
+    f.wire_end = static_cast<uint32_t>(payload.size());
+    std::vector<FieldFrame> frames;
+    frames.reserve(1);
+    frames.push_back(f);
+    return CertifiedIndex{payload, 0, f.wire_end, std::move(frames)};
+}
+
+// Standalone PathSet payload (no STObject header). One synthetic Paths frame.
+inline std::expected<CertifiedIndex, CodecErrorValue>
+certify_pathset_span(Slice payload, Protocol const& protocol)
+{
+    if (payload.size() > std::numeric_limits<uint32_t>::max())
+    {
+        return std::unexpected(CodecErrorValue{
+            CodecErrorCode::malformed_data, "PathSet offset overflow"});
+    }
+    ParserContext ctx{payload};
+    PathSetNullSink sink;
+    if (!PathSetRules::walk<PathSetRuleMode::CertifyWire>(ctx, sink) ||
+        ctx.failed() || ctx.pos() != payload.size())
+    {
+        if (ctx.failed())
+            return std::unexpected(ctx.as_error());
+        return std::unexpected(CodecErrorValue{
+            CodecErrorCode::malformed_data, "PathSet trailing bytes"});
+    }
+    auto paths = protocol.find_field("Paths");
+    if (!paths)
+    {
+        return std::unexpected(CodecErrorValue{
+            CodecErrorCode::unknown_field, "Paths field missing from protocol"});
+    }
+    FieldFrame f;
+    f.field_code = paths->code;
     f.header_begin = 0;
     f.payload_begin = 0;
     f.wire_end = static_cast<uint32_t>(payload.size());

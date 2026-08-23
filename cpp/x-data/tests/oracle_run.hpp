@@ -7,6 +7,7 @@
 #include "catl/xdata/json-visitor.h"
 #include "catl/xdata/parser-context.h"
 #include "catl/xdata/parser.h"
+#include "catl/xdata/pathset-view.h"
 #include "catl/xdata/scan.h"
 
 #include <cstdio>
@@ -498,6 +499,29 @@ decode_leaf_frames(
             (void)view->normalized();
             continue;
         }
+        if (t == FieldTypes::PathSet)
+        {
+            auto view = PathSetView::bind(idx, i);
+            if (!view)
+            {
+                err = "PathSet bind failed";
+                return false;
+            }
+            struct CountSink
+            {
+                size_t paths = 0;
+                size_t hops = 0;
+                void on_hop(PathSetHop const&) noexcept { ++hops; }
+                void on_path_end() noexcept { ++paths; }
+                void on_end() const noexcept {}
+            } sink;
+            if (!view->traverse(sink) || sink.paths == 0 || sink.hops == 0)
+            {
+                err = "PathSet admitted traversal failed";
+                return false;
+            }
+            continue;
+        }
         Slice payload{
             idx.backing().data() + f.payload_begin,
             f.wire_end - f.payload_begin};
@@ -840,6 +864,7 @@ run_amount(
 
 inline Outcomes
 run_pathset(
+    catl::xdata::Protocol const& protocol,
     std::string_view hex,
     boost::json::value const* oracle_json = nullptr)
 {
@@ -849,25 +874,47 @@ run_pathset(
     o.blob_size = bytes.size();
     Slice backing{bytes.data(), bytes.size()};
     ParserContext loc_ctx{backing};
-    scan_detail::scan_pathset(loc_ctx, ScanMode::Locate);
+    PathSetNullSink loc_sink;
+    PathSetRules::walk<PathSetRuleMode::Locate>(loc_ctx, loc_sink);
     o.locate_ok = !loc_ctx.failed();
     if (o.locate_ok)
         o.locate_end = static_cast<std::uint32_t>(loc_ctx.pos());
     else
         o.locate_err = loc_ctx.as_error().message;
     ParserContext cert_ctx{backing};
-    scan_detail::scan_pathset(cert_ctx, ScanMode::CertifyWire);
+    PathSetNullSink cert_sink;
+    PathSetRules::walk<PathSetRuleMode::CertifyWire>(cert_ctx, cert_sink);
     o.certify_null_ok = !cert_ctx.failed();
-    o.certify_index_ok = o.certify_null_ok;
-    o.sinks_agree = true;
+    auto idx = certify_pathset_span(backing, protocol);
+    o.certify_index_ok = idx.has_value();
+    o.sinks_agree = o.certify_null_ok == o.certify_index_ok;
     o.consumed_all = o.locate_ok && o.certify_null_ok &&
         o.locate_end == bytes.size();
     if (cert_ctx.failed())
         o.certify_err = cert_ctx.as_error().message;
-    if (o.certify_null_ok)
+    if (idx)
     {
         try
         {
+            auto view = PathSetView::bind(*idx, 0);
+            if (!view)
+            {
+                o.decode_err = "PathSet bind failed";
+                return o;
+            }
+            struct CountSink
+            {
+                size_t paths = 0;
+                size_t hops = 0;
+                void on_hop(PathSetHop const&) noexcept { ++hops; }
+                void on_path_end() noexcept { ++paths; }
+                void on_end() const noexcept {}
+            } count;
+            if (!view->traverse(count) || count.paths == 0 || count.hops == 0)
+            {
+                o.decode_err = "PathSet admitted traversal failed";
+                return o;
+            }
             auto got =
                 codecs::PathSetCodec::decode(Slice{bytes.data(), bytes.size()});
             o.decode_frames_ok = true;

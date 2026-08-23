@@ -64,6 +64,40 @@ if(BUILD_TESTING)
         CATL_XDATA_TEST_ACCOUNT_BASE58_HOOK)
     gtest_discover_tests(test_account_id_view DISCOVERY_TIMEOUT 30 DISCOVERY_MODE PRE_TEST)
 
+    add_executable(test_pathset_view tests/test_pathset_view.cpp)
+    target_link_libraries(test_pathset_view PRIVATE jshookz_xdata GTest::gtest_main)
+    target_compile_definitions(test_pathset_view PRIVATE
+        CATL_XDATA_TEST_PATHSET_HOOK)
+    gtest_discover_tests(test_pathset_view DISCOVERY_TIMEOUT 30 DISCOVERY_MODE PRE_TEST)
+
+    add_executable(test_pathset_noexcept tests/test_pathset_noexcept.cpp)
+    target_link_libraries(test_pathset_noexcept PRIVATE jshookz_xdata)
+    target_compile_options(test_pathset_noexcept PRIVATE
+        -fno-exceptions -fno-rtti)
+    add_test(NAME test_pathset_noexcept COMMAND test_pathset_noexcept)
+
+    add_executable(test_pathset_quickjs
+        tests/pathset_quickjs_fixture.cpp
+        tests/test_pathset_quickjs.cpp
+    )
+    target_link_libraries(test_pathset_quickjs PRIVATE
+        jshookz_xdata jshookz_qjs_src GTest::gtest_main
+    )
+    target_compile_options(test_pathset_quickjs PRIVATE
+        -fno-exceptions -fno-rtti)
+    gtest_discover_tests(test_pathset_quickjs
+        DISCOVERY_TIMEOUT 30 DISCOVERY_MODE PRE_TEST)
+
+    add_executable(pathset_gc_probe
+        tests/pathset_quickjs_fixture.cpp
+        tests/pathset_gc_probe.cpp
+    )
+    target_link_libraries(pathset_gc_probe PRIVATE
+        jshookz_xdata jshookz_qjs_src
+    )
+    target_compile_options(pathset_gc_probe PRIVATE
+        -fno-exceptions -fno-rtti)
+
     add_executable(test_view_sizes tests/view_sizes_probe.cpp)
     target_link_libraries(test_view_sizes PRIVATE jshookz_xdata)
     add_test(NAME test_view_sizes COMMAND test_view_sizes)
@@ -98,6 +132,14 @@ if(BUILD_TESTING)
     else()
         set(_fuel_python python3)
     endif()
+
+    add_test(NAME pathset_gc_red_controls
+        COMMAND ${_fuel_python}
+            ${CMAKE_CURRENT_LIST_DIR}/tests/run_pathset_gc_red.py
+            --probe $<TARGET_FILE:pathset_gc_probe>
+    )
+    set_tests_properties(pathset_gc_red_controls PROPERTIES TIMEOUT 30)
+
     add_test(NAME amount_fuel_lanes
         COMMAND ${_fuel_python}
             ${CMAKE_CURRENT_LIST_DIR}/tests/run_amount_fuel.py
@@ -119,6 +161,13 @@ if(BUILD_TESTING)
     )
     set_tests_properties(account_id_fuel_lanes PROPERTIES TIMEOUT 240)
 
+    add_test(NAME pathset_fuel_lanes
+        COMMAND ${_fuel_python}
+            ${CMAKE_CURRENT_LIST_DIR}/tests/run_pathset_fuel.py
+            --src ${CMAKE_CURRENT_LIST_DIR}
+    )
+    set_tests_properties(pathset_fuel_lanes PROPERTIES TIMEOUT 240)
+
     if(Boost_INCLUDE_DIR)
         # Also the only target that compiles the codec headers at all: the
         # wasm library builds them out via CATL_XDATA_NO_BOOST_JSON, and no
@@ -136,6 +185,7 @@ if(BUILD_TESTING)
         target_include_directories(test_scan PRIVATE ${CMAKE_CURRENT_LIST_DIR}/tests)
         target_compile_definitions(test_scan PRIVATE
             JSHOOKZ_ORACLE_CORPUS_JSON="${CMAKE_CURRENT_LIST_DIR}/tests/oracle_corpus.json"
+            CATL_XDATA_TEST_PATHSET_HOOK
         )
         gtest_discover_tests(test_scan DISCOVERY_TIMEOUT 30)
 

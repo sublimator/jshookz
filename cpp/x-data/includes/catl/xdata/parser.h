@@ -5,6 +5,7 @@
 #include "catl/xdata/exception_policy.h"
 #include "catl/xdata/parser-context.h"
 #include "catl/xdata/parser-error.h"
+#include "catl/xdata/pathset-rules.h"
 #include "catl/xdata/protocol.h"
 #include "catl/xdata/slice-cursor.h"
 #include "catl/xdata/slice-visitor.h"
@@ -104,8 +105,8 @@ skip_object(ParserContext& ctx, const Protocol& protocol, int depth = 0)
         }
         else if (field->meta.type == FieldTypes::PathSet)
         {
-            // PathSet has its own termination protocol
-            skip_pathset(ctx);
+            PathSetNullSink sink;
+            PathSetRules::walk<PathSetRuleMode::Locate>(ctx, sink);
             throw_if_failed(ctx);
         }
         else if (field->meta.is_vl_encoded)
@@ -387,8 +388,10 @@ parse_with_visitor_impl(
         else
         {
             //@@start leaf-field
-            // Leaf field - determine size and read
-            size_t field_size;
+            // Leaf field - determine size and read. PathSetRules consumes the
+            // complete admitted slice including END_BYTE in one forward pass.
+            size_t field_size = 0;
+            Slice field_data;
 
             if (field->meta.is_vl_encoded)
             {
@@ -413,12 +416,13 @@ parse_with_visitor_impl(
             }
             else if (field->meta.type == FieldTypes::PathSet)
             {
-                // PathSet - find the end byte to get size
                 size_t start_pos = ctx.cursor.pos;
-                skip_pathset(ctx);
+                PathSetNullSink sink;
+                PathSetRules::walk<PathSetRuleMode::CertifyWire>(ctx, sink);
                 throw_if_failed(ctx);
                 field_size = ctx.cursor.pos - start_pos;
-                ctx.cursor.pos = start_pos;  // Reset to read the data
+                field_data = Slice{
+                    ctx.cursor.data.data() + start_pos, field_size};
             }
             else
             {
@@ -431,7 +435,8 @@ parse_with_visitor_impl(
                 }
             }
 
-            Slice field_data = ctx.cursor.read_slice(field_size);
+            if (field->meta.type != FieldTypes::PathSet)
+                field_data = ctx.cursor.read_slice(field_size);
             path.push_back({field, -1});
             detail::call_field(
                 visitor, path, FieldSlice{field, header_slice, field_data});

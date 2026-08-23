@@ -7,6 +7,9 @@
 
 #include <boost/json.hpp>
 
+#include <algorithm>
+#include <array>
+#include <atomic>
 #include <fstream>
 #include <set>
 #include <sstream>
@@ -16,6 +19,19 @@
 #endif
 
 using namespace catl::xdata;
+
+namespace catl::xdata {
+
+std::array<std::atomic<unsigned>, 5> g_pathset_route_calls{};
+
+void
+pathset_rules_test_hook(PathSetRuleRoute route) noexcept
+{
+    g_pathset_route_calls[static_cast<size_t>(route)].fetch_add(
+        1, std::memory_order_relaxed);
+}
+
+}  // namespace catl::xdata
 
 namespace {
 
@@ -37,7 +53,7 @@ run_case(Protocol const& protocol, boost::json::object const& c)
         return oracle_run::run_amount(
             protocol, blob, c.if_contains("fields"), c.if_contains("json"));
     if (type == "pathset")
-        return oracle_run::run_pathset(blob, c.if_contains("json"));
+        return oracle_run::run_pathset(protocol, blob, c.if_contains("json"));
     auto const* fields = c.if_contains("fields");
     auto const* js = c.if_contains("json");
     std::string canonical;
@@ -45,6 +61,61 @@ run_case(Protocol const& protocol, boost::json::object const& c)
         canonical = std::string(c.at("canonical_blob").as_string());
     return oracle_run::run_stobject(protocol, blob, fields, js, canonical);
 }
+
+void
+reset_pathset_route_counts()
+{
+    for (auto& value : g_pathset_route_calls)
+        value.store(0, std::memory_order_relaxed);
+}
+
+unsigned
+pathset_route_count(PathSetRuleRoute route)
+{
+    return g_pathset_route_calls[static_cast<size_t>(route)].load(
+        std::memory_order_relaxed);
+}
+
+struct CapturePathSetField
+{
+    size_t visits = 0;
+    size_t bytes = 0;
+    uint8_t last = 0xff;
+    uint8_t const* data = nullptr;
+
+    void
+    visit_field(FieldPath const&, FieldSlice const& field)
+    {
+        ++visits;
+        bytes = field.data.size();
+        data = field.data.data();
+        if (!field.data.empty())
+            last = field.data.data()[field.data.size() - 1];
+    }
+};
+
+struct CountPathSetEvents
+{
+    size_t paths = 0;
+    size_t hops = 0;
+
+    void
+    on_hop(PathSetHop const&) noexcept
+    {
+        ++hops;
+    }
+
+    void
+    on_path_end() noexcept
+    {
+        ++paths;
+    }
+
+    void
+    on_end() const noexcept
+    {
+    }
+};
 
 }  // namespace
 
@@ -201,7 +272,7 @@ TEST(ScanCorpus, UInt32BoundaryDeletionIsRejected)
         cases.begin(), cases.end(), [](boost::json::value const& item) {
             auto const& c = item.as_object();
             return c.contains("id") &&
-                c.at("id").as_string() == "stobject-uint32-max";
+                   c.at("id").as_string() == "stobject-uint32-max";
         });
     ASSERT_NE(found, cases.end());
     cases.erase(found);
@@ -226,7 +297,7 @@ TEST(ScanCorpus, AccountIDBoundaryDeletionIsRejected)
         cases.begin(), cases.end(), [](boost::json::value const& item) {
             auto const& c = item.as_object();
             return c.contains("id") &&
-                c.at("id").as_string() == "stobject-account-vl-21";
+                   c.at("id").as_string() == "stobject-account-vl-21";
         });
     ASSERT_NE(found, cases.end());
     cases.erase(found);
@@ -251,7 +322,7 @@ TEST(ScanCorpus, PathSetBoundaryDeletionIsRejected)
         cases.begin(), cases.end(), [](boost::json::value const& item) {
             auto const& c = item.as_object();
             return c.contains("id") &&
-                c.at("id").as_string() == "pathset-mask-aci";
+                   c.at("id").as_string() == "pathset-mask-aci";
         });
     ASSERT_NE(found, cases.end());
     cases.erase(found);
@@ -259,6 +330,269 @@ TEST(ScanCorpus, PathSetBoundaryDeletionIsRejected)
     std::string err;
     EXPECT_FALSE(oracle_run::pathset_boundary_complete(root, err));
     EXPECT_EQ(err, "missing PathSet boundary pathset-mask-aci");
+}
+
+TEST(ScanCorpus, EveryPathSetBoundaryExercisesScannerCertificateAndView)
+{
+    auto const protocol = Protocol::load_embedded_xahau_protocol();
+    auto const root = load_corpus().as_object();
+    std::set<std::string> const locate_only_rejections{"pathset-empty",
+        "pathset-leading-separator", "pathset-doubled-separator",
+        "pathset-trailing-separator", "pathset-illegal-low-bit",
+        "pathset-illegal-high-bit"};
+    std::set<std::string> seen;
+    size_t accepted_count = 0;
+    size_t rejected_count = 0;
+
+    for (auto const& item : root.at("cases").as_array())
+    {
+        auto const& c = item.as_object();
+        if (std::string(c.at("codec_type").as_string()) != "pathset")
+            continue;
+        std::string const id(c.at("id").as_string());
+        seen.insert(id);
+        bool const accepted =
+            std::string(c.at("expect").as_string()) == "accept";
+        accepted_count += accepted;
+        rejected_count += !accepted;
+        auto const payload =
+            oracle_run::decode_hex(std::string(c.at("blob").as_string()));
+        std::vector<uint8_t> object{0x01, 0x12};
+        object.insert(object.end(), payload.begin(), payload.end());
+        Slice const backing{object.data(), object.size()};
+
+        reset_pathset_route_counts();
+        NullSink locate_sink;
+        auto const located =
+            scan_scope<ScanMode::Locate>(backing, 0, protocol, locate_sink);
+        bool const locate_expected =
+            accepted || locate_only_rejections.count(id) != 0;
+        EXPECT_EQ(located.has_value(), locate_expected) << id;
+        if (located)
+            EXPECT_EQ(*located, object.size()) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::Locate), 1u) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::CertifyWire), 0u) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::TraverseAdmitted), 0u)
+            << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::MeasureDirectory), 0u)
+            << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::FillDirectory), 0u)
+            << id;
+
+        reset_pathset_route_counts();
+        NullSink certify_sink;
+        auto const scanned = scan_scope<ScanMode::CertifyWire>(
+            backing, 0, protocol, certify_sink);
+        EXPECT_EQ(scanned.has_value(), accepted) << id;
+        if (scanned)
+            EXPECT_EQ(*scanned, object.size()) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::CertifyWire), 1u) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::Locate), 0u) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::TraverseAdmitted), 0u)
+            << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::MeasureDirectory), 0u)
+            << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::FillDirectory), 0u)
+            << id;
+
+        reset_pathset_route_counts();
+        auto const idx = certify_indexed(backing, 0, protocol);
+        EXPECT_EQ(idx.has_value(), accepted) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::CertifyWire), 1u) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::Locate), 0u) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::TraverseAdmitted), 0u)
+            << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::MeasureDirectory), 0u)
+            << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::FillDirectory), 0u)
+            << id;
+
+        if (!accepted)
+            continue;
+        ASSERT_TRUE(idx) << id;
+        ASSERT_EQ(idx->frame_count(), 1u) << id;
+
+        reset_pathset_route_counts();
+        auto const view = PathSetView::bind(*idx, 0);
+        ASSERT_TRUE(view) << id;
+        EXPECT_EQ(view->payload().data(), object.data() + 2) << id;
+        EXPECT_EQ(view->payload().size(), payload.size()) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::Locate), 0u) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::CertifyWire), 0u) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::TraverseAdmitted), 0u)
+            << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::MeasureDirectory), 0u)
+            << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::FillDirectory), 0u)
+            << id;
+
+        reset_pathset_route_counts();
+        CountPathSetEvents events;
+        EXPECT_TRUE(view->traverse(events)) << id;
+        EXPECT_GT(events.paths, 0u) << id;
+        EXPECT_GT(events.hops, 0u) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::TraverseAdmitted), 1u)
+            << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::Locate), 0u) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::CertifyWire), 0u) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::MeasureDirectory), 0u)
+            << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::FillDirectory), 0u)
+            << id;
+    }
+
+    EXPECT_EQ(seen, oracle_run::pathset_boundary_ids());
+    EXPECT_EQ(seen.size(), 22u);
+    EXPECT_EQ(accepted_count, 9u);
+    EXPECT_EQ(rejected_count, 13u);
+}
+
+TEST(ScanCorpus, EveryPathSetBoundaryUsesVisitorCertifyWithoutRewind)
+{
+    auto const protocol = Protocol::load_embedded_xahau_protocol();
+    auto const root = load_corpus().as_object();
+    std::set<std::string> seen;
+    size_t accepted_count = 0;
+    size_t rejected_count = 0;
+    for (auto const& item : root.at("cases").as_array())
+    {
+        auto const& c = item.as_object();
+        if (std::string(c.at("codec_type").as_string()) != "pathset")
+            continue;
+        std::string const id(c.at("id").as_string());
+        seen.insert(id);
+        auto const payload =
+            oracle_run::decode_hex(std::string(c.at("blob").as_string()));
+        std::vector<uint8_t> object{0x01, 0x12};
+        object.insert(object.end(), payload.begin(), payload.end());
+        ParserContext ctx{Slice{object.data(), object.size()}};
+        CapturePathSetField visitor;
+        reset_pathset_route_counts();
+        bool threw = false;
+        try
+        {
+            parse_with_visitor(ctx, protocol, visitor);
+        }
+        catch (std::exception const&)
+        {
+            threw = true;
+        }
+        bool const accepted =
+            std::string(c.at("expect").as_string()) == "accept";
+        accepted_count += accepted;
+        rejected_count += !accepted;
+        EXPECT_EQ(threw, !accepted) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::CertifyWire), 1u) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::Locate), 0u) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::TraverseAdmitted), 0u)
+            << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::MeasureDirectory), 0u)
+            << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::FillDirectory), 0u)
+            << id;
+        if (accepted)
+        {
+            EXPECT_EQ(visitor.visits, 1u) << id;
+            EXPECT_EQ(visitor.bytes, payload.size()) << id;
+            EXPECT_EQ(visitor.data, object.data() + 2) << id;
+            if (visitor.data)
+                EXPECT_TRUE(
+                    std::equal(payload.begin(), payload.end(), visitor.data))
+                    << id;
+            EXPECT_EQ(visitor.last, PathSet::END_BYTE) << id;
+            EXPECT_EQ(ctx.pos(), object.size()) << id;
+        }
+        else
+        {
+            EXPECT_EQ(visitor.visits, 0u) << id;
+            EXPECT_TRUE(ctx.failed()) << id;
+        }
+    }
+    EXPECT_EQ(seen, oracle_run::pathset_boundary_ids());
+    EXPECT_EQ(seen.size(), 22u);
+    EXPECT_EQ(accepted_count, 9u);
+    EXPECT_EQ(rejected_count, 13u);
+}
+
+TEST(ScanCorpus, EveryRejectedPathSetFailsStrictCodecIndependently)
+{
+    std::set<std::string> const expected_rejections{"pathset-empty",
+        "pathset-leading-separator", "pathset-doubled-separator",
+        "pathset-trailing-separator", "pathset-illegal-low-bit",
+        "pathset-illegal-high-bit", "pathset-truncated-account",
+        "pathset-truncated-currency", "pathset-truncated-issuer",
+        "pathset-aci-truncated-account", "pathset-aci-truncated-currency",
+        "pathset-aci-truncated-issuer", "pathset-missing-end"};
+    auto const root = load_corpus().as_object();
+    std::set<std::string> seen_pathsets;
+    std::set<std::string> seen_rejections;
+    for (auto const& item : root.at("cases").as_array())
+    {
+        auto const& c = item.as_object();
+        if (std::string(c.at("codec_type").as_string()) != "pathset")
+            continue;
+        std::string const id(c.at("id").as_string());
+        seen_pathsets.insert(id);
+        if (std::string(c.at("expect").as_string()) != "reject")
+            continue;
+        seen_rejections.insert(id);
+        auto const bytes =
+            oracle_run::decode_hex(std::string(c.at("blob").as_string()));
+
+        reset_pathset_route_counts();
+        EXPECT_THROW((void)codecs::PathSetCodec::decode(
+                         Slice{bytes.data(), bytes.size()}),
+            ParserError)
+            << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::CertifyWire), 1u) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::Locate), 0u) << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::TraverseAdmitted), 0u)
+            << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::MeasureDirectory), 0u)
+            << id;
+        EXPECT_EQ(pathset_route_count(PathSetRuleRoute::FillDirectory), 0u)
+            << id;
+    }
+    EXPECT_EQ(seen_pathsets, oracle_run::pathset_boundary_ids());
+    EXPECT_EQ(seen_rejections, expected_rejections);
+    EXPECT_EQ(seen_pathsets.size(), 22u);
+    EXPECT_EQ(seen_rejections.size(), 13u);
+}
+
+TEST(ScanCorpus, SkipObjectIllegalMaskUsesLocateAndSucceeds)
+{
+    auto const protocol = Protocol::load_embedded_xahau_protocol();
+    // Paths field followed by illegal hop mask 0x02 and the PathSet end.
+    // Locate must find the extent even though CertifyWire rejects this payload.
+    std::vector<uint8_t> object{0x01, 0x12, 0x02, 0x00};
+    ParserContext ctx{Slice{object.data(), object.size()}};
+    reset_pathset_route_counts();
+    EXPECT_NO_THROW(skip_object(ctx, protocol));
+    EXPECT_FALSE(ctx.failed());
+    EXPECT_EQ(ctx.pos(), object.size());
+    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::Locate), 1u);
+    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::CertifyWire), 0u);
+    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::TraverseAdmitted), 0u);
+    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::MeasureDirectory), 0u);
+    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::FillDirectory), 0u);
+}
+
+TEST(ScanCorpus, SkipObjectMissingPathSetEndUsesLocateAndFails)
+{
+    auto const protocol = Protocol::load_embedded_xahau_protocol();
+    std::vector<uint8_t> object{0x01, 0x12, 0x01, 0xb5, 0xf7, 0x62, 0x79, 0x8a,
+        0x53, 0xd5, 0x43, 0xa0, 0x14, 0xca, 0xf8, 0xb2, 0x97, 0xcf, 0xf8, 0xf2,
+        0xf9, 0x37, 0xe8};
+    ParserContext ctx{Slice{object.data(), object.size()}};
+    reset_pathset_route_counts();
+    EXPECT_THROW(skip_object(ctx, protocol), std::exception);
+    EXPECT_TRUE(ctx.failed());
+    EXPECT_EQ(ctx.pos(), object.size());
+    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::Locate), 1u);
+    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::CertifyWire), 0u);
+    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::TraverseAdmitted), 0u);
+    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::MeasureDirectory), 0u);
+    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::FillDirectory), 0u);
 }
 
 TEST(ScanCorpus, NegativeMptJsonMatchesView)
@@ -391,10 +725,10 @@ TEST(ScanIssue, UsdWithNativeAccountIsCertifyReject)
     auto const protocol = Protocol::load_embedded_xahau_protocol();
     auto const blob =
         "011914B5F762798A53D543A014CAF8B297CFF8F2F937E8"
-        "0000000000000000000000005553440000000000"
-        "0000000000000000000000000000000000000000"
-        "14B5F762798A53D543A014CAF8B297CFF8F2F937E8"
-        "0000000000000000000000000000000000000000";
+                      "0000000000000000000000005553440000000000"
+                      "0000000000000000000000000000000000000000"
+                      "14B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+                      "0000000000000000000000000000000000000000";
     auto o = oracle_run::run_stobject(protocol, blob);
     EXPECT_TRUE(o.locate_ok) << o.locate_err;
     EXPECT_FALSE(o.certify_null_ok);

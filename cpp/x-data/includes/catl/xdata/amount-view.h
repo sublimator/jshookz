@@ -13,6 +13,8 @@
 
 namespace catl::xdata {
 
+class CertifiedObjectValue;
+
 class AmountView
 {
 public:
@@ -178,6 +180,11 @@ public:
     }
 
 private:
+    // Narrow integration seam for the private QuickJS lifetime proof. It may
+    // bind a view only while this sole certified owner remains live; no Slice
+    // is added to the public escaping surface.
+    friend class CertifiedObjectValue;
+
     template <class View>
     std::optional<View>
     bind_view(size_t ordinal) const noexcept
