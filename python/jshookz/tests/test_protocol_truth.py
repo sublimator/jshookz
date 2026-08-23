@@ -13,12 +13,31 @@ class _EffectHost:
         return 0
 
 
-def test_rich_roots_are_non_constructible_factory_objects():
+IOU_AMOUNT_OBJECTS = {
+    "positive": (
+        "61D4838D7EA4C680000000000000000000000000005553440000000000"
+        "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+    ),
+    "negative": (
+        "6194838D7EA4C680000000000000000000000000005553440000000000"
+        "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+    ),
+    "zero": (
+        "6180000000000000000000000000000000000000005553440000000000"
+        "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+    ),
+}
+
+
+def test_legacy_rich_roots_are_non_constructible_factory_objects():
     host = WasmHost.profiled()
     host.init()
     try:
         result = host.eval(
-            "JSON.stringify([STBlob, Hash256, AccountID, XFLDecimal].map(root => {"
+            "JSON.stringify([STBlob, Hash256, AccountID].map(root => {"
             "  let constructError = false;"
             "  let instanceError = false;"
             "  try { new root(); } catch (error) { constructError = error instanceof TypeError; }"
@@ -34,33 +53,58 @@ def test_rich_roots_are_non_constructible_factory_objects():
         ["object", False, True, True],
         ["object", False, True, True],
         ["object", False, True, True],
-        ["object", False, True, True],
     ]
 
 
-def test_xfl_accessors_match_official_hook_float_vectors():
+def test_selected_value_types_have_no_global_factory_or_constructor():
+    host = WasmHost.profiled()
+    host.init()
+    try:
+        result = host.eval(
+            "JSON.stringify(['XFLDecimal', 'Amount', 'PathSet'].map(name => {"
+            "  const root = globalThis[name];"
+            "  let constructError = false;"
+            "  let instanceError = false;"
+            "  try { new root(); } catch (error) { constructError = error instanceof TypeError; }"
+            "  try { void ({} instanceof root); } catch (error) { instanceError = error instanceof TypeError; }"
+            "  return [name, !Object.hasOwn(globalThis, name), root === undefined, constructError, instanceError];"
+            "}))"
+        )
+    finally:
+        host.destroy()
+
+    assert result.ok, result.error
+    assert json.loads(result.result_value) == [
+        ["XFLDecimal", True, True, True, True],
+        ["Amount", True, True, True, True],
+        ["PathSet", True, True, True, True],
+    ]
+
+
+def test_xfl_decimal_scalar_predicates_use_provider_minted_iou_amounts():
+    vectors = json.dumps(IOU_AMOUNT_OBJECTS)
     host = WasmHost.profiled()
     host.init()
     try:
         result = host.eval(
             "JSON.stringify((() => {"
-            "  const positive = XFLDecimal.fromRaw(6089866696204910592n);"
-            "  const negative = XFLDecimal.fromRaw(1478180677777522688n);"
-            "  const hookApiVector = XFLDecimal.fromRaw(6270245249190730432n);"
-            "  const hookApiNegativeVector = XFLDecimal.fromRaw(1658559230763342528n);"
-            "  const zero = XFLDecimal.fromRaw(0n);"
-            "  let invalid = false;"
-            "  try { XFLDecimal.fromRaw(-1n); } catch (error) { invalid = error instanceof RangeError; }"
-            "  let oversized = false;"
-            "  try { XFLDecimal.fromRaw(1n << 64n); } catch (error) { oversized = error instanceof RangeError; }"
+            f"  const encoded = {vectors};"
+            "  const amounts = Object.fromEntries(Object.entries(encoded).map("
+            "    ([name, hex]) => [name, util.decodeObject(STBlob.fromHex(hex)).Amount]));"
+            "  const values = Object.fromEntries(Object.entries(amounts).map("
+            "    ([name, amount]) => [name, amount.value]));"
+            "  const prototype = Object.getPrototypeOf(values.positive);"
             "  return {"
-            "    positive: [positive.mantissa().toString(), positive.exponent(), positive.isNegative()],"
-            "    negative: [negative.mantissa().toString(), negative.exponent(), negative.isNegative()],"
-            "    hookApiVector: [hookApiVector.mantissa().toString(), hookApiVector.exponent(), hookApiVector.isNegative()],"
-            "    hookApiNegativeVector: [hookApiNegativeVector.mantissa().toString(), hookApiNegativeVector.exponent(), hookApiNegativeVector.isNegative()],"
-            "    mantissaType: typeof positive.mantissa(),"
-            "    zero: [zero.mantissa().toString(), zero.exponent(), zero.isNegative()],"
-            "    invalid, oversized"
+            "    amountKinds: Object.values(amounts).map(amount => amount.kind),"
+            "    positive: [values.positive.isNegative(), values.positive.isZero()],"
+            "    negative: [values.negative.isNegative(), values.negative.isZero()],"
+            "    zero: [values.zero.isNegative(), values.zero.isZero()],"
+            "    samePrototype: Object.values(values).every("
+            "      value => Object.getPrototypeOf(value) === prototype),"
+            "    prototypeOwn: Object.getOwnPropertyNames(prototype).sort(),"
+            "    noRawWordMembers: Object.values(values).every(value =>"
+            "      !('raw' in value) && !('mantissa' in value) &&"
+            "      !('exponent' in value) && !('fromRaw' in value))"
             "  };"
             "})())"
         )
@@ -69,14 +113,13 @@ def test_xfl_accessors_match_official_hook_float_vectors():
 
     assert result.ok, result.error
     assert json.loads(result.result_value) == {
-        "positive": ["1000000000000000", -15, False],
-        "negative": ["1000000000000000", -15, True],
-        "hookApiVector": ["1234567891000000", -5, False],
-        "hookApiNegativeVector": ["1234567891000000", -5, True],
-        "mantissaType": "bigint",
-        "zero": ["0", 0, False],
-        "invalid": True,
-        "oversized": True,
+        "amountKinds": ["iou", "iou", "iou"],
+        "positive": [False, False],
+        "negative": [True, False],
+        "zero": [False, True],
+        "samePrototype": True,
+        "prototypeOwn": ["isNegative", "isZero"],
+        "noRawWordMembers": True,
     }
 
 

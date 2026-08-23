@@ -228,16 +228,34 @@ def test_account_id_protocol_constants_have_exact_read_only_values():
     )
 
 
-def test_native_factories_and_prototypes_are_frozen_at_registration():
+def test_legacy_native_factories_and_prototypes_are_frozen_at_registration():
     result = evaluate(
         "JSON.stringify(["
         "[STBlob, STBlob.from([])],"
         "[Hash256, Hash256.from(new Uint8Array(32))],"
         "[AccountID, AccountID.zero],"
-        "[XFLDecimal, XFLDecimal.fromRaw(0n)],"
         "[UInt8, UInt8.zero]"
         "].every(([factory, value]) => "
         "Object.isFrozen(factory) && Object.isFrozen(Object.getPrototypeOf(value))));"
+    )
+
+    assert result.exit_code == 0
+    assert result.result_value == "true"
+
+
+def test_provider_minted_value_prototypes_are_frozen_at_registration():
+    result = evaluate(
+        "JSON.stringify((() => {"
+        "const object = util.decodeObject(STBlob.fromHex("
+        "'61D4838D7EA4C680000000000000000000000000005553440000000000' +"
+        "'B5F762798A53D543A014CAF8B297CFF8F2F937E8' +"
+        "'8114B5F762798A53D543A014CAF8B297CFF8F2F937E8'));"
+        "const paths = util.decodeObject(STBlob.fromHex("
+        "'8114B5F762798A53D543A014CAF8B297CFF8F2F937E8' +"
+        "'011201B5F762798A53D543A014CAF8B297CFF8F2F937E800')).Paths;"
+        "return [object, object.Amount, object.Amount.value, paths].every("
+        "  value => Object.isFrozen(Object.getPrototypeOf(value)));"
+        "})())"
     )
 
     assert result.exit_code == 0

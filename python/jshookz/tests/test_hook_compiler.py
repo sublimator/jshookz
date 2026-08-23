@@ -71,7 +71,7 @@ def test_rollback_require_strips_nullish_result_values(tmp_path: Path):
     assert compile_hook(source).bytecode
 
 
-def test_rich_roots_are_typed_as_factories_not_constructors(tmp_path: Path):
+def test_legacy_rich_roots_are_not_public_constructors(tmp_path: Path):
     source = tmp_path / "factory-roots.hook.ts"
     source.write_text(
         """
@@ -80,14 +80,81 @@ def test_rich_roots_are_typed_as_factories_not_constructors(tmp_path: Path):
           const blob = new STBlob();
           // @ts-expect-error Hash256 is not a base class.
           class DerivedHash extends Hash256 {}
-          // @ts-expect-error AccountID has no instanceof contract.
-          const account = {} instanceof AccountID;
-          // @ts-expect-error XFLDecimal exposes no public prototype.
-          const prototype = XFLDecimal.prototype;
+          // @ts-expect-error AccountID is not a public constructor.
+          const account = new AccountID();
           void blob;
           void DerivedHash;
           void account;
-          void prototype;
+          return accept();
+        }
+        """
+    )
+
+    assert compile_hook(source).bytecode
+
+
+def test_selected_provider_minted_types_have_no_value_namespace(tmp_path: Path):
+    source = tmp_path / "provider-minted-types.hook.ts"
+    source.write_text(
+        """
+        declare const decimal: XFLDecimal;
+        declare const amount: Amount;
+        declare const pathSet: PathSet;
+
+        export function main(): never {
+          const negative: boolean = decimal.isNegative();
+          const zero: boolean = decimal.isZero();
+          const amountKind: "native" | "iou" | "mpt" = amount.kind;
+          const firstPath = pathSet.at(0);
+
+          // @ts-expect-error XFLDecimal exists only in the type namespace.
+          const decimalValue = XFLDecimal;
+          // @ts-expect-error XFLDecimal has no public prototype value.
+          const decimalPrototype = XFLDecimal.prototype;
+          // @ts-expect-error XFLDecimal has no public constructor value.
+          const constructedDecimal = new XFLDecimal();
+          // @ts-expect-error XFLDecimal cannot be an instanceof target.
+          const decimalInstance = decimal instanceof XFLDecimal;
+
+          // @ts-expect-error Amount exists only in the type namespace.
+          const amountValue = Amount;
+          // @ts-expect-error Amount has no public prototype value.
+          const amountPrototype = Amount.prototype;
+          // @ts-expect-error Amount has no public constructor value.
+          const constructedAmount = new Amount();
+          // @ts-expect-error Amount cannot be an instanceof target.
+          const amountInstance = amount instanceof Amount;
+
+          // @ts-expect-error PathSet exists only in the type namespace.
+          const pathSetValue = PathSet;
+          // @ts-expect-error PathSet has no public prototype value.
+          const pathSetPrototype = PathSet.prototype;
+          // @ts-expect-error PathSet has no public constructor value.
+          const constructedPathSet = new PathSet();
+          // @ts-expect-error PathSet cannot be an instanceof target.
+          const pathSetInstance = pathSet instanceof PathSet;
+
+          trace(
+            "provider minted",
+            [
+              negative,
+              zero,
+              amountKind,
+              firstPath,
+              decimalValue,
+              decimalPrototype,
+              constructedDecimal,
+              decimalInstance,
+              amountValue,
+              amountPrototype,
+              constructedAmount,
+              amountInstance,
+              pathSetValue,
+              pathSetPrototype,
+              constructedPathSet,
+              pathSetInstance,
+            ],
+          );
           return accept();
         }
         """
