@@ -179,23 +179,21 @@ protected:
     ASSERT_TRUE(types::registerSTBlob(context, global.get()));
     ASSERT_TRUE(types::registerHash256(context, global.get()));
     ASSERT_TRUE(types::registerAccountID(context, global.get()));
-    ASSERT_TRUE(types::registerXFL(context, global.get()));
+    ASSERT_TRUE(types::registerXFL(context));
     ASSERT_TRUE(types::registerRichLeafTypes(context));
     types::AmountLeafMaterializers const amountLeaves{
-        types::makeAccountIDBytes,  types::makeCurrencyBytes,
-        types::makeHash192Bytes,    types::makeXFLDecimalParts,
-        makeIssueForAmount,         types::readAccountIDBytes,
-        types::readCurrencyBytes,   types::readHash192Bytes,
-        types::readXFLDecimalParts,
+        types::makeAccountIDBytes, types::makeCurrencyBytes,
+        types::makeHash192Bytes, types::makeXFLDecimalParts,
+        makeIssueForAmount,
     };
-    ASSERT_TRUE(types::registerAmount(context, global.get(), amountLeaves));
+    ASSERT_TRUE(types::registerAmount(context, amountLeaves));
     ASSERT_TRUE(types::registerObjectTypes(context));
     types::PathSetLeafMaterializers const pathLeaves{
         types::makeAccountIDBytes,
         types::makeCurrencyBytes,
         types::isCertifiedObjectRange,
     };
-    ASSERT_TRUE(types::registerPathSet(context, global.get(), pathLeaves));
+    ASSERT_TRUE(types::registerPathSet(context, pathLeaves));
     ASSERT_TRUE(register_uint_types(context));
     ASSERT_FALSE(JS_HasException(context));
   }

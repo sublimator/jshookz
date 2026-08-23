@@ -7,10 +7,8 @@
 #include <catl/xdata/amount-rules.h>
 
 #include <array>
-#include <cmath>
 #include <cstring>
 #include <limits>
-#include <span>
 
 namespace jshookz::provider::types {
 namespace {
@@ -96,120 +94,6 @@ parts(AmountState const &state) noexcept {
     return JS_EXCEPTION;
   }
   return value;
-}
-
-[[nodiscard]] JSValue amountFrom(JSContext *ctx, JSValueConst, int argc,
-                                 JSValueConst *argv) {
-  if (argc < 1)
-    return JS_ThrowTypeError(ctx, "Amount.from() expects canonical bytes");
-  auto bytes = qjs::ByteView::getBinding(ctx, argv[0], "Amount.from", 0,
-                                         qjs::BytePolicy::bytesLikeOrSTBlob);
-  if (!bytes)
-    return qjs::byteInputTypeError(ctx, "Amount.from()",
-                                   qjs::BytePolicy::bytesLikeOrSTBlob);
-  return newAmount(ctx, bytes.data(), bytes.size());
-}
-
-void writeBigEndian(std::uint8_t *output, std::uint64_t value) noexcept {
-  for (int index = 7; index >= 0; --index) {
-    output[index] = static_cast<std::uint8_t>(value);
-    value >>= 8;
-  }
-}
-
-[[nodiscard]] bool readSignedInteger(JSContext *ctx, JSValueConst input,
-                                     std::int64_t &output) {
-  if (JS_IsBigInt(ctx, input))
-    return JS_ToBigInt64(ctx, &output, input) >= 0;
-  double number = 0;
-  if (!JS_IsNumber(input) || JS_ToFloat64(ctx, &number, input) < 0 ||
-      !std::isfinite(number) || std::trunc(number) != number ||
-      number < -9007199254740991.0 || number > 9007199254740991.0 ||
-      JS_ToInt64(ctx, &output, input) < 0)
-    return false;
-  return true;
-}
-
-[[nodiscard]] JSValue amountDropsFactory(JSContext *ctx, JSValueConst, int argc,
-                                         JSValueConst *argv) {
-  std::int64_t signedValue = 0;
-  if (argc < 1 || !readSignedInteger(ctx, argv[0], signedValue))
-    return JS_HasException(ctx)
-               ? JS_EXCEPTION
-               : JS_ThrowTypeError(ctx,
-                                   "Amount.drops() expects an exact integer");
-  std::uint64_t const magnitude =
-      signedValue < 0
-          ? std::uint64_t{0} - static_cast<std::uint64_t>(signedValue)
-          : static_cast<std::uint64_t>(signedValue);
-  if (magnitude >= xdata::AmountRules::kMpt)
-    return JS_ThrowRangeError(ctx, "Amount.drops() is out of range");
-  std::uint64_t const wire = magnitude == 0 || signedValue > 0
-                                 ? magnitude | xdata::AmountRules::kPositive
-                                 : magnitude;
-  std::uint8_t bytes[8];
-  writeBigEndian(bytes, wire);
-  return newAmount(ctx, bytes, sizeof(bytes));
-}
-
-[[nodiscard]] JSValue amountIouFactory(JSContext *ctx, JSValueConst, int argc,
-                                       JSValueConst *argv) {
-  if (argc < 3)
-    return JS_ThrowTypeError(
-        ctx, "Amount.iou() expects decimal, currency, and issuer");
-  bool negative = false;
-  std::uint64_t magnitude = 0;
-  std::int32_t exponent = 0;
-  std::uint8_t currency[20];
-  std::uint8_t issuer[20];
-  if (!leafMaterializers.readDecimal(ctx, argv[0], &negative, &magnitude,
-                                     &exponent) ||
-      !leafMaterializers.readCurrency(ctx, argv[1], currency) ||
-      !leafMaterializers.readAccountID(ctx, argv[2], issuer))
-    return JS_HasException(ctx)
-               ? JS_EXCEPTION
-               : JS_ThrowTypeError(
-                     ctx, "Amount.iou() received a wrong nominal value");
-
-  std::uint64_t wire = xdata::AmountRules::kIssued;
-  if (magnitude != 0) {
-    if (magnitude < xdata::AmountRules::kMinMant ||
-        magnitude > xdata::AmountRules::kMaxMant || exponent < -96 ||
-        exponent > 80)
-      return JS_ThrowRangeError(ctx, "Amount.iou() decimal is out of range");
-    std::uint64_t const high =
-        std::uint64_t{static_cast<std::uint32_t>(exponent + 97)} |
-        (negative ? 0 : 0x100u) | 0x200u;
-    wire = (high << 54) | magnitude;
-  }
-  std::uint8_t bytes[48];
-  writeBigEndian(bytes, wire);
-  std::memcpy(bytes + 8, currency, sizeof(currency));
-  std::memcpy(bytes + 28, issuer, sizeof(issuer));
-  return newAmount(ctx, bytes, sizeof(bytes));
-}
-
-[[nodiscard]] JSValue amountMptFactory(JSContext *ctx, JSValueConst, int argc,
-                                       JSValueConst *argv) {
-  std::int64_t signedValue = 0;
-  std::uint8_t issuance[24];
-  if (argc < 2 || !readSignedInteger(ctx, argv[0], signedValue) ||
-      !leafMaterializers.readHash192(ctx, argv[1], issuance))
-    return JS_HasException(ctx)
-               ? JS_EXCEPTION
-               : JS_ThrowTypeError(
-                     ctx, "Amount.mpt() expects an exact integer and Hash192");
-  std::uint64_t const magnitude =
-      signedValue < 0
-          ? std::uint64_t{0} - static_cast<std::uint64_t>(signedValue)
-          : static_cast<std::uint64_t>(signedValue);
-  std::uint8_t bytes[33] = {};
-  bytes[0] = 0x20;
-  if (signedValue >= 0)
-    bytes[0] |= 0x40;
-  writeBigEndian(bytes + 1, magnitude);
-  std::memcpy(bytes + 9, issuance, sizeof(issuance));
-  return newAmount(ctx, bytes, sizeof(bytes));
 }
 
 [[nodiscard]] JSValue amountKind(JSContext *ctx, JSValueConst thisValue) {
@@ -508,27 +392,17 @@ JSCFunctionListEntry const amountPrototype[] = {
     JS_CFUNC_DEF("compare", 1, amountCompare),
 };
 
-JSCFunctionListEntry const amountStatics[] = {
-    JS_CFUNC_DEF("from", 1, amountFrom),
-    JS_CFUNC_DEF("drops", 1, amountDropsFactory),
-    JS_CFUNC_DEF("iou", 3, amountIouFactory),
-    JS_CFUNC_DEF("mpt", 2, amountMptFactory),
-};
-
 } // namespace
 
-bool registerAmount(JSContext *ctx, JSValueConst global,
-                    AmountLeafMaterializers const &leaves) {
+bool registerAmount(JSContext *ctx, AmountLeafMaterializers const &leaves) {
   if (leaves.accountID == nullptr || leaves.currency == nullptr ||
       leaves.hash192 == nullptr || leaves.decimal == nullptr ||
-      leaves.issue == nullptr || leaves.readAccountID == nullptr ||
-      leaves.readCurrency == nullptr || leaves.readHash192 == nullptr ||
-      leaves.readDecimal == nullptr)
+      leaves.issue == nullptr)
     return false;
   leafMaterializers = leaves;
-  return registerClass(ctx, global, "Amount", &amountClassId, &amountClass,
-                       amountPrototype, amountStatics,
-                       qjs::ByteClassFamily::serializedType, amountToBytes);
+  return registerHiddenClass(ctx, &amountClassId, &amountClass, amountPrototype,
+                             qjs::ByteClassFamily::serializedType,
+                             amountToBytes);
 }
 
 JSValue makeAmountBytes(JSContext *ctx, std::uint8_t const *bytes,

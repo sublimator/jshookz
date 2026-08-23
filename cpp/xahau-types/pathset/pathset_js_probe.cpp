@@ -29,15 +29,6 @@ JSValue issueLeaf(JSContext *ctx, types::AmountIssueKind kind,
   return JS_NewUint32(ctx, static_cast<std::uint8_t>(kind));
 }
 
-bool readFixed(JSContext *, JSValueConst, std::uint8_t *) noexcept {
-  return false;
-}
-
-bool readDecimal(JSContext *, JSValueConst, bool *, std::uint64_t *,
-                 std::int32_t *) noexcept {
-  return false;
-}
-
 bool certifiedRange(JSContext *ctx, JSValueConst owner,
                     std::uint8_t const *bytes, std::uint32_t length) noexcept {
   std::size_t size = 0;
@@ -155,19 +146,22 @@ int main() {
   qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
   types::AmountLeafMaterializers const amountLeaves{
       bytesLeaf, bytesLeaf, bytesLeaf, decimalLeaf, issueLeaf,
-      readFixed, readFixed, readFixed, readDecimal,
   };
   types::PathSetLeafMaterializers const pathLeaves{bytesLeaf, bytesLeaf,
                                                    certifiedRange};
-  if (!types::registerAmount(ctx, global.get(), amountLeaves) ||
-      !types::registerPathSet(ctx, global.get(), pathLeaves)) {
+  if (!types::registerAmount(ctx, amountLeaves) ||
+      !types::registerPathSet(ctx, pathLeaves)) {
     printException(ctx);
     return 2;
   }
 
   std::uint8_t const nativeOne[8] = {0x40, 0, 0, 0, 0, 0, 0, 1};
   JSValue amount = types::makeAmountBytes(ctx, nativeOne, sizeof(nativeOne));
-  if (JS_IsException(amount) || !setGlobal(ctx, "amount", amount))
+  JSValue amountCopy =
+      types::makeAmountBytes(ctx, nativeOne, sizeof(nativeOne));
+  if (JS_IsException(amount) || JS_IsException(amountCopy) ||
+      !setGlobal(ctx, "amount", amount) ||
+      !setGlobal(ctx, "amountCopy", amountCopy))
     return 3;
 
   std::array<std::uint8_t, 48> iou{};
@@ -212,14 +206,15 @@ int main() {
 
   char const script[] = R"JS(
         (() => {
+          if (Object.hasOwn(globalThis, "Amount") ||
+              Object.hasOwn(globalThis, "PathSet")) return false;
           if (amount.kind !== "native" || amount.drops !== 1n ||
               amount.byteLength !== 8 || amount.toString() !== "1" ||
               !amount.isNative() || amount.isIOU() ||
               amount.asNative() !== amount || amount.asIOU() !== undefined ||
               Object.isExtensible(amount)) return false;
-          const from = Amount.from(amount.toBytes());
-          if (!from.equals(amount) || from.compare(amount) !== 0 ||
-              Amount.drops(1n).drops !== 1n) return false;
+          if (!amountCopy.equals(amount) || amountCopy.compare(amount) !== 0)
+            return false;
           const amountBytes = amount.toBytes();
           amountBytes[7] = 9;
           if (amount.toBytes()[7] !== 1) return false;

@@ -42,10 +42,22 @@ registerClass(
     JSCFunction* toBytes = nullptr,
     FactoryInitializer initializeFactory = nullptr);
 
+// Register an exact provider-minted class and its frozen prototype without
+// creating a value-level global or public authoring factory.
+[[nodiscard]] bool
+registerHiddenClass(
+    JSContext* ctx,
+    JSClassID* class_id,
+    JSClassDef const* class_def,
+    std::span<JSCFunctionListEntry const> prototypeFunctions,
+    jshookz::provider::qjs::ByteClassFamily byteFamily =
+        jshookz::provider::qjs::ByteClassFamily::none,
+    JSCFunction* toBytes = nullptr);
+
 [[nodiscard]] bool registerSTBlob(JSContext* ctx, JSValueConst global);
 [[nodiscard]] bool registerHash256(JSContext* ctx, JSValueConst global);
 [[nodiscard]] bool registerAccountID(JSContext* ctx, JSValueConst global);
-[[nodiscard]] bool registerXFL(JSContext* ctx, JSValueConst global);
+[[nodiscard]] bool registerXFL(JSContext* ctx);
 
 // Provider-only materializer seams. These mint exact nominal values without
 // routing through public JavaScript factories.

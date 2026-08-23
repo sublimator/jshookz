@@ -1,7 +1,33 @@
 #include "js.hpp"
 
+#include "amount/amount_js.hpp"
+#include "leaf/leaf.hpp"
+#include "object/field_js.hpp"
+#include "object/object.hpp"
+#include "pathset/pathset_js.hpp"
+
+#include <cstdint>
+#include <cstring>
+
 namespace jshookz::provider::types {
 namespace qjs = jshookz::provider::qjs;
+
+bool
+registerHiddenClass(
+    JSContext* ctx,
+    JSClassID* class_id,
+    JSClassDef const* class_def,
+    std::span<JSCFunctionListEntry const> prototypeFunctions,
+    qjs::ByteClassFamily byteFamily,
+    JSCFunction* toBytes)
+{
+    return jshookz::qjs::defineClass(
+               JS_GetRuntime(ctx), class_id, class_def) &&
+        qjs::registerByteClass(*class_id, byteFamily, toBytes) &&
+        jshookz::qjs::installPrototype(
+               ctx, *class_id, prototypeFunctions) &&
+        !JS_HasException(ctx);
+}
 
 bool
 registerClass(
@@ -16,17 +42,14 @@ registerClass(
     JSCFunction* toBytes,
     FactoryInitializer initializeFactory)
 {
-    JS_NewClassID(class_id);
-    if (JS_NewClass(JS_GetRuntime(ctx), *class_id, class_def) < 0 ||
-        !qjs::registerByteClass(*class_id, byteFamily, toBytes))
+    if (!registerHiddenClass(
+            ctx,
+            class_id,
+            class_def,
+            prototypeFunctions,
+            byteFamily,
+            toBytes))
         return false;
-
-    qjs::OwnedValue prototype(ctx, JS_NewObject(ctx));
-    if (prototype.isException() ||
-        !qjs::installFunctions(ctx, prototype.get(), prototypeFunctions) ||
-        !qjs::freezeObject(ctx, prototype.get()))
-        return false;
-    JS_SetClassProto(ctx, *class_id, prototype.release());
 
     qjs::OwnedValue factory(ctx, JS_NewObject(ctx));
     if (factory.isException() ||
@@ -40,18 +63,117 @@ registerClass(
 
 }  // namespace jshookz::provider::types
 
+namespace {
+
+namespace qjs = jshookz::provider::qjs;
+namespace types = jshookz::provider::types;
+
+[[nodiscard]] JSValue
+makeIssueForAmount(
+    JSContext* ctx,
+    types::AmountIssueKind kind,
+    std::uint8_t const* identity,
+    std::uint32_t length)
+{
+    if (kind == types::AmountIssueKind::native) {
+        std::uint8_t native[20] = {};
+        return types::makeIssueBytes(ctx, native, sizeof(native));
+    }
+    if (kind == types::AmountIssueKind::iou)
+        return types::makeIssueBytes(ctx, identity, length);
+    if (identity == nullptr || length != 24)
+        return JS_ThrowInternalError(
+            ctx, "invalid certified MPT issue identity");
+    std::uint8_t issue[44] = {};
+    std::memcpy(issue, identity + 4, 20);
+    issue[39] = 1;
+    issue[40] = identity[3];
+    issue[41] = identity[2];
+    issue[42] = identity[1];
+    issue[43] = identity[0];
+    return types::makeIssueBytes(ctx, issue, sizeof(issue));
+}
+
+[[nodiscard]] JSValueConst
+firstArgument(int argc, JSValueConst* argv) noexcept
+{
+    return argc > 0 ? argv[0] : JS_UNDEFINED;
+}
+
+[[nodiscard]] JSValue
+validateObject(
+    JSContext* ctx,
+    JSValueConst,
+    int argc,
+    JSValueConst* argv)
+{
+    return types::validateObjectBytes(ctx, firstArgument(argc, argv));
+}
+
+[[nodiscard]] JSValue
+safeDecodeObject(
+    JSContext* ctx,
+    JSValueConst,
+    int argc,
+    JSValueConst* argv)
+{
+    return types::safeDecodeObjectBytes(ctx, firstArgument(argc, argv));
+}
+
+[[nodiscard]] JSValue
+decodeObject(
+    JSContext* ctx,
+    JSValueConst,
+    int argc,
+    JSValueConst* argv)
+{
+    return types::decodeObjectBytes(ctx, firstArgument(argc, argv));
+}
+
+JSCFunctionListEntry const utilFunctions[] = {
+    JS_CFUNC_DEF("validateObject", 1, validateObject),
+    JS_CFUNC_DEF("safeDecodeObject", 1, safeDecodeObject),
+    JS_CFUNC_DEF("decodeObject", 1, decodeObject),
+};
+
+}  // namespace
+
 extern "C" bool
 register_cpp_types(JSContext* ctx)
 {
-    namespace types = jshookz::provider::types;
-    namespace qjs = jshookz::provider::qjs;
-
     qjs::resetByteClassRegistry();
     qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
     if (global.isException())
         return false;
+    types::AmountLeafMaterializers const amountLeaves{
+        types::makeAccountIDBytes,
+        types::makeCurrencyBytes,
+        types::makeHash192Bytes,
+        types::makeXFLDecimalParts,
+        makeIssueForAmount,
+    };
+    types::PathSetLeafMaterializers const pathLeaves{
+        types::makeAccountIDBytes,
+        types::makeCurrencyBytes,
+        types::isCertifiedObjectRange,
+    };
     return types::registerSTBlob(ctx, global.get()) &&
         types::registerHash256(ctx, global.get()) &&
         types::registerAccountID(ctx, global.get()) &&
-        types::registerXFL(ctx, global.get());
+        types::registerXFL(ctx) &&
+        types::registerRichLeafTypes(ctx) &&
+        types::registerAmount(ctx, amountLeaves) &&
+        types::registerObjectTypes(ctx) &&
+        types::registerPathSet(ctx, pathLeaves) &&
+        types::registerFieldDescriptors(ctx, global.get()) &&
+        jshookz::qjs::installFactory(
+            ctx, global.get(), "util", utilFunctions);
+}
+
+extern "C" void
+unregister_cpp_types(JSRuntime* runtime)
+{
+    types::unregisterObjectTypes(runtime);
+    types::unregisterRichLeafTypes(runtime);
+    qjs::resetByteClassRegistry();
 }

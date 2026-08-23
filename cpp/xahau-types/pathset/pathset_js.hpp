@@ -17,10 +17,9 @@ struct PathSetLeafMaterializers {
                          std::uint32_t) noexcept = nullptr;
 };
 
-// Registers public immutable PathSet/Path/PathHop classes plus their private
-// iterator class. Only PathSet receives a global factory object; Path and
-// PathHop are provider-minted interface values.
-[[nodiscard]] bool registerPathSet(JSContext *ctx, JSValueConst global,
+// Registers hidden immutable PathSet/Path/PathHop classes plus their hidden
+// iterator class. Every instance is provider-minted; no global is published.
+[[nodiscard]] bool registerPathSet(JSContext *ctx,
                                    PathSetLeafMaterializers const &leaves);
 
 // Provider-only materializer over a canonical field payload. `owner` must be

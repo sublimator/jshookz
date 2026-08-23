@@ -97,21 +97,15 @@ protected:
                 types::makeHash192Bytes,
                 types::makeXFLDecimalParts,
                 makeIssueForAmount,
-                types::readAccountIDBytes,
-                types::readCurrencyBytes,
-                types::readHash192Bytes,
-                types::readXFLDecimalParts,
             };
-            ASSERT_TRUE(types::registerAmount(
-                ctx, global.get(), amountLeaves));
+            ASSERT_TRUE(types::registerAmount(ctx, amountLeaves));
             ASSERT_TRUE(types::registerObjectTypes(ctx));
             types::PathSetLeafMaterializers const pathLeaves{
                 types::makeAccountIDBytes,
                 types::makeCurrencyBytes,
                 types::isCertifiedObjectRange,
             };
-            ASSERT_TRUE(types::registerPathSet(
-                ctx, global.get(), pathLeaves));
+            ASSERT_TRUE(types::registerPathSet(ctx, pathLeaves));
             ASSERT_TRUE(types::registerFieldDescriptors(ctx, global.get()));
         } else
             ASSERT_TRUE(JS_IsObject(util.get()));
@@ -588,6 +582,34 @@ TEST_F(XahauTypes, ObjectByteUtilitiesUseExactInputAndNominalResultLaws)
     EXPECT_TRUE(jshookz::provider::types::isSTObject(fromBlob.get()));
 }
 
+TEST_F(XahauTypes,
+       ExplicitObjectUtilitiesPublishAtomicallyWithoutContainerGlobals) {
+  auto value = eval(R"JS(
+        (() => {
+          const bytes = new Uint8Array([0x22, 0, 0, 0, 9]);
+          const decoded = util.safeDecodeObject(bytes);
+          const asserted = util.decodeObject(bytes);
+          const hidden = [
+            "Hash128", "Hash160", "Hash192", "Currency", "Issue",
+            "Amount", "NativeAmount", "IOUAmount", "MPTAmount",
+            "XFLDecimal", "PathSet", "Path", "PathHop", "Vector256",
+            "XChainBridge", "STObject", "STArray",
+          ];
+          const published = ["STBlob", "Hash256", "AccountID", "Field", "util"];
+          return Object.isFrozen(util) &&
+            Reflect.ownKeys(util).join(",") ===
+              "validateObject,safeDecodeObject,decodeObject" &&
+            util.validateObject(bytes) && !util.validateObject(bytes.subarray(0, 2)) &&
+            decoded.ok && decoded.value.Flags.toNumber() === 9 &&
+            asserted.Flags.toNumber() === 9 &&
+            hidden.every(name => !Object.hasOwn(globalThis, name)) &&
+            published.every(name => Object.hasOwn(globalThis, name));
+        })()
+    )JS");
+  ASSERT_FALSE(value.isException());
+  EXPECT_TRUE(JS_ToBool(ctx, value.get()));
+}
+
 TEST_F(XahauTypes, ObjectByteUtilitiesPublishExactWrongTerminatorAndTypeErrors)
 {
     auto wrongClose = eval("new Uint8Array([0xF1])");
@@ -762,8 +784,18 @@ TEST_F(XahauTypes, ObjectMaterializesAmountPathSetAndBridgeWithExactIdentity)
     auto amount = eval(R"JS(
         (() => {
           const value = root.Amount;
+          const decimal = value.value;
+          const converted = value.toXFL();
+          const decimalPrototype = Object.getPrototypeOf(decimal);
           return value === root.get(Field.Amount) && value === root.Amount &&
-            value.kind === "iou" && value.value.mantissa() === 1000000000000000n &&
+            value.kind === "iou" && !decimal.isNegative() && !decimal.isZero() &&
+            converted !== decimal && !converted.isNegative() &&
+            !converted.isZero() &&
+            Object.getPrototypeOf(converted) === decimalPrototype &&
+            Reflect.ownKeys(decimalPrototype).join(",") ===
+              "isNegative,isZero" && Object.isFrozen(decimalPrototype) &&
+            !("raw" in decimal) && !("mantissa" in decimal) &&
+            !("exponent" in decimal) &&
             value.currency.toString() === "USD" &&
             value.issuer.toHex() === "B5F762798A53D543A014CAF8B297CFF8F2F937E8" &&
             value.issue.kind === "iou" && !Object.isExtensible(value);

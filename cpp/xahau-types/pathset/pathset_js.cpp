@@ -609,8 +609,7 @@ JSCFunctionListEntry const iteratorPrototype[] = {
 
 } // namespace
 
-bool registerPathSet(JSContext *ctx, JSValueConst global,
-                     PathSetLeafMaterializers const &leaves) {
+bool registerPathSet(JSContext *ctx, PathSetLeafMaterializers const &leaves) {
   if (leaves.accountID == nullptr || leaves.currency == nullptr ||
       leaves.certifiedRange == nullptr)
     return false;
@@ -626,9 +625,7 @@ bool registerPathSet(JSContext *ctx, JSValueConst global,
       !coreqjs::installPrototype(ctx, pathSetClassId, pathSetPrototype) ||
       !coreqjs::installPrototype(ctx, pathClassId, pathPrototype) ||
       !coreqjs::installPrototype(ctx, pathHopClassId, pathHopPrototype) ||
-      !coreqjs::installPrototype(ctx, iteratorClassId, iteratorPrototype) ||
-      !coreqjs::installFactory(ctx, global, "PathSet",
-                               std::span<JSCFunctionListEntry const>{}))
+      !coreqjs::installPrototype(ctx, iteratorClassId, iteratorPrototype))
     return false;
   return !JS_HasException(ctx);
 }

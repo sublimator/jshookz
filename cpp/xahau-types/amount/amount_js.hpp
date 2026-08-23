@@ -12,11 +12,10 @@ enum class AmountIssueKind : std::uint8_t {
   mpt,
 };
 
-// Existing nominal leaf factories supplied by the provider registrar. Amount
-// never publishes a structural stand-in for one of these values. `issue`
-// receives no identity bytes for native, currency||issuer for IOU, and the
-// 24-byte issuance id for MPT. The read callbacks accept only their exact
-// nominal classes and copy into the fixed-size output supplied by Amount.
+// Existing nominal leaf materializers supplied by the provider registrar.
+// Amount never publishes a structural stand-in for one of these values.
+// `issue` receives no identity bytes for native, currency||issuer for IOU, and
+// the 24-byte issuance id for MPT.
 struct AmountLeafMaterializers {
   JSValue (*accountID)(JSContext *, std::uint8_t const *,
                        std::uint32_t) = nullptr;
@@ -27,20 +26,11 @@ struct AmountLeafMaterializers {
   JSValue (*decimal)(JSContext *, bool, std::uint64_t, std::int32_t) = nullptr;
   JSValue (*issue)(JSContext *, AmountIssueKind, std::uint8_t const *,
                    std::uint32_t) = nullptr;
-  bool (*readAccountID)(JSContext *, JSValueConst,
-                        std::uint8_t *) noexcept = nullptr;
-  bool (*readCurrency)(JSContext *, JSValueConst,
-                       std::uint8_t *) noexcept = nullptr;
-  bool (*readHash192)(JSContext *, JSValueConst,
-                      std::uint8_t *) noexcept = nullptr;
-  bool (*readDecimal)(JSContext *, JSValueConst, bool *, std::uint64_t *,
-                      std::int32_t *) noexcept = nullptr;
 };
 
-// Registers the immutable nominal Amount class and its frozen prototype. The
-// registrar rejects an incomplete nominal-leaf table rather than publishing
-// values with the wrong runtime identity.
-[[nodiscard]] bool registerAmount(JSContext *ctx, JSValueConst global,
+// Registers the hidden immutable nominal Amount class and its frozen instance
+// prototype. No value-level global or authoring factory is published.
+[[nodiscard]] bool registerAmount(JSContext *ctx,
                                   AmountLeafMaterializers const &leaves);
 
 // Provider-only canonical materializer. It validates the complete Amount
