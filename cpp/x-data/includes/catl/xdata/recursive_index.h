@@ -41,6 +41,7 @@ enum class ScanMessage : std::uint16_t {
   invalid_vector256,
   invalid_issue,
   invalid_xchain_bridge,
+  noncanonical_payload,
   duplicate_field,
   trailing_bytes,
   allocation_failed,
@@ -236,6 +237,15 @@ constructor_parity_scan(Slice bytes, std::uint32_t begin,
 [[nodiscard]] ScanStatus
 guest_exact_validate_object(Slice bytes,
                             RecursiveScanOptions const &options) noexcept;
+
+// Allocation-free validation for a raw withField value payload. The payload
+// excludes the field header and VL prefix and must already be canonical.
+// parent_depth is the destination object scope depth, so container values are
+// rejected before serialization when their complete placement would exceed
+// the recursive depth limit.
+[[nodiscard]] ScanStatus guest_exact_validate_field_payload(
+    Slice payload, std::uint32_t field_code, std::uint32_t parent_depth,
+    RecursiveScanOptions const &options) noexcept;
 
 // Indexed forms allocate scratch through the supplied provider allocator and
 // publish one exact 16 + 16*S + 20*F index block only after certification.

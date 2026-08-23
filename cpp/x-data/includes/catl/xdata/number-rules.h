@@ -2,6 +2,7 @@
 
 #include "catl/core/types.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 
@@ -114,6 +115,127 @@ struct NumberRules {
   [[nodiscard]] static constexpr bool certify(Slice payload) noexcept {
     NormalizedNumber ignored;
     return normalize(payload, ignored);
+  }
+
+  // Allocation-free decimal parser for the public Number string value. It
+  // retains sixteen significant digits and applies the same ties-to-even law
+  // as normalize(), then emits the already-normalized pair. Nonzero exponent
+  // underflow, overflow, and malformed text reject; decimal zero stays zero.
+  [[nodiscard]] static bool parse_decimal(char const *text, std::size_t size,
+                                          NormalizedNumber &output) noexcept {
+    output = {};
+    if (text == nullptr || size == 0)
+      return false;
+    std::size_t position = 0;
+    bool negative = false;
+    if (text[position] == '-' || text[position] == '+') {
+      negative = text[position] == '-';
+      if (++position == size)
+        return false;
+    }
+
+    bool seen_dot = false;
+    bool saw_digit = false;
+    std::size_t integer_digits = 0;
+    char first_integer_digit = '\0';
+    bool significant = false;
+    std::uint64_t mantissa = 0;
+    std::size_t significant_digits = 0;
+    std::size_t fractional_digits = 0;
+    std::uint8_t first_discarded = 0;
+    bool discarded_nonzero = false;
+    for (; position < size; ++position) {
+      char const current = text[position];
+      if (current == 'e' || current == 'E')
+        break;
+      if (current == '.') {
+        if (seen_dot)
+          return false;
+        seen_dot = true;
+        continue;
+      }
+      if (current < '0' || current > '9')
+        return false;
+      saw_digit = true;
+      if (seen_dot) {
+        ++fractional_digits;
+      } else {
+        if (integer_digits == 0)
+          first_integer_digit = current;
+        ++integer_digits;
+      }
+      auto const digit = static_cast<std::uint8_t>(current - '0');
+      if (!significant && digit == 0)
+        continue;
+      significant = true;
+      ++significant_digits;
+      if (significant_digits <= 16) {
+        mantissa = mantissa * 10 + digit;
+      } else if (significant_digits == 17) {
+        first_discarded = digit;
+      } else if (digit != 0) {
+        discarded_nonzero = true;
+      }
+    }
+    if (!saw_digit || integer_digits == 0 ||
+        (integer_digits > 1 && first_integer_digit == '0') ||
+        (seen_dot && fractional_digits == 0))
+      return false;
+
+    std::int64_t explicit_exponent = 0;
+    if (position < size) {
+      ++position;
+      if (position == size)
+        return false;
+      bool exponent_negative = false;
+      if (text[position] == '-' || text[position] == '+') {
+        exponent_negative = text[position] == '-';
+        if (++position == size)
+          return false;
+      }
+      bool exponent_digit = false;
+      std::int64_t magnitude = 0;
+      for (; position < size; ++position) {
+        char const current = text[position];
+        if (current < '0' || current > '9')
+          return false;
+        exponent_digit = true;
+        if (magnitude <= 1'000'000)
+          magnitude = magnitude * 10 + (current - '0');
+      }
+      if (!exponent_digit)
+        return false;
+      explicit_exponent = exponent_negative ? -magnitude : magnitude;
+    }
+
+    if (!significant) {
+      output = {};
+      return true;
+    }
+    auto exponent =
+        explicit_exponent - static_cast<std::int64_t>(fractional_digits);
+    if (significant_digits > 16)
+      exponent += static_cast<std::int64_t>(significant_digits - 16);
+    while (significant_digits < 16) {
+      mantissa *= 10;
+      --exponent;
+      ++significant_digits;
+    }
+
+    if (first_discarded > 5 ||
+        (first_discarded == 5 && (discarded_nonzero || (mantissa & 1) != 0))) {
+      ++mantissa;
+      if (mantissa > max_mantissa) {
+        mantissa /= 10;
+        ++exponent;
+      }
+    }
+    if (exponent < min_exponent || exponent > max_exponent)
+      return false;
+    output.mantissa = negative ? -static_cast<std::int64_t>(mantissa)
+                               : static_cast<std::int64_t>(mantissa);
+    output.exponent = static_cast<std::int32_t>(exponent);
+    return true;
   }
 };
 

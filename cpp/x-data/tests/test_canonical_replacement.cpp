@@ -73,6 +73,27 @@ with_field(Indexed const &source, std::uint32_t scope_id,
 }
 
 [[nodiscard]] std::vector<std::uint8_t>
+with_indexed_field(Indexed const &source, std::uint32_t scope_id,
+                   std::uint32_t field_code, Indexed const &value,
+                   std::uint32_t value_scope_id) {
+  auto const measured = canonical_object_with_indexed_field_size(
+      slice(source.wire), source.view(), scope_id, field_code,
+      slice(value.wire), value.view(), value_scope_id);
+  EXPECT_TRUE(measured.ok())
+      << scan_message_literal(measured.status.message_id);
+  EXPECT_FALSE(measured.no_op());
+  std::vector<std::uint8_t> output(measured.size);
+  auto const written = canonical_object_with_indexed_field_write(
+      slice(source.wire), source.view(), scope_id, field_code,
+      slice(value.wire), value.view(), value_scope_id, output.data(),
+      static_cast<std::uint32_t>(output.size()));
+  EXPECT_TRUE(written.ok()) << scan_message_literal(written.status.message_id);
+  EXPECT_FALSE(written.no_op());
+  EXPECT_EQ(written.written, measured.size);
+  return output;
+}
+
+[[nodiscard]] std::vector<std::uint8_t>
 without_field(Indexed const &source, std::uint32_t scope_id,
               std::uint32_t field_code) {
   auto const measured = canonical_object_without_field_size(
@@ -298,6 +319,81 @@ TEST(CanonicalReplacement, InsertsAndPreservesNestedCanonicalValues) {
   std::vector<std::uint8_t> const nested_array{0xea, 0xe1, 0xf1};
   EXPECT_EQ(with_field(empty, 0, 0x000f0003, nested_array),
             (std::vector<std::uint8_t>{0xf3, 0xea, 0xe1, 0xf1}));
+}
+
+TEST(CanonicalReplacement, StreamsCertifiedContainersWithoutTemporaryPayload) {
+  Indexed empty({});
+  Indexed object_value({
+      0x24,
+      0,
+      0,
+      0,
+      4,
+      0x99,
+      0x22,
+      0,
+      0,
+      0,
+      2,
+  });
+  EXPECT_EQ(with_indexed_field(empty, 0, 0x000e0002, object_value, 0),
+            (std::vector<std::uint8_t>{
+                0xe2,
+                0x22,
+                0,
+                0,
+                0,
+                2,
+                0x24,
+                0,
+                0,
+                0,
+                4,
+                0xe1,
+            }));
+
+  Indexed array_value({
+      0xf3,
+      0xea,
+      0x24,
+      0,
+      0,
+      0,
+      4,
+      0x22,
+      0,
+      0,
+      0,
+      2,
+      0xe1,
+      0xf1,
+  });
+  EXPECT_EQ(with_indexed_field(empty, 0, 0x000f0003, array_value, 1),
+            (std::vector<std::uint8_t>{
+                0xf3,
+                0xea,
+                0x22,
+                0,
+                0,
+                0,
+                2,
+                0x24,
+                0,
+                0,
+                0,
+                4,
+                0xe1,
+                0xf1,
+            }));
+
+  auto const wrong_kind = canonical_object_with_indexed_field_size(
+      slice(empty.wire), empty.view(), 0, 0x000f0003, slice(object_value.wire),
+      object_value.view(), 0);
+  EXPECT_FALSE(wrong_kind.ok());
+  EXPECT_EQ(wrong_kind.status.issue,
+            static_cast<std::uint16_t>(ScanIssue::malformed_data));
+  EXPECT_EQ(wrong_kind.status.message_id,
+            static_cast<std::uint16_t>(ScanMessage::noncanonical_payload));
 }
 
 TEST(CanonicalReplacement, CanonicalizesUnsortedInputAndUntouchedNumber) {

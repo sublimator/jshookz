@@ -141,10 +141,29 @@ public:
 
   [[nodiscard]] std::uint32_t position() const noexcept { return position_; }
 
+  [[nodiscard]] std::uint8_t *cursor() const noexcept {
+    return output_ == nullptr ? nullptr : output_ + position_;
+  }
+
+  [[nodiscard]] bool advance(std::uint32_t size) noexcept {
+    if (size > remaining())
+      return false;
+    position_ += size;
+    return true;
+  }
+
 private:
   std::uint8_t *output_ = nullptr;
   std::uint32_t capacity_ = 0;
   std::uint32_t position_ = 0;
+};
+
+struct ReplacementValue {
+  Slice payload{};
+  Slice wire{};
+  RecursiveIndexView index{};
+  std::uint32_t scope_id = 0;
+  bool indexed = false;
 };
 
 struct ReplacementSerializer {
@@ -152,7 +171,7 @@ struct ReplacementSerializer {
   RecursiveIndexView index;
   std::uint32_t scope_id;
   std::uint32_t field_code;
-  Slice payload;
+  ReplacementValue value;
   Operation operation;
   ProtocolView const &protocol = xahau_static_protocol();
 
@@ -196,11 +215,29 @@ struct ReplacementSerializer {
     }
     if (operation == Operation::remove)
       return ScanStatus::success();
-    if (payload.size() > std::numeric_limits<std::uint32_t>::max()) {
+    if (value.indexed) {
+      auto const *scope = value.index.scope(value.scope_id);
+      auto const expected_kind =
+          descriptor->wire_type == 14 ? ScopeKind::object : ScopeKind::array;
+      if ((descriptor->wire_type != 14 && descriptor->wire_type != 15) ||
+          scope == nullptr || scope->kind() != expected_kind) {
+        return failure(ScanIssue::malformed_data,
+                       ScanMessage::noncanonical_payload, 0, field_code,
+                       value.scope_id);
+      }
+      auto const measured =
+          canonical_scope_size(value.wire, value.index, value.scope_id, false);
+      if (!measured.ok())
+        return measured.status;
+      payload_size = measured.size;
+    } else if (value.payload.size() >
+               std::numeric_limits<std::uint32_t>::max()) {
       return overflow(0, field_code, std::numeric_limits<std::uint32_t>::max());
+    } else {
+      payload_size = static_cast<std::uint32_t>(value.payload.size());
     }
-    payload_size = static_cast<std::uint32_t>(payload.size());
-    if (payload_size != 0 && payload.data() == nullptr) {
+    if (!value.indexed && payload_size != 0 &&
+        value.payload.data() == nullptr) {
       return failure(ScanIssue::malformed_data, ScanMessage::truncated_field, 0,
                      field_code, payload_size);
     }
@@ -386,8 +423,17 @@ struct ReplacementSerializer {
     if ((descriptor.flags & field_vl_encoded) != 0 &&
         !writer.vl_prefix(payload_size))
       return overflow(0, field_code, payload_size);
-    if (!writer.bytes(payload.data(), payload_size))
+    if (value.indexed) {
+      auto const written =
+          canonical_scope_write(value.wire, value.index, value.scope_id, false,
+                                writer.cursor(), writer.remaining());
+      if (!written.ok())
+        return written.status;
+      if (written.written != payload_size || !writer.advance(written.written))
+        return invalid_index(0, field_code, written.written);
+    } else if (!writer.bytes(value.payload.data(), payload_size)) {
       return overflow(0, field_code, payload_size);
+    }
     return ScanStatus::success();
   }
 
@@ -517,8 +563,13 @@ struct ReplacementSerializer {
 CanonicalReplacementSizeResult canonical_object_with_field_size(
     Slice wire, RecursiveIndexView index, std::uint32_t scope_id,
     std::uint32_t field_code, Slice value_payload) noexcept {
-  return ReplacementSerializer{wire,       index,         scope_id,
-                               field_code, value_payload, Operation::replace}
+  return ReplacementSerializer{
+      wire,
+      index,
+      scope_id,
+      field_code,
+      ReplacementValue{value_payload, {}, {}, 0, false},
+      Operation::replace}
       .measure();
 }
 
@@ -526,8 +577,42 @@ CanonicalReplacementWriteResult canonical_object_with_field_write(
     Slice wire, RecursiveIndexView index, std::uint32_t scope_id,
     std::uint32_t field_code, Slice value_payload, std::uint8_t *output,
     std::uint32_t capacity) noexcept {
-  return ReplacementSerializer{wire,       index,         scope_id,
-                               field_code, value_payload, Operation::replace}
+  return ReplacementSerializer{
+      wire,
+      index,
+      scope_id,
+      field_code,
+      ReplacementValue{value_payload, {}, {}, 0, false},
+      Operation::replace}
+      .write(output, capacity);
+}
+
+CanonicalReplacementSizeResult canonical_object_with_indexed_field_size(
+    Slice wire, RecursiveIndexView index, std::uint32_t scope_id,
+    std::uint32_t field_code, Slice value_wire, RecursiveIndexView value_index,
+    std::uint32_t value_scope_id) noexcept {
+  return ReplacementSerializer{
+      wire,
+      index,
+      scope_id,
+      field_code,
+      ReplacementValue{{}, value_wire, value_index, value_scope_id, true},
+      Operation::replace}
+      .measure();
+}
+
+CanonicalReplacementWriteResult canonical_object_with_indexed_field_write(
+    Slice wire, RecursiveIndexView index, std::uint32_t scope_id,
+    std::uint32_t field_code, Slice value_wire, RecursiveIndexView value_index,
+    std::uint32_t value_scope_id, std::uint8_t *output,
+    std::uint32_t capacity) noexcept {
+  return ReplacementSerializer{
+      wire,
+      index,
+      scope_id,
+      field_code,
+      ReplacementValue{{}, value_wire, value_index, value_scope_id, true},
+      Operation::replace}
       .write(output, capacity);
 }
 

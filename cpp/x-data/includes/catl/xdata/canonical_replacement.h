@@ -55,6 +55,24 @@ static_assert(sizeof(CanonicalReplacementWriteResult) == 24);
     std::uint32_t field_code, Slice value_payload, std::uint8_t *output,
     std::uint32_t capacity) noexcept;
 
+// Zero-temporary variant for an already-certified container value. The
+// selected value scope is canonically serialized directly into the new root;
+// its scope kind must match the replacement field descriptor.
+[[nodiscard]] CanonicalReplacementSizeResult
+canonical_object_with_indexed_field_size(Slice wire, RecursiveIndexView index,
+                                         std::uint32_t scope_id,
+                                         std::uint32_t field_code,
+                                         Slice value_wire,
+                                         RecursiveIndexView value_index,
+                                         std::uint32_t value_scope_id) noexcept;
+
+[[nodiscard]] CanonicalReplacementWriteResult
+canonical_object_with_indexed_field_write(
+    Slice wire, RecursiveIndexView index, std::uint32_t scope_id,
+    std::uint32_t field_code, Slice value_wire, RecursiveIndexView value_index,
+    std::uint32_t value_scope_id, std::uint8_t *output,
+    std::uint32_t capacity) noexcept;
+
 // Measure/write a canonical root object with field_code removed. An absent
 // field returns success/no_op, size or written zero, and never touches output.
 [[nodiscard]] CanonicalReplacementSizeResult

@@ -275,8 +275,7 @@ TEST(RecursiveIndex, WrongTerminatorRetainsExactExpectedContext) {
   EXPECT_EQ(root.message_id,
             static_cast<std::uint16_t>(ScanMessage::illegal_terminator));
   EXPECT_EQ(root.field_code, (15u << 16) | 1u);
-  EXPECT_EQ(root.aux,
-            static_cast<std::uint32_t>(ExpectedTerminator::root_eof));
+  EXPECT_EQ(root.aux, static_cast<std::uint32_t>(ExpectedTerminator::root_eof));
 
   // TemplateEntry opens a nested object, where ArrayEnd is wrong.
   auto const object_bytes = bytes({0xE9, 0xF1});
@@ -393,6 +392,133 @@ TEST(RecursiveIndex, NumberUsesPinnedConstructorNormalizationLaw) {
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.message_id,
             static_cast<std::uint16_t>(ScanMessage::invalid_number));
+}
+
+TEST(RecursiveIndex, RawFieldPayloadRequiresExactCanonicalValueBytes) {
+  auto const flags = bytes({0, 0, 0, 9});
+  EXPECT_TRUE(
+      guest_exact_validate_field_payload(slice(flags), (2u << 16) | 2u, 0, {})
+          .ok());
+  auto const short_flags = bytes({0, 0, 9});
+  EXPECT_EQ(guest_exact_validate_field_payload(slice(short_flags),
+                                               (2u << 16) | 2u, 0, {})
+                .message_id,
+            static_cast<std::uint16_t>(ScanMessage::truncated_field));
+
+  auto const account = bytes({});
+  EXPECT_TRUE(
+      guest_exact_validate_field_payload(slice(account), (8u << 16) | 1u, 0, {})
+          .ok());
+  auto const malformed_account = bytes({1});
+  EXPECT_EQ(guest_exact_validate_field_payload(slice(malformed_account),
+                                               (8u << 16) | 1u, 0, {})
+                .message_id,
+            static_cast<std::uint16_t>(ScanMessage::invalid_account_id));
+
+  std::vector<std::uint8_t> vector(64, 0x5a);
+  EXPECT_TRUE(
+      guest_exact_validate_field_payload(slice(vector), (19u << 16) | 1u, 0, {})
+          .ok());
+  vector.pop_back();
+  EXPECT_EQ(
+      guest_exact_validate_field_payload(slice(vector), (19u << 16) | 1u, 0, {})
+          .message_id,
+      static_cast<std::uint16_t>(ScanMessage::invalid_vector256));
+}
+
+TEST(RecursiveIndex, RawNumberPayloadRejectsAdmittedNoncanonicalPair) {
+  auto const canonical = bytes(
+      {0x00, 0x03, 0x8d, 0x7e, 0xa4, 0xc6, 0x80, 0x00, 0xff, 0xff, 0xff, 0xf1});
+  ASSERT_EQ(canonical.size(), 12);
+  EXPECT_TRUE(guest_exact_validate_field_payload(slice(canonical),
+                                                 (9u << 16) | 1u, 0, {})
+                  .ok());
+
+  auto const admitted_noncanonical =
+      bytes({0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0});
+  EXPECT_TRUE(guest_exact_validate_object(
+                  slice(bytes({0x91, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0})), {})
+                  .ok());
+  EXPECT_EQ(guest_exact_validate_field_payload(slice(admitted_noncanonical),
+                                               (9u << 16) | 1u, 0, {})
+                .message_id,
+            static_cast<std::uint16_t>(ScanMessage::invalid_number));
+}
+
+TEST(RecursiveIndex, DecimalNumberParserMatchesCanonicalOraclePairs) {
+  auto expect = [](char const *text, std::int64_t mantissa,
+                   std::int32_t exponent) {
+    NormalizedNumber parsed;
+    ASSERT_TRUE(NumberRules::parse_decimal(text, std::strlen(text), parsed));
+    EXPECT_EQ(parsed.mantissa, mantissa) << text;
+    EXPECT_EQ(parsed.exponent, exponent) << text;
+  };
+  expect("1", 1'000'000'000'000'000LL, -15);
+  expect("1.25", 1'250'000'000'000'000LL, -15);
+  expect("1e20", 1'000'000'000'000'000LL, 5);
+  expect("-0.00125", -1'250'000'000'000'000LL, -18);
+  expect("10000000000000005", 1'000'000'000'000'000LL, 1);
+  expect("10000000000000015", 1'000'000'000'000'002LL, 1);
+
+  NormalizedNumber parsed;
+  ASSERT_TRUE(NumberRules::parse_decimal("-0", 2, parsed));
+  EXPECT_EQ(parsed.mantissa, 0);
+  EXPECT_EQ(parsed.exponent, std::numeric_limits<std::int32_t>::min());
+  EXPECT_FALSE(NumberRules::parse_decimal("1e-999999", 9, parsed));
+  EXPECT_FALSE(NumberRules::parse_decimal("1e999999", 8, parsed));
+  EXPECT_FALSE(NumberRules::parse_decimal(".", 1, parsed));
+  EXPECT_FALSE(NumberRules::parse_decimal(".5", 2, parsed));
+  EXPECT_FALSE(NumberRules::parse_decimal("1.", 2, parsed));
+  EXPECT_FALSE(NumberRules::parse_decimal("0001.2500", 9, parsed));
+  EXPECT_FALSE(NumberRules::parse_decimal("1.2.3", 5, parsed));
+  EXPECT_FALSE(NumberRules::parse_decimal("1e", 2, parsed));
+}
+
+TEST(RecursiveIndex, RawContainerPayloadRequiresCanonicalOrderAndClose) {
+  auto const canonical = bytes({0x22, 0, 0, 0, 1, 0x24, 0, 0, 0, 2, 0xE1});
+  EXPECT_TRUE(guest_exact_validate_field_payload(slice(canonical),
+                                                 (14u << 16) | 10u, 0, {})
+                  .ok());
+
+  auto const out_of_order = bytes({0x24, 0, 0, 0, 2, 0x22, 0, 0, 0, 1, 0xE1});
+  EXPECT_EQ(guest_exact_validate_field_payload(slice(out_of_order),
+                                               (14u << 16) | 10u, 0, {})
+                .message_id,
+            static_cast<std::uint16_t>(ScanMessage::noncanonical_payload));
+
+  auto const nop = bytes({0x99, 0xE1});
+  EXPECT_EQ(
+      guest_exact_validate_field_payload(slice(nop), (14u << 16) | 10u, 0, {})
+          .message_id,
+      static_cast<std::uint16_t>(ScanMessage::noncanonical_payload));
+
+  auto const missing_close = bytes({0x22, 0, 0, 0, 1});
+  EXPECT_EQ(guest_exact_validate_field_payload(slice(missing_close),
+                                               (14u << 16) | 10u, 0, {})
+                .message_id,
+            static_cast<std::uint16_t>(ScanMessage::noncanonical_payload));
+
+  auto const empty_array = bytes({0xF1});
+  EXPECT_TRUE(guest_exact_validate_field_payload(slice(empty_array),
+                                                 (15u << 16) | 92u, 0, {})
+                  .ok());
+}
+
+TEST(RecursiveIndex, RawContainerPayloadHonorsDestinationDepthBeforeEncoding) {
+  auto const empty_object = bytes({0xE1});
+  EXPECT_TRUE(guest_exact_validate_field_payload(slice(empty_object),
+                                                 (14u << 16) | 10u, 9, {})
+                  .ok());
+  EXPECT_EQ(guest_exact_validate_field_payload(slice(empty_object),
+                                               (14u << 16) | 10u, 10, {})
+                .message_id,
+            static_cast<std::uint16_t>(ScanMessage::nesting_too_deep));
+
+  auto const nested = bytes({0xEA, 0xE1, 0xE1});
+  EXPECT_EQ(guest_exact_validate_field_payload(slice(nested), (14u << 16) | 10u,
+                                               9, {})
+                .message_id,
+            static_cast<std::uint16_t>(ScanMessage::nesting_too_deep));
 }
 
 TEST(RecursiveIndex, DepthTenIsIndexedAndDepthElevenRejects) {

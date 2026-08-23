@@ -60,6 +60,8 @@ char const *scan_message_literal(std::uint16_t message_id) noexcept {
     return "invalid Issue representation";
   case ScanMessage::invalid_xchain_bridge:
     return "invalid XChainBridge representation";
+  case ScanMessage::noncanonical_payload:
+    return "field payload is not canonical";
   case ScanMessage::duplicate_field:
     return "duplicate object field";
   case ScanMessage::trailing_bytes:
@@ -655,6 +657,21 @@ private:
   return native_currency == native_account;
 }
 
+[[nodiscard]] bool canonical_number(Slice payload) noexcept {
+  NormalizedNumber normalized;
+  if (!NumberRules::normalize(payload, normalized))
+    return false;
+  std::uint8_t encoded[12];
+  auto const mantissa = static_cast<std::uint64_t>(normalized.mantissa);
+  auto const exponent = static_cast<std::uint32_t>(normalized.exponent);
+  for (std::uint32_t i = 0; i < 8; ++i)
+    encoded[i] = static_cast<std::uint8_t>(mantissa >> (56 - i * 8));
+  for (std::uint32_t i = 0; i < 4; ++i)
+    encoded[8 + i] = static_cast<std::uint8_t>(exponent >> (24 - i * 8));
+  return payload.size() == sizeof(encoded) &&
+         std::memcmp(payload.data(), encoded, sizeof(encoded)) == 0;
+}
+
 class Scanner {
 public:
   Scanner(Slice bytes, std::uint32_t begin, RecursiveScanOptions const &options,
@@ -695,6 +712,98 @@ public:
     if (builder_ != nullptr)
       builder_->initialize_root(cursor_.pos);
     (void)scan_scope(ScopeKind::object, 0, 0);
+    return result();
+  }
+
+  [[nodiscard]] ConstructorParityResult
+  run_field_payload(std::uint32_t field_code,
+                    std::uint32_t parent_depth) noexcept {
+    require_canonical_ = true;
+    if (cursor_.bytes.size() > limits_.max_bytes) {
+      cursor_.fail(ScanIssue::resource_limit, ScanMessage::input_too_large, 0,
+                   field_code,
+                   static_cast<std::uint32_t>(cursor_.bytes.size()));
+      return result();
+    }
+    if (cursor_.pos != 0 || limits_.max_scopes == 0 ||
+        protocol_.duplicate_word_count != 6 ||
+        limits_.max_bytes > RecursiveScanLimits{}.max_bytes ||
+        limits_.max_fields > RecursiveScanLimits{}.max_fields ||
+        limits_.max_scopes > RecursiveScanLimits{}.max_scopes ||
+        limits_.max_depth > RecursiveScanLimits{}.max_depth ||
+        protocol_.material_field_count > 6 * 64) {
+      cursor_.fail(ScanIssue::internal_error, ScanMessage::invalid_index,
+                   cursor_.pos, field_code);
+      return result();
+    }
+    auto const *descriptor = protocol_.field_by_code(field_code);
+    if (descriptor == nullptr ||
+        descriptor->material_ordinal == ProtocolView::no_ordinal) {
+      cursor_.fail(ScanIssue::malformed_data, ScanMessage::unknown_field, 0,
+                   field_code);
+      return result();
+    }
+
+    if ((descriptor->flags & field_vl_encoded) != 0) {
+      auto const size = static_cast<std::uint32_t>(cursor_.bytes.size());
+      if (size > 918'744) {
+        cursor_.fail(ScanIssue::malformed_data, ScanMessage::invalid_vl, 0,
+                     field_code, size);
+      } else if (descriptor->wire_type == 8 && size != 0 && size != 20) {
+        cursor_.fail(ScanIssue::malformed_data, ScanMessage::invalid_account_id,
+                     0, field_code, size);
+      } else if (descriptor->wire_type == 19 && size % 32 != 0) {
+        cursor_.fail(ScanIssue::malformed_data, ScanMessage::invalid_vector256,
+                     0, field_code, size);
+      } else {
+        (void)cursor_.advance(size, ScanMessage::truncated_field, field_code);
+      }
+    } else if (descriptor->wire_type == 6) {
+      auto const size = static_cast<std::uint32_t>(cursor_.bytes.size());
+      if (size == 0 || AmountRules::extent(cursor_.at()[0]) != size ||
+          AmountRules::certify(cursor_.bytes) != nullptr)
+        cursor_.fail(ScanIssue::malformed_data, ScanMessage::invalid_amount, 0,
+                     field_code, size);
+      else
+        (void)cursor_.advance(size);
+    } else if (descriptor->wire_type == 18) {
+      (void)scan_pathset(field_code);
+    } else if (descriptor->wire_type == 9) {
+      if (!canonical_number(cursor_.bytes))
+        cursor_.fail(ScanIssue::malformed_data, ScanMessage::invalid_number, 0,
+                     field_code,
+                     static_cast<std::uint32_t>(cursor_.bytes.size()));
+      else
+        (void)cursor_.advance(12);
+    } else if (descriptor->wire_type == 14 || descriptor->wire_type == 15) {
+      if (parent_depth >= limits_.max_depth || parent_depth >= 10) {
+        cursor_.fail(ScanIssue::resource_limit, ScanMessage::nesting_too_deep,
+                     0, field_code, parent_depth + 1);
+      } else {
+        total_scopes_ = 1;
+        ScopeKind const kind =
+            descriptor->wire_type == 14 ? ScopeKind::object : ScopeKind::array;
+        (void)scan_scope(kind, parent_depth + 1, 0);
+      }
+    } else if (descriptor->wire_type == 24) {
+      (void)scan_issue(field_code);
+    } else if (descriptor->wire_type == 25) {
+      (void)scan_xchain_bridge(field_code);
+    } else if (descriptor->fixed_size == 0 ||
+               descriptor->fixed_size != cursor_.bytes.size()) {
+      cursor_.fail(ScanIssue::malformed_data, ScanMessage::truncated_field, 0,
+                   field_code, descriptor->fixed_size);
+    } else {
+      (void)cursor_.advance(descriptor->fixed_size,
+                            ScanMessage::truncated_field, field_code);
+    }
+
+    if (cursor_.status.ok() && cursor_.pos != cursor_.bytes.size()) {
+      cursor_.fail(
+          ScanIssue::malformed_data, ScanMessage::trailing_bytes, cursor_.pos,
+          field_code,
+          static_cast<std::uint32_t>(cursor_.bytes.size() - cursor_.pos));
+    }
     return result();
   }
 
@@ -745,10 +854,22 @@ private:
 
     std::uint32_t direct_count = 0;
     std::uint32_t nop_count = 0;
+    std::uint32_t previous_field_code = 0;
+    bool have_previous_field = false;
     while (!cursor_.failed()) {
-      if (cursor_.remaining() == 0)
+      if (cursor_.remaining() == 0) {
+        if (require_canonical_) {
+          cursor_.fail(
+              ScanIssue::malformed_data, ScanMessage::noncanonical_payload,
+              cursor_.pos, 0,
+              kind == ScopeKind::object
+                  ? static_cast<std::uint32_t>(ExpectedTerminator::object_end)
+                  : static_cast<std::uint32_t>(ExpectedTerminator::array_end));
+          return false;
+        }
         return close_scope(scope_id, cursor_.pos, direct_count, kind,
                            ScopeCloseKind::eof);
+      }
 
       std::uint32_t const header_begin = cursor_.pos;
       std::uint32_t field_code = 0;
@@ -757,6 +878,12 @@ private:
       count_header();
 
       if (field_code == kNop) {
+        if (require_canonical_) {
+          cursor_.fail(ScanIssue::malformed_data,
+                       ScanMessage::noncanonical_payload, header_begin,
+                       field_code);
+          return false;
+        }
         ++nop_count;
         if (nop_count == 64) {
           cursor_.fail(ScanIssue::malformed_data, ScanMessage::too_many_nops,
@@ -774,9 +901,9 @@ private:
                            ScopeCloseKind::array_end);
       if (field_code == kObjectEnd || field_code == kArrayEnd) {
         auto const expected = kind == ScopeKind::array
-            ? ExpectedTerminator::array_end
-            : depth == 0 ? ExpectedTerminator::root_eof
-                         : ExpectedTerminator::object_end;
+                                  ? ExpectedTerminator::array_end
+                              : depth == 0 ? ExpectedTerminator::root_eof
+                                           : ExpectedTerminator::object_end;
         cursor_.fail(ScanIssue::malformed_data, ScanMessage::illegal_terminator,
                      header_begin, field_code,
                      static_cast<std::uint32_t>(expected));
@@ -796,6 +923,15 @@ private:
                      field_code, descriptor->wire_type);
         return false;
       }
+      if (require_canonical_ && kind == ScopeKind::object &&
+          have_previous_field && field_code <= previous_field_code) {
+        cursor_.fail(ScanIssue::malformed_data,
+                     ScanMessage::noncanonical_payload, header_begin,
+                     field_code, previous_field_code);
+        return false;
+      }
+      previous_field_code = field_code;
+      have_previous_field = true;
       if (total_fields_ >= limits_.max_fields) {
         cursor_.fail(ScanIssue::resource_limit, ScanMessage::too_many_fields,
                      header_begin, field_code, total_fields_ + 1);
@@ -875,7 +1011,9 @@ private:
         count_leaf();
       } else if (descriptor->wire_type == 9) {
         if (cursor_.remaining() < 12 ||
-            !NumberRules::certify(Slice{cursor_.at(), std::size_t{12}})) {
+            !NumberRules::certify(Slice{cursor_.at(), std::size_t{12}}) ||
+            (require_canonical_ &&
+             !canonical_number(Slice{cursor_.at(), std::size_t{12}}))) {
           cursor_.fail(ScanIssue::malformed_data, ScanMessage::invalid_number,
                        cursor_.pos, field_code);
           return false;
@@ -1049,6 +1187,7 @@ private:
   IndexBuilder *builder_;
   std::uint32_t total_scopes_ = 0;
   std::uint32_t total_fields_ = 0;
+  bool require_canonical_ = false;
   using DuplicateBits = std::uint64_t[11][6];
   static_assert(sizeof(DuplicateBits) == 528);
   DuplicateBits duplicate_bits_{};
@@ -1273,6 +1412,14 @@ guest_exact_validate_object(Slice bytes,
             static_cast<std::uint32_t>(bytes.size() - result.consumed)};
   }
   return ScanStatus::success();
+}
+
+ScanStatus guest_exact_validate_field_payload(
+    Slice payload, std::uint32_t field_code, std::uint32_t parent_depth,
+    RecursiveScanOptions const &options) noexcept {
+  auto normalized = normalized_options(options);
+  Scanner scanner{payload, 0, normalized, nullptr};
+  return scanner.run_field_payload(field_code, parent_depth).status;
 }
 
 IndexBuildResult constructor_parity_index(Slice bytes, std::uint32_t begin,

@@ -272,13 +272,32 @@ write_checked(Serializer const &serializer, std::uint32_t scope_id, bool root,
 
 } // namespace
 
+CanonicalSizeResult canonical_scope_size(Slice wire, RecursiveIndexView index,
+                                          std::uint32_t scope_id,
+                                          bool root) noexcept {
+  auto const *scope = index.scope(scope_id);
+  if (scope == nullptr)
+    return {failure(ScanMessage::invalid_index), 0};
+  return Serializer{wire, index}.scope_size(scope_id, root);
+}
+
+CanonicalWriteResult canonical_scope_write(
+    Slice wire, RecursiveIndexView index, std::uint32_t scope_id, bool root,
+    std::uint8_t *output, std::uint32_t capacity) noexcept {
+  auto const *scope = index.scope(scope_id);
+  if (scope == nullptr)
+    return {failure(ScanMessage::invalid_index), 0};
+  return write_checked(Serializer{wire, index}, scope_id, root, output,
+                       capacity);
+}
+
 CanonicalSizeResult canonical_object_size(Slice wire, RecursiveIndexView index,
                                            std::uint32_t scope_id,
                                            bool root) noexcept {
   auto const *scope = index.scope(scope_id);
   if (scope == nullptr || scope->kind() != ScopeKind::object)
     return {failure(ScanMessage::invalid_index), 0};
-  return Serializer{wire, index}.scope_size(scope_id, root);
+  return canonical_scope_size(wire, index, scope_id, root);
 }
 
 CanonicalWriteResult canonical_object_write(
@@ -287,8 +306,7 @@ CanonicalWriteResult canonical_object_write(
   auto const *scope = index.scope(scope_id);
   if (scope == nullptr || scope->kind() != ScopeKind::object)
     return {failure(ScanMessage::invalid_index), 0};
-  return write_checked(Serializer{wire, index}, scope_id, root, output,
-                       capacity);
+  return canonical_scope_write(wire, index, scope_id, root, output, capacity);
 }
 
 CanonicalSizeResult canonical_field_value_size(
