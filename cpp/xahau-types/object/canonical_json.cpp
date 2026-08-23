@@ -216,7 +216,8 @@ amountText(JSContext *ctx, xdata::AmountRules::Parts const &parts) noexcept {
     return !allZero(bytes, 20) && isNoAccount(bytes + 20);
   if (length != 40)
     return false;
-  return !allZero(bytes, 20) && !allZero(bytes + 20, 20);
+  return !allZero(bytes, 20) && !allZero(bytes + 20, 20) &&
+         !isNoAccount(bytes + 20);
 }
 
 [[nodiscard]] bool issueExtent(std::uint8_t const *bytes,
@@ -479,6 +480,12 @@ JSValue makePathSetCanonicalJSON(JSContext *ctx, std::uint8_t const *bytes,
           failed = true;
           return;
         }
+      }
+      LocalValue type(ctx, JS_NewInt32(ctx, hop.type));
+      if (type.isException() ||
+          !defineProperty(ctx, value.get(), "type", type)) {
+        failed = true;
+        return;
       }
       if (!defineElement(ctx, current.get(), hopCountInPath(), value)) {
         failed = true;

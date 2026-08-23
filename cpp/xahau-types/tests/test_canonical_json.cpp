@@ -176,33 +176,37 @@ TEST_F(CanonicalJSON, PathSetPinsAllMasksSeparatorsAndTerminator) {
   constexpr Vector vectors[] = {
       {
           "01B5F762798A53D543A014CAF8B297CFF8F2F937E800",
-          "[[{\"account\":\"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh\"}]]",
+          "[[{\"account\":\"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh\","
+          "\"type\":1}]]",
       },
       {
           "10000000000000000000000000555344000000000000",
-          "[[{\"currency\":\"USD\"}]]",
+          "[[{\"currency\":\"USD\",\"type\":16}]]",
       },
       {
           "20B5F762798A53D543A014CAF8B297CFF8F2F937E800",
-          "[[{\"issuer\":\"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh\"}]]",
+          "[[{\"issuer\":\"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh\","
+          "\"type\":32}]]",
       },
       {
           "11B5F762798A53D543A014CAF8B297CFF8F2F937E8"
           "000000000000000000000000555344000000000000",
           "[[{\"account\":\"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh\","
-          "\"currency\":\"USD\"}]]",
+          "\"currency\":\"USD\",\"type\":17}]]",
       },
       {
           "21B5F762798A53D543A014CAF8B297CFF8F2F937E8"
           "B5F762798A53D543A014CAF8B297CFF8F2F937E800",
           "[[{\"account\":\"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh\","
-          "\"issuer\":\"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh\"}]]",
+          "\"issuer\":\"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh\","
+          "\"type\":33}]]",
       },
       {
           "300000000000000000000000005553440000000000"
           "B5F762798A53D543A014CAF8B297CFF8F2F937E800",
           "[[{\"currency\":\"USD\","
-          "\"issuer\":\"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh\"}]]",
+          "\"issuer\":\"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh\","
+          "\"type\":48}]]",
       },
       {
           "31B5F762798A53D543A014CAF8B297CFF8F2F937E8"
@@ -210,15 +214,18 @@ TEST_F(CanonicalJSON, PathSetPinsAllMasksSeparatorsAndTerminator) {
           "B5F762798A53D543A014CAF8B297CFF8F2F937E800",
           "[[{\"account\":\"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh\","
           "\"currency\":\"USD\","
-          "\"issuer\":\"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh\"}]]",
+          "\"issuer\":\"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh\","
+          "\"type\":49}]]",
       },
       {
           "01B5F762798A53D543A014CAF8B297CFF8F2F937E8FF"
           "300000000000000000000000005553440000000000"
           "B5F762798A53D543A014CAF8B297CFF8F2F937E800",
-          "[[{\"account\":\"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh\"}],"
+          "[[{\"account\":\"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh\","
+          "\"type\":1}],"
           "[{\"currency\":\"USD\","
-          "\"issuer\":\"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh\"}]]",
+          "\"issuer\":\"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh\","
+          "\"type\":48}]]",
       },
   };
   for (auto const &vector : vectors)
@@ -231,6 +238,12 @@ TEST_F(CanonicalJSON, PathSetPinsAllMasksSeparatorsAndTerminator) {
   expectInvalid(context, types::makePathSetCanonicalJSON,
                 "FF01B5F762798A53D543A014CAF8B297CFF8F2F937E800");
   expectInvalid(context, types::makePathSetCanonicalJSON, "0200");
+}
+
+TEST_F(CanonicalJSON, IssueRejectsTruncatedMPTSentinelForm) {
+  expectInvalid(context, types::makeIssueCanonicalJSON,
+                "0000000000000000000000005553440000000000"
+                "0000000000000000000000000000000000000001");
 }
 
 TEST_F(CanonicalJSON, VectorAndBridgePartsMatchPinnedOracle) {
