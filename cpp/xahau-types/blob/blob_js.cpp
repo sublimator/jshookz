@@ -200,6 +200,29 @@ makeSTBlobBytes(JSContext* ctx, std::uint8_t const* bytes, std::uint32_t length)
     return newBlob(ctx, bytes, length);
 }
 
+JSObjectByteSpanStatus
+getSTBlobByteSpanNoThrow(
+    JSContext* ctx,
+    JSValueConst input,
+    JSValue* owned_backing,
+    std::uint8_t const** data,
+    std::size_t* size) noexcept
+{
+    *owned_backing = JS_UNDEFINED;
+    *data = nullptr;
+    *size = 0;
+    if (!JS_IsObject(input) || JS_GetClassID(input) != js_blob_class_id)
+        return JS_OBJECT_BYTES_WRONG_KIND;
+    auto const* blob = static_cast<JSBlob const*>(
+        JS_GetOpaque(input, js_blob_class_id));
+    if (blob == nullptr || (blob->len != 0 && blob->data == nullptr))
+        return JS_OBJECT_BYTES_UNUSABLE;
+    *owned_backing = JS_DupValue(ctx, input);
+    *data = blob->data;
+    *size = blob->len;
+    return JS_OBJECT_BYTES_OK;
+}
+
 }  // namespace jshookz::provider::types
 
 namespace jshookz::provider {

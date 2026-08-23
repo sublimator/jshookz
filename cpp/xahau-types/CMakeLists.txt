@@ -12,7 +12,10 @@ add_library(jshookz_xahau_types STATIC
 target_include_directories(jshookz_xahau_types PUBLIC
     ${JSHOOKZ_XAHAU_TYPES_INCLUDE_DIR}
 )
-target_link_libraries(jshookz_xahau_types PUBLIC jshookz_qjs_src)
+target_link_libraries(jshookz_xahau_types PUBLIC
+    jshookz_qjs_src
+    jshookz_xdata
+)
 target_compile_features(jshookz_xahau_types PUBLIC cxx_std_23)
 
 if(BUILD_TESTING)

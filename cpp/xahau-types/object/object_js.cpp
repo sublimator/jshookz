@@ -1,0 +1,1382 @@
+#include "object.hpp"
+
+#include "js.hpp"
+#include "quickjs.hpp"
+
+#include "catl/xdata/canonical_serializer.h"
+#include "catl/xdata/number-rules.h"
+#include "catl/xdata/recursive_index.h"
+#include "catl/xdata/static_protocol.h"
+
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <limits>
+
+namespace jshookz::provider::types {
+namespace {
+
+namespace qjs = ::jshookz::qjs;
+namespace xdata = catl::xdata;
+
+constexpr std::uint32_t kProtocolTag = 1;
+
+JSClassID ownerClassId;
+JSClassID objectClassId;
+JSClassID arrayClassId;
+JSClassID iteratorClassId;
+
+struct CertifiedObjectValue {
+    std::uint8_t* bytes = nullptr;
+    void* index = nullptr;
+    std::uint32_t byteCount = 0;
+    std::uint32_t protocolTag = 0;
+};
+
+struct ObjectState {
+    JSValue owner = JS_UNDEFINED;
+    std::uint32_t scopeKey = 0;
+    JSValue* cache = nullptr;
+};
+
+struct ArrayCacheLeaf {
+    JSValue values[32];
+};
+
+struct ArrayCacheBranch {
+    ArrayCacheLeaf* pages[32];
+};
+
+struct ArrayCacheRoot {
+    std::uint32_t branchCount = 0;
+    std::uint32_t pageCount = 0;
+    std::uint32_t valueCount = 0;
+    std::uint32_t reservedVersion = 0;
+    ArrayCacheBranch* branches[32];
+};
+
+struct ArrayState {
+    JSValue owner = JS_UNDEFINED;
+    std::uint32_t scopeKey = 0;
+    ArrayCacheRoot* cache = nullptr;
+};
+
+struct IteratorState {
+    JSValue array = JS_UNDEFINED;
+    std::uint32_t cursor = 0;
+};
+
+struct FieldAtomRecord {
+    std::uint32_t atom = JS_ATOM_NULL;
+    std::uint16_t nameOrdinal = 0;
+    std::uint16_t flags = 0;
+};
+
+static_assert(sizeof(CertifiedObjectValue) == sizeof(void*) * 2 + 8);
+static_assert(sizeof(FieldAtomRecord) == 8);
+static_assert(offsetof(ArrayCacheRoot, branches) == 16);
+static_assert(sizeof(ArrayCacheRoot) == 16 + 32 * sizeof(void*));
+static_assert(sizeof(ArrayCacheBranch) == 32 * sizeof(void*));
+static_assert(sizeof(ArrayCacheLeaf) == 32 * sizeof(JSValue));
+
+// The recursive caps fit both the scope ordinal and direct-field count in
+// sixteen bits. Keeping both in the architecture's existing uint32 state word
+// lets finalizers walk caches without consulting an owner that is being torn
+// down, and adds no wrapper bytes or cache allocation.
+constexpr std::uint32_t kScopeMask = 0xffffu;
+
+[[nodiscard]] constexpr std::uint32_t
+makeScopeKey(std::uint32_t scopeId, std::uint32_t directCount) noexcept
+{
+    return scopeId | (directCount << 16);
+}
+
+template <class State>
+[[nodiscard]] constexpr std::uint32_t
+scopeId(State const& state) noexcept
+{
+    return state.scopeKey & kScopeMask;
+}
+
+template <class State>
+[[nodiscard]] constexpr std::uint32_t
+directCount(State const& state) noexcept
+{
+    return state.scopeKey >> 16;
+}
+
+FieldAtomRecord* fieldAtoms;
+std::uint32_t fieldAtomCount;
+JSAtom diagnosticAtoms[9];
+
+constexpr char const* diagnosticNames[] = {
+    "domain", "issue", "offset", "fieldCode", "expected",
+    "actual", "limit", "maximum", "actualAtLeast"};
+static_assert(sizeof(diagnosticNames) / sizeof(diagnosticNames[0]) == 9);
+
+[[nodiscard]] JSValue
+oom(JSContext* ctx)
+{
+    return JS_HasException(ctx) ? JS_EXCEPTION : JS_ThrowOutOfMemory(ctx);
+}
+
+[[nodiscard]] bool
+atomFailure(JSContext* ctx)
+{
+    if (!JS_HasException(ctx))
+        JS_ThrowOutOfMemory(ctx);
+    return false;
+}
+
+void*
+scanRealloc(void* opaque, void* pointer, std::size_t size) noexcept
+{
+    auto* ctx = static_cast<JSContext*>(opaque);
+    if (size == 0) {
+        js_free(ctx, pointer);
+        return nullptr;
+    }
+    return js_realloc(ctx, pointer, size);
+}
+
+void
+scanFree(void* opaque, void* pointer) noexcept
+{
+    js_free(static_cast<JSContext*>(opaque), pointer);
+}
+
+[[nodiscard]] Slice
+ownerBytes(CertifiedObjectValue const& owner) noexcept
+{
+    return {owner.bytes, owner.byteCount};
+}
+
+[[nodiscard]] xdata::RecursiveIndexView
+ownerIndex(CertifiedObjectValue const& owner) noexcept
+{
+    auto const* header = static_cast<xdata::IndexHeader const*>(owner.index);
+    std::uint32_t size = 0;
+    if (header == nullptr ||
+        !xdata::recursive_index_size(
+            header->scope_count, header->field_count, size))
+        return {};
+    return {owner.index, size, owner.byteCount};
+}
+
+[[nodiscard]] CertifiedObjectValue*
+ownerFrom(JSValueConst value) noexcept
+{
+    auto* owner = static_cast<CertifiedObjectValue*>(
+        JS_GetOpaque(value, ownerClassId));
+    return owner != nullptr && owner->protocolTag == kProtocolTag
+        ? owner
+        : nullptr;
+}
+
+[[nodiscard]] CertifiedObjectValue*
+ownerFrom(ObjectState const& state) noexcept
+{
+    return ownerFrom(state.owner);
+}
+
+[[nodiscard]] CertifiedObjectValue*
+ownerFrom(ArrayState const& state) noexcept
+{
+    return ownerFrom(state.owner);
+}
+
+void
+ownerFinalizer(JSRuntime* runtime, JSValue value)
+{
+    auto* owner = static_cast<CertifiedObjectValue*>(
+        JS_GetOpaque(value, ownerClassId));
+    if (owner == nullptr)
+        return;
+    js_free_rt(runtime, owner->index);
+    js_free_rt(runtime, owner->bytes);
+    js_free_rt(runtime, owner);
+}
+
+void
+objectFinalizer(JSRuntime* runtime, JSValue value)
+{
+    auto* state = static_cast<ObjectState*>(
+        JS_GetOpaque(value, objectClassId));
+    if (state == nullptr)
+        return;
+    if (state->cache != nullptr) {
+        std::uint32_t const count = directCount(*state);
+        for (std::uint32_t i = 0; i < count; ++i)
+            JS_FreeValueRT(runtime, state->cache[i]);
+        js_free_rt(runtime, state->cache);
+    }
+    JS_FreeValueRT(runtime, state->owner);
+    js_free_rt(runtime, state);
+}
+
+void
+objectMark(JSRuntime* runtime, JSValueConst value, JS_MarkFunc* mark)
+{
+    auto* state = static_cast<ObjectState*>(
+        JS_GetOpaque(value, objectClassId));
+    if (state == nullptr)
+        return;
+    JS_MarkValue(runtime, state->owner, mark);
+    if (state->cache == nullptr)
+        return;
+    std::uint32_t const count = directCount(*state);
+    for (std::uint32_t i = 0; i < count; ++i)
+        JS_MarkValue(runtime, state->cache[i], mark);
+}
+
+void
+arrayFinalizer(JSRuntime* runtime, JSValue value)
+{
+    auto* state = static_cast<ArrayState*>(
+        JS_GetOpaque(value, arrayClassId));
+    if (state == nullptr)
+        return;
+    if (state->cache != nullptr) {
+        for (auto* branch : state->cache->branches) {
+            if (branch == nullptr)
+                continue;
+            for (auto* leaf : branch->pages) {
+                if (leaf == nullptr)
+                    continue;
+                for (JSValue cached : leaf->values)
+                    JS_FreeValueRT(runtime, cached);
+                js_free_rt(runtime, leaf);
+            }
+            js_free_rt(runtime, branch);
+        }
+        js_free_rt(runtime, state->cache);
+    }
+    JS_FreeValueRT(runtime, state->owner);
+    js_free_rt(runtime, state);
+}
+
+void
+arrayMark(JSRuntime* runtime, JSValueConst value, JS_MarkFunc* mark)
+{
+    auto* state = static_cast<ArrayState*>(
+        JS_GetOpaque(value, arrayClassId));
+    if (state == nullptr)
+        return;
+    JS_MarkValue(runtime, state->owner, mark);
+    if (state->cache == nullptr)
+        return;
+    for (auto* branch : state->cache->branches) {
+        if (branch == nullptr)
+            continue;
+        for (auto* leaf : branch->pages) {
+            if (leaf == nullptr)
+                continue;
+            for (JSValue cached : leaf->values)
+                JS_MarkValue(runtime, cached, mark);
+        }
+    }
+}
+
+void
+iteratorFinalizer(JSRuntime* runtime, JSValue value)
+{
+    auto* state = static_cast<IteratorState*>(
+        JS_GetOpaque(value, iteratorClassId));
+    if (state == nullptr)
+        return;
+    JS_FreeValueRT(runtime, state->array);
+    js_free_rt(runtime, state);
+}
+
+void
+iteratorMark(JSRuntime* runtime, JSValueConst value, JS_MarkFunc* mark)
+{
+    auto* state = static_cast<IteratorState*>(
+        JS_GetOpaque(value, iteratorClassId));
+    if (state != nullptr)
+        JS_MarkValue(runtime, state->array, mark);
+}
+
+[[nodiscard]] xdata::StaticFieldName const*
+fieldNameByAtom(JSAtom atom) noexcept
+{
+    std::uint32_t first = 0;
+    std::uint32_t count = fieldAtomCount;
+    while (count != 0) {
+        auto const step = count / 2;
+        auto const index = first + step;
+        if (fieldAtoms[index].atom < atom) {
+            first = index + 1;
+            count -= step + 1;
+        } else {
+            count = step;
+        }
+    }
+    if (first == fieldAtomCount || fieldAtoms[first].atom != atom)
+        return nullptr;
+    auto const ordinal = fieldAtoms[first].nameOrdinal;
+    auto const& protocol = xdata::xahau_static_protocol();
+    return ordinal < protocol.field_name_count
+        ? protocol.field_names + ordinal
+        : nullptr;
+}
+
+void
+swap(FieldAtomRecord& left, FieldAtomRecord& right) noexcept
+{
+    FieldAtomRecord const temporary = left;
+    left = right;
+    right = temporary;
+}
+
+void
+siftDown(FieldAtomRecord* records, std::uint32_t root,
+         std::uint32_t count) noexcept
+{
+    while (true) {
+        auto const child = root * 2 + 1;
+        if (child >= count)
+            return;
+        auto selected = child;
+        if (child + 1 < count &&
+            records[child].atom < records[child + 1].atom)
+            selected = child + 1;
+        if (records[root].atom >= records[selected].atom)
+            return;
+        swap(records[root], records[selected]);
+        root = selected;
+    }
+}
+
+void
+sortAtoms(FieldAtomRecord* records, std::uint32_t count) noexcept
+{
+    for (std::uint32_t start = count / 2; start != 0; --start)
+        siftDown(records, start - 1, count);
+    for (std::uint32_t end = count; end > 1; --end) {
+        swap(records[0], records[end - 1]);
+        siftDown(records, 0, end - 1);
+    }
+}
+
+void
+clearRegistrar(JSRuntime* runtime) noexcept
+{
+    if (runtime != nullptr) {
+        for (std::uint32_t i = 0; i < fieldAtomCount; ++i)
+            JS_FreeAtomRT(runtime, fieldAtoms[i].atom);
+        for (JSAtom atom : diagnosticAtoms) {
+            if (atom != JS_ATOM_NULL)
+                JS_FreeAtomRT(runtime, atom);
+        }
+        js_free_rt(runtime, fieldAtoms);
+    }
+    fieldAtoms = nullptr;
+    fieldAtomCount = 0;
+    std::memset(diagnosticAtoms, 0, sizeof(diagnosticAtoms));
+}
+
+[[nodiscard]] bool
+registerAtoms(JSContext* ctx)
+{
+    auto const& protocol = xdata::xahau_static_protocol();
+    auto const bytes = static_cast<std::size_t>(protocol.field_name_count) *
+        sizeof(FieldAtomRecord);
+    fieldAtoms = static_cast<FieldAtomRecord*>(js_malloc(ctx, bytes));
+    if (fieldAtoms == nullptr)
+        return atomFailure(ctx);
+    std::memset(fieldAtoms, 0, bytes);
+    for (std::uint32_t i = 0; i < protocol.field_name_count; ++i) {
+        auto const name = protocol.field_name(i);
+        JSAtom const atom = JS_NewAtomLen(ctx, name.data, name.size);
+        if (atom == JS_ATOM_NULL) {
+            clearRegistrar(JS_GetRuntime(ctx));
+            return atomFailure(ctx);
+        }
+        fieldAtoms[fieldAtomCount++] = {
+            atom, static_cast<std::uint16_t>(i),
+            protocol.field_names[i].flags};
+    }
+    sortAtoms(fieldAtoms, fieldAtomCount);
+    for (std::uint32_t i = 0; i < 9; ++i) {
+        diagnosticAtoms[i] = JS_NewAtom(ctx, diagnosticNames[i]);
+        if (diagnosticAtoms[i] == JS_ATOM_NULL) {
+            clearRegistrar(JS_GetRuntime(ctx));
+            return atomFailure(ctx);
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] JSAtom
+newLengthAtom(JSContext* ctx)
+{
+    JSAtom const atom = JS_NewAtom(ctx, "length");
+    if (atom == JS_ATOM_NULL)
+        (void)atomFailure(ctx);
+    return atom;
+}
+
+[[nodiscard]] bool
+isLengthAtom(JSContext* ctx, JSAtom candidate, bool& result)
+{
+    JSAtom const atom = newLengthAtom(ctx);
+    if (atom == JS_ATOM_NULL)
+        return false;
+    result = candidate == atom;
+    JS_FreeAtom(ctx, atom);
+    return true;
+}
+
+[[nodiscard]] ObjectState*
+objectState(JSContext* ctx, JSValueConst value)
+{
+    auto* state = static_cast<ObjectState*>(
+        JS_GetOpaque2(ctx, value, objectClassId));
+    if (state == nullptr || ownerFrom(*state) == nullptr) {
+        if (state != nullptr)
+            JS_ThrowTypeError(ctx, "STObject: invalid provider provenance");
+        return nullptr;
+    }
+    return state;
+}
+
+[[nodiscard]] ArrayState*
+arrayState(JSContext* ctx, JSValueConst value)
+{
+    auto* state = static_cast<ArrayState*>(
+        JS_GetOpaque2(ctx, value, arrayClassId));
+    if (state == nullptr || ownerFrom(*state) == nullptr) {
+        if (state != nullptr)
+            JS_ThrowTypeError(ctx, "STArray: invalid provider provenance");
+        return nullptr;
+    }
+    return state;
+}
+
+[[nodiscard]] JSValue
+newObjectWrapper(JSContext* ctx, JSValueConst owner,
+                 std::uint32_t scopeId)
+{
+    auto* ownerState = ownerFrom(owner);
+    auto const* scope = ownerState == nullptr
+        ? nullptr : ownerIndex(*ownerState).scope(scopeId);
+    if (scope == nullptr || scope->kind() != xdata::ScopeKind::object ||
+        scopeId > kScopeMask || scope->field_count() > kScopeMask)
+        return JS_ThrowInternalError(ctx, "invalid certified object scope");
+    JSValue value = JS_NewObjectClass(ctx, objectClassId);
+    if (JS_IsException(value))
+        return value;
+    auto* state = static_cast<ObjectState*>(js_mallocz(ctx, sizeof(ObjectState)));
+    if (state == nullptr) {
+        JS_FreeValue(ctx, value);
+        return oom(ctx);
+    }
+    state->owner = JS_DupValue(ctx, owner);
+    state->scopeKey = makeScopeKey(scopeId, scope->field_count());
+    JS_SetOpaque(value, state);
+    if (JS_PreventExtensions(ctx, value) < 0) {
+        JS_FreeValue(ctx, value);
+        return JS_EXCEPTION;
+    }
+    return value;
+}
+
+[[nodiscard]] JSValue
+newArrayWrapper(JSContext* ctx, JSValueConst owner,
+                std::uint32_t scopeId)
+{
+    auto* ownerState = ownerFrom(owner);
+    auto const* scope = ownerState == nullptr
+        ? nullptr : ownerIndex(*ownerState).scope(scopeId);
+    if (scope == nullptr || scope->kind() != xdata::ScopeKind::array ||
+        scopeId > kScopeMask || scope->field_count() > kScopeMask)
+        return JS_ThrowInternalError(ctx, "invalid certified array scope");
+    JSValue value = JS_NewObjectClass(ctx, arrayClassId);
+    if (JS_IsException(value))
+        return value;
+    auto* state = static_cast<ArrayState*>(js_mallocz(ctx, sizeof(ArrayState)));
+    if (state == nullptr) {
+        JS_FreeValue(ctx, value);
+        return oom(ctx);
+    }
+    state->owner = JS_DupValue(ctx, owner);
+    state->scopeKey = makeScopeKey(scopeId, scope->field_count());
+    JS_SetOpaque(value, state);
+    if (JS_PreventExtensions(ctx, value) < 0) {
+        JS_FreeValue(ctx, value);
+        return JS_EXCEPTION;
+    }
+    return value;
+}
+
+[[nodiscard]] std::uint64_t
+readBigEndian(std::uint8_t const* bytes, std::uint32_t size) noexcept
+{
+    std::uint64_t value = 0;
+    for (std::uint32_t i = 0; i < size; ++i)
+        value = (value << 8) | bytes[i];
+    return value;
+}
+
+[[nodiscard]] JSValue
+numberString(JSContext* ctx, Slice payload)
+{
+    xdata::NormalizedNumber number;
+    if (!xdata::NumberRules::normalize(payload, number))
+        return JS_ThrowInternalError(ctx, "certified Number is invalid");
+    if (number.mantissa == 0)
+        return JS_NewStringLen(ctx, "0", 1);
+
+    char digits[32];
+    char* end = digits + sizeof(digits);
+    char* cursor = end;
+    bool const negative = number.mantissa < 0;
+    auto const raw = static_cast<std::uint64_t>(number.mantissa);
+    std::uint64_t magnitude = negative ? std::uint64_t{0} - raw : raw;
+    do {
+        *--cursor = static_cast<char>('0' + magnitude % 10);
+        magnitude /= 10;
+    } while (magnitude != 0);
+    auto const digitCount = static_cast<std::uint32_t>(end - cursor);
+
+    char output[64];
+    std::uint32_t position = 0;
+    if (negative)
+        output[position++] = '-';
+    auto append = [&](char const* data, std::uint32_t count) noexcept {
+        std::memcpy(output + position, data, count);
+        position += count;
+    };
+
+    if (number.exponent != 0 &&
+        (number.exponent < -25 || number.exponent > -5)) {
+        append(cursor, digitCount);
+        output[position++] = 'e';
+        std::int32_t exponent = number.exponent;
+        if (exponent < 0) {
+            output[position++] = '-';
+            exponent = -exponent;
+        }
+        char exponentDigits[12];
+        char* exponentEnd = exponentDigits + sizeof(exponentDigits);
+        char* exponentCursor = exponentEnd;
+        do {
+            *--exponentCursor = static_cast<char>('0' + exponent % 10);
+            exponent /= 10;
+        } while (exponent != 0);
+        append(exponentCursor,
+               static_cast<std::uint32_t>(exponentEnd - exponentCursor));
+        return JS_NewStringLen(ctx, output, position);
+    }
+
+    if (number.exponent == 0) {
+        append(cursor, digitCount);
+        return JS_NewStringLen(ctx, output, position);
+    }
+    auto const decimalPosition =
+        static_cast<std::int32_t>(digitCount) + number.exponent;
+    if (decimalPosition <= 0) {
+        output[position++] = '0';
+        output[position++] = '.';
+        for (std::int32_t i = 0; i < -decimalPosition; ++i)
+            output[position++] = '0';
+        append(cursor, digitCount);
+    } else if (decimalPosition < static_cast<std::int32_t>(digitCount)) {
+        append(cursor, static_cast<std::uint32_t>(decimalPosition));
+        output[position++] = '.';
+        append(cursor + decimalPosition,
+               digitCount - static_cast<std::uint32_t>(decimalPosition));
+    } else {
+        append(cursor, digitCount);
+        for (std::int32_t i = 0;
+             i < decimalPosition - static_cast<std::int32_t>(digitCount); ++i)
+            output[position++] = '0';
+    }
+    return JS_NewStringLen(ctx, output, position);
+}
+
+[[nodiscard]] JSValue
+materializeField(JSContext* ctx, JSValueConst ownerValue,
+                 CertifiedObjectValue& owner,
+                 xdata::FieldRecord const& field)
+{
+    auto const* descriptor =
+        xdata::xahau_static_protocol().field_by_code(field.field_code);
+    if (descriptor == nullptr || field.payload_begin > field.wire_end ||
+        field.wire_end > owner.byteCount)
+        return JS_ThrowInternalError(ctx, "certified field metadata is invalid");
+    auto const* payload = owner.bytes + field.payload_begin;
+    auto const size = field.wire_end - field.payload_begin;
+    using Kind = xdata::MaterializerKind;
+    switch (descriptor->materializer) {
+    case Kind::uint8:
+        return makeUIntValue(ctx, 8, readBigEndian(payload, size));
+    case Kind::uint16:
+        return makeUIntValue(ctx, 16, readBigEndian(payload, size));
+    case Kind::uint32:
+        return makeUIntValue(ctx, 32, readBigEndian(payload, size));
+    case Kind::uint64:
+        return makeUIntValue(ctx, 64, readBigEndian(payload, size));
+    case Kind::transaction_type:
+    case Kind::transaction_result:
+        return JS_NewUint32(ctx,
+            static_cast<std::uint32_t>(readBigEndian(payload, size)));
+    case Kind::hash256:
+        return makeHash256Bytes(ctx, payload, size);
+    case Kind::blob:
+        return makeSTBlobBytes(ctx, payload, size);
+    case Kind::account_id: {
+        std::uint8_t zero[20] = {};
+        return makeAccountIDBytes(
+            ctx, size == 0 ? zero : payload, size == 0 ? 20 : size);
+    }
+    case Kind::number:
+        return numberString(ctx, {payload, size});
+    case Kind::st_object:
+        return newObjectWrapper(ctx, ownerValue, field.child_scope);
+    case Kind::st_array:
+        return newArrayWrapper(ctx, ownerValue, field.child_scope);
+    case Kind::hash128:
+    case Kind::hash160:
+    case Kind::hash192:
+    case Kind::amount:
+    case Kind::currency:
+    case Kind::issue:
+    case Kind::path_set:
+    case Kind::vector256:
+    case Kind::xchain_bridge:
+        return JS_ThrowInternalError(
+            ctx, "certified field materializer is not registered");
+    case Kind::invalid:
+        break;
+    }
+    return JS_ThrowInternalError(ctx, "invalid certified materializer");
+}
+
+struct LocatedField {
+    xdata::FieldRecord const* field = nullptr;
+    std::uint32_t slot = 0;
+};
+
+[[nodiscard]] LocatedField
+locateObjectField(ObjectState const& state, std::uint32_t code) noexcept
+{
+    auto* owner = ownerFrom(state);
+    if (owner == nullptr)
+        return {};
+    auto const index = ownerIndex(*owner);
+    auto const* scope = index.scope(scopeId(state));
+    auto const* field = index.find_object_field(scopeId(state), code);
+    if (scope == nullptr || field == nullptr)
+        return {};
+    auto const* first = index.field(scope->first_field);
+    if (first == nullptr || field < first ||
+        static_cast<std::uint32_t>(field - first) >= scope->field_count())
+        return {};
+    return {field, static_cast<std::uint32_t>(field - first)};
+}
+
+[[nodiscard]] JSValue
+objectValue(JSContext* ctx, ObjectState& state, LocatedField located)
+{
+    if (located.field == nullptr)
+        return JS_UNDEFINED;
+    auto* owner = ownerFrom(state);
+    auto const index = owner == nullptr ? xdata::RecursiveIndexView{}
+                                        : ownerIndex(*owner);
+    auto const* scope = index.scope(scopeId(state));
+    if (owner == nullptr || scope == nullptr || located.slot >= scope->field_count())
+        return JS_ThrowTypeError(ctx, "STObject: invalid provider provenance");
+    if (state.cache != nullptr && !JS_IsUndefined(state.cache[located.slot]))
+        return JS_DupValue(ctx, state.cache[located.slot]);
+
+    qjs::OwnedValue local(
+        ctx, materializeField(ctx, state.owner, *owner, *located.field));
+    if (local.isException())
+        return local.release();
+    if (state.cache == nullptr) {
+        auto const bytes = static_cast<std::size_t>(scope->field_count()) *
+            sizeof(JSValue);
+        auto* cache = static_cast<JSValue*>(js_malloc(ctx, bytes));
+        if (cache == nullptr)
+            return oom(ctx);
+        for (std::uint32_t i = 0; i < scope->field_count(); ++i)
+            cache[i] = JS_UNDEFINED;
+        state.cache = cache;
+    }
+    state.cache[located.slot] = local.release();
+    return JS_DupValue(ctx, state.cache[located.slot]);
+}
+
+[[nodiscard]] bool
+resolveFieldArgument(JSContext* ctx, int argc, JSValueConst* argv,
+                     std::uint32_t& code)
+{
+    if (argc < 1)
+        return false;
+    if (JS_IsNumber(argv[0])) {
+        std::int64_t value = 0;
+        if (JS_ToInt64(ctx, &value, argv[0]) < 0)
+            return false;
+        if (value <= 0 ||
+            static_cast<std::uint64_t>(value) >
+                std::numeric_limits<std::uint32_t>::max())
+            return false;
+        code = static_cast<std::uint32_t>(value);
+        return true;
+    }
+    if (!JS_IsString(argv[0]))
+        return false;
+    JSAtom const atom = JS_ValueToAtom(ctx, argv[0]);
+    if (atom == JS_ATOM_NULL)
+        return atomFailure(ctx);
+    auto const* name = fieldNameByAtom(atom);
+    JS_FreeAtom(ctx, atom);
+    if (name == nullptr ||
+        (name->flags & xdata::field_name_serialized) == 0)
+        return false;
+    code = name->code;
+    return true;
+}
+
+[[nodiscard]] JSValue
+objectHas(JSContext* ctx, JSValueConst thisValue, int argc,
+          JSValueConst* argv)
+{
+    auto* state = objectState(ctx, thisValue);
+    if (state == nullptr)
+        return JS_EXCEPTION;
+    std::uint32_t code = 0;
+    if (!resolveFieldArgument(ctx, argc, argv, code))
+        return JS_HasException(ctx) ? JS_EXCEPTION : JS_FALSE;
+    return JS_NewBool(ctx, locateObjectField(*state, code).field != nullptr);
+}
+
+[[nodiscard]] JSValue
+objectGet(JSContext* ctx, JSValueConst thisValue, int argc,
+          JSValueConst* argv)
+{
+    auto* state = objectState(ctx, thisValue);
+    if (state == nullptr)
+        return JS_EXCEPTION;
+    std::uint32_t code = 0;
+    if (!resolveFieldArgument(ctx, argc, argv, code))
+        return JS_HasException(ctx) ? JS_EXCEPTION : JS_UNDEFINED;
+    return objectValue(ctx, *state, locateObjectField(*state, code));
+}
+
+[[nodiscard]] JSValue
+objectFieldBytes(JSContext* ctx, JSValueConst thisValue, int argc,
+                 JSValueConst* argv)
+{
+    auto* state = objectState(ctx, thisValue);
+    if (state == nullptr)
+        return JS_EXCEPTION;
+    std::uint32_t code = 0;
+    if (!resolveFieldArgument(ctx, argc, argv, code))
+        return JS_HasException(ctx) ? JS_EXCEPTION : JS_UNDEFINED;
+    auto const located = locateObjectField(*state, code);
+    if (located.field == nullptr)
+        return JS_UNDEFINED;
+    auto* owner = ownerFrom(*state);
+    auto const index = ownerIndex(*owner);
+    auto const measured = xdata::canonical_field_value_size(
+        ownerBytes(*owner), index, *located.field);
+    if (!measured.ok())
+        return JS_ThrowInternalError(ctx, "canonical field measure failed");
+    std::uint8_t* output = nullptr;
+    if (measured.size != 0) {
+        output = static_cast<std::uint8_t*>(js_malloc(ctx, measured.size));
+        if (output == nullptr)
+            return oom(ctx);
+    }
+    auto const written = xdata::canonical_field_value_write(
+        ownerBytes(*owner), index, *located.field, output, measured.size);
+    if (!written.ok()) {
+        js_free(ctx, output);
+        return JS_ThrowInternalError(ctx, "canonical field write failed");
+    }
+    JSValue result = makeSTBlobBytes(ctx, output, measured.size);
+    js_free(ctx, output);
+    return result;
+}
+
+[[nodiscard]] JSValue
+objectToBytes(JSContext* ctx, JSValueConst thisValue, int, JSValueConst*)
+{
+    auto* state = objectState(ctx, thisValue);
+    if (state == nullptr)
+        return JS_EXCEPTION;
+    auto* owner = ownerFrom(*state);
+    auto const index = ownerIndex(*owner);
+    auto const measured = xdata::canonical_object_size(
+        ownerBytes(*owner), index, scopeId(*state), scopeId(*state) == 0);
+    if (!measured.ok())
+        return JS_ThrowInternalError(ctx, "canonical object measure failed");
+    std::uint8_t* output = nullptr;
+    if (measured.size != 0) {
+        output = static_cast<std::uint8_t*>(js_malloc(ctx, measured.size));
+        if (output == nullptr)
+            return oom(ctx);
+    }
+    auto const written = xdata::canonical_object_write(
+        ownerBytes(*owner), index, scopeId(*state), scopeId(*state) == 0,
+        output, measured.size);
+    if (!written.ok()) {
+        js_free(ctx, output);
+        return JS_ThrowInternalError(ctx, "canonical object write failed");
+    }
+    JSValue result = qjs::uint8Array(ctx, {output, measured.size});
+    js_free(ctx, output);
+    return result;
+}
+
+[[nodiscard]] JSValue
+arrayValue(JSContext* ctx, ArrayState& state, std::uint32_t indexValue)
+{
+    auto* owner = ownerFrom(state);
+    auto const index = owner == nullptr ? xdata::RecursiveIndexView{}
+                                        : ownerIndex(*owner);
+    auto const* scope = index.scope(scopeId(state));
+    auto const* field = index.array_element(scopeId(state), indexValue);
+    if (owner == nullptr || scope == nullptr || field == nullptr)
+        return JS_UNDEFINED;
+
+    auto const rootIndex = (indexValue >> 10) & 31;
+    auto const branchIndex = (indexValue >> 5) & 31;
+    auto const slotIndex = indexValue & 31;
+    if (state.cache != nullptr) {
+        auto* branch = state.cache->branches[rootIndex];
+        auto* leaf = branch == nullptr ? nullptr : branch->pages[branchIndex];
+        if (leaf != nullptr && !JS_IsUndefined(leaf->values[slotIndex]))
+            return JS_DupValue(ctx, leaf->values[slotIndex]);
+    }
+
+    qjs::OwnedValue local(ctx, newObjectWrapper(ctx, state.owner,
+                                                field->child_scope));
+    if (local.isException())
+        return local.release();
+
+    ArrayCacheRoot* newRoot = nullptr;
+    ArrayCacheBranch* newBranch = nullptr;
+    ArrayCacheLeaf* newLeaf = nullptr;
+    auto* root = state.cache;
+    auto* branch = root == nullptr ? nullptr : root->branches[rootIndex];
+    auto* leaf = branch == nullptr ? nullptr : branch->pages[branchIndex];
+    if (root == nullptr) {
+        newRoot = static_cast<ArrayCacheRoot*>(
+            js_mallocz(ctx, sizeof(ArrayCacheRoot)));
+        if (newRoot == nullptr)
+            return oom(ctx);
+        root = newRoot;
+    }
+    if (branch == nullptr) {
+        newBranch = static_cast<ArrayCacheBranch*>(
+            js_mallocz(ctx, sizeof(ArrayCacheBranch)));
+        if (newBranch == nullptr) {
+            js_free(ctx, newRoot);
+            return oom(ctx);
+        }
+        branch = newBranch;
+    }
+    if (leaf == nullptr) {
+        newLeaf = static_cast<ArrayCacheLeaf*>(
+            js_malloc(ctx, sizeof(ArrayCacheLeaf)));
+        if (newLeaf == nullptr) {
+            js_free(ctx, newBranch);
+            js_free(ctx, newRoot);
+            return oom(ctx);
+        }
+        for (JSValue& value : newLeaf->values)
+            value = JS_UNDEFINED;
+        leaf = newLeaf;
+    }
+
+    if (newRoot != nullptr)
+        state.cache = newRoot;
+    if (newBranch != nullptr) {
+        root->branches[rootIndex] = newBranch;
+        ++root->branchCount;
+    }
+    if (newLeaf != nullptr) {
+        branch->pages[branchIndex] = newLeaf;
+        ++root->pageCount;
+    }
+    leaf->values[slotIndex] = local.release();
+    ++root->valueCount;
+    return JS_DupValue(ctx, leaf->values[slotIndex]);
+}
+
+[[nodiscard]] JSValue
+arrayLength(JSContext* ctx, JSValueConst thisValue)
+{
+    auto* state = arrayState(ctx, thisValue);
+    if (state == nullptr)
+        return JS_EXCEPTION;
+    auto* owner = ownerFrom(*state);
+    auto const* scope = ownerIndex(*owner).scope(scopeId(*state));
+    return scope == nullptr
+        ? JS_ThrowTypeError(ctx, "STArray: invalid provider provenance")
+        : JS_NewUint32(ctx, scope->field_count());
+}
+
+[[nodiscard]] bool
+readAtIndex(JSContext* ctx, int argc, JSValueConst* argv,
+            std::uint32_t length, std::uint32_t& index)
+{
+    if (argc < 1)
+        return false;
+    double number = 0;
+    if (JS_ToFloat64(ctx, &number, argv[0]) < 0)
+        return false;
+    if (std::isnan(number) || number == 0)
+        number = 0;
+    else if (std::isfinite(number))
+        number = std::trunc(number);
+    if (number < 0)
+        number += length;
+    if (!std::isfinite(number) || number < 0 || number >= length)
+        return false;
+    index = static_cast<std::uint32_t>(number);
+    return true;
+}
+
+[[nodiscard]] JSValue
+arrayAt(JSContext* ctx, JSValueConst thisValue, int argc, JSValueConst* argv)
+{
+    auto* state = arrayState(ctx, thisValue);
+    if (state == nullptr)
+        return JS_EXCEPTION;
+    auto* owner = ownerFrom(*state);
+    auto const* scope = ownerIndex(*owner).scope(scopeId(*state));
+    if (scope == nullptr)
+        return JS_ThrowTypeError(ctx, "STArray: invalid provider provenance");
+    std::uint32_t index = 0;
+    if (!readAtIndex(ctx, argc, argv, scope->field_count(), index))
+        return JS_HasException(ctx) ? JS_EXCEPTION : JS_UNDEFINED;
+    return arrayValue(ctx, *state, index);
+}
+
+[[nodiscard]] JSValue
+iteratorSelf(JSContext* ctx, JSValueConst thisValue, int, JSValueConst*)
+{
+    auto* state = static_cast<IteratorState*>(
+        JS_GetOpaque2(ctx, thisValue, iteratorClassId));
+    return state == nullptr ? JS_EXCEPTION : JS_DupValue(ctx, thisValue);
+}
+
+[[nodiscard]] JSValue
+newIteratorResult(JSContext* ctx, JSValue value, bool done)
+{
+    if (JS_IsException(value))
+        return value;
+    qjs::OwnedValue ownedValue(ctx, value);
+    qjs::OwnedValue result(ctx, JS_NewObject(ctx));
+    if (result.isException())
+        return result.release();
+    if (JS_DefinePropertyValueStr(
+            ctx, result.get(), "value", ownedValue.release(),
+            JS_PROP_ENUMERABLE) < 0 ||
+        JS_DefinePropertyValueStr(
+            ctx, result.get(), "done", JS_NewBool(ctx, done),
+            JS_PROP_ENUMERABLE) < 0)
+        return JS_EXCEPTION;
+    return result.release();
+}
+
+[[nodiscard]] JSValue
+iteratorNext(JSContext* ctx, JSValueConst thisValue, int, JSValueConst*)
+{
+    auto* iterator = static_cast<IteratorState*>(
+        JS_GetOpaque2(ctx, thisValue, iteratorClassId));
+    if (iterator == nullptr)
+        return JS_EXCEPTION;
+    auto* array = arrayState(ctx, iterator->array);
+    if (array == nullptr)
+        return JS_EXCEPTION;
+    auto* owner = ownerFrom(*array);
+    auto const* scope = ownerIndex(*owner).scope(scopeId(*array));
+    if (scope == nullptr)
+        return JS_ThrowTypeError(ctx, "STArray: invalid provider provenance");
+    if (iterator->cursor >= scope->field_count())
+        return newIteratorResult(ctx, JS_UNDEFINED, true);
+    qjs::OwnedValue value(ctx, arrayValue(ctx, *array, iterator->cursor));
+    if (value.isException())
+        return value.release();
+    JSValue result = newIteratorResult(ctx, value.release(), false);
+    if (!JS_IsException(result))
+        ++iterator->cursor;
+    return result;
+}
+
+[[nodiscard]] JSValue
+arrayIterator(JSContext* ctx, JSValueConst thisValue, int, JSValueConst*)
+{
+    if (arrayState(ctx, thisValue) == nullptr)
+        return JS_EXCEPTION;
+    JSValue value = JS_NewObjectClass(ctx, iteratorClassId);
+    if (JS_IsException(value))
+        return value;
+    auto* state = static_cast<IteratorState*>(
+        js_mallocz(ctx, sizeof(IteratorState)));
+    if (state == nullptr) {
+        JS_FreeValue(ctx, value);
+        return oom(ctx);
+    }
+    state->array = JS_DupValue(ctx, thisValue);
+    JS_SetOpaque(value, state);
+    return value;
+}
+
+[[nodiscard]] bool
+arrayPropertyIndex(JSAtom prop, std::uint32_t length,
+                   std::uint32_t& index) noexcept
+{
+    if (!JS_AtomIsTaggedInt(prop))
+        return false;
+    index = JS_AtomToTaggedInt(prop);
+    return index < length;
+}
+
+[[nodiscard]] int
+objectOwnProperty(JSContext* ctx, JSPropertyDescriptor* descriptor,
+                  JSValueConst value, JSAtom prop)
+{
+    if (descriptor != nullptr) {
+        descriptor->flags = 0;
+        descriptor->value = JS_UNDEFINED;
+        descriptor->getter = JS_UNDEFINED;
+        descriptor->setter = JS_UNDEFINED;
+    }
+    auto* state = objectState(ctx, value);
+    if (state == nullptr)
+        return -1;
+    auto const* name = fieldNameByAtom(prop);
+    if (name == nullptr ||
+        (name->flags & xdata::field_name_serialized) == 0)
+        return 0;
+    auto const located = locateObjectField(*state, name->code);
+    if (located.field == nullptr)
+        return 0;
+    if (descriptor != nullptr) {
+        JSValue materialized = objectValue(ctx, *state, located);
+        if (JS_IsException(materialized))
+            return -1;
+        descriptor->value = materialized;
+        descriptor->flags = JS_PROP_ENUMERABLE;
+    }
+    return 1;
+}
+
+[[nodiscard]] int
+arrayOwnProperty(JSContext* ctx, JSPropertyDescriptor* descriptor,
+                 JSValueConst value, JSAtom prop)
+{
+    if (descriptor != nullptr) {
+        descriptor->flags = 0;
+        descriptor->value = JS_UNDEFINED;
+        descriptor->getter = JS_UNDEFINED;
+        descriptor->setter = JS_UNDEFINED;
+    }
+    auto* state = arrayState(ctx, value);
+    if (state == nullptr)
+        return -1;
+    auto* owner = ownerFrom(*state);
+    auto const* scope = ownerIndex(*owner).scope(scopeId(*state));
+    if (scope == nullptr)
+        return -1;
+    bool isLength = false;
+    if (!isLengthAtom(ctx, prop, isLength))
+        return -1;
+    if (isLength) {
+        if (descriptor != nullptr)
+            descriptor->value = JS_NewUint32(ctx, scope->field_count());
+        return 1;
+    }
+    std::uint32_t index = 0;
+    if (!arrayPropertyIndex(prop, scope->field_count(), index))
+        return 0;
+    if (descriptor != nullptr) {
+        JSValue materialized = arrayValue(ctx, *state, index);
+        if (JS_IsException(materialized))
+            return -1;
+        descriptor->value = materialized;
+        descriptor->flags = JS_PROP_ENUMERABLE;
+    }
+    return 1;
+}
+
+[[nodiscard]] int
+objectOwnNames(JSContext* ctx, JSPropertyEnum** table,
+               std::uint32_t* length, JSValueConst value)
+{
+    *table = nullptr;
+    *length = 0;
+    auto* state = objectState(ctx, value);
+    if (state == nullptr)
+        return -1;
+    auto* owner = ownerFrom(*state);
+    auto const index = ownerIndex(*owner);
+    auto const* scope = index.scope(scopeId(*state));
+    if (scope == nullptr)
+        return -1;
+    auto const count = scope->field_count();
+    if (count == 0)
+        return 0;
+    auto* names = static_cast<JSPropertyEnum*>(
+        js_malloc(ctx, static_cast<std::size_t>(count) * sizeof(JSPropertyEnum)));
+    if (names == nullptr)
+        return -1;
+    for (std::uint32_t i = 0; i < count; ++i) {
+        auto const* field = index.field(scope->first_field + i);
+        auto const* descriptor = field == nullptr ? nullptr
+            : xdata::xahau_static_protocol().field_by_code(field->field_code);
+        if (descriptor == nullptr) {
+            for (std::uint32_t j = 0; j < i; ++j)
+                JS_FreeAtom(ctx, names[j].atom);
+            js_free(ctx, names);
+            return -1;
+        }
+        auto const nameOrdinal = descriptor->name_ordinal;
+        auto const name = xdata::xahau_static_protocol().field_name(nameOrdinal);
+        JSAtom const atom = JS_NewAtomLen(ctx, name.data, name.size);
+        if (atom == JS_ATOM_NULL) {
+            for (std::uint32_t j = 0; j < i; ++j)
+                JS_FreeAtom(ctx, names[j].atom);
+            js_free(ctx, names);
+            (void)atomFailure(ctx);
+            return -1;
+        }
+        names[i] = {true, atom};
+    }
+    *table = names;
+    *length = count;
+    return 0;
+}
+
+[[nodiscard]] int
+arrayOwnNames(JSContext* ctx, JSPropertyEnum** table,
+              std::uint32_t* length, JSValueConst value)
+{
+    *table = nullptr;
+    *length = 0;
+    auto* state = arrayState(ctx, value);
+    if (state == nullptr)
+        return -1;
+    auto* owner = ownerFrom(*state);
+    auto const* scope = ownerIndex(*owner).scope(scopeId(*state));
+    if (scope == nullptr)
+        return -1;
+    auto const count = scope->field_count() + 1;
+    auto* names = static_cast<JSPropertyEnum*>(
+        js_malloc(ctx, static_cast<std::size_t>(count) * sizeof(JSPropertyEnum)));
+    if (names == nullptr)
+        return -1;
+    for (std::uint32_t i = 0; i < scope->field_count(); ++i)
+        names[i] = {true, JS_NewAtomUInt32(ctx, i)};
+    JSAtom const lengthKey = newLengthAtom(ctx);
+    if (lengthKey == JS_ATOM_NULL) {
+        for (std::uint32_t i = 0; i + 1 < count; ++i)
+            JS_FreeAtom(ctx, names[i].atom);
+        js_free(ctx, names);
+        return -1;
+    }
+    names[count - 1] = {false, lengthKey};
+    *table = names;
+    *length = count;
+    return 0;
+}
+
+[[nodiscard]] int
+objectDelete(JSContext* ctx, JSValueConst value, JSAtom prop)
+{
+    auto* state = objectState(ctx, value);
+    if (state == nullptr)
+        return -1;
+    auto const* name = fieldNameByAtom(prop);
+    return name == nullptr ||
+            (name->flags & xdata::field_name_serialized) == 0 ||
+            locateObjectField(*state, name->code).field == nullptr;
+}
+
+[[nodiscard]] int
+arrayDelete(JSContext* ctx, JSValueConst value, JSAtom prop)
+{
+    auto* state = arrayState(ctx, value);
+    if (state == nullptr)
+        return -1;
+    auto* owner = ownerFrom(*state);
+    auto const* scope = ownerIndex(*owner).scope(scopeId(*state));
+    if (scope == nullptr)
+        return -1;
+    bool isLength = false;
+    if (!isLengthAtom(ctx, prop, isLength))
+        return -1;
+    if (isLength)
+        return 0;
+    std::uint32_t index = 0;
+    return !arrayPropertyIndex(prop, scope->field_count(), index);
+}
+
+JSClassExoticMethods objectExotic = {
+    .get_own_property = objectOwnProperty,
+    .get_own_property_names = objectOwnNames,
+    .delete_property = objectDelete,
+};
+
+JSClassExoticMethods arrayExotic = {
+    .get_own_property = arrayOwnProperty,
+    .get_own_property_names = arrayOwnNames,
+    .delete_property = arrayDelete,
+};
+
+JSClassDef ownerClass = {
+    .class_name = "CertifiedObjectValue",
+    .finalizer = ownerFinalizer,
+};
+
+JSClassDef objectClass = {
+    .class_name = "STObject",
+    .finalizer = objectFinalizer,
+    .gc_mark = objectMark,
+    .exotic = &objectExotic,
+};
+
+JSClassDef arrayClass = {
+    .class_name = "STArray",
+    .finalizer = arrayFinalizer,
+    .gc_mark = arrayMark,
+    .exotic = &arrayExotic,
+};
+
+JSClassDef iteratorClass = {
+    .class_name = "STArray Iterator",
+    .finalizer = iteratorFinalizer,
+    .gc_mark = iteratorMark,
+};
+
+JSCFunctionListEntry const objectPrototype[] = {
+    JS_CFUNC_DEF("has", 1, objectHas),
+    JS_CFUNC_DEF("get", 1, objectGet),
+    JS_CFUNC_DEF("fieldBytes", 1, objectFieldBytes),
+    JS_CFUNC_DEF("toBytes", 0, objectToBytes),
+};
+
+JSCFunctionListEntry const arrayPrototype[] = {
+    JS_CFUNC_DEF("at", 1, arrayAt),
+    JS_CFUNC_DEF("[Symbol.iterator]", 0, arrayIterator),
+};
+
+JSCFunctionListEntry const iteratorPrototype[] = {
+    JS_CFUNC_DEF("next", 0, iteratorNext),
+    JS_CFUNC_DEF("[Symbol.iterator]", 0, iteratorSelf),
+};
+
+[[nodiscard]] JSValue
+newOwner(JSContext* ctx, std::uint8_t* bytes, std::uint32_t byteCount,
+         void* index)
+{
+    JSValue value = JS_NewObjectClass(ctx, ownerClassId);
+    if (JS_IsException(value))
+        return value;
+    auto* owner = static_cast<CertifiedObjectValue*>(
+        js_malloc(ctx, sizeof(CertifiedObjectValue)));
+    if (owner == nullptr) {
+        JS_FreeValue(ctx, value);
+        return oom(ctx);
+    }
+    *owner = {bytes, index, byteCount, kProtocolTag};
+    JS_SetOpaque(value, owner);
+    return value;
+}
+
+}  // namespace
+
+bool
+registerObjectTypes(JSContext* ctx)
+{
+    clearRegistrar(JS_GetRuntime(ctx));
+    if (!qjs::defineClass(JS_GetRuntime(ctx), &ownerClassId, &ownerClass) ||
+        !qjs::defineClass(JS_GetRuntime(ctx), &objectClassId, &objectClass) ||
+        !qjs::defineClass(JS_GetRuntime(ctx), &arrayClassId, &arrayClass) ||
+        !qjs::defineClass(JS_GetRuntime(ctx), &iteratorClassId, &iteratorClass) ||
+        !registerAtoms(ctx) ||
+        !qjs::installPrototype(
+            ctx, ownerClassId,
+            std::span<JSCFunctionListEntry const>{}) ||
+        !qjs::installPrototype(ctx, objectClassId, objectPrototype) ||
+        !qjs::installPrototype(ctx, arrayClassId, arrayPrototype) ||
+        !qjs::installPrototype(ctx, iteratorClassId, iteratorPrototype)) {
+        clearRegistrar(JS_GetRuntime(ctx));
+        return false;
+    }
+    return !JS_HasException(ctx);
+}
+
+void
+unregisterObjectTypes(JSRuntime* runtime) noexcept
+{
+    clearRegistrar(runtime);
+}
+
+JSValue
+makeCertifiedObjectCopy(
+    JSContext* ctx, std::uint8_t const* bytes, std::uint32_t size)
+{
+    if (size != 0 && bytes == nullptr)
+        return JS_ThrowTypeError(ctx, "object bytes are unavailable");
+    std::uint8_t* copy = nullptr;
+    if (size != 0) {
+        copy = static_cast<std::uint8_t*>(js_malloc(ctx, size));
+        if (copy == nullptr)
+            return oom(ctx);
+        std::memcpy(copy, bytes, size);
+    }
+    xdata::RecursiveScanOptions options{
+        .protocol = &xdata::xahau_static_protocol()};
+    auto result = xdata::guest_exact_object_index(
+        {copy, size}, options, {ctx, scanRealloc, scanFree});
+    if (!result.ok()) {
+        js_free(ctx, copy);
+        if (result.status.issue ==
+            static_cast<std::uint16_t>(xdata::ScanIssue::out_of_memory))
+            return oom(ctx);
+        return JS_ThrowTypeError(
+            ctx, "invalid serialized object: %s",
+            xdata::scan_message_literal(result.status.message_id));
+    }
+    qjs::OwnedValue owner(ctx, newOwner(ctx, copy, size, result.index));
+    if (owner.isException()) {
+        scanFree(ctx, result.index);
+        js_free(ctx, copy);
+        return owner.release();
+    }
+    // Ownership transferred into the private owner object.
+    copy = nullptr;
+    result.index = nullptr;
+    return newObjectWrapper(ctx, owner.get(), 0);
+}
+
+bool
+isSTObject(JSValueConst value) noexcept
+{
+    if (!JS_IsObject(value) || JS_GetClassID(value) != objectClassId)
+        return false;
+    auto const* state = static_cast<ObjectState const*>(
+        JS_GetOpaque(value, objectClassId));
+    return state != nullptr && ownerFrom(*state) != nullptr;
+}
+
+bool
+isSTArray(JSValueConst value) noexcept
+{
+    if (!JS_IsObject(value) || JS_GetClassID(value) != arrayClassId)
+        return false;
+    auto const* state = static_cast<ArrayState const*>(
+        JS_GetOpaque(value, arrayClassId));
+    return state != nullptr && ownerFrom(*state) != nullptr;
+}
+
+}  // namespace jshookz::provider::types

@@ -47,4 +47,22 @@ registerClass(
 [[nodiscard]] bool registerAccountID(JSContext* ctx, JSValueConst global);
 [[nodiscard]] bool registerXFL(JSContext* ctx, JSValueConst global);
 
+// Provider-only materializer seams. These mint exact nominal values without
+// routing through public JavaScript factories.
+[[nodiscard]] JSValue makeUIntValue(
+    JSContext* ctx, std::uint8_t bits, std::uint64_t value);
+[[nodiscard]] JSValue makeSTBlobBytes(
+    JSContext* ctx, std::uint8_t const* bytes, std::uint32_t length);
+[[nodiscard]] JSValue makeHash256Bytes(
+    JSContext* ctx, std::uint8_t const* bytes, std::uint32_t length);
+[[nodiscard]] JSValue makeAccountIDBytes(
+    JSContext* ctx, std::uint8_t const* bytes, std::uint32_t length);
+
+// Exact STBlob counterpart to JS_GetObjectByteSpanNoThrow. Success returns
+// one owned duplicate of the STBlob wrapper. It allocates nothing, invokes no
+// JavaScript, initializes every output, and preserves the pending exception.
+[[nodiscard]] JSObjectByteSpanStatus getSTBlobByteSpanNoThrow(
+    JSContext* ctx, JSValueConst input, JSValue* owned_backing,
+    std::uint8_t const** data, std::size_t* size) noexcept;
+
 }  // namespace jshookz::provider::types

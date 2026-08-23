@@ -143,6 +143,8 @@ defineClass(JSRuntime *rt, JSClassID *classId, JSClassDef const *def)
         return false;
     if (*classId == 0)
         JS_NewClassID(classId);
+    if (JS_IsRegisteredClass(rt, *classId))
+        return true;
     return JS_NewClass(rt, *classId, def) >= 0;
 }
 

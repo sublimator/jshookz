@@ -511,6 +511,18 @@ newFactory(JSContext* ctx, std::uint8_t bits)
 
 }  // namespace
 
+namespace jshookz::provider::types {
+
+JSValue
+makeUIntValue(JSContext* ctx, std::uint8_t bits, std::uint64_t value)
+{
+    if (bits != 8 && bits != 16 && bits != 32 && bits != 64)
+        return JS_ThrowInternalError(ctx, "unsupported UInt width");
+    return newUInt(ctx, bits, value);
+}
+
+}  // namespace jshookz::provider::types
+
 extern "C" bool
 register_uint_types(JSContext* ctx)
 {

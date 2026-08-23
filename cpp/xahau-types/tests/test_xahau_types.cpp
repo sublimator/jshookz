@@ -1,11 +1,14 @@
 #include "result.hpp"
+#include "object/object.hpp"
 
 #include <jshookz/qjs.hpp>
 
 #include <gtest/gtest.h>
 
 #include <cstring>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 extern "C" bool register_cpp_types(JSContext *ctx);
 extern "C" bool register_uint_types(JSContext *ctx);
@@ -26,6 +29,7 @@ protected:
         ASSERT_TRUE(jshookz::provider::bindings::registerResult(ctx));
         ASSERT_TRUE(register_cpp_types(ctx));
         ASSERT_TRUE(register_uint_types(ctx));
+        ASSERT_TRUE(jshookz::provider::types::registerObjectTypes(ctx));
         ASSERT_FALSE(JS_HasException(ctx));
     }
 
@@ -34,8 +38,10 @@ protected:
     {
         if (ctx)
             JS_FreeContext(ctx);
-        if (rt)
+        if (rt) {
+            jshookz::provider::types::unregisterObjectTypes(rt);
             JS_FreeRuntime(rt);
+        }
     }
 
     jshookz::qjs::OwnedValue
@@ -53,6 +59,20 @@ protected:
         if (text)
             JS_FreeCString(ctx, text);
         return out;
+    }
+
+    void
+    installRoot(std::vector<std::uint8_t> const& bytes)
+    {
+        jshookz::qjs::OwnedValue value(
+            ctx,
+            jshookz::provider::types::makeCertifiedObjectCopy(
+                ctx, bytes.data(), static_cast<std::uint32_t>(bytes.size())));
+        ASSERT_FALSE(value.isException());
+        jshookz::qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
+        ASSERT_FALSE(global.isException());
+        ASSERT_GE(
+            JS_SetPropertyStr(ctx, global.get(), "root", value.release()), 0);
     }
 };
 
@@ -93,4 +113,96 @@ TEST_F(XahauTypes, UIntAddOverflowIsResult)
     auto domain = jshookz::qjs::property(
         ctx, jshookz::qjs::property(ctx, v.get(), "error").get(), "domain");
     EXPECT_EQ(to_string(domain.get()), "uint");
+}
+
+TEST_F(XahauTypes, CertifiedObjectIsLazyImmutableAndCanonical)
+{
+    // Sequence is first on wire; canonical field-code order puts Flags first.
+    installRoot({
+        0x24, 0x00, 0x00, 0x00, 0x07,
+        0x22, 0x00, 0x00, 0x00, 0x09,
+    });
+    auto value = eval(R"JS(
+        (() => {
+          const flags = root.Flags;
+          const fieldBytes = root.fieldBytes("Flags").toBytes();
+          const canonical = root.toBytes();
+          let assignmentFailed = false;
+          try {
+            (() => {
+              "use strict";
+              root.Flags = UInt32.from(1).okOr(null);
+            })();
+          }
+          catch (_) { assignmentFailed = true; }
+          return JSON.stringify({
+            keys: Object.keys(root),
+            same: flags === root.Flags && flags === root.get("Flags"),
+            flags: flags.toNumber(),
+            sequence: root.Sequence.toNumber(),
+            fieldBytes: Array.from(fieldBytes),
+            canonical: Array.from(canonical),
+            extensible: Object.isExtensible(root),
+            assignmentFailed,
+            absent: root.get("NotAField") === undefined,
+          });
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException());
+    EXPECT_EQ(
+        to_string(value.get()),
+        R"({"keys":["Flags","Sequence"],"same":true,"flags":9,"sequence":7,"fieldBytes":[0,0,0,9],"canonical":[34,0,0,0,9,36,0,0,0,7],"extensible":false,"assignmentFailed":true,"absent":true})");
+}
+
+TEST_F(XahauTypes, NestedArraySharesElementIdentityAndRealIteratorSymbol)
+{
+    // Memos -> two Memo object elements, each with a Flags leaf.
+    installRoot({
+        0xF9,
+        0xEA, 0x22, 0x00, 0x00, 0x00, 0x01, 0xE1,
+        0xEA, 0x22, 0x00, 0x00, 0x00, 0x02, 0xE1,
+        0xF1,
+    });
+    auto value = eval(R"JS(
+        (() => {
+          const values = root.Memos;
+          const first = values[0];
+          const iterated = Array.from(values);
+          return JSON.stringify({
+            rootKeys: Object.keys(root),
+            arrayKeys: Reflect.ownKeys(values),
+            lengthOwn: Object.hasOwn(values, "length"),
+            length: values.length,
+            firstSame: first === values.at(0) && first === iterated[0],
+            numbers: iterated.map(v => v.Flags.toNumber()),
+            extensible: Object.isExtensible(values),
+            absent: values.at(99) === undefined,
+          });
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException());
+    EXPECT_EQ(
+        to_string(value.get()),
+        R"({"rootKeys":["Memos"],"arrayKeys":["0","1","length"],"lengthOwn":true,"length":2,"firstSame":true,"numbers":[1,2],"extensible":false,"absent":true})");
+}
+
+TEST_F(XahauTypes, ExactMintRejectsMalformedInputAndRegistrarRetries)
+{
+    std::uint8_t const malformed[] = {0x22, 0x00};
+    jshookz::qjs::OwnedValue value(
+        ctx,
+        jshookz::provider::types::makeCertifiedObjectCopy(
+            ctx, malformed, sizeof(malformed)));
+    EXPECT_TRUE(value.isException());
+    jshookz::qjs::OwnedValue exception(ctx, JS_GetException(ctx));
+    EXPECT_FALSE(exception.isException());
+    EXPECT_TRUE(JS_IsError(ctx, exception.get()));
+
+    EXPECT_TRUE(jshookz::provider::types::registerObjectTypes(ctx));
+    EXPECT_FALSE(JS_HasException(ctx));
+    installRoot({});
+    auto empty = eval(
+        "Object.keys(root).length === 0 && root.toBytes().length === 0");
+    ASSERT_FALSE(empty.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, empty.get()));
 }
