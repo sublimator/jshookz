@@ -773,8 +773,13 @@ private:
         return close_scope(scope_id, header_begin, direct_count, kind,
                            ScopeCloseKind::array_end);
       if (field_code == kObjectEnd || field_code == kArrayEnd) {
+        auto const expected = kind == ScopeKind::array
+            ? ExpectedTerminator::array_end
+            : depth == 0 ? ExpectedTerminator::root_eof
+                         : ExpectedTerminator::object_end;
         cursor_.fail(ScanIssue::malformed_data, ScanMessage::illegal_terminator,
-                     header_begin, field_code);
+                     header_begin, field_code,
+                     static_cast<std::uint32_t>(expected));
         return false;
       }
 

@@ -79,6 +79,14 @@ enum class ScopeCloseKind : std::uint8_t {
   invalid = 3,
 };
 
+// ScanStatus::aux meaning for ScanMessage::illegal_terminator. This preserves
+// the current scope expectation without retaining a parser frame or pointer.
+enum class ExpectedTerminator : std::uint32_t {
+  object_end = 1,
+  array_end = 2,
+  root_eof = 3,
+};
+
 struct IndexHeader {
   std::uint32_t format_version;
   std::uint32_t root_scope;

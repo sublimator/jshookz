@@ -20,6 +20,16 @@ void unregisterObjectTypes(JSRuntime* runtime) noexcept;
 [[nodiscard]] JSValue makeCertifiedObjectCopy(
     JSContext* ctx, std::uint8_t const* bytes, std::uint32_t size);
 
+// Private adapters behind the eventual util.validateObject,
+// util.safeDecodeObject, and util.decodeObject publication. They enforce the
+// exact ObjectBytes provenance union without executing JavaScript.
+[[nodiscard]] JSValue validateObjectBytes(
+    JSContext* ctx, JSValueConst input);
+[[nodiscard]] JSValue safeDecodeObjectBytes(
+    JSContext* ctx, JSValueConst input);
+[[nodiscard]] JSValue decodeObjectBytes(
+    JSContext* ctx, JSValueConst input);
+
 [[nodiscard]] bool isSTObject(JSValueConst value) noexcept;
 [[nodiscard]] bool isSTArray(JSValueConst value) noexcept;
 

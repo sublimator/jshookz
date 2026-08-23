@@ -2,6 +2,7 @@
 
 #include "js.hpp"
 #include "quickjs.hpp"
+#include "result.hpp"
 
 #include "catl/xdata/canonical_serializer.h"
 #include "catl/xdata/number-rules.h"
@@ -19,6 +20,7 @@ namespace {
 
 namespace qjs = ::jshookz::qjs;
 namespace xdata = catl::xdata;
+namespace bindings = jshookz::provider::bindings;
 
 constexpr std::uint32_t kProtocolTag = 1;
 
@@ -1292,6 +1294,290 @@ newOwner(JSContext* ctx, std::uint8_t* bytes, std::uint32_t byteCount,
     return value;
 }
 
+enum class ParseVariant : std::uint8_t {
+    malformed,
+    unknownField,
+    invalidField,
+    duplicateField,
+    wrongTerminator,
+    trailingBytes,
+    resourceLimit,
+};
+
+struct ParseDiagnostic {
+    ParseVariant variant = ParseVariant::malformed;
+    char const* issue = "malformed";
+    char const* expected = nullptr;
+    char const* limit = nullptr;
+    xdata::ScanStatus status{};
+    std::uint32_t maximum = 0;
+};
+
+[[nodiscard]] ParseDiagnostic
+parseDiagnostic(xdata::ScanStatus status) noexcept
+{
+    using Message = xdata::ScanMessage;
+    ParseDiagnostic diagnostic;
+    diagnostic.status = status;
+    switch (static_cast<Message>(status.message_id)) {
+    case Message::unknown_field:
+        diagnostic.variant = ParseVariant::unknownField;
+        diagnostic.issue = "unknown-field";
+        break;
+    case Message::duplicate_field:
+        diagnostic.variant = ParseVariant::duplicateField;
+        diagnostic.issue = "duplicate-field";
+        break;
+    case Message::illegal_terminator:
+        diagnostic.variant = ParseVariant::wrongTerminator;
+        diagnostic.issue = "wrong-terminator";
+        switch (static_cast<xdata::ExpectedTerminator>(status.aux)) {
+        case xdata::ExpectedTerminator::object_end:
+            diagnostic.expected = "object-end";
+            break;
+        case xdata::ExpectedTerminator::array_end:
+            diagnostic.expected = "array-end";
+            break;
+        case xdata::ExpectedTerminator::root_eof:
+            diagnostic.expected = "root-eof";
+            break;
+        }
+        break;
+    case Message::trailing_bytes:
+        diagnostic.variant = ParseVariant::trailingBytes;
+        diagnostic.issue = "trailing-bytes";
+        break;
+    case Message::input_too_large:
+        diagnostic.variant = ParseVariant::resourceLimit;
+        diagnostic.issue = "resource-limit";
+        diagnostic.limit = "bytes";
+        diagnostic.maximum = 1'048'576;
+        break;
+    case Message::too_many_fields:
+        diagnostic.variant = ParseVariant::resourceLimit;
+        diagnostic.issue = "resource-limit";
+        diagnostic.limit = "fields";
+        diagnostic.maximum = 32'768;
+        break;
+    case Message::too_many_scopes:
+        diagnostic.variant = ParseVariant::resourceLimit;
+        diagnostic.issue = "resource-limit";
+        diagnostic.limit = "scopes";
+        diagnostic.maximum = 32'769;
+        break;
+    case Message::nesting_too_deep:
+        diagnostic.variant = ParseVariant::resourceLimit;
+        diagnostic.issue = "resource-limit";
+        diagnostic.limit = "depth";
+        diagnostic.maximum = 10;
+        break;
+    case Message::non_object_array_element:
+    case Message::truncated_vl:
+    case Message::invalid_vl:
+    case Message::truncated_field:
+    case Message::invalid_account_id:
+    case Message::invalid_amount:
+    case Message::invalid_number:
+    case Message::invalid_pathset:
+    case Message::invalid_vector256:
+    case Message::invalid_issue:
+    case Message::invalid_xchain_bridge:
+        if (status.field_code != 0) {
+            diagnostic.variant = ParseVariant::invalidField;
+            diagnostic.issue = "invalid-field";
+        }
+        break;
+    case Message::none:
+    case Message::begin_past_end:
+    case Message::truncated_field_header:
+    case Message::noncanonical_type_code:
+    case Message::noncanonical_field_code:
+    case Message::too_many_nops:
+    case Message::allocation_failed:
+    case Message::index_size_overflow:
+    case Message::invalid_index:
+        break;
+    }
+    return diagnostic;
+}
+
+[[nodiscard]] bool
+defineStringProperty(JSContext* ctx, JSValueConst object, JSAtom atom,
+                     char const* value, int flags = JS_PROP_ENUMERABLE)
+{
+    qjs::OwnedValue string(ctx, JS_NewString(ctx, value));
+    return !string.isException() &&
+        JS_DefinePropertyValue(ctx, object, atom, string.release(), flags) >= 0;
+}
+
+[[nodiscard]] bool
+defineNumberProperty(JSContext* ctx, JSValueConst object, JSAtom atom,
+                     std::uint32_t value, int flags = JS_PROP_ENUMERABLE)
+{
+    return JS_DefinePropertyValue(
+        ctx, object, atom, JS_NewUint32(ctx, value), flags) >= 0;
+}
+
+[[nodiscard]] bool
+defineParseFields(JSContext* ctx, JSValueConst object,
+                  ParseDiagnostic const& diagnostic,
+                  bool includeStrings)
+{
+    if (fieldAtoms == nullptr) {
+        JS_ThrowInternalError(ctx, "object registrar is unavailable");
+        return false;
+    }
+    if (includeStrings &&
+        (!defineStringProperty(ctx, object, diagnosticAtoms[0], "parse") ||
+         !defineStringProperty(
+             ctx, object, diagnosticAtoms[1], diagnostic.issue)))
+        return false;
+    if (!defineNumberProperty(
+            ctx, object, diagnosticAtoms[2], diagnostic.status.offset))
+        return false;
+    switch (diagnostic.variant) {
+    case ParseVariant::unknownField:
+    case ParseVariant::invalidField:
+    case ParseVariant::duplicateField:
+        return defineNumberProperty(
+            ctx, object, diagnosticAtoms[3], diagnostic.status.field_code);
+    case ParseVariant::wrongTerminator:
+        if (includeStrings && diagnostic.expected != nullptr &&
+            !defineStringProperty(
+                ctx, object, diagnosticAtoms[4], diagnostic.expected))
+            return false;
+        return defineNumberProperty(
+            ctx, object, diagnosticAtoms[5], diagnostic.status.field_code);
+    case ParseVariant::resourceLimit:
+        if (includeStrings && diagnostic.limit != nullptr &&
+            !defineStringProperty(
+                ctx, object, diagnosticAtoms[6], diagnostic.limit))
+            return false;
+        return defineNumberProperty(
+                   ctx, object, diagnosticAtoms[7], diagnostic.maximum) &&
+            defineNumberProperty(
+                ctx, object, diagnosticAtoms[8], diagnostic.status.aux);
+    case ParseVariant::malformed:
+    case ParseVariant::trailingBytes:
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] JSValue
+newParseError(JSContext* ctx, xdata::ScanStatus status)
+{
+    qjs::OwnedValue error(ctx, JS_NewObjectProto(ctx, JS_NULL));
+    if (error.isException())
+        return error.release();
+    auto const diagnostic = parseDiagnostic(status);
+    if (!defineParseFields(ctx, error.get(), diagnostic, true) ||
+        !bindings::result_finish(ctx, error.get()))
+        return JS_EXCEPTION;
+    return error.release();
+}
+
+[[nodiscard]] JSValue
+throwExactObjectTypeError(JSContext* ctx, char const* message,
+                          xdata::ScanStatus const* status = nullptr)
+{
+    qjs::OwnedValue error(ctx, JS_NewBareTypeErrorExact(ctx));
+    if (error.isException())
+        return error.release();
+    qjs::OwnedValue messageValue(ctx, JS_NewString(ctx, message));
+    if (messageValue.isException() ||
+        JS_DefinePropertyValueStr(
+            ctx, error.get(), "message", messageValue.release(),
+            JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE) < 0)
+        return JS_EXCEPTION;
+    if (status != nullptr) {
+        auto const diagnostic = parseDiagnostic(*status);
+        if (!defineParseFields(ctx, error.get(), diagnostic, false))
+            return JS_EXCEPTION;
+    }
+    return JS_Throw(ctx, error.release());
+}
+
+enum class ObjectInputStatus : std::uint8_t {
+    ok,
+    wrongKind,
+    unusable,
+};
+
+[[nodiscard]] ObjectInputStatus
+acquireObjectInput(JSContext* ctx, JSValueConst input, JSValue& backing,
+                   std::uint8_t const*& bytes, std::uint32_t& size) noexcept
+{
+    backing = JS_UNDEFINED;
+    bytes = nullptr;
+    size = 0;
+    std::size_t spanSize = 0;
+    auto status = JS_GetObjectByteSpanNoThrow(
+        ctx, input, &backing, &bytes, &spanSize);
+    if (status == JS_OBJECT_BYTES_WRONG_KIND)
+        status = getSTBlobByteSpanNoThrow(
+            ctx, input, &backing, &bytes, &spanSize);
+    if (status == JS_OBJECT_BYTES_WRONG_KIND)
+        return ObjectInputStatus::wrongKind;
+    if (status != JS_OBJECT_BYTES_OK ||
+        spanSize > std::numeric_limits<std::uint32_t>::max())
+        return ObjectInputStatus::unusable;
+    size = static_cast<std::uint32_t>(spanSize);
+    return ObjectInputStatus::ok;
+}
+
+struct MintOutcome {
+    JSValue value = JS_UNDEFINED;
+    xdata::ScanStatus status{};
+};
+
+[[nodiscard]] MintOutcome
+mintOwnedObjectBytes(JSContext* ctx, std::uint8_t* bytes,
+                     std::uint32_t size)
+{
+    xdata::RecursiveScanOptions options{
+        .protocol = &xdata::xahau_static_protocol()};
+    auto result = xdata::guest_exact_object_index(
+        {bytes, size}, options, {ctx, scanRealloc, scanFree});
+    if (!result.ok()) {
+        js_free(ctx, bytes);
+        if (result.status.issue ==
+            static_cast<std::uint16_t>(xdata::ScanIssue::out_of_memory))
+            return {oom(ctx), result.status};
+        return {JS_UNDEFINED, result.status};
+    }
+    qjs::OwnedValue owner(ctx, newOwner(ctx, bytes, size, result.index));
+    if (owner.isException()) {
+        scanFree(ctx, result.index);
+        js_free(ctx, bytes);
+        return {owner.release(), {}};
+    }
+    JSValue object = newObjectWrapper(ctx, owner.get(), 0);
+    return {object, {}};
+}
+
+[[nodiscard]] MintOutcome
+copyAndMintObject(JSContext* ctx, std::uint8_t const* bytes,
+                  std::uint32_t size)
+{
+    std::uint8_t* copy = nullptr;
+    if (size != 0) {
+        copy = static_cast<std::uint8_t*>(js_malloc(ctx, size));
+        if (copy == nullptr)
+            return {oom(ctx), {}};
+        std::memcpy(copy, bytes, size);
+    }
+    return mintOwnedObjectBytes(ctx, copy, size);
+}
+
+[[nodiscard]] bool
+isObjectDataFailure(xdata::ScanStatus const& status) noexcept
+{
+    auto const issue = static_cast<xdata::ScanIssue>(status.issue);
+    return issue == xdata::ScanIssue::malformed_data ||
+        issue == xdata::ScanIssue::resource_limit;
+}
+
 }  // namespace
 
 bool
@@ -1326,37 +1612,117 @@ makeCertifiedObjectCopy(
     JSContext* ctx, std::uint8_t const* bytes, std::uint32_t size)
 {
     if (size != 0 && bytes == nullptr)
-        return JS_ThrowTypeError(ctx, "object bytes are unavailable");
-    std::uint8_t* copy = nullptr;
-    if (size != 0) {
-        copy = static_cast<std::uint8_t*>(js_malloc(ctx, size));
-        if (copy == nullptr)
-            return oom(ctx);
-        std::memcpy(copy, bytes, size);
+        return throwExactObjectTypeError(ctx, "object bytes are unavailable");
+    auto outcome = copyAndMintObject(ctx, bytes, size);
+    if (JS_IsException(outcome.value) || !JS_IsUndefined(outcome.value))
+        return outcome.value;
+    if (!isObjectDataFailure(outcome.status))
+        return JS_ThrowInternalError(
+            ctx, "%s",
+            xdata::scan_message_literal(outcome.status.message_id));
+    return throwExactObjectTypeError(
+        ctx, xdata::scan_message_literal(outcome.status.message_id),
+        &outcome.status);
+}
+
+JSValue
+validateObjectBytes(JSContext* ctx, JSValueConst input)
+{
+    JSValue backing = JS_UNDEFINED;
+    std::uint8_t const* bytes = nullptr;
+    std::uint32_t size = 0;
+    auto const inputStatus =
+        acquireObjectInput(ctx, input, backing, bytes, size);
+    if (inputStatus != ObjectInputStatus::ok) {
+        JS_FreeValue(ctx, backing);
+        if (JS_HasException(ctx))
+            return JS_EXCEPTION;
+        return throwExactObjectTypeError(
+            ctx, inputStatus == ObjectInputStatus::wrongKind
+                ? "expected Uint8Array, ArrayBuffer, or STBlob"
+                : "object byte backing is detached or unusable");
     }
     xdata::RecursiveScanOptions options{
         .protocol = &xdata::xahau_static_protocol()};
-    auto result = xdata::guest_exact_object_index(
-        {copy, size}, options, {ctx, scanRealloc, scanFree});
-    if (!result.ok()) {
-        js_free(ctx, copy);
-        if (result.status.issue ==
-            static_cast<std::uint16_t>(xdata::ScanIssue::out_of_memory))
-            return oom(ctx);
-        return JS_ThrowTypeError(
-            ctx, "invalid serialized object: %s",
-            xdata::scan_message_literal(result.status.message_id));
+    auto const status = xdata::guest_exact_validate_object(
+        {bytes, size}, options);
+    JS_FreeValue(ctx, backing);
+    if (status.issue ==
+        static_cast<std::uint16_t>(xdata::ScanIssue::internal_error))
+        return JS_ThrowInternalError(
+            ctx, "%s", xdata::scan_message_literal(status.message_id));
+    return JS_NewBool(ctx, status.ok());
+}
+
+namespace {
+
+[[nodiscard]] MintOutcome
+mintObjectInput(JSContext* ctx, JSValueConst input)
+{
+    JSValue backing = JS_UNDEFINED;
+    std::uint8_t const* bytes = nullptr;
+    std::uint32_t size = 0;
+    auto const inputStatus =
+        acquireObjectInput(ctx, input, backing, bytes, size);
+    if (inputStatus != ObjectInputStatus::ok) {
+        JS_FreeValue(ctx, backing);
+        if (JS_HasException(ctx))
+            return {JS_EXCEPTION, {}};
+        return {
+            throwExactObjectTypeError(
+                ctx, inputStatus == ObjectInputStatus::wrongKind
+                    ? "expected Uint8Array, ArrayBuffer, or STBlob"
+                    : "object byte backing is detached or unusable"),
+            {}};
     }
-    qjs::OwnedValue owner(ctx, newOwner(ctx, copy, size, result.index));
-    if (owner.isException()) {
-        scanFree(ctx, result.index);
-        js_free(ctx, copy);
-        return owner.release();
+
+    std::uint8_t* copy = nullptr;
+    if (size != 0) {
+        copy = static_cast<std::uint8_t*>(js_malloc(ctx, size));
+        if (copy == nullptr) {
+            JS_FreeValue(ctx, backing);
+            return {oom(ctx), {}};
+        }
+        std::memcpy(copy, bytes, size);
     }
-    // Ownership transferred into the private owner object.
-    copy = nullptr;
-    result.index = nullptr;
-    return newObjectWrapper(ctx, owner.get(), 0);
+    // The sole ingress-backing edge is dead before certification/indexing.
+    JS_FreeValue(ctx, backing);
+    return mintOwnedObjectBytes(ctx, copy, size);
+}
+
+}  // namespace
+
+JSValue
+safeDecodeObjectBytes(JSContext* ctx, JSValueConst input)
+{
+    auto outcome = mintObjectInput(ctx, input);
+    if (JS_IsException(outcome.value))
+        return outcome.value;
+    if (!JS_IsUndefined(outcome.value))
+        return bindings::result_success(ctx, outcome.value);
+    if (!isObjectDataFailure(outcome.status))
+        return JS_ThrowInternalError(
+            ctx, "%s",
+            xdata::scan_message_literal(outcome.status.message_id));
+    qjs::OwnedValue error(ctx, newParseError(ctx, outcome.status));
+    if (error.isException())
+        return error.release();
+    return bindings::result_failure(ctx, error.release());
+}
+
+JSValue
+decodeObjectBytes(JSContext* ctx, JSValueConst input)
+{
+    auto outcome = mintObjectInput(ctx, input);
+    if (JS_IsException(outcome.value) || !JS_IsUndefined(outcome.value))
+        return outcome.value;
+    if (!isObjectDataFailure(outcome.status))
+        return JS_ThrowInternalError(
+            ctx, "%s",
+            xdata::scan_message_literal(outcome.status.message_id));
+    return throwExactObjectTypeError(
+        ctx, xdata::scan_message_literal(outcome.status.message_id),
+        &outcome.status);
 }
 
 bool

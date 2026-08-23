@@ -74,6 +74,17 @@ protected:
         ASSERT_GE(
             JS_SetPropertyStr(ctx, global.get(), "root", value.release()), 0);
     }
+
+    void
+    installValue(char const* name, JSValue value)
+    {
+        ASSERT_FALSE(JS_IsException(value));
+        jshookz::qjs::OwnedValue owned(ctx, value);
+        jshookz::qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
+        ASSERT_FALSE(global.isException());
+        ASSERT_GE(
+            JS_SetPropertyStr(ctx, global.get(), name, owned.release()), 0);
+    }
 };
 
 TEST_F(XahauTypes, Hash256Roundtrip)
@@ -205,4 +216,110 @@ TEST_F(XahauTypes, ExactMintRejectsMalformedInputAndRegistrarRetries)
         "Object.keys(root).length === 0 && root.toBytes().length === 0");
     ASSERT_FALSE(empty.isException());
     EXPECT_TRUE(JS_ToBool(ctx, empty.get()));
+}
+
+TEST_F(XahauTypes, ObjectByteUtilitiesUseExactInputAndNominalResultLaws)
+{
+    auto valid = eval("new Uint8Array([0x22, 0, 0, 0, 9])");
+    ASSERT_FALSE(valid.isException());
+    jshookz::qjs::OwnedValue predicate(
+        ctx,
+        jshookz::provider::types::validateObjectBytes(ctx, valid.get()));
+    ASSERT_FALSE(predicate.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, predicate.get()));
+
+    installValue(
+        "decodedResult",
+        jshookz::provider::types::safeDecodeObjectBytes(ctx, valid.get()));
+    auto success = eval(
+        "decodedResult.ok && decodedResult.value.Flags.toNumber() === 9 && "
+        "Object.isExtensible(decodedResult) === false");
+    ASSERT_FALSE(success.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, success.get()));
+
+    auto malformed = eval("new Uint8Array([0x22, 0])");
+    ASSERT_FALSE(malformed.isException());
+    jshookz::qjs::OwnedValue invalidPredicate(
+        ctx,
+        jshookz::provider::types::validateObjectBytes(
+            ctx, malformed.get()));
+    ASSERT_FALSE(invalidPredicate.isException());
+    EXPECT_FALSE(JS_ToBool(ctx, invalidPredicate.get()));
+
+    installValue(
+        "failedResult",
+        jshookz::provider::types::safeDecodeObjectBytes(
+            ctx, malformed.get()));
+    auto failure = eval(
+        "JSON.stringify({ok: failedResult.ok, "
+        "domain: failedResult.error.domain, "
+        "issue: failedResult.error.issue, "
+        "offset: failedResult.error.offset, "
+        "fieldCode: failedResult.error.fieldCode, "
+        "proto: Object.getPrototypeOf(failedResult.error) === null})");
+    ASSERT_FALSE(failure.isException());
+    EXPECT_EQ(
+        to_string(failure.get()),
+        R"({"ok":false,"domain":"parse","issue":"invalid-field","offset":1,"fieldCode":131074,"proto":true})");
+
+    auto blob = eval("STBlob.from(new Uint8Array([0x22, 0, 0, 0, 7]))");
+    ASSERT_FALSE(blob.isException());
+    jshookz::qjs::OwnedValue fromBlob(
+        ctx,
+        jshookz::provider::types::decodeObjectBytes(ctx, blob.get()));
+    ASSERT_FALSE(fromBlob.isException());
+    EXPECT_TRUE(jshookz::provider::types::isSTObject(fromBlob.get()));
+}
+
+TEST_F(XahauTypes, ObjectByteUtilitiesPublishExactWrongTerminatorAndTypeErrors)
+{
+    auto wrongClose = eval("new Uint8Array([0xF1])");
+    ASSERT_FALSE(wrongClose.isException());
+    installValue(
+        "closeResult",
+        jshookz::provider::types::safeDecodeObjectBytes(
+            ctx, wrongClose.get()));
+    auto close = eval(
+        "JSON.stringify(closeResult.error)");
+    ASSERT_FALSE(close.isException());
+    EXPECT_EQ(
+        to_string(close.get()),
+        R"({"domain":"parse","issue":"wrong-terminator","offset":0,"expected":"root-eof","actual":983041})");
+
+    auto malformed = eval("new Uint8Array([0x22, 0])");
+    ASSERT_FALSE(malformed.isException());
+    jshookz::qjs::OwnedValue decoded(
+        ctx,
+        jshookz::provider::types::decodeObjectBytes(
+            ctx, malformed.get()));
+    ASSERT_TRUE(decoded.isException());
+    jshookz::qjs::OwnedValue assertionError(ctx, JS_GetException(ctx));
+    ASSERT_TRUE(JS_IsError(ctx, assertionError.get()));
+    installValue("assertionError", assertionError.release());
+    auto assertion = eval(
+        "JSON.stringify({type: assertionError instanceof TypeError, "
+        "message: assertionError.message, offset: assertionError.offset, "
+        "fieldCode: assertionError.fieldCode, "
+        "stack: Object.hasOwn(assertionError, 'stack')})");
+    ASSERT_FALSE(assertion.isException());
+    EXPECT_EQ(
+        to_string(assertion.get()),
+        R"({"type":true,"message":"truncated field","offset":1,"fieldCode":131074,"stack":false})");
+
+    auto wrongKind = eval("[0x22, 0, 0, 0, 1]");
+    ASSERT_FALSE(wrongKind.isException());
+    jshookz::qjs::OwnedValue wrong(
+        ctx,
+        jshookz::provider::types::validateObjectBytes(
+            ctx, wrongKind.get()));
+    ASSERT_TRUE(wrong.isException());
+    jshookz::qjs::OwnedValue contractError(ctx, JS_GetException(ctx));
+    installValue("contractError", contractError.release());
+    auto contract = eval(
+        "contractError instanceof TypeError && "
+        "contractError.message === "
+        "'expected Uint8Array, ArrayBuffer, or STBlob' && "
+        "Reflect.ownKeys(contractError).length === 1");
+    ASSERT_FALSE(contract.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, contract.get()));
 }

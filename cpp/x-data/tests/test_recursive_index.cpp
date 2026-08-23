@@ -266,6 +266,35 @@ TEST(RecursiveIndex, PhysicalRootEofClosesAllLiveScopes) {
   }
 }
 
+TEST(RecursiveIndex, WrongTerminatorRetainsExactExpectedContext) {
+  RecursiveScanOptions options;
+  options.protocol = &xahau_static_protocol();
+
+  auto const root_bytes = bytes({0xF1});
+  auto root = guest_exact_validate_object(slice(root_bytes), options);
+  EXPECT_EQ(root.message_id,
+            static_cast<std::uint16_t>(ScanMessage::illegal_terminator));
+  EXPECT_EQ(root.field_code, (15u << 16) | 1u);
+  EXPECT_EQ(root.aux,
+            static_cast<std::uint32_t>(ExpectedTerminator::root_eof));
+
+  // TemplateEntry opens a nested object, where ArrayEnd is wrong.
+  auto const object_bytes = bytes({0xE9, 0xF1});
+  auto object = guest_exact_validate_object(slice(object_bytes), options);
+  EXPECT_EQ(object.message_id,
+            static_cast<std::uint16_t>(ScanMessage::illegal_terminator));
+  EXPECT_EQ(object.aux,
+            static_cast<std::uint32_t>(ExpectedTerminator::object_end));
+
+  // Memos opens an array, where ObjectEnd is wrong.
+  auto const array_bytes = bytes({0xF9, 0xE1});
+  auto array = guest_exact_validate_object(slice(array_bytes), options);
+  EXPECT_EQ(array.message_id,
+            static_cast<std::uint16_t>(ScanMessage::illegal_terminator));
+  EXPECT_EQ(array.aux,
+            static_cast<std::uint32_t>(ExpectedTerminator::array_end));
+}
+
 TEST(RecursiveIndex, FrozenMinimalIndexesHaveExactBytes) {
   expect_exact_index(bytes({0xE1}), {1, 0, 1, 0, 0, 0, 0, 0x20000000});
   expect_exact_index(bytes({0xEA}), {1, 0, 2, 1, 0, 1, 0, 1, 1, 1, 1, 0,
