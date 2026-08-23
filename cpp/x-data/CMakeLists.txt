@@ -168,6 +168,15 @@ if(BUILD_TESTING)
     gtest_discover_tests(test_recursive_index
         DISCOVERY_TIMEOUT 30 DISCOVERY_MODE PRE_TEST)
 
+    add_executable(test_canonical_serializer
+        tests/test_canonical_serializer.cpp)
+    target_link_libraries(test_canonical_serializer PRIVATE
+        jshookz_xdata GTest::gtest_main)
+    target_compile_options(test_canonical_serializer PRIVATE
+        -fno-exceptions -fno-rtti)
+    gtest_discover_tests(test_canonical_serializer
+        DISCOVERY_TIMEOUT 30 DISCOVERY_MODE PRE_TEST)
+
     add_executable(test_pathset_quickjs
         tests/pathset_quickjs_fixture.cpp
         tests/test_pathset_quickjs.cpp
