@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstring>
 #include <cstdint>
 #include <string>
@@ -82,11 +83,14 @@ protected:
         ASSERT_TRUE(jshookz::provider::bindings::registerResult(ctx));
         ASSERT_TRUE(register_cpp_types(ctx));
         ASSERT_TRUE(register_uint_types(ctx));
-        ASSERT_TRUE(jshookz::provider::types::registerRichLeafTypes(ctx));
-        {
+        jshookz::qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
+        ASSERT_FALSE(global.isException());
+        jshookz::qjs::OwnedValue util(
+            ctx, JS_GetPropertyStr(ctx, global.get(), "util"));
+        ASSERT_FALSE(util.isException());
+        if (JS_IsUndefined(util.get())) {
+            ASSERT_TRUE(jshookz::provider::types::registerRichLeafTypes(ctx));
             namespace types = jshookz::provider::types;
-            jshookz::qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
-            ASSERT_FALSE(global.isException());
             types::AmountLeafMaterializers const amountLeaves{
                 types::makeAccountIDBytes,
                 types::makeCurrencyBytes,
@@ -100,12 +104,7 @@ protected:
             };
             ASSERT_TRUE(types::registerAmount(
                 ctx, global.get(), amountLeaves));
-        }
-        ASSERT_TRUE(jshookz::provider::types::registerObjectTypes(ctx));
-        {
-            namespace types = jshookz::provider::types;
-            jshookz::qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
-            ASSERT_FALSE(global.isException());
+            ASSERT_TRUE(types::registerObjectTypes(ctx));
             types::PathSetLeafMaterializers const pathLeaves{
                 types::makeAccountIDBytes,
                 types::makeCurrencyBytes,
@@ -114,7 +113,8 @@ protected:
             ASSERT_TRUE(types::registerPathSet(
                 ctx, global.get(), pathLeaves));
             ASSERT_TRUE(types::registerFieldDescriptors(ctx, global.get()));
-        }
+        } else
+            ASSERT_TRUE(JS_IsObject(util.get()));
         ASSERT_FALSE(JS_HasException(ctx));
     }
 
@@ -252,6 +252,233 @@ TEST_F(XahauTypes, CertifiedObjectIsLazyImmutableAndCanonical)
         to_string(value.get()),
         R"({"keys":["Flags","Sequence"],"same":true,"flags":9,"sequence":7,"fieldBytes":[0,0,0,9],"canonical":[34,0,0,0,9,36,0,0,0,7],"json":{"Flags":9,"Sequence":7},"jsonFresh":true,"extensible":false,"assignmentFailed":true,"absent":true})");
 }
+
+TEST_F(XahauTypes,
+       ObjectReplacementIsIndependentAndAbsentRemovalPreservesIdentity) {
+  installRoot({
+      0x24,
+      0x00,
+      0x00,
+      0x00,
+      0x07,
+      0x22,
+      0x00,
+      0x00,
+      0x00,
+      0x09,
+  });
+  auto value = eval(R"JS(
+        (() => {
+          const changed = root.withField(
+            Field.Flags, new Uint8Array([0, 0, 0, 10]));
+          const identical = root.withField(
+            "Flags", new Uint8Array([0, 0, 0, 9]));
+          const removed = root.withoutField(Field.Flags);
+          const absent = root.withoutField("Account");
+          return changed !== root && identical !== root && removed !== root &&
+            absent === root &&
+            root.Flags.toNumber() === 9 && changed.Flags.toNumber() === 10 &&
+            identical.Flags.toNumber() === 9 &&
+            removed.Flags === undefined && removed.Sequence.toNumber() === 7 &&
+            Array.from(changed.toBytes()).join(",") ===
+              "34,0,0,0,10,36,0,0,0,7";
+        })()
+    )JS");
+  ASSERT_FALSE(value.isException());
+  EXPECT_TRUE(JS_ToBool(ctx, value.get()));
+}
+
+TEST_F(XahauTypes, ObjectReplacementAcceptsNumberEnumAndCanonicalRawContainer) {
+  installRoot({});
+  auto value = eval(R"JS(
+        (() => {
+          const number = root.withField("Number", "1.25");
+          const transaction = root.withField("TransactionType", 0);
+          const nested = root.withField("Memo", new Uint8Array([0xE1]));
+          return JSON.stringify({
+            number: number.Number,
+            bytes: Array.from(number.fieldBytes("Number").toBytes()),
+            transaction: transaction.TransactionType,
+            nestedSize: nested.Memo.toBytes().length,
+          });
+        })()
+    )JS");
+  ASSERT_FALSE(value.isException());
+  EXPECT_EQ(
+      to_string(value.get()),
+      R"({"number":"1.25","bytes":[0,4,112,222,77,248,32,0,255,255,255,241],"transaction":0,"nestedSize":1})");
+
+  auto rejects = eval(R"JS(
+        (() => {
+          const invalid = [
+            () => root.withField("Flags", new Uint8Array([0, 0, 1])),
+            () => root.withField("Memo", new Uint8Array([])),
+            () => root.withField("Number", "0001.25"),
+            () => root.withField("TransactionType", 1.5),
+            () => root.withField("Flags", undefined),
+            () => root.withField("NotAField", new Uint8Array()),
+          ];
+          return invalid.every(fn => {
+            try { fn(); return false; }
+            catch (error) { return error instanceof TypeError; }
+          });
+        })()
+    )JS");
+  ASSERT_FALSE(rejects.isException());
+  EXPECT_TRUE(JS_ToBool(ctx, rejects.get()));
+}
+
+TEST_F(XahauTypes, ObjectReplacementNumberStringsMatchPinnedOracleFormatting) {
+  installRoot({});
+  auto value = eval(R"JS(
+        JSON.stringify([
+          "0", "-0", "1", "1.25", "0.5", "-0.00125",
+          "1e10", "1e11", "1e-10", "1e-11",
+          "10000000000000005", "10000000000000015",
+        ].map(input => root.withField("Number", input).Number))
+    )JS");
+  ASSERT_FALSE(value.isException());
+  EXPECT_EQ(
+      to_string(value.get()),
+      R"(["0","0","1","1.25","0.5","-0.00125","10000000000","1000000000000000e-4","0.0000000001","1000000000000000e-26","1000000000000000e1","1000000000000002e1"])");
+}
+
+TEST_F(XahauTypes, ObjectReplacementStreamsCertifiedObjectAndArrayValues) {
+  installRoot({
+      0xF9,
+      0xEA,
+      0x24,
+      0,
+      0,
+      0,
+      4,
+      0x22,
+      0,
+      0,
+      0,
+      2,
+      0xE1,
+      0xF1,
+  });
+  auto value = eval(R"JS(
+        (() => {
+          const element = root.Memos[0];
+          const objectCopy = root.withField("Memo", element);
+          const arrayCopy = root.withField("Memos", root.Memos);
+          let mismatch = false;
+          try { root.withField("Memo", root.Memos); }
+          catch (error) { mismatch = error instanceof TypeError; }
+          return objectCopy !== root && arrayCopy !== root &&
+            objectCopy.Memo.Flags.toNumber() === 2 &&
+            objectCopy.Memo.Sequence.toNumber() === 4 &&
+            arrayCopy.Memos !== root.Memos &&
+            arrayCopy.Memos[0].Flags.toNumber() === 2 && mismatch;
+        })()
+    )JS");
+  ASSERT_FALSE(value.isException());
+  EXPECT_TRUE(JS_ToBool(ctx, value.get()));
+}
+
+TEST_F(XahauTypes, ObjectReplacementAcceptsEveryExactNominalMaterializer) {
+  namespace types = jshookz::provider::types;
+  auto expose = [&](char const *name, JSValue value) {
+    EXPECT_FALSE(JS_IsException(value)) << name;
+    if (JS_IsException(value))
+      return;
+    jshookz::qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
+    ASSERT_FALSE(global.isException());
+    ASSERT_EQ(JS_SetPropertyStr(ctx, global.get(), name, value), 1);
+  };
+
+  std::array<std::uint8_t, 32> bytes{};
+  for (std::uint32_t i = 0; i < bytes.size(); ++i)
+    bytes[i] = static_cast<std::uint8_t>(i + 1);
+  std::array<std::uint8_t, 20> account{};
+  for (std::uint32_t i = 0; i < account.size(); ++i)
+    account[i] = static_cast<std::uint8_t>(0x40 + i);
+  std::array<std::uint8_t, 20> currency{};
+  currency[12] = 'U';
+  currency[13] = 'S';
+  currency[14] = 'D';
+  std::array<std::uint8_t, 8> amount{0x40, 0, 0, 0, 0, 0, 0, 42};
+  std::array<std::uint8_t, 20> nativeIssue{};
+  std::array<std::uint8_t, 82> bridge{};
+  bridge[0] = 20;
+  std::memcpy(bridge.data() + 1, account.data(), account.size());
+  bridge[41] = 20;
+  std::memcpy(bridge.data() + 42, account.data(), account.size());
+
+  expose("vUInt8", types::makeUIntValue(ctx, 8, 0x7f));
+  expose("vUInt16", types::makeUIntValue(ctx, 16, 0x1234));
+  expose("vUInt32", types::makeUIntValue(ctx, 32, 0x12345678));
+  expose("vUInt64", types::makeUIntValue(ctx, 64, 0x123456789abcdef0));
+  expose("vHash128", types::makeHash128Bytes(ctx, bytes.data(), 16));
+  expose("vHash160", types::makeHash160Bytes(ctx, bytes.data(), 20));
+  expose("vHash192", types::makeHash192Bytes(ctx, bytes.data(), 24));
+  expose("vHash256", types::makeHash256Bytes(ctx, bytes.data(), 32));
+  expose("vBlob", types::makeSTBlobBytes(ctx, bytes.data(), 7));
+  expose("vAccount",
+         types::makeAccountIDBytes(ctx, account.data(), account.size()));
+  expose("vAmount", types::makeAmountBytes(ctx, amount.data(), amount.size()));
+  expose("vCurrency",
+         types::makeCurrencyBytes(ctx, currency.data(), currency.size()));
+  expose("vIssue",
+         types::makeIssueBytes(ctx, nativeIssue.data(), nativeIssue.size()));
+  expose("vVector", types::makeVector256Bytes(ctx, bytes.data(), bytes.size()));
+  expose("vBridge",
+         types::makeXChainBridgeBytes(ctx, bridge.data(), bridge.size()));
+
+  installRoot(hexBytes("011201404142434445464748494A4B4C4D4E4F5051525300"));
+  auto path = eval("root.Paths");
+  ASSERT_FALSE(path.isException());
+  expose("vPathSet", path.release());
+  installRoot({});
+
+  auto result = eval(R"JS(
+        (() => {
+          const inputs = [
+            ["CloseResolution", vUInt8],
+            ["LedgerEntryType", vUInt16],
+            ["NetworkID", vUInt32],
+            ["IndexNext", vUInt64],
+            ["EmailHash", vHash128],
+            ["TakerPaysCurrency", vHash160],
+            ["MPTokenIssuanceID", vHash192],
+            ["LedgerHash", vHash256],
+            ["PublicKey", vBlob],
+            ["Account", vAccount],
+            ["Amount", vAmount],
+            ["BaseAsset", vCurrency],
+            ["LockingChainIssue", vIssue],
+            ["Paths", vPathSet],
+            ["Indexes", vVector],
+            ["XChainBridge", vBridge],
+          ];
+          let current = root;
+          for (const [field, value] of inputs)
+            current = current.withField(field, value);
+          const exact = inputs.every(([field, input]) => {
+            const observed = current.get(field);
+            return observed !== input &&
+              (typeof input.toBytes === "function"
+                ? Array.from(current.fieldBytes(field).toBytes()).join(",") ===
+                    Array.from(input.toBytes()).join(",")
+                : observed.toString() === input.toString());
+          });
+          let wrongNominal = false;
+          try { root.withField("BaseAsset", vAccount); }
+          catch (error) { wrongNominal = error instanceof TypeError; }
+          return exact && wrongNominal && Reflect.ownKeys(current).length === 16 &&
+            Reflect.ownKeys(root).length === 0;
+        })()
+    )JS");
+  if (result.isException()) {
+    jshookz::qjs::OwnedValue error(ctx, JS_GetException(ctx));
+    FAIL() << to_string(error.get());
+  }
+  EXPECT_TRUE(JS_ToBool(ctx, result.get()));
+}
+
 
 TEST_F(XahauTypes, NestedArraySharesElementIdentityAndRealIteratorSymbol)
 {
@@ -608,7 +835,7 @@ TEST_F(XahauTypes, ObjectJSONDispatchesEveryStructuredLeafCanonically)
         },
         {
             "011201B5F762798A53D543A014CAF8B297CFF8F2F937E800",
-            R"({"Paths":[[{"account":"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"}]]})",
+            R"({"Paths":[[{"account":"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh","type":1}]]})",
         },
         {
             "011320000102030405060708090A0B0C0D0E0F"

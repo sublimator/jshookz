@@ -2,6 +2,7 @@
 
 #include "canonical_json.hpp"
 #include "field_js.hpp"
+#include "nominal_payload.hpp"
 
 #include "amount/amount_js.hpp"
 #include "js.hpp"
@@ -10,6 +11,7 @@
 #include "quickjs.hpp"
 #include "result.hpp"
 
+#include "catl/xdata/canonical_replacement.h"
 #include "catl/xdata/canonical_serializer.h"
 #include "catl/xdata/number-rules.h"
 #include "catl/xdata/recursive_index.h"
@@ -583,6 +585,9 @@ numberString(JSContext* ctx, Slice payload)
         append(cursor, digitCount);
         return JS_NewStringLen(ctx, output, position);
     }
+    std::uint32_t croppedDigitCount = digitCount;
+    while (croppedDigitCount != 0 && cursor[croppedDigitCount - 1] == '0')
+        --croppedDigitCount;
     auto const decimalPosition =
         static_cast<std::int32_t>(digitCount) + number.exponent;
     if (decimalPosition <= 0) {
@@ -590,16 +595,20 @@ numberString(JSContext* ctx, Slice payload)
         output[position++] = '.';
         for (std::int32_t i = 0; i < -decimalPosition; ++i)
             output[position++] = '0';
-        append(cursor, digitCount);
-    } else if (decimalPosition < static_cast<std::int32_t>(digitCount)) {
+        append(cursor, croppedDigitCount);
+    } else if (
+        decimalPosition < static_cast<std::int32_t>(croppedDigitCount)) {
         append(cursor, static_cast<std::uint32_t>(decimalPosition));
         output[position++] = '.';
         append(cursor + decimalPosition,
-               digitCount - static_cast<std::uint32_t>(decimalPosition));
+               croppedDigitCount -
+                   static_cast<std::uint32_t>(decimalPosition));
     } else {
-        append(cursor, digitCount);
+        append(cursor, croppedDigitCount);
         for (std::int32_t i = 0;
-             i < decimalPosition - static_cast<std::int32_t>(digitCount); ++i)
+             i < decimalPosition -
+                     static_cast<std::int32_t>(croppedDigitCount);
+             ++i)
             output[position++] = '0';
     }
     return JS_NewStringLen(ctx, output, position);
@@ -1427,6 +1436,14 @@ arrayDelete(JSContext* ctx, JSValueConst value, JSAtom prop)
     return !arrayPropertyIndex(prop, scope->field_count(), index);
 }
 
+[[nodiscard]] JSValue
+objectWithField(JSContext* ctx, JSValueConst thisValue, int argc,
+                JSValueConst* argv);
+
+[[nodiscard]] JSValue
+objectWithoutField(JSContext* ctx, JSValueConst thisValue, int argc,
+                   JSValueConst* argv);
+
 JSClassExoticMethods objectExotic = {
     .get_own_property = objectOwnProperty,
     .get_own_property_names = objectOwnNames,
@@ -1468,6 +1485,8 @@ JSCFunctionListEntry const objectPrototype[] = {
     JS_CFUNC_DEF("has", 1, objectHas),
     JS_CFUNC_DEF("get", 1, objectGet),
     JS_CFUNC_DEF("fieldBytes", 1, objectFieldBytes),
+    JS_CFUNC_DEF("withField", 2, objectWithField),
+    JS_CFUNC_DEF("withoutField", 1, objectWithoutField),
     JS_CFUNC_DEF("toBytes", 0, objectToBytes),
     JS_CFUNC_DEF("toJSON", 0, objectToJSON),
 };
@@ -1589,6 +1608,7 @@ parseDiagnostic(xdata::ScanStatus status) noexcept
     case Message::invalid_vector256:
     case Message::invalid_issue:
     case Message::invalid_xchain_bridge:
+    case Message::noncanonical_payload:
         if (status.field_code != 0) {
             diagnostic.variant = ParseVariant::invalidField;
             diagnostic.issue = "invalid-field";
@@ -1776,6 +1796,383 @@ copyAndMintObject(JSContext* ctx, std::uint8_t const* bytes,
     }
     return mintOwnedObjectBytes(ctx, copy, size);
 }
+
+struct ScopeShape {
+  std::uint32_t fields = 0;
+  std::uint32_t scopes = 0;
+  std::uint32_t maxDepth = 0;
+};
+
+[[nodiscard]] bool scopeShape(xdata::RecursiveIndexView index,
+                              std::uint32_t selectedScope, ScopeShape &output,
+                              std::uint32_t recursion = 0) noexcept {
+  output = {};
+  auto const *scope = index.scope(selectedScope);
+  if (scope == nullptr || recursion > 10)
+    return false;
+  output.fields = scope->field_count();
+  output.scopes = 1;
+  for (std::uint32_t i = 0; i < scope->field_count(); ++i) {
+    auto const *field = index.field(scope->first_field + i);
+    if (field == nullptr)
+      return false;
+    if (field->child_scope == xdata::FieldRecord::no_child)
+      continue;
+    ScopeShape child;
+    if (!scopeShape(index, field->child_scope, child, recursion + 1) ||
+        child.fields >
+            std::numeric_limits<std::uint32_t>::max() - output.fields ||
+        child.scopes >
+            std::numeric_limits<std::uint32_t>::max() - output.scopes)
+      return false;
+    output.fields += child.fields;
+    output.scopes += child.scopes;
+    auto const depth = child.maxDepth + 1;
+    if (depth > output.maxDepth)
+      output.maxDepth = depth;
+  }
+  return true;
+}
+
+enum class ReplacementInputKind : std::uint8_t {
+  payload,
+  indexedScope,
+};
+
+struct ReplacementInput {
+  ReplacementInputKind kind = ReplacementInputKind::payload;
+  Slice payload{};
+  CertifiedObjectValue *owner = nullptr;
+  xdata::RecursiveIndexView index{};
+  std::uint32_t scope = 0;
+  ScopeShape shape{};
+};
+
+enum class ReplacementInputStatus : std::uint8_t {
+  ok,
+  mismatch,
+  unusable,
+  invalid,
+};
+
+void writeBigEndian(std::uint8_t *output, std::uint32_t size,
+                    std::uint64_t value) noexcept {
+  for (std::uint32_t i = 0; i < size; ++i)
+    output[i] = static_cast<std::uint8_t>(value >> ((size - i - 1) * 8));
+}
+
+[[nodiscard]] ReplacementInputStatus
+validateReplacementPayload(JSContext *ctx,
+                           xdata::StaticFieldDescriptor const &descriptor,
+                           Slice payload, ReplacementInput &output) {
+  xdata::RecursiveScanCounters counters;
+  xdata::RecursiveScanOptions options{
+      .protocol = &xdata::xahau_static_protocol(),
+      .counters = &counters,
+  };
+  auto const status = xdata::guest_exact_validate_field_payload(
+      payload, descriptor.code, 0, options);
+  if (!status.ok()) {
+    if (status.issue ==
+        static_cast<std::uint16_t>(xdata::ScanIssue::internal_error))
+      JS_ThrowInternalError(ctx, "%s",
+                            xdata::scan_message_literal(status.message_id));
+    return ReplacementInputStatus::invalid;
+  }
+  output.kind = ReplacementInputKind::payload;
+  output.payload = payload;
+  output.shape = {
+      static_cast<std::uint32_t>(counters.material_fields),
+      static_cast<std::uint32_t>(counters.scope_entries),
+      0,
+  };
+  return ReplacementInputStatus::ok;
+}
+
+[[nodiscard]] ReplacementInputStatus acquireReplacementInput(
+    JSContext *ctx, xdata::StaticFieldDescriptor const &descriptor,
+    JSValueConst value, qjs::OwnedValue &backing, std::uint8_t scratch[64],
+    std::uint8_t (&integerScratch)[8], ReplacementInput &output) {
+  output = {};
+  JSValue rawBacking = JS_UNDEFINED;
+  std::uint8_t const *rawBytes = nullptr;
+  std::size_t rawSize = 0;
+  auto const rawStatus =
+      JS_GetObjectByteSpanNoThrow(ctx, value, &rawBacking, &rawBytes, &rawSize);
+  if (rawStatus == JS_OBJECT_BYTES_OK) {
+    backing = qjs::OwnedValue(ctx, rawBacking);
+    if (rawSize > std::numeric_limits<std::uint32_t>::max())
+      return ReplacementInputStatus::unusable;
+    return validateReplacementPayload(
+        ctx, descriptor, {rawBytes, static_cast<std::uint32_t>(rawSize)},
+        output);
+  }
+  if (rawStatus == JS_OBJECT_BYTES_UNUSABLE)
+    return ReplacementInputStatus::unusable;
+
+  if (descriptor.materializer == xdata::MaterializerKind::st_object &&
+      isSTObject(value)) {
+    auto *state =
+        static_cast<ObjectState *>(JS_GetOpaque(value, objectClassId));
+    auto *owner = state == nullptr ? nullptr : ownerFrom(*state);
+    if (owner == nullptr)
+      return ReplacementInputStatus::mismatch;
+    output.kind = ReplacementInputKind::indexedScope;
+    output.owner = owner;
+    output.index = ownerIndex(*owner);
+    output.scope = scopeId(*state);
+    return scopeShape(output.index, output.scope, output.shape)
+               ? ReplacementInputStatus::ok
+               : ReplacementInputStatus::invalid;
+  }
+  if (descriptor.materializer == xdata::MaterializerKind::st_array &&
+      isSTArray(value)) {
+    auto *state = static_cast<ArrayState *>(JS_GetOpaque(value, arrayClassId));
+    auto *owner = state == nullptr ? nullptr : ownerFrom(*state);
+    if (owner == nullptr)
+      return ReplacementInputStatus::mismatch;
+    output.kind = ReplacementInputKind::indexedScope;
+    output.owner = owner;
+    output.index = ownerIndex(*owner);
+    output.scope = scopeId(*state);
+    return scopeShape(output.index, output.scope, output.shape)
+               ? ReplacementInputStatus::ok
+               : ReplacementInputStatus::invalid;
+  }
+  if (descriptor.materializer == xdata::MaterializerKind::number) {
+    if (!JS_IsString(value))
+      return ReplacementInputStatus::mismatch;
+    std::size_t length = 0;
+    char const *text = JS_ToCStringLen(ctx, &length, value);
+    if (text == nullptr)
+      return ReplacementInputStatus::invalid;
+    xdata::NormalizedNumber number;
+    bool const parsed = xdata::NumberRules::parse_decimal(text, length, number);
+    JS_FreeCString(ctx, text);
+    if (!parsed)
+      return ReplacementInputStatus::invalid;
+    writeBigEndian(scratch, 8, static_cast<std::uint64_t>(number.mantissa));
+    writeBigEndian(scratch + 8, 4, static_cast<std::uint32_t>(number.exponent));
+    return validateReplacementPayload(ctx, descriptor,
+                                      {scratch, std::size_t{12}}, output);
+  }
+  if (descriptor.materializer == xdata::MaterializerKind::transaction_type ||
+      descriptor.materializer == xdata::MaterializerKind::transaction_result) {
+    if (!JS_IsNumber(value))
+      return ReplacementInputStatus::mismatch;
+    double numeric = 0;
+    if (JS_ToFloat64(ctx, &numeric, value) < 0)
+      return ReplacementInputStatus::invalid;
+    auto const maximum = descriptor.fixed_size == 1 ? 255.0 : 65535.0;
+    if (!std::isfinite(numeric) || std::trunc(numeric) != numeric ||
+        numeric < 0 || numeric > maximum)
+      return ReplacementInputStatus::invalid;
+    writeBigEndian(scratch, descriptor.fixed_size,
+                   static_cast<std::uint64_t>(numeric));
+    return validateReplacementPayload(ctx, descriptor,
+                                      {scratch, descriptor.fixed_size}, output);
+  }
+
+  NominalPayloadView nominal;
+  if (readNominalPayload(ctx, value, descriptor.materializer, integerScratch,
+                         nominal)) {
+    return validateReplacementPayload(ctx, descriptor,
+                                      {nominal.data, nominal.size}, output);
+  }
+  return ReplacementInputStatus::mismatch;
+}
+
+[[nodiscard]] bool replacementFitsCaps(ObjectState const &state,
+                                       std::uint32_t fieldCode,
+                                       ReplacementInput const *replacement,
+                                       bool removing) noexcept {
+  auto *owner = ownerFrom(state);
+  if (owner == nullptr)
+    return false;
+  auto const index = ownerIndex(*owner);
+  ScopeShape source;
+  if (!scopeShape(index, scopeId(state), source))
+    return false;
+  std::uint64_t fields = source.fields;
+  std::uint64_t scopes = source.scopes;
+  auto const *existing = index.find_object_field(scopeId(state), fieldCode);
+  if (existing != nullptr) {
+    --fields;
+    if (existing->child_scope != xdata::FieldRecord::no_child) {
+      ScopeShape child;
+      if (!scopeShape(index, existing->child_scope, child) ||
+          child.fields > fields || child.scopes > scopes)
+        return false;
+      fields -= child.fields;
+      scopes -= child.scopes;
+    }
+  }
+  if (!removing && replacement != nullptr) {
+    fields += 1 + replacement->shape.fields;
+    scopes += replacement->shape.scopes;
+    if (replacement->kind == ReplacementInputKind::indexedScope &&
+        replacement->shape.maxDepth >= 10)
+      return false;
+  }
+  return fields <= 32'768 && scopes <= 32'769;
+}
+
+[[nodiscard]] JSValue replacementFailure(JSContext *ctx, char const *operation,
+                                         xdata::ScanStatus status) {
+  if (status.issue ==
+      static_cast<std::uint16_t>(xdata::ScanIssue::out_of_memory))
+    return oom(ctx);
+  if (status.issue ==
+          static_cast<std::uint16_t>(xdata::ScanIssue::malformed_data) ||
+      status.issue ==
+          static_cast<std::uint16_t>(xdata::ScanIssue::resource_limit)) {
+    return JS_ThrowTypeError(ctx, "%s: %s", operation,
+                             xdata::scan_message_literal(status.message_id));
+  }
+  return JS_ThrowInternalError(ctx, "%s: %s", operation,
+                               xdata::scan_message_literal(status.message_id));
+}
+
+[[nodiscard]] JSValue objectWithField(JSContext *ctx, JSValueConst thisValue,
+                                      int argc, JSValueConst *argv) {
+  auto *state = objectState(ctx, thisValue);
+  if (state == nullptr)
+    return JS_EXCEPTION;
+  std::uint32_t code = 0;
+  if (!resolveFieldArgument(ctx, argc, argv, code))
+    return JS_HasException(ctx)
+               ? JS_EXCEPTION
+               : JS_ThrowTypeError(ctx, "STObject.withField: unknown field");
+  auto const *descriptor = xdata::xahau_static_protocol().field_by_code(code);
+  if (descriptor == nullptr ||
+      descriptor->material_ordinal == xdata::ProtocolView::no_ordinal)
+    return JS_ThrowTypeError(ctx, "STObject.withField: unknown field");
+  if (argc < 2 || JS_IsUndefined(argv[1]))
+    return JS_ThrowTypeError(ctx, "STObject.withField: value must be explicit");
+
+  qjs::OwnedValue backing(ctx);
+  std::uint8_t scratch[64]{};
+  std::uint8_t integerScratch[8]{};
+  ReplacementInput replacement;
+  auto const acquired = acquireReplacementInput(
+      ctx, *descriptor, argv[1], backing, scratch, integerScratch, replacement);
+  if (acquired != ReplacementInputStatus::ok) {
+    if (JS_HasException(ctx))
+      return JS_EXCEPTION;
+    return JS_ThrowTypeError(
+        ctx, acquired == ReplacementInputStatus::unusable
+                 ? "STObject.withField: byte backing is detached or unusable"
+             : acquired == ReplacementInputStatus::invalid
+                 ? "STObject.withField: invalid canonical field value"
+                 : "STObject.withField: value type does not match field");
+  }
+  if (!replacementFitsCaps(*state, code, &replacement, false))
+    return JS_ThrowTypeError(
+        ctx, "STObject.withField: replacement exceeds object limits");
+
+  auto *owner = ownerFrom(*state);
+  auto const sourceBytes = ownerBytes(*owner);
+  auto const sourceIndex = ownerIndex(*owner);
+  xdata::CanonicalReplacementSizeResult measured;
+  if (replacement.kind == ReplacementInputKind::indexedScope) {
+    measured = xdata::canonical_object_with_indexed_field_size(
+        sourceBytes, sourceIndex, scopeId(*state), code,
+        ownerBytes(*replacement.owner), replacement.index, replacement.scope);
+  } else {
+    measured = xdata::canonical_object_with_field_size(
+        sourceBytes, sourceIndex, scopeId(*state), code, replacement.payload);
+  }
+  if (!measured.ok())
+    return replacementFailure(ctx, "STObject.withField", measured.status);
+  if (measured.size > 1'048'576)
+    return JS_ThrowTypeError(
+        ctx, "STObject.withField: replacement exceeds byte limit");
+  auto *output =
+      measured.size == 0
+          ? nullptr
+          : static_cast<std::uint8_t *>(js_malloc(ctx, measured.size));
+  if (measured.size != 0 && output == nullptr)
+    return oom(ctx);
+  xdata::CanonicalReplacementWriteResult written;
+  if (replacement.kind == ReplacementInputKind::indexedScope) {
+    written = xdata::canonical_object_with_indexed_field_write(
+        sourceBytes, sourceIndex, scopeId(*state), code,
+        ownerBytes(*replacement.owner), replacement.index, replacement.scope,
+        output, measured.size);
+  } else {
+    written = xdata::canonical_object_with_field_write(
+        sourceBytes, sourceIndex, scopeId(*state), code, replacement.payload,
+        output, measured.size);
+  }
+  backing = qjs::OwnedValue(ctx);
+  if (!written.ok() || written.written != measured.size) {
+    js_free(ctx, output);
+    return written.ok()
+               ? JS_ThrowInternalError(
+                     ctx, "STObject.withField: replacement size changed")
+               : replacementFailure(ctx, "STObject.withField", written.status);
+  }
+  auto outcome = mintOwnedObjectBytes(ctx, output, measured.size);
+  if (JS_IsException(outcome.value) || !JS_IsUndefined(outcome.value))
+    return outcome.value;
+  return JS_ThrowInternalError(
+      ctx, "STObject.withField: emitted object failed certification");
+}
+
+[[nodiscard]] JSValue objectWithoutField(JSContext *ctx, JSValueConst thisValue,
+                                         int argc, JSValueConst *argv) {
+  auto *state = objectState(ctx, thisValue);
+  if (state == nullptr)
+    return JS_EXCEPTION;
+  std::uint32_t code = 0;
+  if (!resolveFieldArgument(ctx, argc, argv, code))
+    return JS_HasException(ctx)
+               ? JS_EXCEPTION
+               : JS_ThrowTypeError(ctx, "STObject.withoutField: unknown field");
+  auto const *descriptor = xdata::xahau_static_protocol().field_by_code(code);
+  if (descriptor == nullptr ||
+      descriptor->material_ordinal == xdata::ProtocolView::no_ordinal)
+    return JS_ThrowTypeError(ctx, "STObject.withoutField: unknown field");
+  if (locateObjectField(*state, code).field == nullptr)
+    return JS_DupValue(ctx, thisValue);
+  if (!replacementFitsCaps(*state, code, nullptr, true))
+    return JS_ThrowInternalError(
+        ctx, "STObject.withoutField: invalid certified source shape");
+
+  auto *owner = ownerFrom(*state);
+  auto const sourceBytes = ownerBytes(*owner);
+  auto const sourceIndex = ownerIndex(*owner);
+  auto const measured = xdata::canonical_object_without_field_size(
+      sourceBytes, sourceIndex, scopeId(*state), code);
+  if (!measured.ok() || measured.no_op())
+    return measured.ok()
+               ? JS_ThrowInternalError(
+                     ctx, "STObject.withoutField: present field became absent")
+               : replacementFailure(ctx, "STObject.withoutField",
+                                    measured.status);
+  auto *output =
+      measured.size == 0
+          ? nullptr
+          : static_cast<std::uint8_t *>(js_malloc(ctx, measured.size));
+  if (measured.size != 0 && output == nullptr)
+    return oom(ctx);
+  auto const written = xdata::canonical_object_without_field_write(
+      sourceBytes, sourceIndex, scopeId(*state), code, output, measured.size);
+  if (!written.ok() || written.no_op() || written.written != measured.size) {
+    js_free(ctx, output);
+    return written.ok()
+               ? JS_ThrowInternalError(
+                     ctx, "STObject.withoutField: replacement size changed")
+               : replacementFailure(ctx, "STObject.withoutField",
+                                    written.status);
+  }
+  auto outcome = mintOwnedObjectBytes(ctx, output, measured.size);
+  if (JS_IsException(outcome.value) || !JS_IsUndefined(outcome.value))
+    return outcome.value;
+  return JS_ThrowInternalError(
+      ctx, "STObject.withoutField: emitted object failed certification");
+}
+
 
 [[nodiscard]] bool
 isObjectDataFailure(xdata::ScanStatus const& status) noexcept
