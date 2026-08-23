@@ -14,6 +14,7 @@ set(JSHOOKZ_XAHAU_TYPES_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/xfl/xfl_js.cpp
     ${CMAKE_CURRENT_LIST_DIR}/leaf/leaf_js.cpp
     ${CMAKE_CURRENT_LIST_DIR}/pathset/pathset_js.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/object/canonical_json.cpp
     ${CMAKE_CURRENT_LIST_DIR}/object/object_js.cpp
     ${CMAKE_CURRENT_LIST_DIR}/object/field_js.cpp
 )

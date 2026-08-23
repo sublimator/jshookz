@@ -1,4 +1,6 @@
 #include "object.hpp"
+
+#include "canonical_json.hpp"
 #include "field_js.hpp"
 
 #include "amount/amount_js.hpp"
@@ -683,14 +685,19 @@ jsonField(JSContext* ctx, CertifiedObjectValue& owner,
     case Kind::st_array:
         return jsonArray(ctx, owner, index, field.child_scope);
     case Kind::account_id:
+        return makeAccountIDCanonicalJSON(ctx, payload, size);
     case Kind::amount:
+        return makeAmountCanonicalJSON(ctx, payload, size);
     case Kind::currency:
+        return makeCurrencyCanonicalJSON(ctx, payload, size);
     case Kind::issue:
+        return makeIssueCanonicalJSON(ctx, payload, size);
     case Kind::path_set:
+        return makePathSetCanonicalJSON(ctx, payload, size);
     case Kind::vector256:
+        return makeVector256CanonicalJSON(ctx, payload, size);
     case Kind::xchain_bridge:
-        return JS_ThrowInternalError(
-            ctx, "certified JSON materializer is not registered");
+        return makeXChainBridgeCanonicalJSON(ctx, payload, size);
     case Kind::invalid:
         break;
     }

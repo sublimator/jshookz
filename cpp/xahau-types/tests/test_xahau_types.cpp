@@ -581,3 +581,53 @@ TEST_F(XahauTypes, ObjectMaterializesAmountPathSetAndBridgeWithExactIdentity)
     ASSERT_FALSE(bridge.isException());
     EXPECT_TRUE(JS_ToBool(ctx, bridge.get()));
 }
+
+TEST_F(XahauTypes, ObjectJSONDispatchesEveryStructuredLeafCanonically)
+{
+    struct Vector {
+        char const* wire;
+        char const* json;
+    };
+    Vector const vectors[] = {
+        {
+            "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+            R"({"Account":"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"})",
+        },
+        {
+            "61D4838D7EA4C680000000000000000000000000005553440000000000"
+            "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+            R"({"Amount":{"currency":"USD","issuer":"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh","value":"1"}})",
+        },
+        {
+            "011A0000000000000000000000000000000000000000",
+            R"({"BaseAsset":"XAH"})",
+        },
+        {
+            "01180000000000000000000000000000000000000000",
+            R"({"LockingChainIssue":{"currency":"XAH"}})",
+        },
+        {
+            "011201B5F762798A53D543A014CAF8B297CFF8F2F937E800",
+            R"({"Paths":[[{"account":"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"}]]})",
+        },
+        {
+            "011320000102030405060708090A0B0C0D0E0F"
+            "101112131415161718191A1B1C1D1E1F",
+            R"({"Indexes":["000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"]})",
+        },
+        {
+            "011914B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+            "0000000000000000000000000000000000000000"
+            "14B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+            "0000000000000000000000000000000000000000",
+            R"({"XChainBridge":{"IssuingChainDoor":"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh","IssuingChainIssue":{"currency":"XAH"},"LockingChainDoor":"rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh","LockingChainIssue":{"currency":"XAH"}}})",
+        },
+    };
+    for (auto const& vector : vectors) {
+        SCOPED_TRACE(vector.wire);
+        installRoot(hexBytes(vector.wire));
+        auto value = eval("JSON.stringify(root.toJSON())");
+        ASSERT_FALSE(value.isException());
+        EXPECT_EQ(to_string(value.get()), vector.json);
+    }
+}
