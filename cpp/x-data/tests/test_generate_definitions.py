@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 
 XDATA = Path(__file__).resolve().parent.parent
-REPO = XDATA.parent.parent
 SCRIPT = XDATA / "scripts" / "generate_definitions.py"
+PROVIDER_POLICY = XDATA / "definitions/provider_static_policy.json"
 
 spec = importlib.util.spec_from_file_location("generate_definitions", SCRIPT)
 assert spec is not None and spec.loader is not None
@@ -200,10 +200,11 @@ def test_real_xahau_tables_match_cleaned_json() -> None:
 
 def test_real_xahau_provider_closure_is_exact_and_total() -> None:
     src = XDATA / "definitions/xahau_definitions.json"
-    policy = REPO / ".ai-docs/engineering/hooks-api-proposal/richfields-policy.json"
     defs = gen.clean_definitions(gen.unwrap_definitions(json.loads(src.read_text())))
-    overrides, policy_sha = gen.load_materializer_policy(policy)
-    tables = gen.provider_tables_from_defs(defs, overrides)
+    type_materializers, overrides, policy_sha = gen.load_materializer_policy(
+        PROVIDER_POLICY
+    )
+    tables = gen.provider_tables_from_defs(defs, type_materializers, overrides)
 
     assert len(tables["names"]) == 337
     assert len(tables["fields"]) == 327
@@ -232,8 +233,65 @@ def test_real_xahau_provider_closure_is_exact_and_total() -> None:
     assert tables["max_nth"] == 100
 
 
-def test_provider_override_deletion_control_turns_red() -> None:
-    src = XDATA / "definitions/xahau_definitions.json"
-    defs = gen.clean_definitions(gen.unwrap_definitions(json.loads(src.read_text())))
-    with pytest.raises(ValueError, match="overrides"):
-        gen.provider_tables_from_defs(defs, {"TransactionType": "transaction_type"})
+def _mutated_policy(tmp_path: Path, mutate: object) -> Path:
+    policy = json.loads(PROVIDER_POLICY.read_text(encoding="utf-8"))
+    mutate(policy)
+    path = tmp_path / "policy.json"
+    path.write_text(json.dumps(policy), encoding="utf-8")
+    return path
+
+
+def test_provider_static_cli_requires_materializer_policy(tmp_path: Path) -> None:
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--input",
+            str(XDATA / "definitions/xahau_definitions.json"),
+            "--output",
+            str(tmp_path / "out.h"),
+            "--namespace",
+            "catl::xdata::test",
+            "--provider-static",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode != 0
+    assert "requires --materializer-policy" in proc.stderr
+
+
+@pytest.mark.parametrize("type_name", sorted(gen.PROVIDER_WIRE_WIDTHS))
+@pytest.mark.parametrize("mode", ["delete", "wrong-valid-kind"])
+def test_every_wire_type_policy_mutation_turns_red(
+    tmp_path: Path, type_name: str, mode: str
+) -> None:
+    def mutate(policy: dict) -> None:
+        mappings = policy["wire_type_materializers"]
+        if mode == "delete":
+            del mappings[type_name]
+        else:
+            current = mappings[type_name]
+            mappings[type_name] = next(
+                kind for kind in mappings.values() if kind != current
+            )
+
+    with pytest.raises(ValueError, match="materializer"):
+        gen.load_materializer_policy(_mutated_policy(tmp_path, mutate))
+
+
+@pytest.mark.parametrize("field_name", sorted(gen.EXPECTED_PROVIDER_FIELD_OVERRIDES))
+@pytest.mark.parametrize("mode", ["delete", "wrong-valid-kind"])
+def test_every_field_override_policy_mutation_turns_red(
+    tmp_path: Path, field_name: str, mode: str
+) -> None:
+    def mutate(policy: dict) -> None:
+        overrides = policy["descriptor_overrides"]
+        if mode == "delete":
+            del overrides[field_name]
+        else:
+            overrides[field_name] = "number"
+
+    with pytest.raises(ValueError, match="override"):
+        gen.load_materializer_policy(_mutated_policy(tmp_path, mutate))

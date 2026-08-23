@@ -3,15 +3,63 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
+#include <cstring>
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 using catl::xdata::Protocol;
 using catl::xdata::ProtocolOptions;
 using catl::xdata::xahau_static_protocol;
 
 namespace {
+
+using catl::xdata::MaterializerKind;
+
+struct ExpectedType {
+  std::string_view name;
+  std::uint16_t code;
+  std::uint16_t width;
+  MaterializerKind materializer;
+};
+
+constexpr std::array<ExpectedType, 19> EXPECTED_TYPES{{
+    {"UInt16", 1, 2, MaterializerKind::uint16},
+    {"UInt32", 2, 4, MaterializerKind::uint32},
+    {"UInt64", 3, 8, MaterializerKind::uint64},
+    {"Hash128", 4, 16, MaterializerKind::hash128},
+    {"Hash256", 5, 32, MaterializerKind::hash256},
+    {"Amount", 6, 0, MaterializerKind::amount},
+    {"Blob", 7, 0, MaterializerKind::blob},
+    {"AccountID", 8, 0, MaterializerKind::account_id},
+    {"Number", 9, 12, MaterializerKind::number},
+    {"STObject", 14, 0, MaterializerKind::st_object},
+    {"STArray", 15, 0, MaterializerKind::st_array},
+    {"UInt8", 16, 1, MaterializerKind::uint8},
+    {"Hash160", 17, 20, MaterializerKind::hash160},
+    {"PathSet", 18, 0, MaterializerKind::path_set},
+    {"Vector256", 19, 0, MaterializerKind::vector256},
+    {"Hash192", 21, 24, MaterializerKind::hash192},
+    {"Issue", 24, 0, MaterializerKind::issue},
+    {"XChainBridge", 25, 0, MaterializerKind::xchain_bridge},
+    {"Currency", 26, 20, MaterializerKind::currency},
+}};
+
+MaterializerKind materializer_for(std::string_view field,
+                                  std::string_view type) {
+  if (field == "TransactionType")
+    return MaterializerKind::transaction_type;
+  if (field == "TransactionResult")
+    return MaterializerKind::transaction_result;
+  auto const match = std::find_if(
+      EXPECTED_TYPES.begin(), EXPECTED_TYPES.end(),
+      [type](ExpectedType const &candidate) { return candidate.name == type; });
+  return match == EXPECTED_TYPES.end() ? MaterializerKind::invalid
+                                       : match->materializer;
+}
 
 void expect_same(Protocol const &file, Protocol const &tables,
                  char const *tag) {
@@ -85,8 +133,51 @@ TEST(ProtocolTables, ProviderStaticXahauMatchesDynamicAuthority) {
   EXPECT_EQ(view.fallback_count, 0);
   EXPECT_EQ(view.inferred_vl_count, 0);
   EXPECT_EQ(view.duplicate_word_count, 6);
+  ASSERT_NE(view.definitions_sha256, nullptr);
+  ASSERT_NE(view.materializer_policy_sha256, nullptr);
+  ASSERT_NE(view.identity, nullptr);
+  EXPECT_STREQ(view.definitions_sha256, JSHOOKZ_XAHAU_DEFINITIONS_SHA256);
+  EXPECT_STREQ(view.materializer_policy_sha256,
+               JSHOOKZ_XAHAU_PROVIDER_POLICY_SHA256);
+  auto const expected_identity =
+      std::string("xahau:") + JSHOOKZ_XAHAU_DEFINITIONS_SHA256 + ":" +
+      JSHOOKZ_XAHAU_PROVIDER_POLICY_SHA256;
+  EXPECT_EQ(view.identity, expected_identity);
+
+  ASSERT_EQ(dynamic.fields().size(), view.field_name_count);
+  std::uint32_t expected_name_offset = 0;
+  for (std::uint16_t name_ordinal = 0;
+       name_ordinal < view.field_name_count; ++name_ordinal) {
+    auto const &expected = dynamic.fields()[name_ordinal];
+    auto const &actual = view.field_names[name_ordinal];
+    auto const name = view.field_name(name_ordinal);
+    ASSERT_NE(name.data, nullptr);
+    EXPECT_EQ(actual.offset, expected_name_offset) << expected.name;
+    EXPECT_EQ(name.size, expected.name.size()) << expected.name;
+    EXPECT_EQ(std::string_view(name.data, name.size), expected.name);
+    EXPECT_EQ(name.data[name.size], '\0') << expected.name;
+    EXPECT_EQ(actual.code, expected.code) << expected.name;
+    std::uint8_t expected_flags = 0;
+    if (expected.meta.is_serialized)
+      expected_flags |= catl::xdata::field_name_serialized;
+    if (expected.meta.is_signing_field)
+      expected_flags |= catl::xdata::field_name_signing;
+    if (expected.meta.is_vl_encoded)
+      expected_flags |= catl::xdata::field_name_vl_encoded;
+    EXPECT_EQ(actual.flags, expected_flags) << expected.name;
+    expected_name_offset += static_cast<std::uint32_t>(expected.name.size() + 1);
+  }
+  EXPECT_EQ(view.field_name_bytes_size, expected_name_offset);
 
   std::uint16_t ordinal = 0;
+  std::uint16_t material_ordinal = 0;
+  std::uint16_t expected_fast[32][128]{};
+  struct ExpectedFallback {
+    std::uint32_t code;
+    std::uint16_t ordinal;
+    std::uint16_t flags;
+  };
+  std::vector<ExpectedFallback> expected_fallback;
   for (auto const &field : dynamic.fields()) {
     if (!field.meta.is_serialized)
       continue;
@@ -105,21 +196,76 @@ TEST(ProtocolTables, ProviderStaticXahauMatchesDynamicAuthority) {
     EXPECT_EQ(bool(actual.flags & catl::xdata::field_vl_encoded),
               field.meta.is_vl_encoded)
         << field.name;
+    auto const object_end = field.name == "ObjectEndMarker";
+    auto const array_end = field.name == "ArrayEndMarker";
+    EXPECT_EQ(bool(actual.flags & catl::xdata::field_object_end), object_end)
+        << field.name;
+    EXPECT_EQ(bool(actual.flags & catl::xdata::field_array_end), array_end)
+        << field.name;
+    auto const expected_materializer =
+        object_end || array_end
+            ? MaterializerKind::invalid
+            : materializer_for(field.name, field.meta.type.name);
+    EXPECT_EQ(actual.materializer, expected_materializer) << field.name;
+    if (object_end || array_end) {
+      EXPECT_EQ(actual.material_ordinal,
+                catl::xdata::ProtocolView::no_ordinal)
+          << field.name;
+    } else {
+      EXPECT_EQ(actual.material_ordinal, material_ordinal) << field.name;
+      auto const *material = view.material_field(material_ordinal);
+      ASSERT_NE(material, nullptr);
+      EXPECT_EQ(material->field_code, field.code) << field.name;
+      EXPECT_EQ(material->admission_ordinal, ordinal) << field.name;
+      EXPECT_EQ(material->materializer, expected_materializer) << field.name;
+      ++material_ordinal;
+    }
     EXPECT_EQ(view.field_by_code(field.code), &actual) << field.name;
+    auto const type_code = static_cast<std::uint16_t>(field.code >> 16);
+    auto const nth = static_cast<std::uint16_t>(field.code);
+    if (type_code < 32 && nth < 128) {
+      ASSERT_EQ(expected_fast[type_code][nth], 0) << field.name;
+      expected_fast[type_code][nth] = static_cast<std::uint16_t>(ordinal + 1);
+    } else {
+      expected_fallback.push_back({field.code, ordinal, actual.flags});
+    }
     ++ordinal;
   }
   EXPECT_EQ(ordinal, view.field_count);
+  EXPECT_EQ(material_ordinal, view.material_field_count);
   EXPECT_EQ(view.field_by_code(0xffffffffu), nullptr);
 
-  for (std::uint16_t material_ordinal = 0;
-       material_ordinal < view.material_field_count; ++material_ordinal) {
-    auto const *material = view.material_field(material_ordinal);
-    ASSERT_NE(material, nullptr);
-    auto const *field = view.field_by_ordinal(material->admission_ordinal);
-    ASSERT_NE(field, nullptr);
-    EXPECT_EQ(field->code, material->field_code);
-    EXPECT_EQ(field->material_ordinal, material_ordinal);
-    EXPECT_EQ(field->materializer, material->materializer);
-    EXPECT_NE(material->materializer, catl::xdata::MaterializerKind::invalid);
+  for (std::uint16_t type_code = 0; type_code < 32; ++type_code) {
+    for (std::uint16_t nth = 0; nth < 128; ++nth) {
+      EXPECT_EQ(view.fast_ordinals[type_code][nth], expected_fast[type_code][nth])
+          << "fast cell " << type_code << "/" << nth;
+    }
+  }
+  std::sort(expected_fallback.begin(), expected_fallback.end(),
+            [](auto const &left, auto const &right) {
+              return left.code < right.code;
+            });
+  ASSERT_EQ(view.fallback_count, expected_fallback.size());
+  for (std::uint16_t index = 0; index < view.fallback_count; ++index) {
+    EXPECT_EQ(view.fallback_fields[index].field_code,
+              expected_fallback[index].code);
+    EXPECT_EQ(view.fallback_fields[index].admission_ordinal,
+              expected_fallback[index].ordinal);
+    EXPECT_EQ(view.fallback_fields[index].flags, expected_fallback[index].flags);
+  }
+
+  ASSERT_EQ(view.type_count, EXPECTED_TYPES.size());
+  for (std::uint16_t index = 0; index < view.type_count; ++index) {
+    auto const &actual = view.types[index];
+    auto const &expected = EXPECTED_TYPES[index];
+    auto const dynamic_code = dynamic.get_type_code(std::string(expected.name));
+    ASSERT_TRUE(dynamic_code.has_value()) << expected.name;
+    EXPECT_EQ(actual.code, *dynamic_code) << expected.name;
+    EXPECT_EQ(actual.code, expected.code) << expected.name;
+    EXPECT_EQ(actual.fixed_size, expected.width) << expected.name;
+    EXPECT_EQ(actual.materializer, expected.materializer) << expected.name;
+    EXPECT_EQ(std::string_view(view.type_name_bytes + actual.name_offset,
+                               actual.name_size),
+              expected.name);
   }
 }

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "wire_type_materializers": {
+    "AccountID": "account_id",
+    "Amount": "amount",
+    "Blob": "blob",
+    "Currency": "currency",
+    "Hash128": "hash128",
+    "Hash160": "hash160",
+    "Hash192": "hash192",
+    "Hash256": "hash256",
+    "Issue": "issue",
+    "Number": "number",
+    "PathSet": "path_set",
+    "STArray": "st_array",
+    "STObject": "st_object",
+    "UInt16": "uint16",
+    "UInt32": "uint32",
+    "UInt64": "uint64",
+    "UInt8": "uint8",
+    "Vector256": "vector256",
+    "XChainBridge": "xchain_bridge"
+  },
+  "descriptor_overrides": {
+    "TransactionResult": "transaction_result",
+    "TransactionType": "transaction_type"
+  }
+}

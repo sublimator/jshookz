@@ -3,9 +3,14 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 xdata="$repo_root/cpp/x-data"
-mkdir -p "$repo_root/.worktrees"
-scratch="$repo_root/.worktrees/generated-definitions-check"
-mkdir -p "$scratch"
+scratch="$(mktemp -d "${TMPDIR:-/tmp}/jshookz-generated-definitions.XXXXXX")"
+cleanup() {
+    rm -f "$scratch/embedded_xahau_definitions.h" \
+        "$scratch/embedded_xrpl_definitions.h" \
+        "$scratch/static_xahau_protocol.h"
+    rmdir "$scratch"
+}
+trap cleanup EXIT
 
 python3 "$xdata/scripts/generate_definitions.py" \
     --input "$xdata/definitions/xahau_definitions.json" \
@@ -21,7 +26,7 @@ python3 "$xdata/scripts/generate_definitions.py" \
     --namespace catl::xdata::xahau_static_data \
     --provider-static \
     --materializer-policy \
-    "$repo_root/.ai-docs/engineering/hooks-api-proposal/richfields-policy.json"
+    "$xdata/definitions/provider_static_policy.json"
 
 cmp "$scratch/embedded_xahau_definitions.h" \
     "$xdata/generated/embedded_xahau_definitions.h"

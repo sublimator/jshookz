@@ -61,7 +61,7 @@ _xdata_embed(xahau catl::xdata::xahau)
 _xdata_embed(xrpl catl::xdata::xrpl)
 
 set(_xdata_static_policy
-    ${_xdata_dir}/../../.ai-docs/engineering/hooks-api-proposal/richfields-policy.json)
+    ${_xdata_dir}/definitions/provider_static_policy.json)
 set(_xdata_static_hdr ${_xdata_dir}/generated/static_xahau_protocol.h)
 set(_xdata_static_tmp
     ${CMAKE_CURRENT_BINARY_DIR}/static_xahau_protocol.h.tmp)

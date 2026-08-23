@@ -112,6 +112,7 @@ struct ProtocolView {
   char const *field_name_bytes;
   char const *type_name_bytes;
   char const *definitions_sha256;
+  char const *materializer_policy_sha256;
   char const *identity;
   std::uint32_t field_name_bytes_size;
   std::uint16_t field_count;

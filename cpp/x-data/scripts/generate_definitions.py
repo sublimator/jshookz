@@ -33,31 +33,55 @@ CONSUMED_NAME_CODE_KEYS = (
     "PERMISSIONS",
 )
 
-PROVIDER_WIRE_TYPES = {
-    "UInt8": ("uint8", 1),
-    "UInt16": ("uint16", 2),
-    "UInt32": ("uint32", 4),
-    "UInt64": ("uint64", 8),
-    "Hash128": ("hash128", 16),
-    "Hash160": ("hash160", 20),
-    "Hash192": ("hash192", 24),
-    "Hash256": ("hash256", 32),
-    "Blob": ("blob", 0),
-    "AccountID": ("account_id", 0),
-    "Amount": ("amount", 0),
-    "Currency": ("currency", 20),
-    "Issue": ("issue", 0),
-    "Number": ("number", 12),
-    "PathSet": ("path_set", 0),
-    "Vector256": ("vector256", 0),
-    "XChainBridge": ("xchain_bridge", 0),
-    "STObject": ("st_object", 0),
-    "STArray": ("st_array", 0),
+PROVIDER_WIRE_WIDTHS = {
+    "UInt8": 1,
+    "UInt16": 2,
+    "UInt32": 4,
+    "UInt64": 8,
+    "Hash128": 16,
+    "Hash160": 20,
+    "Hash192": 24,
+    "Hash256": 32,
+    "Blob": 0,
+    "AccountID": 0,
+    "Amount": 0,
+    "Currency": 20,
+    "Issue": 0,
+    "Number": 12,
+    "PathSet": 0,
+    "Vector256": 0,
+    "XChainBridge": 0,
+    "STObject": 0,
+    "STArray": 0,
 }
 
-PROVIDER_FIELD_OVERRIDES = {
+EXPECTED_PROVIDER_FIELD_OVERRIDES = {
     "TransactionType": "transaction_type",
     "TransactionResult": "transaction_result",
+}
+
+EXPECTED_MATERIALIZER_KINDS = {
+    "uint8",
+    "uint16",
+    "uint32",
+    "uint64",
+    "hash128",
+    "hash160",
+    "hash192",
+    "hash256",
+    "blob",
+    "account_id",
+    "amount",
+    "currency",
+    "issue",
+    "number",
+    "path_set",
+    "vector256",
+    "xchain_bridge",
+    "st_object",
+    "st_array",
+    "transaction_type",
+    "transaction_result",
 }
 
 FIELD_SENTINELS = {"ObjectEndMarker", "ArrayEndMarker"}
@@ -129,29 +153,68 @@ def header_size(type_code: int, nth: int) -> int:
     return 2
 
 
-def load_materializer_policy(path: Path | None) -> tuple[dict[str, str], str]:
+def load_materializer_policy(
+    path: Path | None,
+) -> tuple[dict[str, str], dict[str, str], str]:
     if path is None:
-        return dict(PROVIDER_FIELD_OVERRIDES), "none"
+        raise ValueError("--provider-static requires --materializer-policy")
     policy = json.loads(path.read_text(encoding="utf-8"))
+    if policy.get("schema") != 1:
+        raise ValueError(f"{path} has unsupported materializer policy schema")
+    type_materializers = policy.get("wire_type_materializers")
+    if not isinstance(type_materializers, dict) or not all(
+        isinstance(name, str) and isinstance(kind, str)
+        for name, kind in type_materializers.items()
+    ):
+        raise ValueError(f"{path} has no valid wire_type_materializers object")
+    if set(type_materializers) != set(PROVIDER_WIRE_WIDTHS):
+        raise ValueError(
+            "provider wire-type materializer closure must contain exactly "
+            "the nineteen admitted wire types"
+        )
+    if (
+        set(type_materializers.values())
+        != EXPECTED_MATERIALIZER_KINDS
+        - {"transaction_type", "transaction_result"}
+    ):
+        # The exact name-to-kind law is checked below. Keep this set check so a
+        # duplicated valid kind cannot hide a missing kind.
+        raise ValueError("provider wire-type materializer kinds are not exact")
+    expected_type_materializers = {
+        "UInt8": "uint8",
+        "UInt16": "uint16",
+        "UInt32": "uint32",
+        "UInt64": "uint64",
+        "Hash128": "hash128",
+        "Hash160": "hash160",
+        "Hash192": "hash192",
+        "Hash256": "hash256",
+        "Blob": "blob",
+        "AccountID": "account_id",
+        "Amount": "amount",
+        "Currency": "currency",
+        "Issue": "issue",
+        "Number": "number",
+        "PathSet": "path_set",
+        "Vector256": "vector256",
+        "XChainBridge": "xchain_bridge",
+        "STObject": "st_object",
+        "STArray": "st_array",
+    }
+    if type_materializers != expected_type_materializers:
+        raise ValueError("provider wire-type materializer mapping is not exact")
     overrides = policy.get("descriptor_overrides")
     if not isinstance(overrides, dict) or not all(
         isinstance(name, str) and isinstance(kind, str)
         for name, kind in overrides.items()
     ):
         raise ValueError(f"{path} has no valid descriptor_overrides object")
-    normalized = {
-        name: {
-            "TransactionType": "transaction_type",
-            "TransactionResult": "transaction_result",
-        }.get(kind, kind)
-        for name, kind in overrides.items()
-    }
-    if normalized != PROVIDER_FIELD_OVERRIDES:
+    if overrides != EXPECTED_PROVIDER_FIELD_OVERRIDES:
         raise ValueError(
             "provider field override closure must be exactly "
             "TransactionType/TransactionResult"
         )
-    return normalized, hashlib.sha256(path.read_bytes()).hexdigest()
+    return type_materializers, overrides, hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def tables_from_defs(defs: dict) -> dict[str, list[dict[str, Any]]]:
@@ -268,7 +331,9 @@ namespace {namespace} {{
 
 
 def provider_tables_from_defs(
-    defs: dict[str, Any], overrides: dict[str, str]
+    defs: dict[str, Any],
+    type_materializers: dict[str, str],
+    overrides: dict[str, str],
 ) -> dict[str, Any]:
     types = defs.get("TYPES")
     source_fields = defs.get("FIELDS")
@@ -319,7 +384,7 @@ def provider_tables_from_defs(
 
         if not bool(meta.get("isSerialized")):
             continue
-        if type_name not in PROVIDER_WIRE_TYPES:
+        if type_name not in PROVIDER_WIRE_WIDTHS:
             raise ValueError(f"serialized type {type_name} has no provider dispatch")
         serialized_type_names.add(type_name)
         if not (0 <= type_code <= 0xFF and 0 <= nth <= 0xFFFF):
@@ -334,7 +399,8 @@ def provider_tables_from_defs(
             flags |= 4
         if name == "ArrayEndMarker":
             flags |= 8
-        default_materializer, fixed_size = PROVIDER_WIRE_TYPES[type_name]
+        default_materializer = type_materializers[type_name]
+        fixed_size = PROVIDER_WIRE_WIDTHS[type_name]
         materializer = overrides.get(name, default_materializer)
         material_ordinal = NO_ORDINAL
         admission_ordinal = len(admitted)
@@ -360,9 +426,9 @@ def provider_tables_from_defs(
             }
         )
 
-    if serialized_type_names != set(PROVIDER_WIRE_TYPES):
-        missing = sorted(set(PROVIDER_WIRE_TYPES) - serialized_type_names)
-        extra = sorted(serialized_type_names - set(PROVIDER_WIRE_TYPES))
+    if serialized_type_names != set(PROVIDER_WIRE_WIDTHS):
+        missing = sorted(set(PROVIDER_WIRE_WIDTHS) - serialized_type_names)
+        extra = sorted(serialized_type_names - set(PROVIDER_WIRE_WIDTHS))
         raise ValueError(
             f"provider wire closure mismatch; missing={missing}, extra={extra}"
         )
@@ -372,7 +438,7 @@ def provider_tables_from_defs(
         if row["material_ordinal"] != NO_ORDINAL
     }
     if (
-        set(overrides) != set(PROVIDER_FIELD_OVERRIDES)
+        set(overrides) != set(EXPECTED_PROVIDER_FIELD_OVERRIDES)
         or not set(overrides) <= material_names
     ):
         raise ValueError("provider field overrides do not join material fields")
@@ -407,9 +473,10 @@ def provider_tables_from_defs(
     type_rows: list[dict[str, Any]] = []
     type_name_parts: list[str] = []
     type_name_offset = 0
-    for type_name, (materializer, fixed_size) in sorted(
-        PROVIDER_WIRE_TYPES.items(), key=lambda item: int(types[item[0]])
+    for type_name, fixed_size in sorted(
+        PROVIDER_WIRE_WIDTHS.items(), key=lambda item: int(types[item[0]])
     ):
+        materializer = type_materializers[type_name]
         encoded_name = type_name.encode("ascii")
         if len(encoded_name) > 0xFF or type_name_offset > 0xFFFF:
             raise ValueError("provider type-name table exceeds compact layout")
@@ -504,7 +571,7 @@ def generate_provider_header(
             _static_array("StaticTypeDescriptor", "TYPES", type_rows),
         ]
     )
-    identity = f"xahau:{source_sha}"
+    identity = f"xahau:{source_sha}:{policy_sha}"
     return f"""// Auto-generated file. DO NOT EDIT.
 // Generated by scripts/generate_definitions.py --provider-static.
 // Source: {source_name}
@@ -523,6 +590,7 @@ using namespace catl::xdata;
 
 {body}
 inline constexpr char DEFINITIONS_SHA256[] = {cpp_string(source_sha)};
+inline constexpr char MATERIALIZER_POLICY_SHA256[] = {cpp_string(policy_sha)};
 inline constexpr char PROTOCOL_IDENTITY[] = {cpp_string(identity)};
 
 inline constexpr ProtocolView PROTOCOL{{
@@ -535,6 +603,7 @@ inline constexpr ProtocolView PROTOCOL{{
     FIELD_NAME_BYTES,
     TYPE_NAME_BYTES,
     DEFINITIONS_SHA256,
+    MATERIALIZER_POLICY_SHA256,
     PROTOCOL_IDENTITY,
     {tables["name_bytes_size"]},
     {len(tables["fields"])},
@@ -608,8 +677,10 @@ def main() -> None:
             print(f"  Wrote {args.output}", file=sys.stderr)
             return
         if args.provider_static:
-            overrides, policy_sha = load_materializer_policy(args.materializer_policy)
-            tables = provider_tables_from_defs(defs, overrides)
+            type_materializers, overrides, policy_sha = load_materializer_policy(
+                args.materializer_policy
+            )
+            tables = provider_tables_from_defs(defs, type_materializers, overrides)
         else:
             if args.materializer_policy is not None:
                 raise ValueError("--materializer-policy requires --provider-static")

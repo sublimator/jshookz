@@ -89,8 +89,20 @@ if(BUILD_TESTING)
     )
     target_compile_options(test_static_protocol_noexcept PRIVATE
         -fno-exceptions -fno-rtti)
+    add_dependencies(test_static_protocol_noexcept generate_xdata_definitions)
     add_test(NAME test_static_protocol_noexcept
         COMMAND test_static_protocol_noexcept)
+    add_test(NAME provider_static_source_policy
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_LIST_DIR}/tests/check_provider_static_policy.py
+            --inventory ${CMAKE_CURRENT_LIST_DIR}/xdata_wasm_sources.cmake
+            --binary $<TARGET_FILE:test_static_protocol_noexcept>
+            --nm ${CMAKE_NM})
+    add_test(NAME provider_static_source_policy_red_controls
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_LIST_DIR}/tests/check_provider_static_policy.py
+            --inventory ${CMAKE_CURRENT_LIST_DIR}/xdata_wasm_sources.cmake
+            --self-test)
 
     add_executable(test_pathset_quickjs
         tests/pathset_quickjs_fixture.cpp
@@ -290,7 +302,18 @@ if(BUILD_TESTING)
                 JSHOOKZ_XAHAU_CLEANED_JSON="${_xahau_cleaned}"
                 JSHOOKZ_XRPL_CLEANED_JSON="${_xrpl_cleaned}"
             )
-            add_dependencies(test_protocol_tables jshookz_cleaned_protocol_json)
+            file(SHA256
+                ${CMAKE_CURRENT_LIST_DIR}/definitions/xahau_definitions.json
+                _xahau_definitions_sha256)
+            file(SHA256
+                ${CMAKE_CURRENT_LIST_DIR}/definitions/provider_static_policy.json
+                _xahau_provider_policy_sha256)
+            target_compile_definitions(test_protocol_tables PRIVATE
+                JSHOOKZ_XAHAU_DEFINITIONS_SHA256="${_xahau_definitions_sha256}"
+                JSHOOKZ_XAHAU_PROVIDER_POLICY_SHA256="${_xahau_provider_policy_sha256}"
+            )
+            add_dependencies(test_protocol_tables
+                jshookz_cleaned_protocol_json generate_xdata_definitions)
             gtest_discover_tests(test_protocol_tables)
         endif()
     endif()
