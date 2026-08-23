@@ -30,4 +30,17 @@ if(BUILD_TESTING)
     target_link_libraries(test_qjs_hex PRIVATE jshookz_qjs GTest::gtest_main)
     include(GoogleTest)
     gtest_discover_tests(test_qjs_hex)
+
+    add_executable(test_quickjs_object_helpers
+        ${JSHOOKZ_QUICKJS_SOURCE_DIR}/tests/test_object_helpers.cpp
+    )
+    target_link_libraries(test_quickjs_object_helpers PRIVATE
+        jshookz_qjs
+        jshookz_quickjs
+        GTest::gtest_main
+    )
+    gtest_discover_tests(test_quickjs_object_helpers
+        DISCOVERY_TIMEOUT 30
+        DISCOVERY_MODE PRE_TEST
+    )
 endif()

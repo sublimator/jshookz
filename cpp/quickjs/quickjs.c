@@ -7344,6 +7344,12 @@ JSValue JS_NewError(JSContext *ctx)
     return JS_NewObjectClass(ctx, JS_CLASS_ERROR);
 }
 
+JSValue JS_NewBareTypeErrorExact(JSContext *ctx)
+{
+    return JS_NewObjectProtoClassAlloc(
+        ctx, ctx->native_error_proto[JS_TYPE_ERROR], JS_CLASS_ERROR, 0);
+}
+
 static JSValue JS_ThrowError2(JSContext *ctx, JSErrorEnum error_num,
                               const char *fmt, va_list ap, BOOL add_backtrace)
 {
@@ -56844,6 +56850,60 @@ static BOOL typed_array_is_oob(JSObject *p)
     size_elem = 1 << typed_array_size_log2(p->class_id);
     end = (int64_t)ta->offset + (int64_t)p->u.array.count * size_elem;
     return end > len;
+}
+
+JSObjectByteSpanStatus JS_GetObjectByteSpanNoThrow(
+    JSContext *ctx, JSValueConst input, JSValue *owned_backing,
+    const uint8_t **data, size_t *size)
+{
+    JSArrayBuffer *abuf;
+    JSObject *p;
+    JSTypedArray *ta;
+    size_t span_size;
+
+    assert(owned_backing != NULL);
+    assert(data != NULL);
+    assert(size != NULL);
+    *owned_backing = JS_UNDEFINED;
+    *data = NULL;
+    *size = 0;
+
+    if (JS_VALUE_GET_TAG(input) != JS_TAG_OBJECT)
+        return JS_OBJECT_BYTES_WRONG_KIND;
+
+    p = JS_VALUE_GET_OBJ(input);
+    if (p->class_id == JS_CLASS_ARRAY_BUFFER) {
+        abuf = p->u.array_buffer;
+        if (abuf == NULL || abuf->detached ||
+            (abuf->byte_length != 0 && abuf->data == NULL)) {
+            return JS_OBJECT_BYTES_UNUSABLE;
+        }
+        *owned_backing = JS_DupValue(ctx, input);
+        *data = abuf->data;
+        *size = abuf->byte_length;
+        return JS_OBJECT_BYTES_OK;
+    }
+
+    if (p->class_id != JS_CLASS_UINT8_ARRAY)
+        return JS_OBJECT_BYTES_WRONG_KIND;
+
+    ta = p->u.typed_array;
+    if (ta == NULL || ta->buffer == NULL)
+        return JS_OBJECT_BYTES_UNUSABLE;
+    if (ta->buffer->class_id != JS_CLASS_ARRAY_BUFFER)
+        return JS_OBJECT_BYTES_WRONG_KIND;
+    if (typed_array_is_oob(p))
+        return JS_OBJECT_BYTES_UNUSABLE;
+    abuf = ta->buffer->u.array_buffer;
+    span_size = p->u.array.count;
+    if (abuf == NULL || (span_size != 0 && abuf->data == NULL))
+        return JS_OBJECT_BYTES_UNUSABLE;
+
+    *owned_backing = JS_DupValue(
+        ctx, JS_MKPTR(JS_TAG_OBJECT, ta->buffer));
+    *data = abuf->data == NULL ? NULL : abuf->data + ta->offset;
+    *size = span_size;
+    return JS_OBJECT_BYTES_OK;
 }
 
 // Be *very* careful if you touch the typed array's memory directly:

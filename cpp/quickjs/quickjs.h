@@ -675,6 +675,10 @@ JSValue JS_GetException(JSContext *ctx);
 JS_BOOL JS_HasException(JSContext *ctx);
 JS_BOOL JS_IsError(JSContext *ctx, JSValueConst val);
 JSValue JS_NewError(JSContext *ctx);
+/* Return a new, unthrown Error object with the current realm's TypeError
+   prototype and no own properties. On allocation failure, return
+   JS_EXCEPTION and leave the original out-of-memory exception pending. */
+JSValue JS_NewBareTypeErrorExact(JSContext *ctx);
 JSValue __js_printf_like(2, 3) JS_ThrowSyntaxError(JSContext *ctx, const char *fmt, ...);
 JSValue __js_printf_like(2, 3) JS_ThrowTypeError(JSContext *ctx, const char *fmt, ...);
 JSValue __js_printf_like(2, 3) JS_ThrowReferenceError(JSContext *ctx, const char *fmt, ...);
@@ -876,6 +880,20 @@ JSValue JS_NewArrayBuffer(JSContext *ctx, uint8_t *buf, size_t len,
 JSValue JS_NewArrayBufferCopy(JSContext *ctx, const uint8_t *buf, size_t len);
 void JS_DetachArrayBuffer(JSContext *ctx, JSValueConst obj);
 uint8_t *JS_GetArrayBuffer(JSContext *ctx, size_t *psize, JSValueConst obj);
+
+typedef enum JSObjectByteSpanStatus {
+    JS_OBJECT_BYTES_OK = 0,
+    JS_OBJECT_BYTES_WRONG_KIND,
+    JS_OBJECT_BYTES_UNUSABLE,
+} JSObjectByteSpanStatus;
+
+/* Classify an exact Uint8Array or ArrayBuffer without allocating, invoking
+   JavaScript, or changing the pending-exception slot. All outputs are reset
+   first. Success returns one owned duplicate retaining the byte backing until
+   the caller frees it; failures return no owned edge. */
+JSObjectByteSpanStatus JS_GetObjectByteSpanNoThrow(
+    JSContext *ctx, JSValueConst input, JSValue *owned_backing,
+    const uint8_t **data, size_t *size);
 
 typedef enum JSTypedArrayEnum {
     JS_TYPED_ARRAY_UINT8C = 0,
