@@ -5,8 +5,8 @@
 
 #include <algorithm>
 #include <array>
-#include <cstring>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -59,6 +59,65 @@ MaterializerKind materializer_for(std::string_view field,
       [type](ExpectedType const &candidate) { return candidate.name == type; });
   return match == EXPECTED_TYPES.end() ? MaterializerKind::invalid
                                        : match->materializer;
+}
+
+bool fast_table_matches(Protocol const &dynamic,
+                        catl::xdata::ProtocolView const &view) {
+  std::uint16_t expected[32][128]{};
+  std::uint16_t ordinal = 0;
+  for (auto const &field : dynamic.fields()) {
+    if (!field.meta.is_serialized)
+      continue;
+    auto const type_code = static_cast<std::uint16_t>(field.code >> 16);
+    auto const nth = static_cast<std::uint16_t>(field.code);
+    if (type_code < 32 && nth < 128)
+      expected[type_code][nth] = static_cast<std::uint16_t>(ordinal + 1);
+    ++ordinal;
+  }
+  for (std::uint16_t type_code = 0; type_code < 32; ++type_code) {
+    for (std::uint16_t nth = 0; nth < 128; ++nth) {
+      if (view.fast_ordinals[type_code][nth] != expected[type_code][nth])
+        return false;
+    }
+  }
+  return true;
+}
+
+bool materializer_rows_match(Protocol const &dynamic,
+                             catl::xdata::ProtocolView const &view) {
+  std::uint16_t field_ordinal = 0;
+  std::uint16_t material_ordinal = 0;
+  for (auto const &field : dynamic.fields()) {
+    if (!field.meta.is_serialized)
+      continue;
+    if (field_ordinal >= view.field_count)
+      return false;
+    auto const &actual = view.fields[field_ordinal];
+    bool const sentinel =
+        field.name == "ObjectEndMarker" || field.name == "ArrayEndMarker";
+    auto const expected =
+        sentinel ? MaterializerKind::invalid
+                 : materializer_for(field.name, field.meta.type.name);
+    if (actual.materializer != expected)
+      return false;
+    if (sentinel) {
+      if (actual.material_ordinal != catl::xdata::ProtocolView::no_ordinal)
+        return false;
+    } else {
+      if (actual.material_ordinal != material_ordinal ||
+          material_ordinal >= view.material_field_count)
+        return false;
+      auto const &material = view.material_fields[material_ordinal];
+      if (material.admission_ordinal != field_ordinal ||
+          material.field_code != field.code ||
+          material.materializer != expected)
+        return false;
+      ++material_ordinal;
+    }
+    ++field_ordinal;
+  }
+  return field_ordinal == view.field_count &&
+         material_ordinal == view.material_field_count;
 }
 
 void expect_same(Protocol const &file, Protocol const &tables,
@@ -133,21 +192,23 @@ TEST(ProtocolTables, ProviderStaticXahauMatchesDynamicAuthority) {
   EXPECT_EQ(view.fallback_count, 0);
   EXPECT_EQ(view.inferred_vl_count, 0);
   EXPECT_EQ(view.duplicate_word_count, 6);
+  EXPECT_TRUE(fast_table_matches(dynamic, view));
+  EXPECT_TRUE(materializer_rows_match(dynamic, view));
   ASSERT_NE(view.definitions_sha256, nullptr);
   ASSERT_NE(view.materializer_policy_sha256, nullptr);
   ASSERT_NE(view.identity, nullptr);
   EXPECT_STREQ(view.definitions_sha256, JSHOOKZ_XAHAU_DEFINITIONS_SHA256);
   EXPECT_STREQ(view.materializer_policy_sha256,
                JSHOOKZ_XAHAU_PROVIDER_POLICY_SHA256);
-  auto const expected_identity =
-      std::string("xahau:") + JSHOOKZ_XAHAU_DEFINITIONS_SHA256 + ":" +
-      JSHOOKZ_XAHAU_PROVIDER_POLICY_SHA256;
+  auto const expected_identity = std::string("xahau:") +
+                                 JSHOOKZ_XAHAU_DEFINITIONS_SHA256 + ":" +
+                                 JSHOOKZ_XAHAU_PROVIDER_POLICY_SHA256;
   EXPECT_EQ(view.identity, expected_identity);
 
   ASSERT_EQ(dynamic.fields().size(), view.field_name_count);
   std::uint32_t expected_name_offset = 0;
-  for (std::uint16_t name_ordinal = 0;
-       name_ordinal < view.field_name_count; ++name_ordinal) {
+  for (std::uint16_t name_ordinal = 0; name_ordinal < view.field_name_count;
+       ++name_ordinal) {
     auto const &expected = dynamic.fields()[name_ordinal];
     auto const &actual = view.field_names[name_ordinal];
     auto const name = view.field_name(name_ordinal);
@@ -165,7 +226,8 @@ TEST(ProtocolTables, ProviderStaticXahauMatchesDynamicAuthority) {
     if (expected.meta.is_vl_encoded)
       expected_flags |= catl::xdata::field_name_vl_encoded;
     EXPECT_EQ(actual.flags, expected_flags) << expected.name;
-    expected_name_offset += static_cast<std::uint32_t>(expected.name.size() + 1);
+    expected_name_offset +=
+        static_cast<std::uint32_t>(expected.name.size() + 1);
   }
   EXPECT_EQ(view.field_name_bytes_size, expected_name_offset);
 
@@ -208,8 +270,7 @@ TEST(ProtocolTables, ProviderStaticXahauMatchesDynamicAuthority) {
             : materializer_for(field.name, field.meta.type.name);
     EXPECT_EQ(actual.materializer, expected_materializer) << field.name;
     if (object_end || array_end) {
-      EXPECT_EQ(actual.material_ordinal,
-                catl::xdata::ProtocolView::no_ordinal)
+      EXPECT_EQ(actual.material_ordinal, catl::xdata::ProtocolView::no_ordinal)
           << field.name;
     } else {
       EXPECT_EQ(actual.material_ordinal, material_ordinal) << field.name;
@@ -237,7 +298,8 @@ TEST(ProtocolTables, ProviderStaticXahauMatchesDynamicAuthority) {
 
   for (std::uint16_t type_code = 0; type_code < 32; ++type_code) {
     for (std::uint16_t nth = 0; nth < 128; ++nth) {
-      EXPECT_EQ(view.fast_ordinals[type_code][nth], expected_fast[type_code][nth])
+      EXPECT_EQ(view.fast_ordinals[type_code][nth],
+                expected_fast[type_code][nth])
           << "fast cell " << type_code << "/" << nth;
     }
   }
@@ -251,7 +313,8 @@ TEST(ProtocolTables, ProviderStaticXahauMatchesDynamicAuthority) {
               expected_fallback[index].code);
     EXPECT_EQ(view.fallback_fields[index].admission_ordinal,
               expected_fallback[index].ordinal);
-    EXPECT_EQ(view.fallback_fields[index].flags, expected_fallback[index].flags);
+    EXPECT_EQ(view.fallback_fields[index].flags,
+              expected_fallback[index].flags);
   }
 
   ASSERT_EQ(view.type_count, EXPECTED_TYPES.size());
@@ -268,4 +331,38 @@ TEST(ProtocolTables, ProviderStaticXahauMatchesDynamicAuthority) {
                                actual.name_size),
               expected.name);
   }
+}
+
+TEST(ProtocolTables, ProviderStaticOutputMutationControlsTurnRed) {
+  auto const dynamic = Protocol::load_embedded_xahau_protocol();
+  auto const &clean = xahau_static_protocol();
+  ASSERT_TRUE(fast_table_matches(dynamic, clean));
+  ASSERT_TRUE(materializer_rows_match(dynamic, clean));
+
+  std::uint16_t poisoned_fast[32][128];
+  std::memcpy(poisoned_fast, clean.fast_ordinals, sizeof(poisoned_fast));
+  ASSERT_EQ(poisoned_fast[31][127], 0);
+  poisoned_fast[31][127] = 1;
+  auto fast_poison = clean;
+  fast_poison.fast_ordinals = poisoned_fast;
+  EXPECT_FALSE(fast_table_matches(dynamic, fast_poison));
+
+  std::vector<catl::xdata::StaticFieldDescriptor> poisoned_fields(
+      clean.fields, clean.fields + clean.field_count);
+  std::vector<catl::xdata::StaticMaterialField> poisoned_material(
+      clean.material_fields,
+      clean.material_fields + clean.material_field_count);
+  ASSERT_FALSE(poisoned_material.empty());
+  auto &material = poisoned_material.front();
+  auto &field = poisoned_fields[material.admission_ordinal];
+  auto const wrong = material.materializer == MaterializerKind::uint8
+                         ? MaterializerKind::uint16
+                         : MaterializerKind::uint8;
+  ASSERT_NE(wrong, MaterializerKind::invalid);
+  field.materializer = wrong;
+  material.materializer = wrong;
+  auto materializer_poison = clean;
+  materializer_poison.fields = poisoned_fields.data();
+  materializer_poison.material_fields = poisoned_material.data();
+  EXPECT_FALSE(materializer_rows_match(dynamic, materializer_poison));
 }

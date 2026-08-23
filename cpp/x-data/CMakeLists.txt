@@ -98,11 +98,67 @@ if(BUILD_TESTING)
             --inventory ${CMAKE_CURRENT_LIST_DIR}/xdata_wasm_sources.cmake
             --binary $<TARGET_FILE:test_static_protocol_noexcept>
             --nm ${CMAKE_NM})
-    add_test(NAME provider_static_source_policy_red_controls
-        COMMAND ${Python3_EXECUTABLE}
-            ${CMAKE_CURRENT_LIST_DIR}/tests/check_provider_static_policy.py
-            --inventory ${CMAKE_CURRENT_LIST_DIR}/xdata_wasm_sources.cmake
-            --self-test)
+
+    add_executable(test_provider_static_startup_alloc
+        tests/provider_static_startup_alloc_probe.cpp
+        ${JSHOOKZ_XDATA_PROVIDER_STATIC_SOURCES}
+    )
+    target_include_directories(test_provider_static_startup_alloc PRIVATE
+        ${JSHOOKZ_XDATA_INCLUDE_DIRS}
+    )
+    target_compile_options(test_provider_static_startup_alloc PRIVATE
+        -fno-exceptions -fno-rtti)
+    add_dependencies(test_provider_static_startup_alloc
+        generate_xdata_definitions)
+    add_test(NAME provider_static_startup_no_cpp_allocation
+        COMMAND test_provider_static_startup_alloc)
+
+    function(_xdata_provider_static_poison name definition expected)
+        add_executable(provider_static_poison_${name}
+            tests/provider_static_compiled_poison.cpp
+            ${JSHOOKZ_XDATA_PROVIDER_STATIC_SOURCES}
+            ${ARGN}
+        )
+        target_include_directories(provider_static_poison_${name} PRIVATE
+            ${JSHOOKZ_XDATA_INCLUDE_DIRS}
+        )
+        target_compile_definitions(provider_static_poison_${name} PRIVATE
+            CATL_XDATA_NO_BOOST_JSON
+            CATL_XDATA_NO_THROWING_CURSOR
+            ${definition}
+        )
+        target_compile_options(provider_static_poison_${name} PRIVATE
+            -fno-exceptions -fno-rtti -fno-builtin -O0)
+        add_dependencies(provider_static_poison_${name}
+            generate_xdata_definitions)
+        add_test(NAME provider_static_compiled_poison_${name}
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_LIST_DIR}/tests/run_provider_static_compiled_poison.py
+                --python ${Python3_EXECUTABLE}
+                --checker ${CMAKE_CURRENT_LIST_DIR}/tests/check_provider_static_policy.py
+                --inventory ${CMAKE_CURRENT_LIST_DIR}/xdata_wasm_sources.cmake
+                --binary $<TARGET_FILE:provider_static_poison_${name}>
+                --nm ${CMAKE_NM}
+                --expect "${expected}")
+    endfunction()
+
+    _xdata_provider_static_poison(
+        dynamic_protocol JSHOOKZ_POISON_DYNAMIC_PROTOCOL "dynamic Protocol"
+        ${CMAKE_CURRENT_LIST_DIR}/src/protocol.cpp)
+    _xdata_provider_static_poison(
+        field_types JSHOOKZ_POISON_FIELD_TYPES "allocating FieldTypes")
+    _xdata_provider_static_poison(
+        ordinary_new JSHOOKZ_POISON_NEW "operator new")
+    _xdata_provider_static_poison(
+        aligned_new JSHOOKZ_POISON_ALIGNED_NEW "operator new")
+    _xdata_provider_static_poison(
+        vector JSHOOKZ_POISON_VECTOR "STL vector ownership")
+    _xdata_provider_static_poison(
+        string JSHOOKZ_POISON_STRING "STL string ownership")
+    _xdata_provider_static_poison(
+        bad_alloc JSHOOKZ_POISON_BAD_ALLOC "bad_alloc route")
+    _xdata_provider_static_poison(
+        pre_main_malloc JSHOOKZ_POISON_MALLOC "C allocation")
 
     add_executable(test_pathset_quickjs
         tests/pathset_quickjs_fixture.cpp
