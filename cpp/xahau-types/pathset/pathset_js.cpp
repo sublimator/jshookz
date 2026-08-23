@@ -1,5 +1,6 @@
 #include "pathset/pathset_js.hpp"
 
+#include "object/nominal_payload.hpp"
 #include "quickjs.hpp"
 
 #include <catl/core/types.h>
@@ -650,6 +651,24 @@ bool isPath(JSValueConst value) noexcept {
 bool isPathHop(JSValueConst value) noexcept {
   return JS_IsObject(value) && JS_GetClassID(value) == pathHopClassId &&
          JS_GetOpaque(value, pathHopClassId) != nullptr;
+}
+
+bool detail::readPathSetNominalPayload(JSContext *ctx, JSValueConst input,
+                                       NominalPayloadView &output) noexcept {
+  output = {};
+  if (ctx == nullptr || !JS_IsObject(input) ||
+      JS_GetClassID(input) != pathSetClassId)
+    return false;
+  auto const *state = static_cast<PathSetState const *>(
+      JS_GetOpaque(input, pathSetClassId));
+  if (state == nullptr || state->length == 0 ||
+      state->length > kMaximumPayloadBytes || state->bytes == nullptr ||
+      leafMaterializers.certifiedRange == nullptr ||
+      !leafMaterializers.certifiedRange(ctx, state->owner, state->bytes,
+                                        state->length))
+    return false;
+  output = {state->bytes, state->length};
+  return true;
 }
 
 } // namespace jshookz::provider::types

@@ -1,6 +1,7 @@
 #include "amount/amount_js.hpp"
 
 #include "js.hpp"
+#include "object/nominal_payload.hpp"
 
 #include <catl/core/types.h>
 #include <catl/xdata/amount-rules.h>
@@ -538,6 +539,20 @@ JSValue makeAmountBytes(JSContext *ctx, std::uint8_t const *bytes,
 bool isAmount(JSValueConst value) noexcept {
   return JS_IsObject(value) && JS_GetClassID(value) == amountClassId &&
          JS_GetOpaque(value, amountClassId) != nullptr;
+}
+
+bool detail::readAmountNominalPayload(JSValueConst input,
+                                      NominalPayloadView &output) noexcept {
+  output = {};
+  if (!JS_IsObject(input) || JS_GetClassID(input) != amountClassId)
+    return false;
+  auto const *state =
+      static_cast<AmountState const *>(JS_GetOpaque(input, amountClassId));
+  if (state == nullptr || (state->length != 8 && state->length != 33 &&
+                           state->length != 48))
+    return false;
+  output = {state->bytes.data(), state->length};
+  return true;
 }
 
 } // namespace jshookz::provider::types

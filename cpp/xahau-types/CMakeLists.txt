@@ -25,6 +25,7 @@ if(BUILD_TESTING)
         tests/test_xahau_types.cpp
         tests/test_account_json.cpp
         tests/test_canonical_json.cpp
+        tests/test_nominal_payload.cpp
     )
     target_link_libraries(test_xahau_types PRIVATE jshookz_xahau_types GTest::gtest_main)
     gtest_discover_tests(test_xahau_types)

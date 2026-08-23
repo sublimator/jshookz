@@ -1,5 +1,6 @@
 #include "hash/hash.hpp"
 #include "js.hpp"
+#include "object/nominal_payload.hpp"
 
 namespace jshookz::provider::types {
 namespace qjs = jshookz::provider::qjs;
@@ -148,6 +149,21 @@ makeHash256Bytes(
         return JS_ThrowInternalError(
             ctx, "Hash256 construction requires 32 bytes");
     return nativeNew<Hash256>(ctx, js_hash256_class_id, bytes, length);
+}
+
+bool
+detail::readHash256NominalPayload(
+    JSValueConst input, NominalPayloadView& output) noexcept
+{
+    output = {};
+    if (!JS_IsObject(input) || JS_GetClassID(input) != js_hash256_class_id)
+        return false;
+    auto const* hash = static_cast<Hash256 const*>(
+        JS_GetOpaque(input, js_hash256_class_id));
+    if (hash == nullptr)
+        return false;
+    output = {hash->data(), static_cast<std::uint32_t>(hash->size())};
+    return true;
 }
 
 }  // namespace jshookz::provider::types

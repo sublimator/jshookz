@@ -1,4 +1,5 @@
 #include "result.hpp"
+#include "object/nominal_payload.hpp"
 #include "quickjs.hpp"
 
 #include <cmath>
@@ -512,6 +513,24 @@ newFactory(JSContext* ctx, std::uint8_t bits)
 }  // namespace
 
 namespace jshookz::provider::types {
+
+bool
+detail::readUIntNominalPayload(
+    JSValueConst input,
+    std::uint8_t expectedBits,
+    std::uint64_t& value) noexcept
+{
+    value = 0;
+    if (!JS_IsObject(input) || JS_GetClassID(input) != uintClassId)
+        return false;
+    auto const* integer = static_cast<UIntValue const*>(
+        JS_GetOpaque(input, uintClassId));
+    if (integer == nullptr || integer->bits != expectedBits ||
+        integer->value > maximum(expectedBits))
+        return false;
+    value = integer->value;
+    return true;
+}
 
 JSValue
 makeUIntValue(JSContext* ctx, std::uint8_t bits, std::uint64_t value)

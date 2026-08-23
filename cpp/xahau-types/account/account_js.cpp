@@ -1,5 +1,6 @@
 #include "account/account.hpp"
 #include "js.hpp"
+#include "object/nominal_payload.hpp"
 
 #include <cstring>
 
@@ -204,6 +205,22 @@ readAccountIDBytes(
     if (account == nullptr)
         return false;
     std::memcpy(output, account->data(), 20);
+    return true;
+}
+
+bool
+detail::readAccountIDNominalPayload(
+    JSValueConst input, NominalPayloadView& output) noexcept
+{
+    output = {};
+    if (!JS_IsObject(input) ||
+        JS_GetClassID(input) != js_accountid_class_id)
+        return false;
+    auto const* account = static_cast<AccountID const*>(
+        JS_GetOpaque(input, js_accountid_class_id));
+    if (account == nullptr)
+        return false;
+    output = {account->data(), static_cast<std::uint32_t>(account->size())};
     return true;
 }
 

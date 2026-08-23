@@ -1,6 +1,8 @@
 #include "js.hpp"
+#include "object/nominal_payload.hpp"
 
 #include <cstring>
+#include <limits>
 
 namespace jshookz::provider::types {
 namespace qjs = jshookz::provider::qjs;
@@ -239,6 +241,23 @@ getSTBlobByteSpanNoThrow(
     *data = blob->data;
     *size = blob->len;
     return JS_OBJECT_BYTES_OK;
+}
+
+bool
+detail::readSTBlobNominalPayload(
+    JSValueConst input, NominalPayloadView& output) noexcept
+{
+    output = {};
+    if (!JS_IsObject(input) || JS_GetClassID(input) != js_blob_class_id)
+        return false;
+    auto const* blob = static_cast<JSBlob const*>(
+        JS_GetOpaque(input, js_blob_class_id));
+    if (blob == nullptr ||
+        blob->len > std::numeric_limits<std::uint32_t>::max() ||
+        (blob->len != 0 && blob->data == nullptr))
+        return false;
+    output = {blob->data, static_cast<std::uint32_t>(blob->len)};
+    return true;
 }
 
 }  // namespace jshookz::provider::types

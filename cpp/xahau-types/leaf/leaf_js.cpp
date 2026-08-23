@@ -1,6 +1,7 @@
 #include "leaf/leaf.hpp"
 
 #include "js.hpp"
+#include "object/nominal_payload.hpp"
 #include "quickjs.hpp"
 
 #include <cmath>
@@ -1219,6 +1220,95 @@ bool readCurrencyBytes(JSContext *ctx, JSValueConst value,
   if (state == nullptr)
     return false;
   std::memcpy(output, state->bytes, 20);
+  return true;
+}
+
+bool detail::readRichLeafNominalPayload(
+    JSContext *ctx, JSValueConst input,
+    catl::xdata::MaterializerKind expected,
+    NominalPayloadView &output) noexcept {
+  output = {};
+  if (ctx == nullptr || !runtimeReady(ctx) || !JS_IsObject(input))
+    return false;
+
+  LeafKind kind = LeafKind::count;
+  std::uint32_t fixedLength = 0;
+  switch (expected) {
+  case catl::xdata::MaterializerKind::hash128:
+    kind = LeafKind::hash128;
+    fixedLength = 16;
+    break;
+  case catl::xdata::MaterializerKind::hash160:
+    kind = LeafKind::hash160;
+    fixedLength = 20;
+    break;
+  case catl::xdata::MaterializerKind::hash192:
+    kind = LeafKind::hash192;
+    fixedLength = 24;
+    break;
+  case catl::xdata::MaterializerKind::currency:
+    kind = LeafKind::currency;
+    fixedLength = 20;
+    break;
+  case catl::xdata::MaterializerKind::issue:
+    kind = LeafKind::issue;
+    break;
+  case catl::xdata::MaterializerKind::vector256:
+    kind = LeafKind::vector256;
+    break;
+  case catl::xdata::MaterializerKind::xchain_bridge:
+    kind = LeafKind::xchainBridge;
+    break;
+  default:
+    return false;
+  }
+  if (JS_GetClassID(input) != classId(kind))
+    return false;
+
+  if (fixedLength != 0) {
+    void const *bytes = nullptr;
+    if (fixedLength == 16) {
+      auto const *state = static_cast<FixedState<16> const *>(
+          JS_GetOpaque(input, classId(kind)));
+      bytes = state == nullptr ? nullptr : state->bytes;
+    } else if (fixedLength == 20) {
+      auto const *state = static_cast<FixedState<20> const *>(
+          JS_GetOpaque(input, classId(kind)));
+      bytes = state == nullptr ? nullptr : state->bytes;
+    } else {
+      auto const *state = static_cast<FixedState<24> const *>(
+          JS_GetOpaque(input, classId(kind)));
+      bytes = state == nullptr ? nullptr : state->bytes;
+    }
+    if (bytes == nullptr)
+      return false;
+    output = {static_cast<std::uint8_t const *>(bytes), fixedLength};
+    return true;
+  }
+
+  if (kind == LeafKind::issue) {
+    auto const *state = static_cast<IssueState const *>(
+        JS_GetOpaque(input, classId(kind)));
+    if (state == nullptr ||
+        (state->length != 20 && state->length != 40 && state->length != 44))
+      return false;
+    output = {state->bytes, state->length};
+    return true;
+  }
+  if (kind == LeafKind::vector256) {
+    auto const *state = static_cast<VectorState const *>(
+        JS_GetOpaque(input, classId(kind)));
+    if (state == nullptr || (state->byteLength & 31U) != 0 ||
+        state->count != state->byteLength / 32 || state->count > 32768)
+      return false;
+    output = {vectorBytes(state), state->byteLength};
+    return true;
+  }
+  auto const *state = static_cast<BridgeState const *>(
+      JS_GetOpaque(input, classId(kind)));
+  if (state == nullptr || state->length > sizeof(state->bytes))
+    return false;
+  output = {state->bytes, state->length};
   return true;
 }
 
