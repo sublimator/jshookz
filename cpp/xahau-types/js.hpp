@@ -53,6 +53,8 @@ registerClass(
     JSContext* ctx, std::uint8_t bits, std::uint64_t value);
 [[nodiscard]] JSValue makeSTBlobBytes(
     JSContext* ctx, std::uint8_t const* bytes, std::uint32_t length);
+[[nodiscard]] JSValue makeSTBlobUninitialized(
+    JSContext* ctx, std::uint32_t length, std::uint8_t** data);
 [[nodiscard]] JSValue makeHash256Bytes(
     JSContext* ctx, std::uint8_t const* bytes, std::uint32_t length);
 [[nodiscard]] JSValue makeAccountIDBytes(

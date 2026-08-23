@@ -153,6 +153,8 @@ TEST_F(XahauTypes, CertifiedObjectIsLazyImmutableAndCanonical)
             sequence: root.Sequence.toNumber(),
             fieldBytes: Array.from(fieldBytes),
             canonical: Array.from(canonical),
+            json: root.toJSON(),
+            jsonFresh: root.toJSON() !== root.toJSON(),
             extensible: Object.isExtensible(root),
             assignmentFailed,
             absent: root.get("NotAField") === undefined,
@@ -162,7 +164,7 @@ TEST_F(XahauTypes, CertifiedObjectIsLazyImmutableAndCanonical)
     ASSERT_FALSE(value.isException());
     EXPECT_EQ(
         to_string(value.get()),
-        R"({"keys":["Flags","Sequence"],"same":true,"flags":9,"sequence":7,"fieldBytes":[0,0,0,9],"canonical":[34,0,0,0,9,36,0,0,0,7],"extensible":false,"assignmentFailed":true,"absent":true})");
+        R"({"keys":["Flags","Sequence"],"same":true,"flags":9,"sequence":7,"fieldBytes":[0,0,0,9],"canonical":[34,0,0,0,9,36,0,0,0,7],"json":{"Flags":9,"Sequence":7},"jsonFresh":true,"extensible":false,"assignmentFailed":true,"absent":true})");
 }
 
 TEST_F(XahauTypes, NestedArraySharesElementIdentityAndRealIteratorSymbol)
@@ -186,6 +188,8 @@ TEST_F(XahauTypes, NestedArraySharesElementIdentityAndRealIteratorSymbol)
             length: values.length,
             firstSame: first === values.at(0) && first === iterated[0],
             numbers: iterated.map(v => v.Flags.toNumber()),
+            json: root.toJSON(),
+            arrayJson: values.toJSON(),
             extensible: Object.isExtensible(values),
             absent: values.at(99) === undefined,
           });
@@ -194,7 +198,7 @@ TEST_F(XahauTypes, NestedArraySharesElementIdentityAndRealIteratorSymbol)
     ASSERT_FALSE(value.isException());
     EXPECT_EQ(
         to_string(value.get()),
-        R"({"rootKeys":["Memos"],"arrayKeys":["0","1","length"],"lengthOwn":true,"length":2,"firstSame":true,"numbers":[1,2],"extensible":false,"absent":true})");
+        R"({"rootKeys":["Memos"],"arrayKeys":["0","1","length"],"lengthOwn":true,"length":2,"firstSame":true,"numbers":[1,2],"json":{"Memos":[{"Memo":{"Flags":1}},{"Memo":{"Flags":2}}]},"arrayJson":[{"Memo":{"Flags":1}},{"Memo":{"Flags":2}}],"extensible":false,"absent":true})");
 }
 
 TEST_F(XahauTypes, ExactMintRejectsMalformedInputAndRegistrarRetries)

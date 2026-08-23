@@ -2,6 +2,16 @@
 
 namespace jshookz::qjs {
 
+namespace {
+
+void
+freeArrayBufferData(JSRuntime *runtime, void *, void *pointer)
+{
+    js_free_rt(runtime, pointer);
+}
+
+}  // namespace
+
 bool
 freezeObject(JSContext *ctx, JSValueConst value)
 {
@@ -31,6 +41,35 @@ uint8Array(JSContext *ctx, std::span<std::uint8_t const> bytes)
     OwnedValue length(ctx, JS_NewUint32(ctx, bytes.size()));
     JSValueConst args[3] = {buffer.get(), offset.get(), length.get()};
     return JS_NewTypedArray(ctx, 3, args, JS_TYPED_ARRAY_UINT8);
+}
+
+JSValue
+uint8ArrayUninitialized(
+    JSContext *ctx, std::size_t size, std::uint8_t **data)
+{
+    *data = nullptr;
+    std::uint8_t *storage = nullptr;
+    if (size != 0) {
+        storage = static_cast<std::uint8_t *>(js_malloc(ctx, size));
+        if (storage == nullptr)
+            return JS_ThrowOutOfMemory(ctx);
+    }
+    OwnedValue buffer(
+        ctx,
+        JS_NewArrayBuffer(
+            ctx, storage, size, freeArrayBufferData, nullptr, false));
+    if (buffer.isException()) {
+        js_free(ctx, storage);
+        return buffer.release();
+    }
+    OwnedValue offset(ctx, JS_NewInt32(ctx, 0));
+    OwnedValue length(ctx, JS_NewUint32(ctx, size));
+    JSValueConst args[3] = {buffer.get(), offset.get(), length.get()};
+    JSValue result = JS_NewTypedArray(ctx, 3, args, JS_TYPED_ARRAY_UINT8);
+    if (JS_IsException(result))
+        return result;
+    *data = storage;
+    return result;
 }
 
 JSValue

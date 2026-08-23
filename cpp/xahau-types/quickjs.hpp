@@ -18,6 +18,7 @@ using jshookz::qjs::opaque;
 using jshookz::qjs::pendingOrTypeError;
 using jshookz::qjs::property;
 using jshookz::qjs::uint8Array;
+using jshookz::qjs::uint8ArrayUninitialized;
 
 enum class BytePolicy : std::uint8_t
 {

@@ -32,8 +32,9 @@ JSClassDef js_blob_class = {
 };
 
 JSValue
-newBlob(JSContext* ctx, const uint8_t* data, size_t len)
+newBlobUninitialized(JSContext* ctx, size_t len, std::uint8_t** data)
 {
+    *data = nullptr;
     auto* blob = (JSBlob*)js_mallocz(ctx, sizeof(JSBlob));
     if (!blob)
         return JS_ThrowOutOfMemory(ctx);
@@ -43,7 +44,6 @@ newBlob(JSContext* ctx, const uint8_t* data, size_t len)
             js_free(ctx, blob);
             return JS_ThrowOutOfMemory(ctx);
         }
-        std::memcpy(blob->data, data, len);
     }
     blob->len = len;
 
@@ -55,7 +55,18 @@ newBlob(JSContext* ctx, const uint8_t* data, size_t len)
         return obj;
     }
     JS_SetOpaque(obj, blob);
+    *data = blob->data;
     return obj;
+}
+
+JSValue
+newBlob(JSContext* ctx, const uint8_t* data, size_t len)
+{
+    std::uint8_t* output = nullptr;
+    JSValue value = newBlobUninitialized(ctx, len, &output);
+    if (!JS_IsException(value) && len != 0)
+        std::memcpy(output, data, len);
+    return value;
 }
 
 // @binding provider:STBlob.from
@@ -198,6 +209,13 @@ JSValue
 makeSTBlobBytes(JSContext* ctx, std::uint8_t const* bytes, std::uint32_t length)
 {
     return newBlob(ctx, bytes, length);
+}
+
+JSValue
+makeSTBlobUninitialized(
+    JSContext* ctx, std::uint32_t length, std::uint8_t** data)
+{
+    return newBlobUninitialized(ctx, length, data);
 }
 
 JSObjectByteSpanStatus

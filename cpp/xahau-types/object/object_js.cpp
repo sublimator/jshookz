@@ -600,6 +600,179 @@ numberString(JSContext* ctx, Slice payload)
 }
 
 [[nodiscard]] JSValue
+hexString(JSContext* ctx, std::uint8_t const* bytes, std::uint32_t size)
+{
+    if (size > std::numeric_limits<std::uint32_t>::max() / 2)
+        return JS_ThrowInternalError(ctx, "hex output size overflow");
+    static constexpr char digits[] = "0123456789ABCDEF";
+    auto const outputSize = static_cast<std::size_t>(size) * 2;
+    char stack[64];
+    char* output = outputSize <= sizeof(stack)
+        ? stack : static_cast<char*>(js_malloc(ctx, outputSize));
+    if (output == nullptr)
+        return oom(ctx);
+    for (std::uint32_t i = 0; i < size; ++i) {
+        output[i * 2] = digits[bytes[i] >> 4];
+        output[i * 2 + 1] = digits[bytes[i] & 15];
+    }
+    JSValue value = JS_NewStringLen(ctx, output, outputSize);
+    if (output != stack)
+        js_free(ctx, output);
+    return value;
+}
+
+[[nodiscard]] JSValue
+uint64String(JSContext* ctx, std::uint64_t value)
+{
+    char buffer[20];
+    char* end = buffer + sizeof(buffer);
+    char* cursor = end;
+    do {
+        *--cursor = static_cast<char>('0' + value % 10);
+        value /= 10;
+    } while (value != 0);
+    return JS_NewStringLen(
+        ctx, cursor, static_cast<std::size_t>(end - cursor));
+}
+
+[[nodiscard]] JSValue jsonObject(
+    JSContext* ctx, CertifiedObjectValue& owner,
+    xdata::RecursiveIndexView index, std::uint32_t scopeId);
+
+[[nodiscard]] JSValue
+jsonArray(JSContext* ctx, CertifiedObjectValue& owner,
+          xdata::RecursiveIndexView index, std::uint32_t scopeId);
+
+[[nodiscard]] JSValue
+jsonField(JSContext* ctx, CertifiedObjectValue& owner,
+          xdata::RecursiveIndexView index,
+          xdata::FieldRecord const& field)
+{
+    auto const* descriptor =
+        xdata::xahau_static_protocol().field_by_code(field.field_code);
+    if (descriptor == nullptr || field.payload_begin > field.wire_end ||
+        field.wire_end > owner.byteCount)
+        return JS_ThrowInternalError(ctx, "certified JSON field is invalid");
+    auto const* payload = owner.bytes + field.payload_begin;
+    auto const size = field.wire_end - field.payload_begin;
+    using Kind = xdata::MaterializerKind;
+    switch (descriptor->materializer) {
+    case Kind::uint8:
+    case Kind::uint16:
+    case Kind::uint32:
+    case Kind::transaction_type:
+    case Kind::transaction_result:
+        return JS_NewUint32(
+            ctx, static_cast<std::uint32_t>(readBigEndian(payload, size)));
+    case Kind::uint64:
+        return uint64String(ctx, readBigEndian(payload, size));
+    case Kind::hash128:
+    case Kind::hash160:
+    case Kind::hash192:
+    case Kind::hash256:
+    case Kind::blob:
+        return hexString(ctx, payload, size);
+    case Kind::number:
+        return numberString(ctx, {payload, size});
+    case Kind::st_object:
+        return jsonObject(ctx, owner, index, field.child_scope);
+    case Kind::st_array:
+        return jsonArray(ctx, owner, index, field.child_scope);
+    case Kind::account_id:
+    case Kind::amount:
+    case Kind::currency:
+    case Kind::issue:
+    case Kind::path_set:
+    case Kind::vector256:
+    case Kind::xchain_bridge:
+        return JS_ThrowInternalError(
+            ctx, "certified JSON materializer is not registered");
+    case Kind::invalid:
+        break;
+    }
+    return JS_ThrowInternalError(ctx, "invalid certified JSON materializer");
+}
+
+[[nodiscard]] JSValue
+jsonObject(JSContext* ctx, CertifiedObjectValue& owner,
+           xdata::RecursiveIndexView index, std::uint32_t scopeId)
+{
+    auto const* scope = index.scope(scopeId);
+    if (scope == nullptr || scope->kind() != xdata::ScopeKind::object)
+        return JS_ThrowInternalError(ctx, "certified JSON object scope is invalid");
+    qjs::OwnedValue result(ctx, JS_NewObject(ctx));
+    if (result.isException())
+        return result.release();
+    for (std::uint32_t i = 0; i < scope->field_count(); ++i) {
+        auto const* field = index.field(scope->first_field + i);
+        auto const* descriptor = field == nullptr ? nullptr
+            : xdata::xahau_static_protocol().field_by_code(field->field_code);
+        if (descriptor == nullptr)
+            return JS_ThrowInternalError(ctx, "certified JSON field is absent");
+        auto const name = xdata::xahau_static_protocol().field_name(
+            descriptor->name_ordinal);
+        JSAtom const atom = JS_NewAtomLen(ctx, name.data, name.size);
+        if (atom == JS_ATOM_NULL) {
+            (void)atomFailure(ctx);
+            return JS_EXCEPTION;
+        }
+        qjs::OwnedValue value(ctx, jsonField(ctx, owner, index, *field));
+        if (value.isException() ||
+            JS_DefinePropertyValue(
+                ctx, result.get(), atom, value.release(),
+                JS_PROP_ENUMERABLE) < 0) {
+            JS_FreeAtom(ctx, atom);
+            return JS_EXCEPTION;
+        }
+        JS_FreeAtom(ctx, atom);
+    }
+    return result.release();
+}
+
+[[nodiscard]] JSValue
+jsonArray(JSContext* ctx, CertifiedObjectValue& owner,
+          xdata::RecursiveIndexView index, std::uint32_t scopeId)
+{
+    auto const* scope = index.scope(scopeId);
+    if (scope == nullptr || scope->kind() != xdata::ScopeKind::array)
+        return JS_ThrowInternalError(ctx, "certified JSON array scope is invalid");
+    qjs::OwnedValue result(ctx, JS_NewArray(ctx));
+    if (result.isException())
+        return result.release();
+    for (std::uint32_t i = 0; i < scope->field_count(); ++i) {
+        auto const* field = index.array_element(scopeId, i);
+        auto const* descriptor = field == nullptr ? nullptr
+            : xdata::xahau_static_protocol().field_by_code(field->field_code);
+        if (descriptor == nullptr)
+            return JS_ThrowInternalError(ctx, "certified JSON array field is absent");
+        qjs::OwnedValue element(ctx, JS_NewObject(ctx));
+        if (element.isException())
+            return element.release();
+        auto const name = xdata::xahau_static_protocol().field_name(
+            descriptor->name_ordinal);
+        JSAtom const atom = JS_NewAtomLen(ctx, name.data, name.size);
+        if (atom == JS_ATOM_NULL) {
+            (void)atomFailure(ctx);
+            return JS_EXCEPTION;
+        }
+        qjs::OwnedValue value(
+            ctx, jsonObject(ctx, owner, index, field->child_scope));
+        if (value.isException() ||
+            JS_DefinePropertyValue(
+                ctx, element.get(), atom, value.release(),
+                JS_PROP_ENUMERABLE) < 0) {
+            JS_FreeAtom(ctx, atom);
+            return JS_EXCEPTION;
+        }
+        JS_FreeAtom(ctx, atom);
+        if (JS_SetPropertyUint32(
+                ctx, result.get(), i, element.release()) < 0)
+            return JS_EXCEPTION;
+    }
+    return result.release();
+}
+
+[[nodiscard]] JSValue
 materializeField(JSContext* ctx, JSValueConst ownerValue,
                  CertifiedObjectValue& owner,
                  xdata::FieldRecord const& field)
@@ -789,20 +962,15 @@ objectFieldBytes(JSContext* ctx, JSValueConst thisValue, int argc,
     if (!measured.ok())
         return JS_ThrowInternalError(ctx, "canonical field measure failed");
     std::uint8_t* output = nullptr;
-    if (measured.size != 0) {
-        output = static_cast<std::uint8_t*>(js_malloc(ctx, measured.size));
-        if (output == nullptr)
-            return oom(ctx);
-    }
+    qjs::OwnedValue result(
+        ctx, makeSTBlobUninitialized(ctx, measured.size, &output));
+    if (result.isException())
+        return result.release();
     auto const written = xdata::canonical_field_value_write(
         ownerBytes(*owner), index, *located.field, output, measured.size);
-    if (!written.ok()) {
-        js_free(ctx, output);
+    if (!written.ok())
         return JS_ThrowInternalError(ctx, "canonical field write failed");
-    }
-    JSValue result = makeSTBlobBytes(ctx, output, measured.size);
-    js_free(ctx, output);
-    return result;
+    return result.release();
 }
 
 [[nodiscard]] JSValue
@@ -818,21 +986,27 @@ objectToBytes(JSContext* ctx, JSValueConst thisValue, int, JSValueConst*)
     if (!measured.ok())
         return JS_ThrowInternalError(ctx, "canonical object measure failed");
     std::uint8_t* output = nullptr;
-    if (measured.size != 0) {
-        output = static_cast<std::uint8_t*>(js_malloc(ctx, measured.size));
-        if (output == nullptr)
-            return oom(ctx);
-    }
+    qjs::OwnedValue result(
+        ctx, qjs::uint8ArrayUninitialized(ctx, measured.size, &output));
+    if (result.isException())
+        return result.release();
     auto const written = xdata::canonical_object_write(
         ownerBytes(*owner), index, scopeId(*state), scopeId(*state) == 0,
         output, measured.size);
-    if (!written.ok()) {
-        js_free(ctx, output);
+    if (!written.ok())
         return JS_ThrowInternalError(ctx, "canonical object write failed");
-    }
-    JSValue result = qjs::uint8Array(ctx, {output, measured.size});
-    js_free(ctx, output);
-    return result;
+    return result.release();
+}
+
+[[nodiscard]] JSValue
+objectToJSON(JSContext* ctx, JSValueConst thisValue, int, JSValueConst*)
+{
+    auto* state = objectState(ctx, thisValue);
+    if (state == nullptr)
+        return JS_EXCEPTION;
+    auto* owner = ownerFrom(*state);
+    return jsonObject(
+        ctx, *owner, ownerIndex(*owner), scopeId(*state));
 }
 
 [[nodiscard]] JSValue
@@ -959,6 +1133,17 @@ arrayAt(JSContext* ctx, JSValueConst thisValue, int argc, JSValueConst* argv)
     if (!readAtIndex(ctx, argc, argv, scope->field_count(), index))
         return JS_HasException(ctx) ? JS_EXCEPTION : JS_UNDEFINED;
     return arrayValue(ctx, *state, index);
+}
+
+[[nodiscard]] JSValue
+arrayToJSON(JSContext* ctx, JSValueConst thisValue, int, JSValueConst*)
+{
+    auto* state = arrayState(ctx, thisValue);
+    if (state == nullptr)
+        return JS_EXCEPTION;
+    auto* owner = ownerFrom(*state);
+    return jsonArray(
+        ctx, *owner, ownerIndex(*owner), scopeId(*state));
 }
 
 [[nodiscard]] JSValue
@@ -1264,10 +1449,12 @@ JSCFunctionListEntry const objectPrototype[] = {
     JS_CFUNC_DEF("get", 1, objectGet),
     JS_CFUNC_DEF("fieldBytes", 1, objectFieldBytes),
     JS_CFUNC_DEF("toBytes", 0, objectToBytes),
+    JS_CFUNC_DEF("toJSON", 0, objectToJSON),
 };
 
 JSCFunctionListEntry const arrayPrototype[] = {
     JS_CFUNC_DEF("at", 1, arrayAt),
+    JS_CFUNC_DEF("toJSON", 0, arrayToJSON),
     JS_CFUNC_DEF("[Symbol.iterator]", 0, arrayIterator),
 };
 

@@ -132,6 +132,12 @@ freezeObject(JSContext *ctx, JSValueConst value);
 JSValue
 uint8Array(JSContext *ctx, std::span<std::uint8_t const> bytes);
 
+/** Allocate a fresh Uint8Array and expose its private writable backing until
+ * the next JavaScript entry. The returned array owns that backing. */
+JSValue
+uint8ArrayUninitialized(
+    JSContext *ctx, std::size_t size, std::uint8_t **data);
+
 /** Preserve a pending JavaScript exception, or create the contract TypeError. */
 JSValue
 pendingOrTypeError(JSContext *ctx, char const *message);
