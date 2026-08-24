@@ -43,13 +43,16 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "025380ca6eb1e2971119873635382ed7cfd977a156ade0e0df0e3f26a1678c4a"
+    "sha256": "2ef67b54207ed04d5c462e8f312fed3994df9a7e04c553256ca7accf936f49e5"
   },
   "globals": {
     "AccountID": "object",
     "Field": "object",
+    "Hash": "object",
     "Hash256": "object",
+    "HostObject": "object",
     "STBlob": "object",
+    "UInt": "object",
     "UInt16": "object",
     "UInt32": "object",
     "UInt64": "object",

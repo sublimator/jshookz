@@ -668,7 +668,16 @@ declare global {
   const STBlob: STBlobFactory;
 
   /** @inner-rich-type Hash */
+  type HashBrandName<Width extends HashWidth> = {
+    16: "Hash128";
+    20: "Hash160";
+    24: "Hash192";
+    32: "Hash256";
+    48: "Hash384";
+    64: "Hash512";
+  }[Width];
   interface Hash<Width extends HashWidth = HashWidth> {
+    readonly [__providerValueBrand]: HashBrandName<Width>;
     readonly byteLength: Width;
     toBytes(): Uint8Array;
     toHex(): HexString;

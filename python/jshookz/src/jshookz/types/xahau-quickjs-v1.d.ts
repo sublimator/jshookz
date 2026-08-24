@@ -404,7 +404,17 @@ declare global {
   const STBlob: STBlobFactory;
 
   /** @inner-rich-type Hash */
+  type HashBrandName<Width extends HashWidth> = {
+    16: "Hash128";
+    20: "Hash160";
+    24: "Hash192";
+    32: "Hash256";
+    48: "Hash384";
+    64: "Hash512";
+  }[Width];
+
   interface Hash<Width extends HashWidth = HashWidth> {
+    readonly [__providerValueBrand]: HashBrandName<Width>;
     readonly byteLength: Width;
     toBytes(): Uint8Array;
     toHex(): HexString;
@@ -463,6 +473,15 @@ declare global {
   }
 
   const Hash256: Hash256Factory;
+
+  /**
+   * Runtime nouns for provider values without authoring factories
+   * (0085 close): the noun classifies; minting stays provider-side
+   * until a factory is earned.
+   */
+  const Hash: RuntimeType<Hash>;
+
+  const UInt: RuntimeType<UInt>;
 
   /** @serial AccountID */
   interface AccountID {
@@ -705,6 +724,14 @@ declare global {
     toJSON(): unknown;
     [Symbol.iterator](): IterableIterator<T>;
   }
+
+  /**
+   * Host-backed STArray. The wire form is terminator-delimited, not counted:
+   * `count()` walks, `at(i)` is O(i) from the start. `forEach` is the cheap
+   * traversal — one walk, one error channel.
+   */
+  /** Host-view runtime nouns (0085 close). */
+  const HostObject: RuntimeType<HostObject>;
 
   const enum TransactionType {
     Payment = 0,
