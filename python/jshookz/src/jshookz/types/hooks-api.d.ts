@@ -251,6 +251,44 @@ declare global {
   /** Same type; kept so existing `state.get` prose still type-checks. */
   type StateReadResult<T> = SchemaReadResult<T>;
 
+  /**
+   * Per-state disposition for a policied schema read — the third
+   * argument of `otxn.param` / `hook.param` / `state.get` /
+   * `state.foreign(...).get`. Pure tokens, all three states mandatory:
+   * `"none"` folds that state to `undefined` in the return;
+   * `"rollback"` is terminal with the read's own diagnostic;
+   * `{ rollback: msg }` is terminal with the site's exact message;
+   * `hostError: "propagate"` keeps the host failure as a Result.
+   * Defaulting a value stays at the call site — `read(...) ?? fallback`
+   * — visible, and exactly the fold C's `!= width` idiom performed
+   * (host failure, wrong size, and absence all took the default).
+   */
+  interface ReadPolicies {
+    readonly missing: "none" | "rollback" | { readonly rollback: string };
+    readonly invalid: "none" | "rollback" | { readonly rollback: string };
+    readonly hostError:
+      | "none"
+      | "rollback"
+      | { readonly rollback: string }
+      | "propagate";
+  }
+  /** `undefined` is reachable exactly when some policy is `"none"`. */
+  type PolicyOutcome<T, P extends ReadPolicies> = "none" extends
+    | P["missing"]
+    | P["invalid"]
+    | P["hostError"]
+    ? T | undefined
+    : T;
+  /**
+   * Return of a policied read: a bare value, unless `hostError:
+   * "propagate"` keeps the host channel as a `HostResult`.
+   */
+  type PolicyRead<T, P extends ReadPolicies> = [P["hostError"]] extends [
+    "propagate",
+  ]
+    ? HostResult<PolicyOutcome<T, P>>
+    : PolicyOutcome<T, P>;
+
   /** Failure from constructing or operating on a bounded unsigned integer. */
   interface UIntError {
     readonly domain: "uint";
@@ -601,6 +639,48 @@ declare global {
       const Width extends number,
       const Shape extends { readonly [K: string]: RecordField<unknown, Width> },
     >(interpretations: Shape): RecordField<OverlayValue<Shape>, Width>;
+  }
+
+  /**
+   * Source-length admission witness: the explicit range of source byte
+   * lengths a read contract accepts (reader authority — mandatory and
+   * defaultless). `exact` restates writer authority at a read;
+   * `between` admits an observed foreign/legacy range with a
+   * contractual ceiling; `atLeast` is ONLY for a historical capacity
+   * proven to be an implementation artifact the C program never
+   * observed — an explicit choice, never a default.
+   */
+  interface SourceLength {
+    readonly [__providerValueBrand]: "SourceLength";
+    readonly min: number;
+    /** `null`: no contractual ceiling (artifact branch of bound authority). */
+    readonly max: number | null;
+  }
+  const SourceLength: RuntimeType<SourceLength> & {
+    exact(byteLength: number): SourceLength;
+    between(min: number, max: number): SourceLength;
+    atLeast(min: number): SourceLength;
+  };
+
+  namespace view {
+    interface PrefixOptions {
+      readonly sourceLength: SourceLength;
+    }
+    /**
+     * Reader-authority projection: admits any source whose byte length
+     * the witness accepts and decodes the record as the source's
+     * prefix — the C idiom of reading a record into a fixed capacity
+     * and using the leading fields. A source outside the admitted
+     * range is a `wrong-length` ParseError; zero-fill and truncation
+     * NEVER happen implicitly. The admitted minimum must cover
+     * `record.byteLength`; the provider throws at construction on a
+     * range the prefix cannot satisfy (programmer error, like a
+     * malformed `cell` name).
+     */
+    function prefix<Name extends string, Size extends number, Value>(
+      record: RecordSchema<Name, Size, Value>,
+      options: PrefixOptions,
+    ): BinarySchema<Value>;
   }
 
   interface ByteCompareOptions {
@@ -1972,6 +2052,12 @@ declare global {
      */
     function param(name: StateKeyLike): HostResult<STBlob | undefined>;
     function param<T>(name: StateKeyLike, schema: BinarySchema<T>): SchemaReadResult<T>;
+    /** Policied read: disposition declared at the site (`ReadPolicies`). */
+    function param<T, const P extends ReadPolicies>(
+      name: StateKeyLike,
+      schema: BinarySchema<T>,
+      policies: P,
+    ): PolicyRead<T, P>;
     function params(names: readonly StateKeyLike[]): HostResult<readonly (STBlob | undefined)[]>;
     function params<const T extends BatchKeys>(names: T): HostResult<BatchValues<T>>;
     /**
@@ -2013,6 +2099,12 @@ declare global {
     interface Accessor {
       get(key: StateKeyLike): HostResult<STBlob | undefined>;
       get<T>(key: StateKeyLike, schema: BinarySchema<T>): StateReadResult<T>;
+      /** Policied read: disposition declared at the site (`ReadPolicies`). */
+      get<T, const P extends ReadPolicies>(
+        key: StateKeyLike,
+        schema: BinarySchema<T>,
+        policies: P,
+      ): PolicyRead<T, P>;
       getMany(keys: readonly StateKeyLike[]): HostResult<readonly (STBlob | undefined)[]>;
       getMany<const T extends BatchKeys>(keys: T): HostResult<BatchValues<T>>;
       set(key: StateKeyLike, value: StateValueLike): HostVoidResult;
@@ -2026,6 +2118,12 @@ declare global {
     function get(key: string | BytesLike | STBlob | Hash256 | AccountID): HostResult<STBlob | undefined>;
     function get(key: StateKeyLike): HostResult<STBlob | undefined>;
     function get<T>(key: StateKeyLike, schema: BinarySchema<T>): StateReadResult<T>;
+    /** Policied read: disposition declared at the site (`ReadPolicies`). */
+    function get<T, const P extends ReadPolicies>(
+      key: StateKeyLike,
+      schema: BinarySchema<T>,
+      policies: P,
+    ): PolicyRead<T, P>;
     function getMany(keys: readonly StateKeyLike[]): HostResult<readonly (STBlob | undefined)[]>;
     function getMany<const T extends BatchKeys>(keys: T): HostResult<BatchValues<T>>;
     function set(
@@ -2333,6 +2431,12 @@ declare global {
      */
     function param(name: StateKeyLike): HostResult<STBlob | undefined>;
     function param<T>(name: StateKeyLike, schema: BinarySchema<T>): SchemaReadResult<T>;
+    /** Policied read: disposition declared at the site (`ReadPolicies`). */
+    function param<T, const P extends ReadPolicies>(
+      name: StateKeyLike,
+      schema: BinarySchema<T>,
+      policies: P,
+    ): PolicyRead<T, P>;
     function params(names: readonly StateKeyLike[]): HostResult<readonly (STBlob | undefined)[]>;
     function params<const T extends BatchKeys>(names: T): HostResult<BatchValues<T>>;
     /**
