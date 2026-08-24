@@ -553,12 +553,7 @@ declare global {
     equals(other: Currency): boolean;
   }
 
-  interface CurrencyFactory extends RuntimeType<Currency> {
-    readonly native: Currency;
-    from(value: BytesLike | string): Currency;
-  }
-
-  const Currency: CurrencyFactory;
+  const Currency: RuntimeType<Currency>;
 
   /** @serial Issue */
   interface Issue {
@@ -571,13 +566,7 @@ declare global {
     equals(other: Issue): boolean;
   }
 
-  interface IssueFactory extends RuntimeType<Issue> {
-    native(): Issue;
-    iou(currency: Currency, issuer: AccountID): Issue;
-    mpt(mptIssuanceId: Hash192): Issue;
-  }
-
-  const Issue: IssueFactory;
+  const Issue: RuntimeType<Issue>;
 
   /** Immutable provider-minted sequence for the serialized Vector256 wire type. */
   /** @serial Vector256 */
@@ -601,19 +590,6 @@ declare global {
     toBytes(): Uint8Array;
     equals(other: XChainBridge): boolean;
   }
-
-  /** Failure from constructing or operating on an `XFLDecimal`. */
-  interface XFLError {
-    readonly domain: "xfl";
-    readonly issue:
-      | "overflow"
-      | "underflow"
-      | "division-by-zero"
-      | "out-of-range"
-      | "invalid";
-  }
-
-  type XFLResult<T> = Result<T, XFLError>;
 
   /**
    * XFLDecimal — the bounded decimal value used for issued amounts on Xahau.
@@ -639,17 +615,7 @@ declare global {
     isZero(): boolean;
   }
 
-  interface XFLDecimalFactory extends RuntimeType<XFLDecimal> {
-    readonly zero: XFLDecimal;
-    readonly one: XFLDecimal;
-    /**
-     * Construct `mantissa × 10^exponent`. The value comes first so ordinary
-     * calls read in the same order as the decimal quantity they express.
-     */
-    from(mantissa: bigint | number, exponent?: number): XFLResult<XFLDecimal>;
-  }
-
-  const XFLDecimal: XFLDecimalFactory;
+  const XFLDecimal: RuntimeType<XFLDecimal>;
 
   /** @serial Amount */
   interface Amount {
@@ -680,14 +646,7 @@ declare global {
     compare(other: Amount): -1 | 0 | 1;
   }
 
-  interface AmountFactory extends RuntimeType<Amount> {
-    from(value: BytesLike | STBlob): Amount;
-    drops(value: Drops): NativeAmount;
-    iou(value: XFLDecimal, currency: Currency, issuer: AccountID): IOUAmount;
-    mpt(value: bigint, mptIssuanceId: Hash192): MPTAmount;
-  }
-
-  const Amount: AmountFactory;
+  const Amount: RuntimeType<Amount>;
 
   interface NativeAmount extends Amount {
     readonly kind: "native";

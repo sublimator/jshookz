@@ -43,7 +43,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "4c74812d6280351f888d9794ba848ecc65ec6f477ac9eedc48c2fe0b96905ccb"
+    "sha256": "e021e2e6696e7eda871025eecf58df9fd0a9dc475d732af8c8d52db78f7fa2e6"
   },
   "globals": {
     "AccountID": "object",
@@ -539,25 +539,10 @@
       "one": "value",
       "zero": "value"
     },
-    "Amount": {
-      "drops": "function",
-      "from": "function",
-      "iou": "function",
-      "mpt": "function"
-    },
-    "Currency": {
-      "from": "function",
-      "native": "value"
-    },
     "Hash256": {
       "from": "function",
       "fromHex": "function",
       "zero": "value"
-    },
-    "Issue": {
-      "iou": "function",
-      "mpt": "function",
-      "native": "function"
     },
     "STBlob": {
       "from": "function",
@@ -586,11 +571,6 @@
       "from": "function",
       "max": "value",
       "mulDiv": "function",
-      "zero": "value"
-    },
-    "XFLDecimal": {
-      "from": "function",
-      "one": "value",
       "zero": "value"
     }
   }
