@@ -21,6 +21,13 @@ from .schema import HOOK_API
 SOURCE_SCHEMA = "xahau.quickjs.runtime-profile-source.v1"
 LOCK_SCHEMA = "xahau.quickjs.runtime-profile-lock.v1"
 SURFACE_SCHEMA = "jshookz.javascript-surface.v1"
+_OBJECT_LIMIT_NAMES = (
+    "serialized_object_max_bytes",
+    "serialized_object_max_fields",
+    "serialized_object_max_scopes",
+    "serialized_object_max_depth",
+)
+_UINT32_MAX = (1 << 32) - 1
 
 
 def canonical_json_bytes(value: Any) -> bytes:
@@ -40,6 +47,114 @@ def _load_object(path: str | Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"{path}: expected a JSON object")
     return value
+
+
+def _validated_object_limits(source: dict[str, Any]) -> dict[str, int]:
+    """Return the checked object limits carried by a profile source."""
+    limits = source.get("limits")
+    if not isinstance(limits, dict):
+        raise ValueError("runtime-profile source has no limits object")
+
+    values: dict[str, int] = {}
+    for name in _OBJECT_LIMIT_NAMES:
+        value = limits.get(name)
+        if (
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value <= 0
+            or value > _UINT32_MAX
+        ):
+            raise ValueError(
+                f"runtime-profile object limit {name!r} must be a positive uint32"
+            )
+        values[name] = value
+    return values
+
+
+def _read_leb128(data: bytes, position: int, *, signed: bool) -> tuple[int, int]:
+    """Read one bounded WebAssembly integer from *data*."""
+    value = 0
+    shift = 0
+    while True:
+        if position >= len(data):
+            raise ValueError("truncated WebAssembly LEB128")
+        byte = data[position]
+        position += 1
+        value |= (byte & 0x7F) << shift
+        shift += 7
+        if byte < 0x80:
+            if signed and (byte & 0x40):
+                value |= -(1 << shift)
+            return value, position
+        if shift >= 70:
+            raise ValueError("oversized WebAssembly LEB128")
+
+
+def _wasm_stack_pointer_initial(wasm: bytes) -> int:
+    """Return the sole mutable i32 global's initial value."""
+    if wasm[:8] != b"\0asm\x01\0\0\0":
+        raise ValueError("provider is not a WebAssembly 1 binary")
+
+    position = 8
+    mutable_i32: list[int] = []
+    while position < len(wasm):
+        section_id = wasm[position]
+        position += 1
+        section_size, position = _read_leb128(wasm, position, signed=False)
+        section_end = position + section_size
+        if section_end > len(wasm):
+            raise ValueError("truncated WebAssembly section")
+        if section_id != 6:
+            position = section_end
+            continue
+
+        count, position = _read_leb128(wasm, position, signed=False)
+        for _ in range(count):
+            if position + 3 > section_end:
+                raise ValueError("truncated WebAssembly global")
+            value_type = wasm[position]
+            mutable = wasm[position + 1]
+            opcode = wasm[position + 2]
+            position += 3
+            if opcode == 0x41:  # i32.const
+                initial, position = _read_leb128(wasm, position, signed=True)
+            elif opcode == 0x42:  # i64.const
+                _, position = _read_leb128(wasm, position, signed=True)
+                initial = 0
+            elif opcode == 0x43:  # f32.const
+                position += 4
+                initial = 0
+            elif opcode == 0x44:  # f64.const
+                position += 8
+                initial = 0
+            elif opcode in (0x23, 0xD2):  # global.get / ref.func
+                _, position = _read_leb128(wasm, position, signed=False)
+                initial = 0
+            elif opcode == 0xD0:  # ref.null
+                position += 1
+                initial = 0
+            else:
+                raise ValueError(
+                    f"unsupported WebAssembly global initializer 0x{opcode:02x}"
+                )
+            if position >= section_end or wasm[position] != 0x0B:
+                raise ValueError("WebAssembly global initializer has no end opcode")
+            position += 1
+            if value_type == 0x7F and mutable == 1:
+                if opcode != 0x41:
+                    raise ValueError(
+                        "mutable i32 global is not initialized by i32.const"
+                    )
+                mutable_i32.append(initial)
+        if position != section_end:
+            raise ValueError("WebAssembly global section has trailing bytes")
+        break
+
+    if len(mutable_i32) != 1:
+        raise ValueError(
+            "provider must contain exactly one mutable i32 stack-pointer global"
+        )
+    return mutable_i32[0]
 
 
 def _wasm_surface(wasm_path: str | Path) -> dict[str, Any]:
@@ -87,11 +202,18 @@ def _wasm_surface(wasm_path: str | Path) -> dict[str, Any]:
             )
         exports.append({"name": item.name, **surface})
     exports.sort(key=lambda item: item["name"])
+    memories = [item for item in exports if item["kind"] == "memory"]
+    if len(memories) != 1 or memories[0]["maximum_pages"] is None:
+        raise ValueError("provider must export exactly one bounded memory")
     return {
         "sha256": _sha256(wasm),
         "size": len(wasm),
         "imports": imports,
         "exports": exports,
+        "build": {
+            "wasm_stack_bytes": _wasm_stack_pointer_initial(wasm),
+            "wasm_memory_max_bytes": memories[0]["maximum_pages"] * 65536,
+        },
     }
 
 
@@ -155,9 +277,7 @@ def _selected_javascript_artifacts(
         document_path,
         policy.get("declaration"),
         override=declaration_path,
-        packaged_relative=(
-            "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts"
-        ),
+        packaged_relative=("python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts"),
         packaged_path=XAHAU_V1_HOOKS_API_DECLARATIONS,
         label="JavaScript declaration",
     )
@@ -171,9 +291,7 @@ def _javascript_surface(
 ) -> dict[str, str]:
     policy = source.get("javascript_surface")
     if not isinstance(policy, dict) or policy.get("schema") != SURFACE_SCHEMA:
-        raise ValueError(
-            f"runtime-profile source must select {SURFACE_SCHEMA!r}"
-        )
+        raise ValueError(f"runtime-profile source must select {SURFACE_SCHEMA!r}")
 
     surface_bytes = Path(surface_path).read_bytes()
     surface = json.loads(surface_bytes)
@@ -209,10 +327,23 @@ def _javascript_surface(
 
 
 def _validate_provider_policy(source: dict[str, Any], provider: dict[str, Any]) -> None:
-    """Apply the source manifest's provider allow-list and export contract."""
+    """Apply the source manifest's exact import and export contract."""
     policy = source.get("provider")
     if not isinstance(policy, dict):
         raise ValueError("runtime-profile source has no provider policy")
+
+    expected_build = policy.get("build")
+    actual_build = provider.get("build")
+    if not isinstance(expected_build, dict) or not isinstance(actual_build, dict):
+        raise ValueError("runtime-profile provider has no checked build metadata")
+    for name in ("wasm_stack_bytes", "wasm_memory_max_bytes"):
+        expected = expected_build.get(name)
+        actual = actual_build.get(name)
+        if expected != actual:
+            raise ValueError(
+                f"provider build {name} differs from the artifact: "
+                f"expected {expected!r}, actual {actual!r}"
+            )
 
     expected_imports = sorted(
         policy.get("imports", []), key=lambda item: (item["module"], item["name"])
@@ -230,22 +361,56 @@ def _validate_provider_policy(source: dict[str, Any], provider: dict[str, Any]) 
     if forbidden:
         raise ValueError(f"provider retains forbidden imports: {forbidden!r}")
 
-    expected_exports = policy.get("required_exports", [])
+    expected_exports = policy.get("allowed_exports")
     if not isinstance(expected_exports, list) or not all(
-        isinstance(item, dict) and isinstance(item.get("name"), str)
+        isinstance(item, dict)
+        and isinstance(item.get("name"), str)
+        and bool(item["name"])
         for item in expected_exports
     ):
-        raise ValueError("provider required_exports must be a list of typed exports")
-    actual_exports = {item["name"]: item for item in provider["exports"]}
+        raise ValueError("provider allowed_exports must be a list of typed exports")
+
+    expected_names = [item["name"] for item in expected_exports]
+    if len(expected_names) != len(set(expected_names)):
+        raise ValueError("provider allowed_exports contains duplicate names")
+    if expected_names != sorted(expected_names):
+        raise ValueError("provider allowed_exports must be normalized by export name")
+
+    provider_exports = provider.get("exports")
+    if not isinstance(provider_exports, list) or not all(
+        isinstance(item, dict)
+        and isinstance(item.get("name"), str)
+        and bool(item["name"])
+        for item in provider_exports
+    ):
+        raise ValueError("provider exports must be a list of typed exports")
+    actual_names = [item["name"] for item in provider_exports]
+    if len(actual_names) != len(set(actual_names)):
+        raise ValueError("provider exports contain duplicate names")
+
+    expected_name_set = set(expected_names)
+    actual_name_set = set(actual_names)
+    missing = sorted(expected_name_set - actual_name_set)
+    if missing:
+        raise ValueError(f"provider is missing allowed exports: {missing!r}")
+    extra = sorted(actual_name_set - expected_name_set)
+    if extra:
+        raise ValueError(f"provider has exports outside allowed_exports: {extra!r}")
+
+    actual_exports = {item["name"]: item for item in provider_exports}
     for expected in expected_exports:
-        actual = actual_exports.get(expected["name"])
-        if actual is None:
-            raise ValueError(f"provider is missing required export: {expected['name']}")
+        actual = actual_exports[expected["name"]]
         if actual != expected:
             raise ValueError(
                 f"provider export {expected['name']} differs from the profile:\n"
                 f"expected {expected!r}\nactual   {actual!r}"
             )
+
+    if provider_exports != expected_exports:
+        raise ValueError(
+            "provider export order differs from normalized allowed_exports:\n"
+            f"expected {expected_exports!r}\nactual   {provider_exports!r}"
+        )
 
 
 def build_runtime_profile_lock(
@@ -260,6 +425,7 @@ def build_runtime_profile_lock(
         raise ValueError(
             f"unsupported runtime-profile source schema: {source.get('schema')!r}"
         )
+    _validated_object_limits(source)
 
     provider = _wasm_surface(wasm_path)
     _validate_provider_policy(source, provider)
@@ -309,6 +475,10 @@ class ProfileExecutionLimits:
 
     quickjs_heap_bytes: int
     quickjs_stack_bytes: int
+    serialized_object_max_bytes: int
+    serialized_object_max_fields: int
+    serialized_object_max_scopes: int
+    serialized_object_max_depth: int
     initialization_fuel: int
     invocation_fuel: int
     host_work_budget: int
@@ -326,9 +496,11 @@ class ProfileExecutionLimits:
 def profile_execution_limits(lock: RuntimeProfileLock) -> ProfileExecutionLimits:
     """Validate and project the executable limits from a verified lock."""
     try:
-        limits = lock.data["source"]["limits"]
+        source = lock.data["source"]
+        limits = source["limits"]
     except (KeyError, TypeError) as error:
         raise ValueError("runtime-profile lock has no execution limits") from error
+    object_limits = _validated_object_limits(source)
     if not isinstance(limits, dict):
         raise ValueError("runtime-profile execution limits must be an object")
     if limits.get("host_work_meter") != "base-plus-addressed-byte-v1":
@@ -337,6 +509,7 @@ def profile_execution_limits(lock: RuntimeProfileLock) -> ProfileExecutionLimits
     integer_names = (
         "quickjs_heap_bytes",
         "quickjs_stack_bytes",
+        *_OBJECT_LIMIT_NAMES,
         "wasmtime_fuel_per_initialization",
         "wasmtime_fuel_per_invocation",
         "host_work_budget",
@@ -345,6 +518,9 @@ def profile_execution_limits(lock: RuntimeProfileLock) -> ProfileExecutionLimits
     )
     values: dict[str, int] = {}
     for name in integer_names:
+        if name in object_limits:
+            values[name] = object_limits[name]
+            continue
         value = limits.get(name)
         if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
             raise ValueError(
@@ -370,9 +546,7 @@ def profile_execution_limits(lock: RuntimeProfileLock) -> ProfileExecutionLimits
             not isinstance(indices, list)
             or not indices
             or any(
-                not isinstance(index, int)
-                or isinstance(index, bool)
-                or index < 0
+                not isinstance(index, int) or isinstance(index, bool) or index < 0
                 for index in indices
             )
             or len(indices) != len(set(indices))
@@ -382,14 +556,16 @@ def profile_execution_limits(lock: RuntimeProfileLock) -> ProfileExecutionLimits
                 "non-negative integers"
             )
         if any(index >= function_arities[name] for index in indices):
-            raise ValueError(
-                f"host-work length index is outside raw function {name!r}"
-            )
+            raise ValueError(f"host-work length index is outside raw function {name!r}")
         addressed.append((name, tuple(indices)))
 
     return ProfileExecutionLimits(
         quickjs_heap_bytes=values["quickjs_heap_bytes"],
         quickjs_stack_bytes=values["quickjs_stack_bytes"],
+        serialized_object_max_bytes=values["serialized_object_max_bytes"],
+        serialized_object_max_fields=values["serialized_object_max_fields"],
+        serialized_object_max_scopes=values["serialized_object_max_scopes"],
+        serialized_object_max_depth=values["serialized_object_max_depth"],
         initialization_fuel=values["wasmtime_fuel_per_initialization"],
         invocation_fuel=values["wasmtime_fuel_per_invocation"],
         host_work_budget=values["host_work_budget"],
@@ -427,6 +603,20 @@ def verify_runtime_profile_lock(
     if not isinstance(source, dict):
         raise ValueError("runtime-profile lock has no source manifest")
 
+    lock_document = Path(lock_path)
+    lock_suffix = ".lock.json"
+    if lock_document.name.endswith(lock_suffix):
+        companion_source = lock_document.with_name(
+            lock_document.name[: -len(lock_suffix)] + ".source.json"
+        )
+        if companion_source.is_file() and _load_object(companion_source) != source:
+            raise ValueError(
+                "runtime-profile lock source does not match its companion source; "
+                "rebuild the provider bundle"
+            )
+
+    _validated_object_limits(source)
+
     # Rebuild without relying on an ambient source path.
     provider = _wasm_surface(wasm_path)
     expected_provider = lock.data.get("provider")
@@ -442,9 +632,7 @@ def verify_runtime_profile_lock(
         source, selected_surface, selected_declaration
     )
     if javascript_surface != lock.data.get("javascript_surface"):
-        raise ValueError(
-            "JavaScript surface does not match the runtime-profile lock"
-        )
+        raise ValueError("JavaScript surface does not match the runtime-profile lock")
 
     bytecode_abi_id = _identity("xahau.quickjs.bytecode-abi.v1", source["bytecode_abi"])
     identity_manifest = {

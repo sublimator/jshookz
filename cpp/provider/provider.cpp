@@ -41,6 +41,7 @@ destroy_runtime(void)
         ctx = NULL;
     }
     if (rt) {
+        unregister_cpp_types(rt);
         JS_FreeRuntime(rt);
         rt = NULL;
     }

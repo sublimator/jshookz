@@ -7,7 +7,15 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from wasmtime import (
-    Config, Engine, Func, FuncType, Linker, Module, Store, Trap, ValType,
+    Config,
+    Engine,
+    Func,
+    FuncType,
+    Linker,
+    Module,
+    Store,
+    Trap,
+    ValType,
 )
 from wasmtime import _ffi as wasmtime_ffi
 
@@ -31,6 +39,7 @@ class HostHandler(Protocol):
 @dataclass
 class ContractResult:
     """Result of running a contract."""
+
     exit_code: int
     result_value: str | None = None
     gas_used: int = 0
@@ -101,10 +110,9 @@ class WasmHost:
             else fuel
         )
         self._host_work_remaining = (
-            execution_limits.host_work_budget
-            if execution_limits is not None
-            else None
+            execution_limits.host_work_budget if execution_limits is not None else None
         )
+        self._destroyed = False
 
         self._setup_engine()
 
@@ -175,7 +183,7 @@ class WasmHost:
 
     def _read_wasm_string(self, ptr: int, length: int) -> str:
         data = self.memory.data_ptr(self.store)
-        raw = bytes(data[ptr:ptr + length])
+        raw = bytes(data[ptr : ptr + length])
         return raw.decode("utf-8")
 
     def _write_wasm_memory(self, ptr: int, data: bytes) -> int:
@@ -255,8 +263,11 @@ class WasmHost:
         # Build wasmtime param/return types
         param_types = []
         for name, wtype in fn.wasm_params:
-            param_types.append({"i32": ValType.i32(), "i64": ValType.i64(),
-                                "f64": ValType.f64()}[wtype])
+            param_types.append(
+                {"i32": ValType.i32(), "i64": ValType.i64(), "f64": ValType.f64()}[
+                    wtype
+                ]
+            )
 
         return_types = []
         if fn.returns in (WasmType.STRING, WasmType.BYTES):
@@ -265,8 +276,9 @@ class WasmHost:
             return_types.append(ValType.i32())
         elif fn.returns != WasmType.VOID:
             wrt = fn.wasm_return
-            return_types.append({"i32": ValType.i32(), "i64": ValType.i64(),
-                                 "f64": ValType.f64()}[wrt])
+            return_types.append(
+                {"i32": ValType.i32(), "i64": ValType.i64(), "f64": ValType.f64()}[wrt]
+            )
 
         ftype = FuncType(param_types, return_types)
 
@@ -301,7 +313,7 @@ class WasmHost:
                     py_args.append(self._read_wasm_string(ptr, length))
                 else:
                     data = self.memory.data_ptr(self.store)
-                    py_args.append(bytes(data[ptr:ptr + length]))
+                    py_args.append(bytes(data[ptr : ptr + length]))
             else:
                 py_args.append(wasm_args[wasm_idx])
                 wasm_idx += 1
@@ -528,9 +540,7 @@ class WasmHost:
         result_ptr = get_ptr(self.store)
         result_len = get_len(self.store)
         result_value = (
-            self._read_wasm_string(result_ptr, result_len)
-            if result_len > 0
-            else None
+            self._read_wasm_string(result_ptr, result_len) if result_len > 0 else None
         )
 
         return ContractResult(
@@ -552,9 +562,7 @@ class WasmHost:
         self._write_wasm_memory(ptr, bytecode)
         try:
             self._validating_hook = True
-            validate = self.instance.exports(self.store)[
-                "qjs_validate_hook_module"
-            ]
+            validate = self.instance.exports(self.store)["qjs_validate_hook_module"]
             flags = validate(self.store, ptr, len(bytecode))
         except Exception as error:
             return HookModuleValidation(valid=False, error=str(error))
@@ -615,8 +623,21 @@ class WasmHost:
             self._safe_wasm_free(ptr)
 
     def destroy(self):
-        """Clean up QuickJS context."""
+        """Clean up QuickJS and release the complete Wasmtime instance graph."""
+        if self._destroyed:
+            return
         if self._metered and self.store.get_fuel() < _CLEANUP_FUEL:
             self.store.set_fuel(_CLEANUP_FUEL)
         qjs_destroy = self.instance.exports(self.store)["qjs_destroy"]
-        qjs_destroy(self.store)
+        try:
+            qjs_destroy(self.store)
+        finally:
+            self._destroyed = True
+            # Wasmtime host functions retain bound callbacks into this object.
+            # Break that graph explicitly instead of deferring dozens of code
+            # registrations to cyclic GC or interpreter shutdown.
+            self.memory = None
+            self.instance = None
+            self.linker = None
+            self.store = None
+            self.engine = None

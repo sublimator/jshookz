@@ -71,9 +71,7 @@ def test_rejects_non_callable_main_export():
 
 
 def test_rejects_non_callable_callback_export():
-    bytecode = compile_bytecode(
-        "export function main() {}\nexport const callback = 2;"
-    )
+    bytecode = compile_bytecode("export function main() {}\nexport const callback = 2;")
 
     result = validate(bytecode)
 
@@ -132,22 +130,16 @@ def test_rejects_throwing_module_initialization():
 
 
 def test_rejects_pending_module_initialization():
-    bytecode = compile_bytecode(
-        "export function main() {}\nawait Promise.resolve();"
-    )
+    bytecode = compile_bytecode("export function main() {}\nawait Promise.resolve();")
 
     result = validate(bytecode)
 
     assert not result.valid
-    assert result.error == (
-        "TypeError: pending module initialization is not supported"
-    )
+    assert result.error == ("TypeError: pending module initialization is not supported")
 
 
 def test_rejects_host_calls_during_module_initialization():
-    bytecode = compile_bytecode(
-        "export function main() {}\nvoid ledger.sequence;"
-    )
+    bytecode = compile_bytecode("export function main() {}\nvoid ledger.sequence;")
 
     result = validate(bytecode)
 
@@ -155,10 +147,9 @@ def test_rejects_host_calls_during_module_initialization():
     assert "unavailable during module initialization" in result.error
 
 
-def test_v1_bytes_accepts_typed_arrays_array_buffer_and_hex():
+def test_v1_bytes_accepts_uint8_array_array_buffer_and_hex():
     result = evaluate(
         "JSON.stringify(["
-        "STBlob.from(new Uint16Array([258])).toHex(),"
         "STBlob.from(new Uint8Array(new Uint8Array([0,160,255,0]).buffer,1,2)).toHex(),"
         "STBlob.from(new ArrayBuffer(2)).byteLength,"
         "STBlob.fromHex('A0FF').toHex(),"
@@ -167,7 +158,7 @@ def test_v1_bytes_accepts_typed_arrays_array_buffer_and_hex():
     )
 
     assert result.exit_code == 0
-    assert result.result_value == '["0201","A0FF",2,"A0FF",0]'
+    assert result.result_value == '["A0FF",2,"A0FF",0]'
 
 
 def test_v1_bytes_accepts_strict_byte_arrays_and_rejects_ambiguous_inputs():
@@ -191,13 +182,15 @@ def test_v1_bytes_accepts_strict_byte_arrays_and_rejects_ambiguous_inputs():
 def test_v1_bytes_rejects_typed_arrays_omitted_from_bytes_like():
     result = evaluate(
         "JSON.stringify(["
+        "(() => { try { STBlob.from(new Uint16Array([258])); return false; } "
+        "catch (error) { return error instanceof TypeError; } })(),"
         "(() => { try { STBlob.from(new Float16Array([1])); return false; } "
         "catch (error) { return error instanceof TypeError; } })()"
         "]);"
     )
 
     assert result.exit_code == 0
-    assert result.result_value == "[true]"
+    assert result.result_value == "[true,true]"
 
 
 def test_stblob_equals_accepts_the_declared_stblob_input():

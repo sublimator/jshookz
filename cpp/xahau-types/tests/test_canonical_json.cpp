@@ -1,10 +1,14 @@
 #include "js.hpp"
 #include "object/canonical_json.hpp"
+#include "object/field_js.hpp"
 #include "object/object.hpp"
 #include "quickjs.hpp"
 
+#include "catl/xdata/static_protocol.h"
+
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -12,6 +16,7 @@
 #include <cstring>
 #include <limits>
 #include <string>
+#include <string_view>
 
 extern "C" bool register_uint_types(JSContext *ctx);
 
@@ -25,13 +30,28 @@ using Factory = JSValue (*)(JSContext *, std::uint8_t const *,
 
 class LocalValue {
 public:
-  LocalValue(JSContext *context, JSValue value) noexcept
+  LocalValue(JSContext *context, JSValue value = JS_UNDEFINED) noexcept
       : context_(context), value_(value) {}
 
   ~LocalValue() { JS_FreeValue(context_, value_); }
 
   LocalValue(LocalValue const &) = delete;
   LocalValue &operator=(LocalValue const &) = delete;
+
+  LocalValue(LocalValue &&other) noexcept
+      : context_(other.context_), value_(other.value_) {
+    other.value_ = JS_UNDEFINED;
+  }
+
+  LocalValue &operator=(LocalValue &&other) noexcept {
+    if (this != &other) {
+      JS_FreeValue(context_, value_);
+      context_ = other.context_;
+      value_ = other.value_;
+      other.value_ = JS_UNDEFINED;
+    }
+    return *this;
+  }
 
   [[nodiscard]] JSValueConst get() const noexcept { return value_; }
 
@@ -318,7 +338,7 @@ struct AllocationRequest {
 };
 
 struct AllocatorControl {
-  static constexpr std::size_t maxRecordedRequests = 128;
+  static constexpr std::size_t maxRecordedRequests = 1024;
 
   std::size_t requests = 0;
   std::size_t rejectAt = 0;
@@ -461,6 +481,534 @@ void expectJSONValue(JSContext *context, JSValueConst value,
   ASSERT_NE(text, nullptr);
   EXPECT_STREQ(text, expected);
   JS_FreeCString(context, text);
+}
+
+TEST(FieldDescriptorOOM,
+     FirstObservationIsAtomicIdentityCachedAndAllocationFreeAfterRetry) {
+  AllocatorControl allocator;
+  JSRuntime *runtime = JS_NewRuntime2(&testAllocator, &allocator);
+  ASSERT_NE(runtime, nullptr);
+  JSContext *context = JS_NewContext(runtime);
+  ASSERT_NE(context, nullptr);
+  ASSERT_TRUE(types::registerObjectTypes(context));
+
+  {
+    LocalValue global(context, JS_GetGlobalObject(context));
+    ASSERT_FALSE(JS_IsException(global.get()));
+    ASSERT_TRUE(types::registerFieldDescriptors(context, global.get()));
+    LocalValue fields(context,
+                      JS_GetPropertyStr(context, global.get(), "Field"));
+    ASSERT_FALSE(JS_IsException(fields.get()));
+
+    LocalValue warm(context,
+                    JS_GetPropertyStr(context, fields.get(), "Flags"));
+    ASSERT_FALSE(JS_IsException(warm.get()));
+    std::size_t const measuredBefore = allocator.requests;
+    LocalValue measured(context,
+                        JS_GetPropertyStr(context, fields.get(), "Sequence"));
+    ASSERT_FALSE(JS_IsException(measured.get()));
+    std::size_t const requestCount = allocator.requests - measuredBefore;
+    ASSERT_GT(requestCount, 0u);
+
+    static constexpr std::array<char const *, 8> unwarmedNames = {
+        "SourceTag", "Account", "Amount", "Fee",
+        "SigningPubKey", "TxnSignature", "Memos", "EmitDetails",
+    };
+    ASSERT_LE(requestCount, unwarmedNames.size());
+    for (std::size_t ordinal = 1; ordinal <= requestCount; ++ordinal) {
+      SCOPED_TRACE(ordinal);
+      char const *name = unwarmedNames[ordinal - 1];
+      std::size_t const liveBefore = allocator.liveBlocks;
+      std::size_t const rejectionsBefore = allocator.rejections;
+      allocator.rejectAt = allocator.requests + ordinal;
+      JSValue failed = JS_GetPropertyStr(context, fields.get(), name);
+      allocator.rejectAt = 0;
+
+      EXPECT_TRUE(JS_IsException(failed));
+      ASSERT_EQ(allocator.rejections, rejectionsBefore + 1);
+      expectOnePendingOOM(context, ordinal);
+      EXPECT_EQ(allocator.liveBlocks, liveBefore);
+
+      LocalValue retry(context,
+                       JS_GetPropertyStr(context, fields.get(), name));
+      ASSERT_FALSE(JS_IsException(retry.get()));
+      ASSERT_TRUE(JS_IsObject(retry.get()));
+      void const *identity = JS_VALUE_GET_PTR(retry.get());
+      std::size_t const cachedBefore = allocator.requests;
+      LocalValue cached(context,
+                        JS_GetPropertyStr(context, fields.get(), name));
+      ASSERT_FALSE(JS_IsException(cached.get()));
+      EXPECT_EQ(JS_VALUE_GET_PTR(cached.get()), identity);
+      EXPECT_EQ(allocator.requests, cachedBefore);
+      EXPECT_FALSE(JS_HasException(context));
+    }
+  }
+
+  JS_FreeContext(context);
+  types::unregisterObjectTypes(runtime);
+  JS_FreeRuntime(runtime);
+  EXPECT_EQ(allocator.liveBlocks, 0u);
+}
+
+TEST(FieldDescriptorOOM,
+     CallbackFailureLeavesEveryOutputDescriptorMemberUnpublished) {
+  AllocatorControl allocator;
+  JSRuntime *runtime = JS_NewRuntime2(&testAllocator, &allocator);
+  ASSERT_NE(runtime, nullptr);
+  JSContext *context = JS_NewContext(runtime);
+  ASSERT_NE(context, nullptr);
+  ASSERT_TRUE(types::registerObjectTypes(context));
+
+  {
+    LocalValue global(context, JS_GetGlobalObject(context));
+    ASSERT_FALSE(JS_IsException(global.get()));
+    ASSERT_TRUE(types::registerFieldDescriptors(context, global.get()));
+    LocalValue fields(context,
+                      JS_GetPropertyStr(context, global.get(), "Field"));
+    ASSERT_FALSE(JS_IsException(fields.get()));
+
+    JSAtom measuredAtom = JS_NewAtom(context, "Sequence");
+    ASSERT_NE(measuredAtom, JS_ATOM_NULL);
+    JSPropertyDescriptor measured{
+        .flags = 0,
+        .value = JS_UNDEFINED,
+        .getter = JS_UNDEFINED,
+        .setter = JS_UNDEFINED,
+    };
+    std::size_t const before = allocator.requests;
+    ASSERT_EQ(JS_GetOwnProperty(
+                  context, &measured, fields.get(), measuredAtom),
+              1);
+    std::size_t const requestCount = allocator.requests - before;
+    JS_FreeValue(context, measured.value);
+    JS_FreeValue(context, measured.getter);
+    JS_FreeValue(context, measured.setter);
+    JS_FreeAtom(context, measuredAtom);
+    ASSERT_GT(requestCount, 0u);
+
+    static constexpr std::array<char const *, 8> names = {
+        "SourceTag", "Account", "Amount", "Fee",
+        "SigningPubKey", "TxnSignature", "Memos", "EmitDetails",
+    };
+    ASSERT_LE(requestCount, names.size());
+    for (std::size_t ordinal = 1; ordinal <= requestCount; ++ordinal) {
+      SCOPED_TRACE(ordinal);
+      JSAtom atom = JS_NewAtom(context, names[ordinal - 1]);
+      ASSERT_NE(atom, JS_ATOM_NULL);
+      JSPropertyDescriptor failed{
+          .flags = 0,
+          .value = JS_UNDEFINED,
+          .getter = JS_UNDEFINED,
+          .setter = JS_UNDEFINED,
+      };
+      allocator.rejectAt = allocator.requests + ordinal;
+      int const result =
+          JS_GetOwnProperty(context, &failed, fields.get(), atom);
+      allocator.rejectAt = 0;
+      if (result == 1) {
+        EXPECT_EQ(failed.flags, JS_PROP_ENUMERABLE);
+        EXPECT_TRUE(JS_IsObject(failed.value));
+        EXPECT_FALSE(JS_HasException(context));
+        JS_FreeValue(context, failed.value);
+        JS_FreeValue(context, failed.getter);
+        JS_FreeValue(context, failed.setter);
+        JS_FreeAtom(context, atom);
+        continue;
+      }
+      EXPECT_EQ(result, -1);
+      EXPECT_EQ(failed.flags, 0);
+      EXPECT_TRUE(JS_IsUndefined(failed.value));
+      EXPECT_TRUE(JS_IsUndefined(failed.getter));
+      EXPECT_TRUE(JS_IsUndefined(failed.setter));
+      expectOnePendingOOM(context, ordinal);
+
+      JSPropertyDescriptor retry{
+          .flags = 0,
+          .value = JS_UNDEFINED,
+          .getter = JS_UNDEFINED,
+          .setter = JS_UNDEFINED,
+      };
+      ASSERT_EQ(JS_GetOwnProperty(context, &retry, fields.get(), atom), 1);
+      EXPECT_EQ(retry.flags, JS_PROP_ENUMERABLE);
+      EXPECT_TRUE(JS_IsObject(retry.value));
+      JS_FreeValue(context, retry.value);
+      JS_FreeValue(context, retry.getter);
+      JS_FreeValue(context, retry.setter);
+      JS_FreeAtom(context, atom);
+    }
+  }
+
+  JS_FreeContext(context);
+  types::unregisterObjectTypes(runtime);
+  JS_FreeRuntime(runtime);
+  EXPECT_EQ(allocator.liveBlocks, 0u);
+}
+
+TEST(ObjectRegistrarOOM,
+     EveryFieldTableFieldAtomAndDiagnosticAtomAllocationRetries) {
+  AllocatorControl allocator;
+  JSRuntime *runtime = JS_NewRuntime2(&testAllocator, &allocator);
+  ASSERT_NE(runtime, nullptr);
+  JSContext *context = JS_NewContext(runtime);
+  ASSERT_NE(context, nullptr);
+
+  // Class/prototype installation is one staged transaction. Warm that once;
+  // the exact registration law below is the generated atom table plus all
+  // field and diagnostic atom acquisitions.
+  ASSERT_TRUE(types::registerObjectTypes(context));
+  types::unregisterObjectTypes(runtime);
+  allocator.startRecording();
+  std::size_t const before = allocator.requests;
+  ASSERT_TRUE(types::registerObjectTypes(context));
+  std::size_t const requestCount = allocator.requests - before;
+  allocator.stopRecording();
+  ASSERT_EQ(allocator.recordedCount, requestCount);
+  ASSERT_GT(allocator.recordedCount, 0u);
+  EXPECT_EQ(allocator.recorded[0],
+            (AllocationRequest{337u * 8u, RequestKind::allocate}));
+  types::unregisterObjectTypes(runtime);
+  ASSERT_GT(requestCount, 337u);
+
+  for (std::size_t ordinal = 1; ordinal <= requestCount; ++ordinal) {
+    SCOPED_TRACE(ordinal);
+    std::size_t const rejectionsBefore = allocator.rejections;
+    allocator.rejectAt = allocator.requests + ordinal;
+    bool const registered = types::registerObjectTypes(context);
+    allocator.rejectAt = 0;
+    ASSERT_EQ(allocator.rejections, rejectionsBefore + 1);
+    if (!registered) {
+      expectOnePendingOOM(context, ordinal);
+      ASSERT_TRUE(types::registerObjectTypes(context))
+          << "same-runtime atom registration retry failed";
+    }
+    EXPECT_FALSE(JS_HasException(context));
+    types::unregisterObjectTypes(runtime);
+  }
+
+  JS_FreeContext(context);
+  types::unregisterObjectTypes(runtime);
+  JS_FreeRuntime(runtime);
+  EXPECT_EQ(allocator.liveBlocks, 0u);
+}
+
+TEST(FieldDescriptorOOM,
+     EveryRegistrationAllocationHasNoGlobalPublicationAndRetries) {
+  std::size_t requestCount = 0;
+  {
+    AllocatorControl measured;
+    JSRuntime *runtime = JS_NewRuntime2(&testAllocator, &measured);
+    ASSERT_NE(runtime, nullptr);
+    JSContext *context = JS_NewContext(runtime);
+    ASSERT_NE(context, nullptr);
+    ASSERT_TRUE(types::registerObjectTypes(context));
+    {
+      LocalValue global(context, JS_GetGlobalObject(context));
+      ASSERT_FALSE(JS_IsException(global.get()));
+      measured.startRecording();
+      std::size_t const before = measured.requests;
+      ASSERT_TRUE(types::registerFieldDescriptors(context, global.get()));
+      requestCount = measured.requests - before;
+      measured.stopRecording();
+      ASSERT_EQ(measured.recordedCount, requestCount);
+      EXPECT_NE(
+          std::find(measured.recorded.begin(),
+                    measured.recorded.begin() + measured.recordedCount,
+                    AllocationRequest{325u * sizeof(void *),
+                                      RequestKind::allocate}),
+          measured.recorded.begin() + measured.recordedCount);
+      EXPECT_FALSE(JS_HasException(context));
+    }
+    JS_FreeContext(context);
+    types::unregisterObjectTypes(runtime);
+    JS_FreeRuntime(runtime);
+    EXPECT_EQ(measured.liveBlocks, 0u);
+  }
+  ASSERT_GT(requestCount, 0u);
+
+  for (std::size_t ordinal = 1; ordinal <= requestCount; ++ordinal) {
+    SCOPED_TRACE(ordinal);
+    AllocatorControl allocator;
+    JSRuntime *runtime = JS_NewRuntime2(&testAllocator, &allocator);
+    ASSERT_NE(runtime, nullptr);
+    JSContext *context = JS_NewContext(runtime);
+    ASSERT_NE(context, nullptr);
+    ASSERT_TRUE(types::registerObjectTypes(context));
+    {
+      LocalValue global(context, JS_GetGlobalObject(context));
+      ASSERT_FALSE(JS_IsException(global.get()));
+      std::size_t const rejectionsBefore = allocator.rejections;
+      allocator.rejectAt = allocator.requests + ordinal;
+      bool const registered =
+          types::registerFieldDescriptors(context, global.get());
+      allocator.rejectAt = 0;
+      ASSERT_EQ(allocator.rejections, rejectionsBefore + 1);
+      if (!registered) {
+        expectOnePendingOOM(context, ordinal);
+        LocalValue unpublished(
+            context, JS_GetPropertyStr(context, global.get(), "Field"));
+        ASSERT_FALSE(JS_IsException(unpublished.get()));
+        EXPECT_TRUE(JS_IsUndefined(unpublished.get()));
+        ASSERT_TRUE(types::registerFieldDescriptors(context, global.get()))
+            << "same-runtime Field registration retry failed";
+      }
+      LocalValue published(context,
+                           JS_GetPropertyStr(context, global.get(), "Field"));
+      ASSERT_FALSE(JS_IsException(published.get()));
+      EXPECT_TRUE(JS_IsObject(published.get()));
+      EXPECT_FALSE(JS_HasException(context));
+    }
+    JS_FreeContext(context);
+    types::unregisterObjectTypes(runtime);
+    JS_FreeRuntime(runtime);
+    EXPECT_EQ(allocator.liveBlocks, 0u);
+  }
+}
+
+enum class FieldReflectionResult {
+  names,
+  values,
+  entries,
+  descriptors,
+  copiedObject,
+};
+
+struct FieldReflectionRoute {
+  char const *name;
+  FieldReflectionResult result;
+};
+
+[[nodiscard]] std::string materialFieldName(std::uint32_t ordinal) {
+  auto const &protocol = catl::xdata::xahau_static_protocol();
+  auto const *material = protocol.material_field(ordinal);
+  auto const *descriptor = material == nullptr
+      ? nullptr : protocol.field_by_code(material->field_code);
+  if (descriptor == nullptr)
+    return {};
+  auto const name = protocol.field_name(descriptor->name_ordinal);
+  return {name.data, name.size};
+}
+
+void expectFieldReflectionResult(JSContext *context, JSValueConst fields,
+                                 JSValueConst result,
+                                 FieldReflectionRoute const &route) {
+  constexpr std::uint32_t count = 325;
+  static constexpr std::array<std::uint32_t, 3> sentinels = {
+      0, count / 2, count - 1};
+  if (route.result == FieldReflectionResult::names ||
+      route.result == FieldReflectionResult::values ||
+      route.result == FieldReflectionResult::entries) {
+    LocalValue length(context, JS_GetPropertyStr(context, result, "length"));
+    ASSERT_FALSE(JS_IsException(length.get()));
+    std::uint32_t actualLength = 0;
+    ASSERT_EQ(JS_ToUint32(context, &actualLength, length.get()), 0);
+    ASSERT_EQ(actualLength, count);
+  } else {
+    JSPropertyEnum *names = nullptr;
+    std::uint32_t actualLength = 0;
+    ASSERT_EQ(JS_GetOwnPropertyNames(
+                  context, &names, &actualLength, result,
+                  JS_GPN_STRING_MASK | JS_GPN_SYMBOL_MASK),
+              0);
+    JS_FreePropertyEnum(context, names, actualLength);
+    ASSERT_EQ(actualLength, count);
+  }
+
+  for (std::uint32_t ordinal : sentinels) {
+    SCOPED_TRACE(ordinal);
+    std::string const name = materialFieldName(ordinal);
+    ASSERT_FALSE(name.empty());
+    LocalValue expected(
+        context, JS_GetPropertyStr(context, fields, name.c_str()));
+    ASSERT_FALSE(JS_IsException(expected.get()));
+    ASSERT_TRUE(JS_IsObject(expected.get()));
+
+    LocalValue observed(context);
+    if (route.result == FieldReflectionResult::names) {
+      LocalValue key(context, JS_GetPropertyUint32(context, result, ordinal));
+      ASSERT_FALSE(JS_IsException(key.get()));
+      char const *text = JS_ToCString(context, key.get());
+      ASSERT_NE(text, nullptr);
+      EXPECT_EQ(std::string_view(text), name);
+      JS_FreeCString(context, text);
+      continue;
+    }
+    if (route.result == FieldReflectionResult::values) {
+      observed = LocalValue(
+          context, JS_GetPropertyUint32(context, result, ordinal));
+    } else if (route.result == FieldReflectionResult::entries) {
+      LocalValue pair(
+          context, JS_GetPropertyUint32(context, result, ordinal));
+      ASSERT_FALSE(JS_IsException(pair.get()));
+      LocalValue key(context, JS_GetPropertyUint32(context, pair.get(), 0));
+      ASSERT_FALSE(JS_IsException(key.get()));
+      char const *text = JS_ToCString(context, key.get());
+      ASSERT_NE(text, nullptr);
+      EXPECT_EQ(std::string_view(text), name);
+      JS_FreeCString(context, text);
+      observed = LocalValue(
+          context, JS_GetPropertyUint32(context, pair.get(), 1));
+    } else if (route.result == FieldReflectionResult::descriptors) {
+      LocalValue descriptor(
+          context, JS_GetPropertyStr(context, result, name.c_str()));
+      ASSERT_FALSE(JS_IsException(descriptor.get()));
+      observed = LocalValue(
+          context, JS_GetPropertyStr(context, descriptor.get(), "value"));
+    } else {
+      observed = LocalValue(
+          context, JS_GetPropertyStr(context, result, name.c_str()));
+    }
+    ASSERT_FALSE(JS_IsException(observed.get()));
+    EXPECT_EQ(JS_StrictEq(context, observed.get(), expected.get()), 1);
+  }
+}
+
+TEST(FieldDescriptorOOM,
+     ReflectionAndCopyEnvelopesFailAtomicallyAndRetryWithStableIdentity) {
+  static constexpr FieldReflectionRoute routes[] = {
+      {"ownKeys", FieldReflectionResult::names},
+      {"ownNames", FieldReflectionResult::names},
+      {"keys", FieldReflectionResult::names},
+      {"values", FieldReflectionResult::values},
+      {"entries", FieldReflectionResult::entries},
+      {"descriptors", FieldReflectionResult::descriptors},
+      {"spread", FieldReflectionResult::copiedObject},
+      {"assign", FieldReflectionResult::copiedObject},
+  };
+  static constexpr char routeSource[] = R"JS(
+    globalThis.__fieldReflectionRoutes = Object.freeze({
+      ownKeys: () => Reflect.ownKeys(Field),
+      ownNames: () => Object.getOwnPropertyNames(Field),
+      keys: () => Object.keys(Field),
+      values: () => Object.values(Field),
+      entries: () => Object.entries(Field),
+      descriptors: () => Object.getOwnPropertyDescriptors(Field),
+      spread: () => ({...Field}),
+      assign: () => Object.assign({}, Field),
+    });
+  )JS";
+
+  AllocatorControl allocator;
+  JSRuntime *runtime = JS_NewRuntime2(&testAllocator, &allocator);
+  ASSERT_NE(runtime, nullptr);
+  JSContext *context = JS_NewContext(runtime);
+  ASSERT_NE(context, nullptr);
+  ASSERT_TRUE(types::registerObjectTypes(context));
+  {
+    LocalValue installed(
+        context, JS_Eval(context, routeSource, sizeof(routeSource) - 1,
+                         "<field-reflection-routes>", JS_EVAL_TYPE_GLOBAL));
+    ASSERT_FALSE(JS_IsException(installed.get()));
+  }
+
+  for (auto const &route : routes) {
+    SCOPED_TRACE(route.name);
+    LocalValue global(context, JS_GetGlobalObject(context));
+    ASSERT_FALSE(JS_IsException(global.get()));
+    LocalValue routeTable(
+        context,
+        JS_GetPropertyStr(context, global.get(), "__fieldReflectionRoutes"));
+    ASSERT_FALSE(JS_IsException(routeTable.get()));
+    LocalValue function(
+        context, JS_GetPropertyStr(context, routeTable.get(), route.name));
+    ASSERT_TRUE(JS_IsFunction(context, function.get()));
+
+    // Stabilize route-local atoms, shapes, and bytecode before measurement.
+    ASSERT_TRUE(types::registerFieldDescriptors(context, global.get()));
+    {
+      LocalValue fields(
+          context, JS_GetPropertyStr(context, global.get(), "Field"));
+      LocalValue warm(
+          context, JS_Call(context, function.get(), JS_UNDEFINED, 0, nullptr));
+      ASSERT_FALSE(JS_IsException(warm.get()));
+      expectFieldReflectionResult(
+          context, fields.get(), warm.get(), route);
+    }
+
+    ASSERT_TRUE(types::registerFieldDescriptors(context, global.get()));
+    std::size_t requestCount = 0;
+    {
+      LocalValue fields(
+          context, JS_GetPropertyStr(context, global.get(), "Field"));
+      std::size_t const before = allocator.requests;
+      LocalValue measured(
+          context, JS_Call(context, function.get(), JS_UNDEFINED, 0, nullptr));
+      requestCount = allocator.requests - before;
+      ASSERT_FALSE(JS_IsException(measured.get()));
+      expectFieldReflectionResult(
+          context, fields.get(), measured.get(), route);
+    }
+    ASSERT_GT(requestCount, 0u);
+
+    std::array<std::size_t, 3> const selected = {
+        1, (requestCount + 1) / 2, requestCount};
+    std::size_t failedSelections = 0;
+    for (std::size_t selection = 0; selection < selected.size(); ++selection) {
+      std::size_t const ordinal = selected[selection];
+      if (selection != 0 && ordinal == selected[selection - 1])
+        continue;
+      SCOPED_TRACE(ordinal);
+      ASSERT_TRUE(types::registerFieldDescriptors(context, global.get()));
+      LocalValue fields(
+          context, JS_GetPropertyStr(context, global.get(), "Field"));
+      void const *fieldTableIdentity = JS_VALUE_GET_PTR(fields.get());
+
+      std::size_t const rejectionsBefore = allocator.rejections;
+      allocator.rejectAt = allocator.requests + ordinal;
+      LocalValue failed(
+          context, JS_Call(context, function.get(), JS_UNDEFINED, 0, nullptr));
+      allocator.rejectAt = 0;
+      ASSERT_EQ(allocator.rejections, rejectionsBefore + 1);
+      if (!JS_IsException(failed.get())) {
+        EXPECT_FALSE(JS_HasException(context));
+        expectFieldReflectionResult(
+            context, fields.get(), failed.get(), route);
+        continue;
+      }
+      ++failedSelections;
+      expectOnePendingOOM(context, ordinal);
+
+      LocalValue stillPublished(
+          context, JS_GetPropertyStr(context, global.get(), "Field"));
+      ASSERT_FALSE(JS_IsException(stillPublished.get()));
+      EXPECT_EQ(JS_VALUE_GET_PTR(stillPublished.get()), fieldTableIdentity);
+
+      std::string const firstName = materialFieldName(0);
+      std::string const middleName = materialFieldName(325 / 2);
+      std::string const lastName = materialFieldName(324);
+      LocalValue first(
+          context, JS_GetPropertyStr(context, fields.get(), firstName.c_str()));
+      LocalValue middle(
+          context, JS_GetPropertyStr(context, fields.get(), middleName.c_str()));
+      LocalValue last(
+          context, JS_GetPropertyStr(context, fields.get(), lastName.c_str()));
+      ASSERT_FALSE(JS_IsException(first.get()));
+      ASSERT_FALSE(JS_IsException(middle.get()));
+      ASSERT_FALSE(JS_IsException(last.get()));
+
+      LocalValue retry(
+          context, JS_Call(context, function.get(), JS_UNDEFINED, 0, nullptr));
+      ASSERT_FALSE(JS_IsException(retry.get()))
+          << "same-runtime reflection retry failed";
+      expectFieldReflectionResult(
+          context, fields.get(), retry.get(), route);
+      LocalValue firstAfter(
+          context, JS_GetPropertyStr(context, fields.get(), firstName.c_str()));
+      LocalValue middleAfter(
+          context, JS_GetPropertyStr(context, fields.get(), middleName.c_str()));
+      LocalValue lastAfter(
+          context, JS_GetPropertyStr(context, fields.get(), lastName.c_str()));
+      EXPECT_EQ(JS_StrictEq(context, first.get(), firstAfter.get()), 1);
+      EXPECT_EQ(JS_StrictEq(context, middle.get(), middleAfter.get()), 1);
+      EXPECT_EQ(JS_StrictEq(context, last.get(), lastAfter.get()), 1);
+      EXPECT_FALSE(JS_HasException(context));
+    }
+    EXPECT_GT(failedSelections, 0u);
+  }
+
+  JS_FreeContext(context);
+  types::unregisterObjectTypes(runtime);
+  JS_FreeRuntime(runtime);
+  EXPECT_EQ(allocator.liveBlocks, 0u);
 }
 
 void exerciseSameRuntimeFactoryOOM(JSContext *context,

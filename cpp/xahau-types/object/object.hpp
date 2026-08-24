@@ -14,6 +14,11 @@ namespace jshookz::provider::types {
 // Release registrar-owned atoms/storage before the owning runtime is freed.
 void unregisterObjectTypes(JSRuntime* runtime) noexcept;
 
+// Resolve a borrowed atom through the one persistent generated field-name
+// accelerator. This is allocation-free and accepts serialized names only.
+[[nodiscard]] bool registeredFieldCode(
+    JSAtom atom, std::uint32_t& code) noexcept;
+
 // Private groundwork entry used by the eventual object utilities and native
 // tests. It copies the supplied contiguous bytes, certifies/indexes exactly
 // once, and returns a provider-minted top-level STObject.

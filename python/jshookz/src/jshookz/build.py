@@ -120,6 +120,7 @@ def seal_xahau_hook_provider_bundle(
         f'set(XAHAU_QUICKJS_PROVIDER_SHA256 "{provider["sha256"]}")\n'
         f'set(XAHAU_QUICKJS_PROVIDER_SIZE "{provider["size"]}")\n'
         f'set(XAHAU_QUICKJS_PROVIDER_IMPORT_COUNT "{len(provider_imports)}")\n'
+        f'set(XAHAU_QUICKJS_PROVIDER_EXPORT_COUNT "{len(provider["exports"])}")\n'
         f'set(XAHAU_QUICKJS_NATIVE_ABI_FILE "{native_abi_path.name}")\n'
         f'set(XAHAU_QUICKJS_NATIVE_ABI_SHA256 "{native_abi_sha256}")\n'
         f'set(XAHAU_QUICKJS_BYTECODE_ABI_ID "{data["bytecode_abi_id"]}")\n'
@@ -135,6 +136,10 @@ def seal_xahau_hook_provider_bundle(
         f'set(XAHAU_QUICKJS_HOST_ADAPTER_POLICY "{source["execution"]["host_adapter_policy"]}")\n'
         f'set(XAHAU_QUICKJS_HEAP_BYTES "{source["limits"]["quickjs_heap_bytes"]}")\n'
         f'set(XAHAU_QUICKJS_STACK_BYTES "{source["limits"]["quickjs_stack_bytes"]}")\n'
+        f'set(XAHAU_QUICKJS_SERIALIZED_OBJECT_MAX_BYTES "{source["limits"]["serialized_object_max_bytes"]}")\n'
+        f'set(XAHAU_QUICKJS_SERIALIZED_OBJECT_MAX_FIELDS "{source["limits"]["serialized_object_max_fields"]}")\n'
+        f'set(XAHAU_QUICKJS_SERIALIZED_OBJECT_MAX_SCOPES "{source["limits"]["serialized_object_max_scopes"]}")\n'
+        f'set(XAHAU_QUICKJS_SERIALIZED_OBJECT_MAX_DEPTH "{source["limits"]["serialized_object_max_depth"]}")\n'
     )
     print(f"✓ Sealed {manifest_path}")
     print(f"✓ Projected {cmake_manifest_path}")

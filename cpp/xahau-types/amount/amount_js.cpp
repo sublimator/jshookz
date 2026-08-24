@@ -371,24 +371,43 @@ compareParts(xdata::AmountRules::Parts const &left,
 }
 
 JSCFunctionListEntry const amountPrototype[] = {
+    // @binding provider:Amount.kind
     JS_CGETSET_DEF("kind", amountKind, nullptr),
+    // @binding provider:Amount.issue
     JS_CGETSET_DEF("issue", amountIssue, nullptr),
+    // @binding provider:Amount.currency
     JS_CGETSET_DEF("currency", amountCurrency, nullptr),
+    // @binding provider:Amount.issuer
     JS_CGETSET_DEF("issuer", amountIssuer, nullptr),
+    // @binding provider:Amount.mptIssuanceId
     JS_CGETSET_DEF("mptIssuanceId", amountMptId, nullptr),
+    // @binding provider:Amount.value
     JS_CGETSET_DEF("value", amountValue, nullptr),
+    // @binding provider:Amount.drops
     JS_CGETSET_DEF("drops", amountDrops, nullptr),
+    // @binding provider:Amount.byteLength
     JS_CGETSET_DEF("byteLength", amountByteLength, nullptr),
+    // @binding provider:Amount.toBytes
     JS_CFUNC_DEF("toBytes", 0, amountToBytes),
+    // @binding provider:Amount.toXFL
     JS_CFUNC_DEF("toXFL", 0, amountToXfl),
+    // @binding provider:Amount.toString
     JS_CFUNC_DEF("toString", 0, amountToString),
+    // @binding provider:Amount.isNative
     JS_CFUNC_DEF("isNative", 0, amountIsNative),
+    // @binding provider:Amount.isIOU
     JS_CFUNC_DEF("isIOU", 0, amountIsIou),
+    // @binding provider:Amount.isMPT
     JS_CFUNC_DEF("isMPT", 0, amountIsMpt),
+    // @binding provider:Amount.asNative
     JS_CFUNC_DEF("asNative", 0, amountAsNative),
+    // @binding provider:Amount.asIOU
     JS_CFUNC_DEF("asIOU", 0, amountAsIou),
+    // @binding provider:Amount.asMPT
     JS_CFUNC_DEF("asMPT", 0, amountAsMpt),
+    // @binding provider:Amount.equals
     JS_CFUNC_DEF("equals", 1, amountEquals),
+    // @binding provider:Amount.compare
     JS_CFUNC_DEF("compare", 1, amountCompare),
 };
 

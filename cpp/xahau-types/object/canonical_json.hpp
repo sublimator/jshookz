@@ -2,11 +2,14 @@
 
 #include <quickjs.h>
 
+#include "runtime_profile_limits.h"
+
 #include <cstdint>
 
 namespace jshookz::provider::types {
 
-inline constexpr std::uint32_t canonicalJSONMaximumPayloadBytes = 1'048'576;
+inline constexpr std::uint32_t canonicalJSONMaximumPayloadBytes =
+    catl::xdata::xahau_profile_limits::serialized_object_max_bytes;
 inline constexpr std::uint32_t canonicalJSONMaximumNodes = 65'536;
 
 // Provider-only canonical JSON factories. Every successful call returns a

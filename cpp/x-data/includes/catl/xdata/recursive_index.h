@@ -2,6 +2,7 @@
 
 #include "catl/core/types.h"
 #include "catl/xdata/static_protocol.h"
+#include "runtime_profile_limits.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -143,10 +144,10 @@ static_assert(sizeof(ScopeRecord) == 16);
 static_assert(sizeof(FieldRecord) == 20);
 
 struct RecursiveScanLimits {
-  std::uint32_t max_bytes = 1'048'576;
-  std::uint32_t max_fields = 32'768;
-  std::uint32_t max_scopes = 32'769;
-  std::uint32_t max_depth = 10;
+  std::uint32_t max_bytes = xahau_profile_limits::serialized_object_max_bytes;
+  std::uint32_t max_fields = xahau_profile_limits::serialized_object_max_fields;
+  std::uint32_t max_scopes = xahau_profile_limits::serialized_object_max_scopes;
+  std::uint32_t max_depth = xahau_profile_limits::serialized_object_max_depth;
 };
 
 struct RecursiveScanCounters {

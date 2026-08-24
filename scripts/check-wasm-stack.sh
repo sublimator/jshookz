@@ -1,7 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-expected="${EXPECTED_STACK_POINTER:-131072}"
+if [ -n "${EXPECTED_STACK_POINTER:-}" ]; then
+    expected="${EXPECTED_STACK_POINTER}"
+else
+    script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+    expected="$(python3 - "$script_dir/../xahau/profiles/xahau-quickjs-v1.source.json" <<'PY'
+import json
+import pathlib
+import sys
+
+source = json.loads(pathlib.Path(sys.argv[1]).read_text())
+print(source["provider"]["build"]["wasm_stack_bytes"])
+PY
+)"
+fi
 
 if [ "$#" -eq 0 ]; then
     set -- \

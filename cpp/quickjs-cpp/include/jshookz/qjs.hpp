@@ -128,6 +128,24 @@ installFunctions(
 [[nodiscard]] bool
 freezeObject(JSContext *ctx, JSValueConst value);
 
+/** Build a complete class prototype without publishing it to the context. */
+[[nodiscard]] inline JSValue
+makePrototype(
+    JSContext *ctx,
+    std::span<JSCFunctionListEntry const> functions,
+    bool freeze = true)
+{
+    OwnedValue prototype(ctx, JS_NewObject(ctx));
+    if (prototype.isException())
+        return JS_EXCEPTION;
+    if (!functions.empty() &&
+        !installFunctions(ctx, prototype.get(), functions))
+        return JS_EXCEPTION;
+    if (freeze && !freezeObject(ctx, prototype.get()))
+        return JS_EXCEPTION;
+    return prototype.release();
+}
+
 /** Copy bytes into a new JavaScript Uint8Array. */
 JSValue
 uint8Array(JSContext *ctx, std::span<std::uint8_t const> bytes);
@@ -161,13 +179,8 @@ installPrototype(
     std::span<JSCFunctionListEntry const> functions,
     bool freeze = true)
 {
-    OwnedValue prototype(ctx, JS_NewObject(ctx));
+    OwnedValue prototype(ctx, makePrototype(ctx, functions, freeze));
     if (prototype.isException())
-        return false;
-    if (!functions.empty() &&
-        !installFunctions(ctx, prototype.get(), functions))
-        return false;
-    if (freeze && !freezeObject(ctx, prototype.get()))
         return false;
     JS_SetClassProto(ctx, classId, prototype.release());
     return true;

@@ -3,6 +3,7 @@
 #include "js.hpp"
 #include "object/nominal_payload.hpp"
 #include "quickjs.hpp"
+#include "runtime_profile_limits.h"
 
 #include <cmath>
 #include <cstddef>
@@ -16,6 +17,7 @@ namespace {
 
 namespace qjs = jshookz::provider::qjs;
 namespace coreqjs = ::jshookz::qjs;
+namespace xdata = catl::xdata;
 
 enum class LeafKind : std::uint8_t {
   hash128,
@@ -890,6 +892,7 @@ int vectorOwnProperty(JSContext *ctx, JSPropertyDescriptor *descriptor,
   bool lengthProperty = false;
   if (!isLength(ctx, atom, lengthProperty))
     return -1;
+  // @binding provider:Vector256.length
   if (lengthProperty) {
     if (descriptor != nullptr)
       descriptor->value = JS_NewUint32(ctx, state->count);
@@ -1013,71 +1016,104 @@ JSValue bridgeEquals(JSContext *ctx, JSValueConst value, int argc,
 }
 
 JSCFunctionListEntry const hash128Prototype[] = {
+    // @binding provider:Hash128.byteLength
     JS_CGETSET_MAGIC_DEF("byteLength", hashByteLength, nullptr,
                          static_cast<int>(LeafKind::hash128)),
+    // @binding provider:Hash128.toBytes
     JS_CFUNC_MAGIC_DEF("toBytes", 0, hashToBytesMagic,
                        static_cast<int>(LeafKind::hash128)),
+    // @binding provider:Hash128.toHex
     JS_CFUNC_MAGIC_DEF("toHex", 0, hashToHexMagic,
                        static_cast<int>(LeafKind::hash128)),
+    // @binding provider:Hash128.isZero
     JS_CFUNC_MAGIC_DEF("isZero", 0, hashIsZeroMagic,
                        static_cast<int>(LeafKind::hash128)),
+    // @binding provider:Hash128.equals
     JS_CFUNC_MAGIC_DEF("equals", 1, hashEqualsMagic,
                        static_cast<int>(LeafKind::hash128)),
+    // @binding provider:Hash128.compare
     JS_CFUNC_MAGIC_DEF("compare", 1, hashCompareMagic,
                        static_cast<int>(LeafKind::hash128)),
 };
 
 JSCFunctionListEntry const hash160Prototype[] = {
+    // @binding provider:Hash160.byteLength
     JS_CGETSET_MAGIC_DEF("byteLength", hashByteLength, nullptr,
                          static_cast<int>(LeafKind::hash160)),
+    // @binding provider:Hash160.toBytes
     JS_CFUNC_MAGIC_DEF("toBytes", 0, hashToBytesMagic,
                        static_cast<int>(LeafKind::hash160)),
+    // @binding provider:Hash160.toHex
     JS_CFUNC_MAGIC_DEF("toHex", 0, hashToHexMagic,
                        static_cast<int>(LeafKind::hash160)),
+    // @binding provider:Hash160.isZero
     JS_CFUNC_MAGIC_DEF("isZero", 0, hashIsZeroMagic,
                        static_cast<int>(LeafKind::hash160)),
+    // @binding provider:Hash160.equals
     JS_CFUNC_MAGIC_DEF("equals", 1, hashEqualsMagic,
                        static_cast<int>(LeafKind::hash160)),
+    // @binding provider:Hash160.compare
     JS_CFUNC_MAGIC_DEF("compare", 1, hashCompareMagic,
                        static_cast<int>(LeafKind::hash160)),
 };
 
 JSCFunctionListEntry const hash192Prototype[] = {
+    // @binding provider:Hash192.byteLength
     JS_CGETSET_MAGIC_DEF("byteLength", hashByteLength, nullptr,
                          static_cast<int>(LeafKind::hash192)),
+    // @binding provider:Hash192.toBytes
     JS_CFUNC_MAGIC_DEF("toBytes", 0, hashToBytesMagic,
                        static_cast<int>(LeafKind::hash192)),
+    // @binding provider:Hash192.toHex
     JS_CFUNC_MAGIC_DEF("toHex", 0, hashToHexMagic,
                        static_cast<int>(LeafKind::hash192)),
+    // @binding provider:Hash192.isZero
     JS_CFUNC_MAGIC_DEF("isZero", 0, hashIsZeroMagic,
                        static_cast<int>(LeafKind::hash192)),
+    // @binding provider:Hash192.equals
     JS_CFUNC_MAGIC_DEF("equals", 1, hashEqualsMagic,
                        static_cast<int>(LeafKind::hash192)),
+    // @binding provider:Hash192.compare
     JS_CFUNC_MAGIC_DEF("compare", 1, hashCompareMagic,
                        static_cast<int>(LeafKind::hash192)),
 };
 
 JSCFunctionListEntry const currencyPrototype[] = {
+    // @binding provider:Currency.byteLength
     JS_CGETSET_DEF("byteLength", currencyByteLength, nullptr),
+    // @binding provider:Currency.isNative
     JS_CGETSET_DEF("isNative", currencyNative, nullptr),
+    // @binding provider:Currency.toBytes
     JS_CFUNC_DEF("toBytes", 0, currencyToBytes),
+    // @binding provider:Currency.toHex
     JS_CFUNC_DEF("toHex", 0, currencyToHex),
+    // @binding provider:Currency.toString
     JS_CFUNC_DEF("toString", 0, currencyToString),
+    // @binding provider:Currency.equals
     JS_CFUNC_DEF("equals", 1, currencyEquals),
 };
 
 JSCFunctionListEntry const issuePrototype[] = {
+    // @binding provider:Issue.kind
     JS_CGETSET_DEF("kind", issueKind, nullptr),
+    // @binding provider:Issue.currency
     JS_CGETSET_DEF("currency", issueCurrency, nullptr),
+    // @binding provider:Issue.issuer
     JS_CGETSET_DEF("issuer", issueIssuer, nullptr),
+    // @binding provider:Issue.mptIssuanceId
     JS_CGETSET_DEF("mptIssuanceId", issueMptId, nullptr),
+    // @binding provider:Issue.toBytes
     JS_CFUNC_DEF("toBytes", 0, issueToBytes),
+    // @binding provider:Issue.equals
     JS_CFUNC_DEF("equals", 1, issueEquals),
 };
 
 JSCFunctionListEntry const vectorPrototype[] = {
+    // @binding provider:Vector256.at
     JS_CFUNC_DEF("at", 1, vectorAt),
+    // @binding provider:Vector256.toBytes
     JS_CFUNC_DEF("toBytes", 0, vectorToBytes),
+    // @binding provider:Vector256.[Symbol.iterator]
     JS_CFUNC_DEF("[Symbol.iterator]", 0, vectorIterator),
 };
 
@@ -1087,11 +1123,17 @@ JSCFunctionListEntry const vectorIteratorPrototype[] = {
 };
 
 JSCFunctionListEntry const bridgePrototype[] = {
+    // @binding provider:XChainBridge.LockingChainDoor
     JS_CGETSET_MAGIC_DEF("LockingChainDoor", bridgeGetter, nullptr, 0),
+    // @binding provider:XChainBridge.LockingChainIssue
     JS_CGETSET_MAGIC_DEF("LockingChainIssue", bridgeGetter, nullptr, 1),
+    // @binding provider:XChainBridge.IssuingChainDoor
     JS_CGETSET_MAGIC_DEF("IssuingChainDoor", bridgeGetter, nullptr, 2),
+    // @binding provider:XChainBridge.IssuingChainIssue
     JS_CGETSET_MAGIC_DEF("IssuingChainIssue", bridgeGetter, nullptr, 3),
+    // @binding provider:XChainBridge.toBytes
     JS_CFUNC_DEF("toBytes", 0, bridgeToBytes),
+    // @binding provider:XChainBridge.equals
     JS_CFUNC_DEF("equals", 1, bridgeEquals),
 };
 
@@ -1299,7 +1341,9 @@ bool detail::readRichLeafNominalPayload(
     auto const *state = static_cast<VectorState const *>(
         JS_GetOpaque(input, classId(kind)));
     if (state == nullptr || (state->byteLength & 31U) != 0 ||
-        state->count != state->byteLength / 32 || state->count > 32768)
+        state->count != state->byteLength / 32 ||
+        state->count >
+            xdata::xahau_profile_limits::serialized_object_max_fields)
       return false;
     output = {vectorBytes(state), state->byteLength};
     return true;
@@ -1329,7 +1373,8 @@ JSValue makeIssueBytes(JSContext *ctx, std::uint8_t const *bytes,
 JSValue makeVector256Bytes(JSContext *ctx, std::uint8_t const *bytes,
                            std::uint32_t length) {
   if ((length != 0 && bytes == nullptr) || (length & 31U) != 0 ||
-      length / 32 > 32768)
+      length / 32 >
+          xdata::xahau_profile_limits::serialized_object_max_fields)
     return internalError(
         ctx, "Vector256 construction requires certified hash payloads");
   std::size_t const allocation = sizeof(VectorState) + length;

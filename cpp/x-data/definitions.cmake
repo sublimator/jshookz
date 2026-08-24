@@ -80,4 +80,23 @@ add_custom_command(
   COMMENT "Generating allocation-free Xahau provider protocol")
 list(APPEND _xdata_headers ${_xdata_static_hdr})
 
+set(_xdata_profile_source
+    ${_xdata_dir}/../../xahau/profiles/xahau-quickjs-v1.source.json)
+set(_xdata_profile_limits_gen
+    ${_xdata_dir}/scripts/generate_runtime_profile_limits.py)
+set(_xdata_profile_limits_hdr
+    ${_xdata_dir}/generated/runtime_profile_limits.h)
+set(_xdata_profile_limits_tmp
+    ${CMAKE_CURRENT_BINARY_DIR}/runtime_profile_limits.h.tmp)
+add_custom_command(
+  OUTPUT ${_xdata_profile_limits_hdr}
+  COMMAND ${Python3_EXECUTABLE} ${_xdata_profile_limits_gen}
+          --input ${_xdata_profile_source}
+          --output ${_xdata_profile_limits_tmp}
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          ${_xdata_profile_limits_tmp} ${_xdata_profile_limits_hdr}
+  DEPENDS ${_xdata_profile_source} ${_xdata_profile_limits_gen}
+  COMMENT "Generating provider-static serialized-object limits")
+list(APPEND _xdata_headers ${_xdata_profile_limits_hdr})
+
 add_custom_target(generate_xdata_definitions DEPENDS ${_xdata_headers})

@@ -16,14 +16,23 @@ from jshookz.paths import (
 from jshookz.build import _validate_native_abi, seal_xahau_hook_provider_bundle
 from jshookz.host import WasmHost
 from jshookz.runtime_profile import (
+    _validate_provider_policy,
+    _wasm_stack_pointer_initial,
     build_runtime_profile_lock,
     canonical_json_bytes,
     load_runtime_profile_lock,
+    profile_execution_limits,
     verify_runtime_profile_lock,
 )
 
 
 SOURCE = XAHAU_RUNTIME_PROFILE_SOURCE
+OBJECT_LIMITS = {
+    "serialized_object_max_bytes": 1_048_576,
+    "serialized_object_max_fields": 32_768,
+    "serialized_object_max_scopes": 32_769,
+    "serialized_object_max_depth": 10,
+}
 
 
 def _write_json(path: Path, value: object) -> None:
@@ -43,6 +52,7 @@ def test_native_engine_and_python_oracle_versions_are_named_separately():
 
 
 def test_profile_lock_pins_provider_and_has_no_wasi(tmp_path: Path):
+    source = json.loads(SOURCE.read_text())
     lock = build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)
     lock_path = tmp_path / "profile.lock.json"
     _write_json(lock_path, lock)
@@ -53,7 +63,14 @@ def test_profile_lock_pins_provider_and_has_no_wasi(tmp_path: Path):
     assert loaded.runtime_profile_id.hex() == lock["runtime_profile_id"]
     assert len(loaded.bytecode_abi_id) == 32
     assert len(loaded.runtime_profile_id) == 32
+    assert len(lock["provider"]["imports"]) == 13
     assert {item["module"] for item in lock["provider"]["imports"]} == {"env"}
+    assert lock["provider"]["imports"] == sorted(
+        source["provider"]["imports"], key=lambda item: (item["module"], item["name"])
+    )
+    assert lock["provider"]["exports"] == source["provider"]["allowed_exports"]
+    assert len(lock["provider"]["exports"]) == 22
+    assert "wasi_snapshot_preview1" in source["provider"]["forbidden_import_modules"]
     memory = next(
         item for item in lock["provider"]["exports"] if item["name"] == "memory"
     )
@@ -65,7 +82,45 @@ def test_profile_lock_pins_provider_and_has_no_wasi(tmp_path: Path):
         "memory64": False,
         "shared": False,
     }
+    assert lock["provider"]["build"] == {
+        "wasm_stack_bytes": 131_072,
+        "wasm_memory_max_bytes": 33_554_432,
+    }
+    assert _wasm_stack_pointer_initial(XAHAU_HOOK_PROVIDER_WASM.read_bytes()) == 131_072
     assert canonical_json_bytes(lock).endswith(b"\n")
+
+
+@pytest.mark.parametrize(
+    ("name", "delta"),
+    [("wasm_stack_bytes", 65_536), ("wasm_memory_max_bytes", 65_536)],
+)
+def test_profile_source_rejects_provider_build_drift(
+    tmp_path: Path, name: str, delta: int
+):
+    source = json.loads(SOURCE.read_text())
+    source["provider"]["build"][name] += delta
+    source_path = tmp_path / "drifted.source.json"
+    _write_json(source_path, source)
+
+    with pytest.raises(ValueError, match=rf"provider build {name} differs"):
+        build_runtime_profile_lock(source_path, XAHAU_HOOK_PROVIDER_WASM)
+
+
+def test_profile_projects_the_frozen_object_limits(tmp_path: Path):
+    source = json.loads(SOURCE.read_text())
+    assert {name: source["limits"][name] for name in OBJECT_LIMITS} == OBJECT_LIMITS
+
+    lock = build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)
+    assert {
+        name: lock["source"]["limits"][name] for name in OBJECT_LIMITS
+    } == OBJECT_LIMITS
+    lock_path = tmp_path / "profile.lock.json"
+    _write_json(lock_path, lock)
+    projected = profile_execution_limits(
+        verify_runtime_profile_lock(lock_path, XAHAU_HOOK_PROVIDER_WASM)
+    )
+
+    assert {name: getattr(projected, name) for name in OBJECT_LIMITS} == OBJECT_LIMITS
 
 
 def test_profile_lock_rejects_tampered_identity(tmp_path: Path):
@@ -89,12 +144,31 @@ def test_profile_source_rejects_import_drift(tmp_path: Path):
         build_runtime_profile_lock(source_path, XAHAU_HOOK_PROVIDER_WASM)
 
 
+def test_profile_policy_rejects_wasi_even_if_added_to_expected_imports():
+    source = json.loads(SOURCE.read_text())
+    provider = copy.deepcopy(
+        build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)["provider"]
+    )
+    wasi_import = {
+        "module": "wasi_snapshot_preview1",
+        "name": "proc_exit",
+        "params": ["i32"],
+        "results": [],
+    }
+    source["provider"]["imports"].append(wasi_import)
+    provider["imports"].append(wasi_import)
+    provider["imports"].sort(key=lambda item: (item["module"], item["name"]))
+
+    with pytest.raises(ValueError, match="forbidden imports"):
+        _validate_provider_policy(source, provider)
+
+
 def test_profile_source_rejects_export_signature_drift(tmp_path: Path):
     source = json.loads(SOURCE.read_text())
     drifted = copy.deepcopy(source)
     qjs_hook = next(
         item
-        for item in drifted["provider"]["required_exports"]
+        for item in drifted["provider"]["allowed_exports"]
         if item["name"] == "qjs_hook"
     )
     qjs_hook["results"] = ["i64"]
@@ -103,6 +177,104 @@ def test_profile_source_rejects_export_signature_drift(tmp_path: Path):
 
     with pytest.raises(ValueError, match="qjs_hook differs"):
         build_runtime_profile_lock(source_path, XAHAU_HOOK_PROVIDER_WASM)
+
+
+def test_profile_source_rejects_memory_limit_drift(tmp_path: Path):
+    source = json.loads(SOURCE.read_text())
+    memory = next(
+        item
+        for item in source["provider"]["allowed_exports"]
+        if item["name"] == "memory"
+    )
+    memory["maximum_pages"] += 1
+    source_path = tmp_path / "drifted.source.json"
+    _write_json(source_path, source)
+
+    with pytest.raises(ValueError, match="memory differs"):
+        build_runtime_profile_lock(source_path, XAHAU_HOOK_PROVIDER_WASM)
+
+
+def test_profile_source_rejects_deleted_allowed_export(tmp_path: Path):
+    source = json.loads(SOURCE.read_text())
+    drifted = copy.deepcopy(source)
+    drifted["provider"]["allowed_exports"] = drifted["provider"]["allowed_exports"][:-1]
+    source_path = tmp_path / "drifted.source.json"
+    _write_json(source_path, drifted)
+
+    with pytest.raises(ValueError, match="outside allowed_exports"):
+        build_runtime_profile_lock(source_path, XAHAU_HOOK_PROVIDER_WASM)
+
+
+def test_profile_source_rejects_added_allowed_export(tmp_path: Path):
+    source = json.loads(SOURCE.read_text())
+    drifted = copy.deepcopy(source)
+    drifted["provider"]["allowed_exports"].append(
+        {"name": "zz_invented", "kind": "function", "params": [], "results": []}
+    )
+    source_path = tmp_path / "drifted.source.json"
+    _write_json(source_path, drifted)
+
+    with pytest.raises(ValueError, match="missing allowed exports"):
+        build_runtime_profile_lock(source_path, XAHAU_HOOK_PROVIDER_WASM)
+
+
+def test_profile_source_rejects_reordered_allowed_exports(tmp_path: Path):
+    source = json.loads(SOURCE.read_text())
+    drifted = copy.deepcopy(source)
+    exports = drifted["provider"]["allowed_exports"]
+    exports[0], exports[1] = exports[1], exports[0]
+    source_path = tmp_path / "drifted.source.json"
+    _write_json(source_path, drifted)
+
+    with pytest.raises(ValueError, match="normalized by export name"):
+        build_runtime_profile_lock(source_path, XAHAU_HOOK_PROVIDER_WASM)
+
+
+def test_profile_policy_rejects_extra_provider_export():
+    source = json.loads(SOURCE.read_text())
+    provider = copy.deepcopy(
+        build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)["provider"]
+    )
+    provider["exports"].append(
+        {"name": "zz_smuggled", "kind": "function", "params": [], "results": []}
+    )
+
+    with pytest.raises(ValueError, match="outside allowed_exports"):
+        _validate_provider_policy(source, provider)
+
+
+@pytest.mark.parametrize("name", OBJECT_LIMITS)
+def test_profile_source_rejects_deleted_object_limit(tmp_path: Path, name: str):
+    source = json.loads(SOURCE.read_text())
+    del source["limits"][name]
+    source_path = tmp_path / "drifted.source.json"
+    _write_json(source_path, source)
+
+    with pytest.raises(ValueError, match=rf"object limit {name!r}"):
+        build_runtime_profile_lock(source_path, XAHAU_HOOK_PROVIDER_WASM)
+
+
+@pytest.mark.parametrize("value", [True, 0, -1, 1 << 32, "1048576"])
+def test_profile_source_rejects_invalid_object_limit(tmp_path: Path, value: object):
+    source = json.loads(SOURCE.read_text())
+    source["limits"]["serialized_object_max_bytes"] = value
+    source_path = tmp_path / "drifted.source.json"
+    _write_json(source_path, source)
+
+    with pytest.raises(ValueError, match="must be a positive uint32"):
+        build_runtime_profile_lock(source_path, XAHAU_HOOK_PROVIDER_WASM)
+
+
+def test_profile_verification_rejects_stale_companion_source(tmp_path: Path):
+    lock = build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)
+    lock_path = tmp_path / "profile.lock.json"
+    _write_json(lock_path, lock)
+    stale_source = copy.deepcopy(lock["source"])
+    stale_source["limits"]["serialized_object_max_fields"] += 1
+    _write_json(tmp_path / "profile.source.json", stale_source)
+
+    with pytest.raises(ValueError, match="does not match its companion source"):
+        verify_runtime_profile_lock(lock_path, XAHAU_HOOK_PROVIDER_WASM)
 
 
 def test_profile_verification_reapplies_source_policy(tmp_path: Path):
@@ -171,9 +343,10 @@ def test_profile_opens_its_selected_javascript_artifacts(tmp_path: Path):
 
     assert lock["javascript_surface"]["manifest"] == f"{selected_root}/surface.json"
     assert lock["javascript_surface"]["declaration"] == f"{selected_root}/api.d.ts"
-    assert lock["javascript_surface"]["sha256"] == hashlib.sha256(
-        surface_path.read_bytes()
-    ).hexdigest()
+    assert (
+        lock["javascript_surface"]["sha256"]
+        == hashlib.sha256(surface_path.read_bytes()).hexdigest()
+    )
 
 
 def test_profile_does_not_fall_back_for_an_unselected_manifest(tmp_path: Path):
@@ -226,24 +399,29 @@ def test_provider_bundle_emits_the_profile_lock(tmp_path: Path):
         'XAHAU_QUICKJS_HOST_ADAPTER_POLICY "xahau-raw-hook-host-v1"' in cmake_manifest
     )
     assert 'XAHAU_QUICKJS_PROVIDER_IMPORT_COUNT "13"' in cmake_manifest
+    assert 'XAHAU_QUICKJS_PROVIDER_EXPORT_COUNT "22"' in cmake_manifest
+    cmake_object_limits = {
+        "XAHAU_QUICKJS_SERIALIZED_OBJECT_MAX_BYTES": 1_048_576,
+        "XAHAU_QUICKJS_SERIALIZED_OBJECT_MAX_FIELDS": 32_768,
+        "XAHAU_QUICKJS_SERIALIZED_OBJECT_MAX_SCOPES": 32_769,
+        "XAHAU_QUICKJS_SERIALIZED_OBJECT_MAX_DEPTH": 10,
+    }
+    for name, value in cmake_object_limits.items():
+        assert f'{name} "{value}"' in cmake_manifest
     assert (
         'XAHAU_QUICKJS_NATIVE_ABI_FILE "jshookz_provider.native-abi.json"'
         in cmake_manifest
     )
+    assert hashlib.sha256(native_abi_path.read_bytes()).hexdigest() in cmake_manifest
     assert (
-        hashlib.sha256(native_abi_path.read_bytes()).hexdigest()
-        in cmake_manifest
-    )
-    assert (
-        json.loads(native_abi_path.read_text())["source"]["macro_function_count"]
-        == 75
+        json.loads(native_abi_path.read_text())["source"]["macro_function_count"] == 75
     )
 
 
 def test_native_projection_rejects_duplicate_provider_import():
-    imports = build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)[
-        "provider"
-    ]["imports"]
+    imports = build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)["provider"][
+        "imports"
+    ]
     with pytest.raises(ValueError, match="pinned raw Hook ABI"):
         _validate_native_abi([*imports, imports[0]])
 
@@ -374,14 +552,35 @@ JSON.stringify((() => {{
     const receiver = eval(profile.probe);
     const prototype = Object.getPrototypeOf(receiver);
     for (const [member, kind] of Object.entries(profile.members))
-      if (kind === "function" ? typeof receiver[member] !== "function"
-                              : !(member in receiver))
+      if (member === "[Symbol.iterator]"
+            ? typeof receiver[Symbol.iterator] !== "function"
+            : kind === "function" ? typeof receiver[member] !== "function"
+                                  : !(member in receiver))
         failures.push(`prototype ${{name}}.${{member}}: expected ${{kind}}`);
+    const prototypeNames = Object.getOwnPropertyNames(prototype);
+    if (Object.hasOwn(prototype, Symbol.iterator))
+      prototypeNames.push("[Symbol.iterator]");
     compareNames(
       `prototype ${{name}}`,
-      Object.getOwnPropertyNames(prototype).sort(),
+      prototypeNames.sort(),
       [...profile.own].sort(),
     );
+    if (profile.exotic) {{
+      compareNames(
+        `exotic ${{name}} own`,
+        Reflect.ownKeys(receiver).map(String).sort(),
+        [...profile.exotic.own].sort(),
+      );
+      compareNames(
+        `exotic ${{name}} enumerable`,
+        Object.keys(receiver).sort(),
+        [...profile.exotic.enumerable].sort(),
+      );
+      if (Object.isExtensible(receiver) !== profile.exotic.extensible)
+        failures.push(`exotic ${{name}}: extensibility differs`);
+      if (Array.isArray(receiver) !== profile.exotic.array)
+        failures.push(`exotic ${{name}}: Array.isArray differs`);
+    }}
     if (profile.frozen && !Object.isFrozen(prototype))
       failures.push(`prototype ${{name}}: not frozen`);
     if (name === "Result" && "moot" in receiver)
@@ -435,7 +634,9 @@ def test_profile_surface_probe_rejects_an_extra_provider_member():
 
 def test_profile_surface_probe_rejects_an_extra_provider_root():
     surface = json.loads(XAHAU_V1_JAVASCRIPT_SURFACE.read_text())
-    probe = "globalThis.smuggledProviderRoot = {};\n" + _surface_probe_javascript(surface)
+    probe = "globalThis.smuggledProviderRoot = {};\n" + _surface_probe_javascript(
+        surface
+    )
     host = WasmHost.profiled(
         handler=_LedgerClockHost(),
         wasm_path=XAHAU_HOOK_PROVIDER_WASM,

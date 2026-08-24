@@ -34,7 +34,8 @@
 #include <math.h>
 #if defined(__APPLE__)
 #include <malloc/malloc.h>
-#elif defined(__linux__) || defined(__GLIBC__)
+#elif defined(__linux__) || defined(__GLIBC__) || \
+    defined(CONFIG_WASM_STANDALONE)
 #include <malloc.h>
 #elif defined(__FreeBSD__)
 #include <malloc_np.h>
@@ -56,11 +57,21 @@
 #endif
 
 #if defined(CONFIG_WASM_STANDALONE)
+/*
+ * Preserve QuickJS's established 16-byte logical allocation charge while
+ * avoiding a 16-byte physical prefix on every WASM allocation.  wasi-libc's
+ * allocator already retains the raw allocation extent, so only the requested
+ * size needs to be stored.  Keep that size in a reserved tail: returning the
+ * raw pointer preserves malloc's alignment, and the tail is outside the bytes
+ * promised to QuickJS.
+ */
 typedef union JSWasmMallocHeader {
     size_t size;
     void *pointer_alignment;
     long double scalar_alignment;
 } JSWasmMallocHeader;
+_Static_assert(sizeof(JSWasmMallocHeader) == 16,
+               "sealed WASM heap accounting requires 16-byte overhead");
 #define MALLOC_OVERHEAD  sizeof(JSWasmMallocHeader)
 #elif defined(__APPLE__)
 #define MALLOC_OVERHEAD  0
@@ -1735,9 +1746,14 @@ void JS_SetRuntimeOpaque(JSRuntime *rt, void *opaque)
 static size_t js_def_malloc_usable_size(const void *ptr)
 {
 #if defined(CONFIG_WASM_STANDALONE)
-    const JSWasmMallocHeader *header =
-        (const JSWasmMallocHeader *)ptr - 1;
-    return header->size;
+    size_t allocation_size, requested_size;
+
+    allocation_size = malloc_usable_size((void *)ptr);
+    assert(allocation_size >= sizeof(requested_size));
+    memcpy(&requested_size,
+           (const uint8_t *)ptr + allocation_size - sizeof(requested_size),
+           sizeof(requested_size));
+    return requested_size;
 #elif defined(__APPLE__)
     return malloc_size(ptr);
 #elif defined(_WIN32)
@@ -1753,37 +1769,63 @@ static size_t js_def_malloc_usable_size(const void *ptr)
 }
 
 #if defined(CONFIG_WASM_STANDALONE)
+static void js_def_raw_store_size(void *ptr, size_t requested_size)
+{
+    size_t allocation_size;
+
+    allocation_size = malloc_usable_size(ptr);
+    memcpy((uint8_t *)ptr + allocation_size - sizeof(requested_size),
+           &requested_size, sizeof(requested_size));
+}
+
 static void *js_def_raw_malloc(size_t size)
 {
-    JSWasmMallocHeader *header;
+    void *ptr;
 
-    if (size > SIZE_MAX - sizeof(*header))
+    if (size > SIZE_MAX - sizeof(size))
         return NULL;
-    header = malloc(sizeof(*header) + size);
-    if (!header)
+    ptr = malloc(size + sizeof(size));
+    if (!ptr)
         return NULL;
-    header->size = size;
-    return header + 1;
+    js_def_raw_store_size(ptr, size);
+    return ptr;
 }
 
 static void js_def_raw_free(void *ptr)
 {
-    free((JSWasmMallocHeader *)ptr - 1);
+    free(ptr);
 }
 
 static void *js_def_raw_realloc(void *ptr, size_t size)
 {
-    JSWasmMallocHeader *header;
+    void *new_ptr;
 
-    if (size > SIZE_MAX - sizeof(*header))
+    if (size > SIZE_MAX - sizeof(size))
         return NULL;
-    header = realloc((JSWasmMallocHeader *)ptr - 1,
-                     sizeof(*header) + size);
-    if (!header)
+    new_ptr = realloc(ptr, size + sizeof(size));
+    if (!new_ptr)
         return NULL;
-    header->size = size;
-    return header + 1;
+    js_def_raw_store_size(new_ptr, size);
+    return new_ptr;
 }
+
+#if defined(CONFIG_WASM_ALLOCATOR_PROBE)
+/*
+ * Test-only introspection for the standalone allocator fixture.  Keeping this
+ * beside the raw allocation implementation makes a return to an adjusted
+ * prefix pointer observable: the raw and QuickJS pointers would differ, and
+ * the physical usable extent would again include the 16-byte prefix.
+ */
+const void *js_wasm_allocator_raw_pointer(const void *ptr)
+{
+    return ptr;
+}
+
+size_t js_wasm_allocator_physical_usable_size(const void *ptr)
+{
+    return malloc_usable_size((void *)ptr);
+}
+#endif
 #else
 #define js_def_raw_malloc(size) malloc(size)
 #define js_def_raw_free(ptr) free(ptr)
@@ -4243,6 +4285,7 @@ const char *JS_ToCStringLen2(JSContext *ctx, size_t *plen, JSValueConst val1, BO
         *plen = str_new->len;
     return (const char *)str_new->u.str8;
  fail:
+    JS_FreeValue(ctx, val);
     if (plen)
         *plen = 0;
     return NULL;
@@ -16247,6 +16290,8 @@ static __exception int js_for_in_next(JSContext *ctx, JSValue *sp)
     }
     /* return the property */
     sp[0] = JS_AtomToValue(ctx, prop);
+    if (JS_IsException(sp[0]))
+        return -1;
     sp[1] = JS_FALSE;
     return 0;
  done:

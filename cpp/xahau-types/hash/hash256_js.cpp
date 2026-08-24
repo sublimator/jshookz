@@ -124,6 +124,25 @@ JSCFunctionListEntry const statics[] = {
     JS_CFUNC_DEF("fromHex", 1, js_hash256_from_hex),
 };
 
+// @binding provider:Hash256.zero
+bool
+install_hash256_constants(JSContext* ctx, JSValueConst factory)
+{
+    std::uint8_t bytes[32] = {};
+    qjs::OwnedValue zero(
+        ctx,
+        nativeNew<Hash256>(
+            ctx, js_hash256_class_id, bytes, sizeof(bytes)));
+    if (zero.isException() || !qjs::freezeObject(ctx, zero.get()))
+        return false;
+    return JS_DefinePropertyValueStr(
+               ctx,
+               factory,
+               "zero",
+               zero.release(),
+               JS_PROP_ENUMERABLE) >= 0;
+}
+
 }  // namespace
 
 bool
@@ -138,7 +157,8 @@ registerHash256(JSContext* ctx, JSValueConst global)
         proto,
         statics,
         qjs::ByteClassFamily::serializedType,
-        js_hash256_to_bytes);
+        js_hash256_to_bytes,
+        install_hash256_constants);
 }
 
 JSValue

@@ -8,6 +8,8 @@
 #include <catl/xdata/pathset-rules.h>
 #include <catl/xdata/types/pathset.h>
 
+#include "runtime_profile_limits.h"
+
 #include <array>
 #include <cstring>
 #include <limits>
@@ -21,7 +23,8 @@ namespace qjs = jshookz::provider::qjs;
 namespace coreqjs = jshookz::qjs;
 namespace xdata = catl::xdata;
 
-constexpr std::uint32_t kMaximumPayloadBytes = 1'048'576;
+constexpr std::uint32_t kMaximumPayloadBytes =
+    xdata::xahau_profile_limits::serialized_object_max_bytes;
 constexpr std::uint8_t kAccountCached = 1u << 0;
 constexpr std::uint8_t kCurrencyCached = 1u << 1;
 constexpr std::uint8_t kIssuerCached = 1u << 2;
@@ -584,21 +587,31 @@ enum class Component : std::uint8_t {
 }
 
 JSCFunctionListEntry const pathSetPrototype[] = {
+    // @binding provider:PathSet.length
     JS_CGETSET_DEF("length", pathSetLength, nullptr),
+    // @binding provider:PathSet.at
     JS_CFUNC_DEF("at", 1, pathSetAt),
+    // @binding provider:PathSet.toBytes
     JS_CFUNC_DEF("toBytes", 0, pathSetToBytes),
+    // @binding provider:PathSet.[Symbol.iterator]
     JS_CFUNC_DEF("[Symbol.iterator]", 0, pathSetIterator),
 };
 
 JSCFunctionListEntry const pathPrototype[] = {
+    // @binding provider:Path.length
     JS_CGETSET_DEF("length", pathLength, nullptr),
+    // @binding provider:Path.at
     JS_CFUNC_DEF("at", 1, pathAt),
+    // @binding provider:Path.[Symbol.iterator]
     JS_CFUNC_DEF("[Symbol.iterator]", 0, pathIterator),
 };
 
 JSCFunctionListEntry const pathHopPrototype[] = {
+    // @binding provider:PathHop.account
     JS_CGETSET_DEF("account", pathHopAccount, nullptr),
+    // @binding provider:PathHop.currency
     JS_CGETSET_DEF("currency", pathHopCurrency, nullptr),
+    // @binding provider:PathHop.issuer
     JS_CGETSET_DEF("issuer", pathHopIssuer, nullptr),
 };
 

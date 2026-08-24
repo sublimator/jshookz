@@ -6,6 +6,7 @@
 
 extern "C" {
 [[nodiscard]] bool register_cpp_types(JSContext* ctx);
+void unregister_cpp_types(JSRuntime* runtime);
 [[nodiscard]] bool register_uint_types(JSContext* ctx);
 }
 

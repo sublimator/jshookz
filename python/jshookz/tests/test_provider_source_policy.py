@@ -23,6 +23,8 @@ def _cpp_sources() -> dict[str, str]:
     sources: dict[str, str] = {}
     for root in (PROVIDER, XAHAU_TYPES):
         for path in root.rglob("*.cpp"):
+            if "tests" in path.parts or path.name.endswith("_probe.cpp"):
+                continue
             sources[str(path.relative_to(CPP))] = path.read_text()
     return sources
 
@@ -49,6 +51,13 @@ def test_provider_byte_inputs_funnel_through_byte_view():
     assert _raw_byte_api_uses(_cpp_sources()) == []
 
 
+def test_provider_build_depends_on_every_generated_xdata_header():
+    cmake = (PROVIDER / "CMakeLists.txt").read_text()
+
+    assert "../x-data/definitions.cmake" in cmake
+    assert "add_dependencies(jshookz_provider generate_xdata_definitions)" in cmake
+
+
 def _cpp_byte_policy_names(header: str) -> set[str]:
     body = re.search(
         r"enum class BytePolicy[^\{]*\{(?P<body>.*?)\};", header, re.DOTALL
@@ -56,7 +65,9 @@ def _cpp_byte_policy_names(header: str) -> set[str]:
     assert body is not None
     return {
         match.group(1)
-        for match in re.finditer(r"^\s*([A-Za-z][A-Za-z0-9]*)\s*,", body["body"], re.MULTILINE)
+        for match in re.finditer(
+            r"^\s*([A-Za-z][A-Za-z0-9]*)\s*,", body["body"], re.MULTILINE
+        )
     }
 
 
@@ -85,7 +96,9 @@ def _cpp_binding_byte_policies(sources: dict[str, str]) -> dict[tuple[str, str],
     for source in sources.values():
         for match in _BINDING_POLICY.finditer(source):
             coordinate = (match["binding"], match["parameter"])
-            assert coordinate not in policies, f"duplicate binding byte policy: {coordinate}"
+            assert coordinate not in policies, (
+                f"duplicate binding byte policy: {coordinate}"
+            )
             policies[coordinate] = match["policy"]
     return policies
 

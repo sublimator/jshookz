@@ -776,7 +776,7 @@ public:
       else
         (void)cursor_.advance(12);
     } else if (descriptor->wire_type == 14 || descriptor->wire_type == 15) {
-      if (parent_depth >= limits_.max_depth || parent_depth >= 10) {
+      if (parent_depth >= limits_.max_depth) {
         cursor_.fail(ScanIssue::resource_limit, ScanMessage::nesting_too_deep,
                      0, field_code, parent_depth + 1);
       } else {
@@ -843,7 +843,7 @@ private:
 
   [[nodiscard]] bool scan_scope(ScopeKind kind, std::uint32_t depth,
                                 std::uint32_t scope_id) noexcept {
-    if (depth > limits_.max_depth || depth > 10) {
+    if (depth > limits_.max_depth) {
       cursor_.fail(ScanIssue::resource_limit, ScanMessage::nesting_too_deep,
                    cursor_.pos, 0, depth);
       return false;
@@ -944,7 +944,7 @@ private:
                      header_begin, field_code, total_scopes_ + 1);
         return false;
       }
-      if (is_container && (depth >= limits_.max_depth || depth >= 10)) {
+      if (is_container && depth >= limits_.max_depth) {
         cursor_.fail(ScanIssue::resource_limit, ScanMessage::nesting_too_deep,
                      header_begin, field_code, depth + 1);
         return false;

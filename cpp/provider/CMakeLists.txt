@@ -42,11 +42,13 @@ add_link_options(-Wno-deprecated)
 
 # Provider-owned C++ sources compiled into the WASM module.
 include(provider_sources.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/../x-data/definitions.cmake)
 
 add_executable(jshookz_provider
     ${JSHOOKZ_QUICKJS_C_SOURCES}
     ${JSHOOKZ_PROVIDER_CPP_SOURCES}
 )
+add_dependencies(jshookz_provider generate_xdata_definitions)
 
 target_include_directories(jshookz_provider PRIVATE
     ${JSHOOKZ_QJS_CPP_INCLUDE_DIR}
@@ -71,6 +73,10 @@ if(XAHAU_HOOK_PROVIDER)
         wasi_preview1_shims.c
     )
     target_link_options(jshookz_provider PRIVATE
+        # The accepted provider ABI starts at exactly six 64-KiB pages. Make
+        # that an input to initialization rather than relying on allocator
+        # growth granularity to happen to land on the profile value.
+        -Wl,--initial-memory=393216
         -Wl,--max-memory=33554432
     )
 endif()
@@ -79,7 +85,6 @@ endif()
 set_source_files_properties(${JSHOOKZ_QUICKJS_C_SOURCES} PROPERTIES COMPILE_OPTIONS
     "-O2;-fwrapv;-funsigned-char;-Wno-sign-compare;-Wno-missing-field-initializers;-Wno-unused-parameter;-mllvm;-wasm-enable-sjlj"
 )
-
 # C++ flags
 set_source_files_properties(${JSHOOKZ_PROVIDER_CPP_SOURCES} PROPERTIES COMPILE_OPTIONS
     "-O2;-fno-exceptions;-fno-rtti;-Wno-c99-designator;-mllvm;-wasm-enable-sjlj"
@@ -133,4 +138,34 @@ add_custom_command(TARGET jshookz_provider POST_BUILD
         -o "$<TARGET_FILE:jshookz_provider>"
     COMMENT "Optimizing provider with Binaryen ${JSHOOKZ_BINARYEN_VERSION}"
     VERBATIM
+)
+
+# A separate, non-product WASM fixture exercises the exact standalone
+# allocator implementation.  Native tests use injected allocators and cannot
+# cover the provider's requested-size tail metadata or wasi-libc realloc path.
+add_executable(quickjs_wasm_allocator_probe EXCLUDE_FROM_ALL
+    ${JSHOOKZ_QUICKJS_C_SOURCES}
+    ${JSHOOKZ_QUICKJS_SOURCE_DIR}/tests/wasm_allocator_probe.c
+    wasi_preview1_shims.c
+)
+target_include_directories(quickjs_wasm_allocator_probe PRIVATE
+    ${JSHOOKZ_QUICKJS_SOURCE_DIR}
+)
+target_compile_definitions(quickjs_wasm_allocator_probe PRIVATE
+    CONFIG_VERSION="${JSHOOKZ_QJS_CONFIG_VERSION}"
+    _GNU_SOURCE
+    CONFIG_WASM_STANDALONE
+    CONFIG_WASM_ALLOCATOR_PROBE
+)
+target_link_options(quickjs_wasm_allocator_probe PRIVATE
+    --no-wasm-opt
+    -mexec-model=reactor
+    -Wl,--initial-memory=393216
+    -Wl,--max-memory=33554432
+    -Wl,--export=quickjs_wasm_allocator_probe
+    -Wl,-z,stack-size=131072
+)
+set_target_properties(quickjs_wasm_allocator_probe PROPERTIES
+    SUFFIX ".wasm"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )

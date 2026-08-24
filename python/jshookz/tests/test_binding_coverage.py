@@ -14,7 +14,8 @@ from pathlib import Path
 from jshookz.paths import REPO_ROOT, XAHAU_V1_JAVASCRIPT_SURFACE
 
 _TAG = re.compile(
-    r"^\s*//\s*@binding\s+(?P<plane>provider):(?P<path>[A-Za-z][\w.]*)\s*$"
+    r"^\s*//\s*@binding\s+"
+    r"(?P<plane>provider):(?P<path>[A-Za-z][\w.\[\]]*)\s*$"
 )
 _HOST_CALL = re.compile(r"\b(?:hook_|host_)[A-Za-z]\w*\s*\(")
 _HOOK_IMPORT = re.compile(r'^\s*#\s*include\s*[<"][^>"]*hook_imports\.hpp[>"]')
@@ -83,8 +84,7 @@ def test_binding_tags_match_surface():
 
     missing = sorted(required - covered)
     assert missing == [], (
-        "v1 surface members without a provider @binding:\n  "
-        + "\n  ".join(missing)
+        "v1 surface members without a provider @binding:\n  " + "\n  ".join(missing)
     )
 
 
@@ -94,9 +94,7 @@ def test_xahau_types_do_not_call_host():
         if path.suffix not in {".cpp", ".hpp", ".h"}:
             continue
         text = path.read_text(encoding="utf-8")
-        includes = [
-            line for line in text.splitlines() if _HOOK_IMPORT.match(line)
-        ]
+        includes = [line for line in text.splitlines() if _HOOK_IMPORT.match(line)]
         assert includes == [], f"{path}: xahau-types must not include hook imports"
         hits = _HOST_CALL.findall(text)
         assert hits == [], f"{path}: xahau-types must not call host ({hits})"

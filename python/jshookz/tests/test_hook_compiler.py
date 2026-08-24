@@ -20,11 +20,13 @@ def test_public_declarations_are_package_data_and_v1_is_default():
     assert DEFAULT_DECLARATIONS == XAHAU_V1_HOOKS_API_DECLARATIONS
     assert ".ai-docs" not in str(CANONICAL_HOOKS_API_DECLARATIONS)
     declarations = CANONICAL_HOOKS_API_DECLARATIONS.read_text()
-    assert "declare interface STObject" in declarations
-    assert "declare namespace ledger" in declarations
+    assert declarations.startswith("export {};")
+    assert "declare global {" in declarations
+    assert "interface STObject" in declarations
+    assert "namespace ledger" in declarations
     v1 = XAHAU_V1_HOOKS_API_DECLARATIONS.read_text()
-    assert "declare interface Hash256" in v1
-    assert "declare const Hash256: Hash256Factory" in v1
+    assert "interface Hash256" in v1
+    assert "const Hash256: Hash256Factory" in v1
     assert "declare function record" not in v1
 
 
@@ -52,7 +54,7 @@ def test_result_moot_is_restricted_to_void_results(tmp_path: Path):
         compile_hook(source)
 
 
-def test_rollback_require_strips_nullish_result_values(tmp_path: Path):
+def test_rollback_require_present_strips_nullish_result_values(tmp_path: Path):
     source = tmp_path / "require-nullish.hook.ts"
     source.write_text(
         """
@@ -60,8 +62,8 @@ def test_rollback_require_strips_nullish_result_values(tmp_path: Path):
         declare const zeroResult: Result<0, HostError>;
 
         export function main(): never {
-          const present: string = rollback.require(nullable, "required");
-          const zero: 0 = rollback.require(zeroResult, "required");
+          const present: string = rollback.requirePresent(nullable, "required");
+          const zero: 0 = rollback.requirePresent(zeroResult, "required");
           trace(present, zero);
           return accept();
         }
@@ -174,9 +176,7 @@ def test_selected_provider_minted_types_have_no_value_namespace(tmp_path: Path):
 def test_compiler_rejects_discarded_results(tmp_path: Path, statement: str):
     source = tmp_path / "discarded-result.hook.ts"
     source.write_text(
-        "export function main(): never { "
-        f"{statement} "
-        "return accept(); }"
+        f"export function main(): never {{ {statement} return accept(); }}"
     )
 
     with pytest.raises(RuntimeError, match="six legal exits"):
@@ -213,11 +213,7 @@ def test_result_dataflow_rejects_unconsumed_shapes(
     body: str,
 ):
     source = tmp_path / "unconsumed-shape.hook.ts"
-    source.write_text(
-        "export function main(): never { "
-        f"{body} "
-        "return accept(); }"
-    )
+    source.write_text(f"export function main(): never {{ {body} return accept(); }}")
 
     with pytest.raises(RuntimeError, match="six legal exits"):
         compile_hook(source)
@@ -250,11 +246,7 @@ def test_result_dataflow_accepts_checked_transfers_and_branches(
     body: str,
 ):
     source = tmp_path / "consumed-shape.hook.ts"
-    source.write_text(
-        "export function main(): never { "
-        f"{body} "
-        "return accept(); }"
-    )
+    source.write_text(f"export function main(): never {{ {body} return accept(); }}")
 
     assert compile_hook(source).bytecode
 
@@ -262,10 +254,7 @@ def test_result_dataflow_accepts_checked_transfers_and_branches(
 @pytest.mark.parametrize(
     "body",
     [
-        (
-            "state.get('key').okOrHandle(error => "
-            "rollback('read failed', error.code));"
-        ),
+        ("state.get('key').okOrHandle(error => rollback('read failed', error.code));"),
         (
             "function abortWith(error: HostError): never { "
             "rollback('read failed', error.code); } "
@@ -278,11 +267,7 @@ def test_result_dataflow_rejects_nonreturning_ok_or_handle_handlers(
     body: str,
 ):
     source = tmp_path / "nonreturning-ok-or-handle.hook.ts"
-    source.write_text(
-        "export function main(): never { "
-        f"{body} "
-        "return accept(); }"
-    )
+    source.write_text(f"export function main(): never {{ {body} return accept(); }}")
 
     with pytest.raises(
         RuntimeError,
@@ -307,9 +292,7 @@ def test_result_dataflow_accepts_conditionally_terminal_fallback_handler(
 
 def test_raw_javascript_uses_the_same_result_dataflow_gate(tmp_path: Path):
     source = tmp_path / "discarded-result.hook.js"
-    source.write_text(
-        "export function main() { state.get('key'); return accept(); }"
-    )
+    source.write_text("export function main() { state.get('key'); return accept(); }")
 
     with pytest.raises(RuntimeError, match="six legal exits"):
         compile_hook(source)
@@ -332,11 +315,7 @@ def test_result_dataflow_rejects_class_and_parameter_initializer_holes(
     body: str,
 ):
     source = tmp_path / "initializer-result.hook.ts"
-    source.write_text(
-        "export function main(): never { "
-        f"{body} "
-        "return accept(); }"
-    )
+    source.write_text(f"export function main(): never {{ {body} return accept(); }}")
 
     with pytest.raises(RuntimeError, match="six legal exits"):
         compile_hook(source)
@@ -370,7 +349,7 @@ def test_typescript_hook_compiles_to_provider_bytecode(tmp_path: Path):
           throw new Error("entered main");
         }
         export function callback(info: CallbackInfo): never {
-          throw new Error(`entered callback:${info.failed}:${info.rawFlags}`);
+          throw new Error(`entered callback:${info.failureBitSet}:${info.rawFlags}`);
         }
         """
     )
@@ -399,7 +378,7 @@ def test_typescript_hook_packages_payload_with_explicit_identities(tmp_path: Pat
           throw new Error("entered main");
         }
         export function callback(info: CallbackInfo): never {
-          throw new Error(`packaged:${info.failed}:${info.rawFlags}`);
+          throw new Error(`packaged:${info.failureBitSet}:${info.rawFlags}`);
         }
         """
     )
@@ -596,7 +575,7 @@ def test_compiler_accepts_callback_info_parameter(tmp_path: Path):
           accept("ok");
         }
         export function callback(info: CallbackInfo): never {
-          if (info.failed) rollback("emitted failed", info.rawFlags);
+          if (info.failureBitSet) rollback("emitted failed", info.rawFlags);
           accept("cb");
         }
         """
@@ -839,7 +818,7 @@ def test_provider_dispatches_callback_export(tmp_path: Path):
           throw new Error("entered main");
         }
         export function callback(info: CallbackInfo): never {
-          throw new Error(`entered callback:${info.failed}:${info.rawFlags}`);
+          throw new Error(`entered callback:${info.failureBitSet}:${info.rawFlags}`);
         }
         """
     )

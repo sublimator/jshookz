@@ -6,6 +6,8 @@
 #include "pathset/pathset_js.hpp"
 #include "result.hpp"
 
+#include "catl/xdata/static_protocol.h"
+
 #include <jshookz/qjs.hpp>
 
 #include <gtest/gtest.h>
@@ -14,6 +16,8 @@
 #include <cstring>
 #include <cstdint>
 #include <string>
+#include <string_view>
+#include <unordered_set>
 #include <vector>
 
 extern "C" bool register_cpp_types(JSContext *ctx);
@@ -245,6 +249,26 @@ TEST_F(XahauTypes, CertifiedObjectIsLazyImmutableAndCanonical)
     EXPECT_EQ(
         to_string(value.get()),
         R"({"keys":["Flags","Sequence"],"same":true,"flags":9,"sequence":7,"fieldBytes":[0,0,0,9],"canonical":[34,0,0,0,9,36,0,0,0,7],"json":{"Flags":9,"Sequence":7},"jsonFresh":true,"extensible":false,"assignmentFailed":true,"absent":true})");
+}
+
+TEST_F(XahauTypes, ObjectFieldSelectorFormsMatchTheDeclaredSurface)
+{
+    installRoot({0x22, 0x00, 0x00, 0x00, 0x09});
+    auto value = eval(R"JS(
+        (() => {
+          const code = Field.Flags.code;
+          const changed = root.withField(
+            code, new Uint8Array([0, 0, 0, 10]));
+          const removed = root.withoutField(code);
+          return root.has(code) === false &&
+            root.get(code) === undefined &&
+            root.fieldBytes(code).toHex() === "00000009" &&
+            changed.Flags.toNumber() === 10 &&
+            removed.Flags === undefined;
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, value.get()));
 }
 
 TEST_F(XahauTypes,
@@ -669,22 +693,166 @@ TEST_F(XahauTypes, GeneratedFieldDescriptorsAreExactNominalAndComplete)
     auto value = eval(R"JS(
         (() => {
           const descriptor = Field.Flags;
+          const own = Object.getOwnPropertyDescriptor(Field, "Flags");
+          const child = Object.create(Field);
+          const keys = Reflect.ownKeys(Field);
+          const descriptors = Object.getOwnPropertyDescriptors(Field);
+          const spread = {...Field};
+          const assigned = Object.assign({}, Field);
+          const descriptorPrototype = Object.getPrototypeOf(descriptor);
+          const codeGetter = Object.getOwnPropertyDescriptor(
+            descriptorPrototype, "code").get;
+          let strictSetRejected = false;
+          let strictDeleteRejected = false;
+          let getterReceiverRejected = false;
+          try {
+            Function("Field", "value", '"use strict"; Field.Flags = value')(
+              Field, {});
+          } catch (error) { strictSetRejected = error instanceof TypeError; }
+          try {
+            Function("Field", '"use strict"; delete Field.Flags')(Field);
+          } catch (error) { strictDeleteRejected = error instanceof TypeError; }
+          try { codeGetter.call({}); }
+          catch (error) { getterReceiverRejected = error instanceof TypeError; }
           return JSON.stringify({
             count: Object.keys(Field).length,
+            ownKeyCount: keys.length,
             code: descriptor.code,
             typeCode: descriptor.typeCode,
             fieldCode: descriptor.fieldCode,
             frozen: Object.isFrozen(Field),
-            descriptorExtensible: Object.isExtensible(descriptor),
+            descriptorFrozen: Object.isFrozen(descriptor),
+            identity: descriptor === Field.Flags,
+            reflectionIdentity: keys.every(name =>
+              descriptors[name].value === Field[name] &&
+              spread[name] === Field[name] && assigned[name] === Field[name]),
+            reflectionFlags: keys.every(name => {
+              const reflected = descriptors[name];
+              return reflected.enumerable && !reflected.configurable &&
+                !reflected.writable && !Object.hasOwn(reflected, "get") &&
+                !Object.hasOwn(reflected, "set");
+            }),
+            plainPrototype: Object.getPrototypeOf(Field) === Object.prototype,
+            samePrototype: Reflect.setPrototypeOf(Field, Object.prototype),
+            freezeIdentity: Object.freeze(Field) === Field,
+            sealIdentity: Object.seal(Field) === Field,
+            deleteRejected: Reflect.deleteProperty(Field, "Flags") === false,
+            setRejected: Reflect.set(Field, "Flags", {}) === false,
+            sloppySetRejected: Function(
+              "Field", "value", "Field.Flags = value; return Field.Flags !== value"
+            )(Field, {}),
+            strictSetRejected,
+            sloppyDeleteRejected:
+              Function("Field", "return delete Field.Flags")(Field) === false,
+            strictDeleteRejected,
+            sameDefinition: Reflect.defineProperty(Field, "Flags", own),
+            changedDefinition: Reflect.defineProperty(
+              Field, "Flags", {...own, enumerable: false}) === false,
+            unknownDefinition: Reflect.defineProperty(
+              Field, "Unknown", {value: descriptor}) === false,
+            accessorDefinition: Reflect.defineProperty(
+              Field, "Flags", {get() { return descriptor; }}) === false,
+            symbolDefinition: Reflect.defineProperty(
+              Field, Symbol("unknown"), {value: descriptor}) === false,
+            unknownDelete: Reflect.deleteProperty(Field, "Unknown"),
+            symbolDelete: Reflect.deleteProperty(Field, Symbol("unknown")),
+            unknownRead: Field.Unknown === undefined,
+            prototypeRejected: Reflect.setPrototypeOf(Field, {}) === false,
+            inheritedShadowRejected:
+              Reflect.set(child, "Flags", descriptor) === false &&
+              !Object.hasOwn(child, "Flags"),
             lookup: root.get(descriptor).toNumber(),
             structuralMiss: root.get({code: descriptor.code}) === undefined,
+            copiedMiss: root.get(Object.assign({}, descriptor)) === undefined,
+            proxyMiss: root.get(new Proxy(descriptor, {})) === undefined,
+            prototypeMiss: root.get(Object.create(descriptorPrototype)) === undefined,
+            getterReceiverRejected,
           });
         })()
     )JS");
     ASSERT_FALSE(value.isException());
     EXPECT_EQ(
         to_string(value.get()),
-        R"({"count":325,"code":131074,"typeCode":2,"fieldCode":2,"frozen":true,"descriptorExtensible":false,"lookup":9,"structuralMiss":true})");
+        R"({"count":325,"ownKeyCount":325,"code":131074,"typeCode":2,"fieldCode":2,"frozen":true,"descriptorFrozen":true,"identity":true,"reflectionIdentity":true,"reflectionFlags":true,"plainPrototype":true,"samePrototype":true,"freezeIdentity":true,"sealIdentity":true,"deleteRejected":true,"setRejected":true,"sloppySetRejected":true,"strictSetRejected":true,"sloppyDeleteRejected":true,"strictDeleteRejected":true,"sameDefinition":true,"changedDefinition":true,"unknownDefinition":true,"accessorDefinition":true,"symbolDefinition":true,"unknownDelete":true,"symbolDelete":true,"unknownRead":true,"prototypeRejected":true,"inheritedShadowRejected":true,"lookup":9,"structuralMiss":true,"copiedMiss":true,"proxyMiss":true,"prototypeMiss":true,"getterReceiverRejected":true})");
+}
+
+TEST_F(XahauTypes, GeneratedFieldRowsJoinStaticProtocolExactly)
+{
+    namespace xdata = catl::xdata;
+    auto const& protocol = xdata::xahau_static_protocol();
+    ASSERT_EQ(protocol.material_field_count, 325);
+
+    auto keys = eval("Object.keys(Field)");
+    ASSERT_FALSE(keys.isException());
+    jshookz::qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
+    ASSERT_FALSE(global.isException());
+    jshookz::qjs::OwnedValue fields(
+        ctx, JS_GetPropertyStr(ctx, global.get(), "Field"));
+    ASSERT_FALSE(fields.isException());
+    std::unordered_set<void const*> identities;
+
+    for (std::uint32_t ordinal = 0;
+         ordinal < protocol.material_field_count; ++ordinal) {
+        SCOPED_TRACE(ordinal);
+        auto const* material = protocol.material_field(ordinal);
+        ASSERT_NE(material, nullptr);
+        auto const* row = protocol.field_by_code(material->field_code);
+        ASSERT_NE(row, nullptr);
+        ASSERT_EQ(row->material_ordinal, ordinal);
+        auto const name = protocol.field_name(row->name_ordinal);
+        ASSERT_NE(name.data, nullptr);
+        std::string expected{name.data, name.size};
+
+        jshookz::qjs::OwnedValue key(
+            ctx, JS_GetPropertyUint32(ctx, keys.get(), ordinal));
+        ASSERT_FALSE(key.isException());
+        EXPECT_EQ(to_string(key.get()), expected);
+
+        JSAtom atom = JS_NewAtomLen(ctx, name.data, name.size);
+        ASSERT_NE(atom, JS_ATOM_NULL);
+        jshookz::qjs::OwnedValue observed(
+            ctx, JS_GetProperty(ctx, fields.get(), atom));
+        ASSERT_FALSE(observed.isException());
+        ASSERT_TRUE(JS_IsObject(observed.get()));
+        EXPECT_TRUE(identities.insert(JS_VALUE_GET_PTR(observed.get())).second);
+
+        jshookz::qjs::OwnedValue repeated(
+            ctx, JS_GetProperty(ctx, fields.get(), atom));
+        ASSERT_FALSE(repeated.isException());
+        EXPECT_EQ(JS_VALUE_GET_PTR(repeated.get()),
+                  JS_VALUE_GET_PTR(observed.get()));
+
+        for (auto const* property : {"code", "typeCode", "fieldCode"}) {
+            jshookz::qjs::OwnedValue number(
+                ctx, JS_GetPropertyStr(ctx, observed.get(), property));
+            ASSERT_FALSE(number.isException());
+            std::uint32_t actual = 0;
+            ASSERT_EQ(JS_ToUint32(ctx, &actual, number.get()), 0);
+            std::uint32_t const expectedNumber =
+                std::string_view(property) == "code" ? material->field_code :
+                std::string_view(property) == "typeCode" ?
+                    material->field_code >> 16 : material->field_code & 0xffffu;
+            EXPECT_EQ(actual, expectedNumber);
+        }
+
+        JSPropertyDescriptor descriptor{
+            .flags = 0,
+            .value = JS_UNDEFINED,
+            .getter = JS_UNDEFINED,
+            .setter = JS_UNDEFINED,
+        };
+        ASSERT_EQ(JS_GetOwnProperty(ctx, &descriptor, fields.get(), atom), 1);
+        EXPECT_EQ(descriptor.flags, JS_PROP_ENUMERABLE);
+        EXPECT_EQ(JS_VALUE_GET_PTR(descriptor.value),
+                  JS_VALUE_GET_PTR(observed.get()));
+        EXPECT_TRUE(JS_IsUndefined(descriptor.getter));
+        EXPECT_TRUE(JS_IsUndefined(descriptor.setter));
+        JS_FreeValue(ctx, descriptor.value);
+        JS_FreeValue(ctx, descriptor.getter);
+        JS_FreeValue(ctx, descriptor.setter);
+        JS_FreeAtom(ctx, atom);
+    }
+    EXPECT_EQ(identities.size(), protocol.material_field_count);
 }
 
 TEST_F(XahauTypes, RichFixedIssueVectorAndBridgeLeavesAreNominalAndImmutable)

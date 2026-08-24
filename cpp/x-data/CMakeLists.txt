@@ -278,6 +278,13 @@ if(BUILD_TESTING)
     )
     set_tests_properties(pathset_fuel_lanes PROPERTIES TIMEOUT 240)
 
+    add_test(NAME recursive_fuel_lanes
+        COMMAND ${_fuel_python}
+            ${CMAKE_CURRENT_LIST_DIR}/tests/run_recursive_fuel.py
+            --src ${CMAKE_CURRENT_LIST_DIR}
+    )
+    set_tests_properties(recursive_fuel_lanes PROPERTIES TIMEOUT 300)
+
     if(Boost_INCLUDE_DIR)
         # Also the only target that compiles the codec headers at all: the
         # wasm library builds them out via CATL_XDATA_NO_BOOST_JSON, and no
