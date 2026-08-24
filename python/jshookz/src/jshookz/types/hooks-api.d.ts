@@ -4,8 +4,24 @@ declare const __stObjectBrand: unique symbol;
 declare const __stArrayBrand: unique symbol;
 declare const __providerValueBrand: unique symbol;
 declare const __binarySchemaBrand: unique symbol;
+declare const __resultBrand: unique symbol;
+declare const __voidResultBrand: unique symbol;
+declare const __recordFieldBrand: unique symbol;
+declare const __serializedFieldBrand: unique symbol;
+
 
 declare global {
+  /**
+   * The one shape of a provider value's public runtime noun (0085:780-…):
+   * a same-named, frozen, NON-constructible type object that owns the
+   * type's factories/statics and classifies its instances —
+   * `value instanceof Type` works and narrows. `new` is not part of the
+   * API; no `.prototype` is promised.
+   */
+  interface RuntimeType<T> {
+    [Symbol.hasInstance](value: unknown): value is T;
+  }
+
   /**
    * The canonical JavaScript/TypeScript API declaration for Xahau Hooks.
    *
@@ -70,9 +86,8 @@ declare global {
    * `accept.unlessTruthy`). `moot` lives on the effect family
    * (`VoidResultInstance`), which is nominally not a Result.
    */
-  abstract class ResultInstance<T, Error> {
-    private readonly __resultBrand: [T, Error];
-    private constructor();
+  interface ResultInstance<T, Error> {
+    readonly [__resultBrand]: [T, Error];
 
     /**
      * Return `.value` whenever `.ok` is true, including a successful
@@ -108,15 +123,19 @@ declare global {
 
   }
 
+  /** Conceptual result nouns (0085 close): the runtime already
+   * classifies via isResult/isEffectResult; these make it public. */
+  const Result: RuntimeType<Result<unknown, unknown>>;
+  const VoidResult: RuntimeType<VoidResult<unknown>>;
+
   /**
    * Nominal family of effect Results: host writes whose success carries no
    * value. Deliberately NOT assignable to `Result<T, Error>` — an effect
    * outcome is consumed by `moot`, an eliminator, or `rollback.onFail`,
    * never by a value verb.
    */
-  abstract class VoidResultInstance<Error> {
-    private readonly __voidResultBrand: Error;
-    private constructor();
+  interface VoidResultInstance<Error> {
+    readonly [__voidResultBrand]: Error;
 
     /**
      * Declare the failure of this effect Result moot: neither outcome bears
@@ -281,7 +300,7 @@ declare global {
 
 
   interface UInt8 extends UInt<8> {}
-  interface UInt8Factory {
+  interface UInt8Factory extends RuntimeType<UInt8> {
     readonly zero: UInt8;
     readonly max: UInt8;
     from(value: bigint | number): UIntResult<UInt8>;
@@ -294,7 +313,7 @@ declare global {
   const UInt8: UInt8Factory;
 
   interface UInt16 extends UInt<16> {}
-  interface UInt16Factory {
+  interface UInt16Factory extends RuntimeType<UInt16> {
     readonly zero: UInt16;
     readonly max: UInt16;
     from(value: bigint | number): UIntResult<UInt16>;
@@ -307,7 +326,7 @@ declare global {
   const UInt16: UInt16Factory;
 
   interface UInt32 extends UInt<32> {}
-  interface UInt32Factory {
+  interface UInt32Factory extends RuntimeType<UInt32> {
     readonly zero: UInt32;
     readonly max: UInt32;
     from(value: bigint | number): UIntResult<UInt32>;
@@ -320,7 +339,7 @@ declare global {
   const UInt32: UInt32Factory;
 
   interface UInt64 extends UInt<64> {}
-  interface UInt64Factory {
+  interface UInt64Factory extends RuntimeType<UInt64> {
     readonly zero: UInt64;
     readonly max: UInt64;
     from(value: bigint | number): UIntResult<UInt64>;
@@ -382,11 +401,12 @@ declare global {
   };
 
   /** Width-known element codec. Offset is not part of the unit; composition assigns it. */
-  abstract class RecordField<T, Width extends number = number> {
-    private readonly __recordFieldBrand: T;
-    private constructor();
+  interface RecordField<T, Width extends number = number> {
+    readonly [__recordFieldBrand]: T;
     readonly byteLength: Width;
   }
+  /** Unit-codec runtime noun (0085 close). */
+  const RecordField: RuntimeType<RecordField<unknown, number>>;
 
   /**
    * A named scalar schema. Parsing requires exactly `byteLength`; encoding and
@@ -632,7 +652,7 @@ declare global {
     indexOf(needle: BytesLike | STBlob, options?: ByteFindOptions): number | undefined;
   }
 
-  interface STBlobFactory {
+  interface STBlobFactory extends RuntimeType<STBlob> {
     from(value: BytesLike): STBlob;
     /** Decode an even-length hexadecimal literal. */
     fromHex(value: HexString): STBlob;
@@ -648,10 +668,8 @@ declare global {
   const STBlob: STBlobFactory;
 
   /** @inner-rich-type Hash */
-  abstract class Hash<Width extends HashWidth = HashWidth> {
-    private readonly __hashWidthBrand: Width;
+  interface Hash<Width extends HashWidth = HashWidth> {
     readonly byteLength: Width;
-    protected constructor(value: BytesLike);
     toBytes(): Uint8Array;
     toHex(): HexString;
     isZero(): boolean;
@@ -701,7 +719,7 @@ declare global {
     equals(other: Hash256): boolean;
   }
 
-  interface Hash256Factory {
+  interface Hash256Factory extends RuntimeType<Hash256> {
     readonly zero: Hash256;
     from(value: BytesLike): Hash256;
     /** Decode exactly 32 bytes from an even-length hexadecimal literal. */
@@ -711,18 +729,43 @@ declare global {
   const Hash256: Hash256Factory;
 
   /** @serial Hash384 */
-  class Hash384 extends Hash<48> {
-    private constructor();
-    static readonly zero: Hash384;
-    static from(value: BytesLike | Hash<48>): Hash384;
+  interface Hash384 extends Hash<48> {
+    readonly [__providerValueBrand]: "Hash384";
   }
+  const Hash384: RuntimeType<Hash384> & {
+    readonly zero: Hash384;
+    from(value: BytesLike | Hash<48>): Hash384;
+  };
 
   /** @serial Hash512 */
-  class Hash512 extends Hash<64> {
-    private constructor();
-    static readonly zero: Hash512;
-    static from(value: BytesLike | Hash<64>): Hash512;
+  interface Hash512 extends Hash<64> {
+    readonly [__providerValueBrand]: "Hash512";
   }
+  const Hash512: RuntimeType<Hash512> & {
+    readonly zero: Hash512;
+    from(value: BytesLike | Hash<64>): Hash512;
+  };
+
+  /**
+   * Runtime nouns for provider values without authoring factories
+   * (0085 close): the noun classifies; minting stays provider-side
+   * until a factory is earned.
+   */
+  const Hash: RuntimeType<Hash>;
+  const Hash128: RuntimeType<Hash128>;
+  const Hash160: RuntimeType<Hash160>;
+  const Hash192: RuntimeType<Hash192>;
+  const UInt: RuntimeType<UInt>;
+  const PathHop: RuntimeType<PathHop>;
+  const Path: RuntimeType<Path>;
+  const PathSet: RuntimeType<PathSet>;
+  const Vector256: RuntimeType<Vector256>;
+  const XChainBridge: RuntimeType<XChainBridge>;
+  const STObject: RuntimeType<STObject>;
+  const STArray: RuntimeType<STArray<STObject>>;
+  const NativeAmount: RuntimeType<NativeAmount>;
+  const IOUAmount: RuntimeType<IOUAmount>;
+  const MPTAmount: RuntimeType<MPTAmount>;
 
   interface HashByWidth {
     readonly 16: Hash128;
@@ -744,7 +787,7 @@ declare global {
     equals(other: AccountID): boolean;
   }
 
-  interface AccountIDFactory {
+  interface AccountIDFactory extends RuntimeType<AccountID> {
     /** XRP's native-issue account: 20 zero bytes. */
     readonly zero: AccountID;
     /** Ripple's no-account sentinel: integer one as a 20-byte AccountID. */
@@ -769,7 +812,7 @@ declare global {
     equals(other: Currency): boolean;
   }
 
-  interface CurrencyFactory {
+  interface CurrencyFactory extends RuntimeType<Currency> {
     readonly native: Currency;
     from(value: BytesLike | string): Currency;
   }
@@ -787,7 +830,7 @@ declare global {
     equals(other: Issue): boolean;
   }
 
-  interface IssueFactory {
+  interface IssueFactory extends RuntimeType<Issue> {
     native(): Issue;
     iou(currency: Currency, issuer: AccountID): Issue;
     mpt(mptIssuanceId: Hash192): Issue;
@@ -852,32 +895,36 @@ declare global {
    * Packed XLS-17 XFL word: mantissa, exponent, raw bits. Not the public
    * scalar. Poison words are not values.
    */
-  class XFLWord {
-    private constructor();
+  interface XFLWord {
+    readonly [__providerValueBrand]: "XFLWord";
     readonly raw: bigint;
     mantissa(): bigint;
     exponent(): number;
     toDecimal(): XFLDecimal;
-    static fromRaw(raw: bigint): XFLResult<XFLWord>;
+  }
+  const XFLWord: RuntimeType<XFLWord> & {
+    fromRaw(raw: bigint): XFLResult<XFLWord>;
     /**
      * Compatibility boundary for ported C: admits exactly the words the
      * C `> 0` predicate accepts, preserving noncanonical positive words
      * as-is. For ported semantics only — new code uses `fromRaw`.
      */
-    static fromRawCompat(raw: bigint): XFLResult<XFLWord>;
-    static fromDecimal(value: XFLDecimal): XFLWord;
-  }
+    fromRawCompat(raw: bigint): XFLResult<XFLWord>;
+    fromDecimal(value: XFLDecimal): XFLWord;
+  };
 
   /**
    * Immutable profile-bound arithmetic. Local override of the artifact
    * profile: `XFLMath.nearestEvenV1.add(left, right)`.
    */
-  class XFLMath {
-    private constructor();
+  const XFLMath: RuntimeType<XFLMath> & {
+    readonly xahauFloatV1: XFLMath;
+    readonly nearestEvenV1: XFLMath;
+    for(profile: XFLProfile): XFLMath;
+  };
+  interface XFLMath {
+    readonly [__providerValueBrand]: "XFLMath";
     readonly profile: XFLProfile;
-    static readonly xahauFloatV1: XFLMath;
-    static readonly nearestEvenV1: XFLMath;
-    static for(profile: XFLProfile): XFLMath;
     add(left: XFLDecimal, right: XFLDecimal): XFLResult<XFLDecimal>;
     subtract(left: XFLDecimal, right: XFLDecimal): XFLResult<XFLDecimal>;
     multiply(left: XFLDecimal, right: XFLDecimal): XFLResult<XFLDecimal>;
@@ -937,7 +984,7 @@ declare global {
     compare(other: XFLDecimal): number;
   }
 
-  interface XFLDecimalFactory {
+  interface XFLDecimalFactory extends RuntimeType<XFLDecimal> {
     readonly zero: XFLDecimal;
     readonly one: XFLDecimal;
     /**
@@ -978,7 +1025,7 @@ declare global {
     compare(other: Amount): -1 | 0 | 1;
   }
 
-  interface AmountFactory {
+  interface AmountFactory extends RuntimeType<Amount> {
     from(value: BytesLike | STBlob): Amount;
     drops(value: Drops): NativeAmount;
     iou(value: XFLDecimal, currency: Currency, issuer: AccountID): IOUAmount;
@@ -1047,18 +1094,21 @@ declare global {
    * TypeScript cannot express that numeric-literal arithmetic directly. The
    * declaration checker enforces the relationship instead.
    */
-  abstract class SerializedField<
+  interface SerializedField<
     T,
     Code extends number = number,
     TypeCode extends number = number,
     FieldCode extends number = number,
   > {
-    private readonly __valueType: T;
-    private constructor();
+    readonly [__serializedFieldBrand]: T;
     readonly code: Code;
     readonly typeCode: TypeCode;
     readonly fieldCode: FieldCode;
   }
+  /** Field-descriptor runtime noun (0085 close). */
+  const SerializedField: RuntimeType<
+    SerializedField<unknown, number, number, number>
+  >;
 
   type SerializedFieldValue<T> =
     T extends SerializedField<infer V> ? unknown extends V ? never : V : never;
@@ -1236,9 +1286,8 @@ declare global {
    * (`instanceof HostObject` and `instanceof HostPayment`). The provider
    * constructs them; there is no public constructor.
    */
-  class HostObject {
+  interface HostObject {
     readonly [__providerValueBrand]: "HostObject";
-    protected constructor();
     get<T>(field: SerializedField<T>): HostResult<T | undefined>;
     get(field: string): HostResult<SerializedValue>;
     materialize(): HostResult<STObject>;
@@ -1249,8 +1298,23 @@ declare global {
    * `count()` walks, `at(i)` is O(i) from the start. `forEach` is the cheap
    * traversal — one walk, one error channel.
    */
-  class HostArray<E extends HostObject = HostObject> {
-    private constructor();
+  /** Host-view runtime nouns (0085 close). */
+  const HostObject: RuntimeType<HostObject>;
+  const HostArray: RuntimeType<HostArray<HostObject>>;
+  const HostTx: RuntimeType<HostTx>;
+  const HostPayment: RuntimeType<HostPayment>;
+  const HostAccountRoot: RuntimeType<HostAccountRoot>;
+  const HostInstalledHook: RuntimeType<HostInstalledHook>;
+  const HostHookArrayEntry: RuntimeType<HostHookArrayEntry>;
+  const HostHookLedger: RuntimeType<HostHookLedger>;
+  const HostHookDefinition: RuntimeType<HostHookDefinition>;
+  const HostActiveValidator: RuntimeType<HostActiveValidator>;
+  const HostActiveValidatorArrayEntry: RuntimeType<HostActiveValidatorArrayEntry>;
+  const HostUNLReport: RuntimeType<HostUNLReport>;
+  const HostNFToken: RuntimeType<HostNFToken>;
+  const HostTxMeta: RuntimeType<HostTxMeta>;
+
+  interface HostArray<E extends HostObject = HostObject> {
     forEach(body: (element: E, index: number) => void): HostVoidResult;
     /** Walks the array. Not a field. */
     count(): HostResult<number>;
@@ -1258,8 +1322,7 @@ declare global {
     at(index: number): HostResult<E | undefined>;
   }
 
-  class HostTx extends HostObject {
-    private constructor();
+  interface HostTx extends HostObject {
     readonly TransactionType: HostResult<TransactionType>;
     readonly Account: HostResult<AccountID>;
     readonly Destination: HostResult<AccountID | undefined>;
@@ -1279,8 +1342,7 @@ declare global {
     asPayment(): HostResult<HostPayment>;
   }
 
-  class HostPayment extends HostObject {
-    private constructor();
+  interface HostPayment extends HostObject {
     readonly TransactionType: TransactionType.Payment;
     readonly Account: HostResult<AccountID>;
     readonly Destination: HostResult<AccountID>;
@@ -1295,8 +1357,7 @@ declare global {
     materialize(): HostResult<Payment>;
   }
 
-  class HostAccountRoot extends HostObject {
-    private constructor();
+  interface HostAccountRoot extends HostObject {
     readonly LedgerEntryType: "AccountRoot";
     readonly Account: HostResult<AccountID>;
     readonly Balance: HostResult<NativeAmount>;
@@ -1337,61 +1398,52 @@ declare global {
     materialize(): HostResult<AccountRoot>;
   }
 
-  class HostInstalledHook extends HostObject {
-    private constructor();
+  interface HostInstalledHook extends HostObject {
     readonly HookHash: HostResult<Hash256 | undefined>;
     materialize(): HostResult<InstalledHook>;
   }
 
-  class HostHookArrayEntry extends HostObject {
-    private constructor();
+  interface HostHookArrayEntry extends HostObject {
     readonly Hook: HostResult<HostInstalledHook>;
     materialize(): HostResult<HookArrayEntry>;
   }
 
-  class HostHookLedger extends HostObject {
-    private constructor();
+  interface HostHookLedger extends HostObject {
     readonly LedgerEntryType: "Hook";
     readonly Hooks: HostResult<HostArray<HostHookArrayEntry>>;
     materialize(): HostResult<HookLedger>;
   }
 
-  class HostHookDefinition extends HostObject {
-    private constructor();
+  interface HostHookDefinition extends HostObject {
     readonly LedgerEntryType: "HookDefinition";
     readonly HookHash: HostResult<Hash256>;
     materialize(): HostResult<HookDefinition>;
   }
 
-  class HostActiveValidator extends HostObject {
-    private constructor();
+  interface HostActiveValidator extends HostObject {
     readonly PublicKey: HostResult<STBlob>;
     readonly Account: HostResult<AccountID | undefined>;
     materialize(): HostResult<ActiveValidator>;
   }
 
-  class HostActiveValidatorArrayEntry extends HostObject {
-    private constructor();
+  interface HostActiveValidatorArrayEntry extends HostObject {
     readonly ActiveValidator: HostResult<HostActiveValidator>;
     materialize(): HostResult<ActiveValidatorArrayEntry>;
   }
 
-  class HostUNLReport extends HostObject {
-    private constructor();
+  interface HostUNLReport extends HostObject {
     readonly LedgerEntryType: "UNLReport";
     readonly ActiveValidators: HostResult<HostArray<HostActiveValidatorArrayEntry> | undefined>;
     materialize(): HostResult<UNLReport>;
   }
 
-  class HostNFToken extends HostObject {
-    private constructor();
+  interface HostNFToken extends HostObject {
     readonly NFTokenID: HostResult<Hash256>;
     readonly URI: HostResult<STBlob | undefined>;
     materialize(): HostResult<NFToken>;
   }
 
-  class HostTxMeta extends HostObject {
-    private constructor();
+  interface HostTxMeta extends HostObject {
     readonly TransactionResult: HostResult<TransactionResult>;
     materialize(): HostResult<TxMeta>;
   }
@@ -1869,16 +1921,19 @@ declare global {
    * ledger-object shape for `ledger.lookup`. `ledger.get` returns the matching
    * `HostObject` subtype.
    */
-  class LedgerKeylet<T extends STObject = STObject> {
-    private readonly __valueType: T;
+  interface LedgerKeylet<T extends STObject = STObject> {
+    readonly [__providerValueBrand]: "LedgerKeylet";
+    readonly __valueType?: T;
     readonly byteLength: 34;
     readonly type: number;
-    private constructor();
-    /** Import a raw 34-byte locator carrying no minted object-type claim. */
-    static fromRaw(value: BytesLike | STBlob): ParseResult<LedgerKeylet>;
     toBytes(): Uint8Array;
     toHex(): HexString;
   }
+  /** Typed-locator runtime noun (0085 close shape). */
+  const LedgerKeylet: RuntimeType<LedgerKeylet> & {
+    /** Import a raw 34-byte locator carrying no minted object-type claim. */
+    fromRaw(value: BytesLike | STBlob): ParseResult<LedgerKeylet>;
+  };
 
   namespace otxn {
     function raw(): HostResult<STBlob>;

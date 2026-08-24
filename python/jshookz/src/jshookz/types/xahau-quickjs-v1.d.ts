@@ -11,6 +11,17 @@ declare global {
    * its broader specification, and the provider surface manifest by hash.
    */
 
+  /**
+   * The one shape of a provider value's public runtime noun (0085:780-…):
+   * a same-named, frozen, NON-constructible type object that owns the
+   * type's factories/statics and classifies its instances —
+   * `value instanceof Type` works and narrows. `new` is not part of the
+   * API; no `.prototype` is promised.
+   */
+  interface RuntimeType<T> {
+    [Symbol.hasInstance](value: unknown): value is T;
+  }
+
   type BytesLike = Uint8Array | ArrayBuffer | readonly number[];
 
   /** Contiguous serialized-object input; indexed JavaScript arrays are excluded. */
@@ -54,9 +65,8 @@ declare global {
    * `accept.unlessTruthy`). `moot` lives on the effect family
    * (`VoidResultInstance`), which is nominally not a Result.
    */
-  abstract class ResultInstance<T, Error> {
-    private readonly __resultBrand: [T, Error];
-    private constructor();
+  interface ResultInstance<T, Error> {
+    readonly [__resultBrand]: [T, Error];
 
     /**
      * Return `.value` whenever `.ok` is true, including a successful
@@ -98,9 +108,8 @@ declare global {
    * outcome is consumed by `moot`, an eliminator, or `rollback.onFail`,
    * never by a value verb.
    */
-  abstract class VoidResultInstance<Error> {
-    private readonly __voidResultBrand: Error;
-    private constructor();
+  interface VoidResultInstance<Error> {
+    readonly [__voidResultBrand]: Error;
 
     /**
      * Declare the failure of this effect Result moot: neither outcome bears
@@ -255,7 +264,7 @@ declare global {
 
   interface UInt8 extends UInt<8> {}
 
-  interface UInt8Factory {
+  interface UInt8Factory extends RuntimeType<UInt8> {
     readonly zero: UInt8;
     readonly max: UInt8;
     from(value: bigint | number): UIntResult<UInt8>;
@@ -270,7 +279,7 @@ declare global {
 
   interface UInt16 extends UInt<16> {}
 
-  interface UInt16Factory {
+  interface UInt16Factory extends RuntimeType<UInt16> {
     readonly zero: UInt16;
     readonly max: UInt16;
     from(value: bigint | number): UIntResult<UInt16>;
@@ -285,7 +294,7 @@ declare global {
 
   interface UInt32 extends UInt<32> {}
 
-  interface UInt32Factory {
+  interface UInt32Factory extends RuntimeType<UInt32> {
     readonly zero: UInt32;
     readonly max: UInt32;
     from(value: bigint | number): UIntResult<UInt32>;
@@ -300,7 +309,7 @@ declare global {
 
   interface UInt64 extends UInt<64> {}
 
-  interface UInt64Factory {
+  interface UInt64Factory extends RuntimeType<UInt64> {
     readonly zero: UInt64;
     readonly max: UInt64;
     from(value: bigint | number): UIntResult<UInt64>;
@@ -363,9 +372,8 @@ declare global {
   };
 
   /** Width-known element codec. Offset is not part of the unit; composition assigns it. */
-  abstract class RecordField<T, Width extends number = number> {
-    private readonly __recordFieldBrand: T;
-    private constructor();
+  interface RecordField<T, Width extends number = number> {
+    readonly [__recordFieldBrand]: T;
     readonly byteLength: Width;
   }
 
@@ -618,14 +626,13 @@ declare global {
    * TypeScript cannot express that numeric-literal arithmetic directly. The
    * declaration checker enforces the relationship instead.
    */
-  abstract class SerializedField<
+  interface SerializedField<
     T,
     Code extends number = number,
     TypeCode extends number = number,
     FieldCode extends number = number,
   > {
-    private readonly __valueType: T;
-    private constructor();
+    readonly [__serializedFieldBrand]: T;
     readonly code: Code;
     readonly typeCode: TypeCode;
     readonly fieldCode: FieldCode;
