@@ -43,7 +43,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "b8d21e9614cdacfe5f55890c03c954efb3d5fb47b80179b97226c37703b538cb"
+    "sha256": "f3c56052450f5679121ed5199cda99136f86e3050ed85f31abf20df7c4a40055"
   },
   "globals": {
     "AccountID": "object",
@@ -545,7 +545,7 @@
       "from": "function",
       "max": "value",
       "mulDiv": "function",
-      "mulDivI64Ceiling": "function",
+      "mulDivXfl": "function",
       "zero": "value"
     },
     "UInt8": {

@@ -326,13 +326,17 @@ declare global {
       divisor: UIntInput<64>,
     ): UIntResult<UInt64>;
     /**
-     * C's int64 ceiling-division domain: operands must fit int64, the
-     * intermediate product is exact, rounding is CEILING, and the result
-     * fails when it exceeds INT64_MAX or the divisor is zero. This is the
-     * exact boundary the elp-staking port flipped (same transaction,
-     * opposite terminal); the name carries both domain and rounding.
+     * The C-hook XFL mulDiv idiom, exactly: `floor(a * b / c)` computed
+     * through XFL. Operands and every intermediate are normalized to 16
+     * significant decimal digits (the intermediate is decimal, NOT
+     * exact), the quotient is truncated toward zero by `float_int`, and
+     * the result domain is 0..9999999999999999 — `float_int`'s maximum,
+     * not INT64_MAX. Fails on a zero divisor or a result at or above
+     * 1e16. This is the boundary the surviving arithmetic-domain reject
+     * flipped (0070:1731): the ported C rolls back exactly where this
+     * op fails.
      */
-    mulDivI64Ceiling(
+    mulDivXfl(
       multiplicand: UIntInput<64>,
       multiplier: UIntInput<64>,
       divisor: UIntInput<64>,
@@ -368,9 +372,11 @@ declare global {
   /**
    * Per-key outcome of a schema batch: a provider Result, so the whole
    * verb family consumes it directly — `rollback.requirePresent(b.KEY,
-   * msg)` demands it, `.okOr(default)` defaults it, `.ok` narrows it.
-   * Missing is a successful `undefined`; invalid carries the ParseError;
-   * host failure is BATCH-level (one crossing, one host Result).
+   * msg)` demands it, `.ok` narrows it. Missing is a SUCCESSFUL
+   * `undefined`, not a failure, so `.okOr(fallback)` replaces only
+   * INVALID keys; defaulting a missing key is `.okOr(undefined) ??
+   * fallback`. Invalid carries the ParseError; host failure is
+   * BATCH-level (one crossing, one host Result).
    */
   type BatchOutcome<T> = Result<T | undefined, ParseError>;
 

@@ -349,13 +349,17 @@ declare global {
       divisor: UIntInput<64>,
     ): UIntResult<UInt64>;
     /**
-     * C's int64 ceiling-division domain: operands must fit int64, the
-     * intermediate product is exact, rounding is CEILING, and the result
-     * fails when it exceeds INT64_MAX or the divisor is zero. This is the
-     * exact boundary the elp-staking port flipped (same transaction,
-     * opposite terminal); the name carries both domain and rounding.
+     * The C-hook XFL mulDiv idiom, exactly: `floor(a * b / c)` computed
+     * through XFL. Operands and every intermediate are normalized to 16
+     * significant decimal digits (the intermediate is decimal, NOT
+     * exact), the quotient is truncated toward zero by `float_int`, and
+     * the result domain is 0..9999999999999999 — `float_int`'s maximum,
+     * not INT64_MAX. Fails on a zero divisor or a result at or above
+     * 1e16. This is the boundary the surviving arithmetic-domain reject
+     * flipped (0070:1731): the ported C rolls back exactly where this
+     * op fails.
      */
-    mulDivI64Ceiling(
+    mulDivXfl(
       multiplicand: UIntInput<64>,
       multiplier: UIntInput<64>,
       divisor: UIntInput<64>,
@@ -388,16 +392,15 @@ declare global {
   /**
    * Per-key outcome of a schema batch: a provider Result, so the whole
    * verb family consumes it directly — `rollback.requirePresent(b.KEY,
-   * msg)` demands it, `.okOr(default)` defaults it, `.ok` narrows it.
-   * Missing is a successful `undefined`; invalid carries the ParseError;
-   * host failure is BATCH-level (one crossing, one host Result).
+   * msg)` demands it, `.ok` narrows it. Missing is a SUCCESSFUL
+   * `undefined`, not a failure, so `.okOr(fallback)` replaces only
+   * INVALID keys; defaulting a missing key is `.okOr(undefined) ??
+   * fallback`. Invalid carries the ParseError; host failure is
+   * BATCH-level (one crossing, one host Result).
    */
   type BatchOutcome<T> = Result<T | undefined, ParseError>;
   type BatchOutcomes<T extends Record<string, BatchSchemaField>> = {
     readonly [K in keyof T]: BatchOutcome<BatchSchemaValue<T[K]>>;
-  };
-  type BatchSchemaValues<T extends Record<string, BatchSchemaField>> = {
-    readonly [K in keyof T]: BatchSchemaValue<T[K]> | undefined;
   };
 
   /** Width-known element codec. Offset is not part of the unit; composition assigns it. */
@@ -1973,10 +1976,11 @@ declare global {
     function params<const T extends BatchKeys>(names: T): HostResult<BatchValues<T>>;
     /**
      * Schema batch. Object key is the wire name; value is a codec.
-     * Missing → `undefined` in the record. Host failure → `HostError`.
-     * Parse failure → `ParseError` with `issue: "invalid-field"` and `field`
-     * set to the object key of the first malformed entry, in key order.
-     * Malformed must not become absent.
+     * One host Result for the crossing; on success the record maps
+     * EVERY key to its own `BatchOutcome`: missing → ok(`undefined`),
+     * malformed → its own `ParseError` (`issue: "invalid-field"`,
+     * `field` = that key), so a valid field is consumed beside a
+     * malformed sibling. Malformed must not become absent.
      *
      * Blob batch is `{ localAlias: wireName }` because both sides are names.
      * Schema batch is `{ wireName: codec }` because the value is not a name.
@@ -2040,8 +2044,12 @@ declare global {
       readonly kind: TransactionType;
     }
 
-    /** Host stage that failed while finalizing fee/details for an emission. */
-    type BuildStage = "details" | "fee";
+    /**
+     * Failed build stage. `"details"` and `"fee"` are host stages while
+     * finalizing an emission; `"amounts"` is the builder refusing its
+     * arguments before any host crossing, with code `INVALID_ARGUMENT`.
+     */
+    type BuildStage = "details" | "fee" | "amounts";
     type BuildResult = Result<
       EmittedTransaction,
       HostError & { readonly stage: BuildStage }
@@ -2116,7 +2124,8 @@ declare global {
         readonly uri?: StateValueLike;
         /**
          * An EMPTY amounts array is refused at BUILD time with stage
-         * "amounts" — not deferred to emit (0070:294-297, 0084:161-169).
+         * "amounts" and code `INVALID_ARGUMENT` — not deferred to emit
+         * (0070:294-297, 0084:161-169).
          */
         readonly amounts?: readonly Amount[];
         readonly sourceTag?: UInt32;
@@ -2328,9 +2337,11 @@ declare global {
     function params<const T extends BatchKeys>(names: T): HostResult<BatchValues<T>>;
     /**
      * Schema batch. Object key is the wire name; value is a codec.
-     * Missing → `undefined`. Parse failure names `field` as that key.
-     * Same 16-per-hook cap as the blob batch. Quoted keys cover any
-     * UTF-8 name; singular `param` is for non-UTF-8 `BytesLike` names.
+     * Product law as on `otxn.params`: one host Result, then per-key
+     * `BatchOutcome`s — missing is ok(`undefined`), malformed carries
+     * its own `ParseError` naming `field` as that key. Same
+     * 16-per-hook cap as the blob batch. Quoted keys cover any UTF-8
+     * name; singular `param` is for non-UTF-8 `BytesLike` names.
      */
     function params<
       const T extends { readonly [K: string]: BatchSchemaField },
