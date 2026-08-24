@@ -183,6 +183,63 @@ TEST(RecursiveIndex, ObjectSlicesSortByCodeWithoutMovingWireOffsets) {
   memory.api().free(memory.api().opaque, result.index);
 }
 
+TEST(RecursiveIndex, ContiguousNopRunPreservesCountersAndExactFailure) {
+  std::vector<std::uint8_t> accepted(63, 0x99);
+  accepted.insert(accepted.end(), {0x22, 0, 0, 0, 1});
+
+  TrackingAllocator accepted_memory;
+  RecursiveScanCounters accepted_counters;
+  RecursiveScanOptions accepted_options;
+  accepted_options.counters = &accepted_counters;
+  auto indexed = guest_exact_object_index(slice(accepted), accepted_options,
+                                          accepted_memory.api());
+  ASSERT_TRUE(indexed.ok())
+      << scan_message_literal(indexed.status.message_id);
+  EXPECT_EQ(indexed.consumed, accepted.size());
+  EXPECT_EQ(accepted_counters.wire_passes, 1);
+  EXPECT_EQ(accepted_counters.scope_entries, 1);
+  EXPECT_EQ(accepted_counters.field_headers, 64);
+  EXPECT_EQ(accepted_counters.material_fields, 1);
+  EXPECT_EQ(accepted_counters.leaf_routes, 1);
+
+  RecursiveIndexView const view{indexed.index, indexed.index_size,
+                                indexed.consumed};
+  ASSERT_TRUE(view.structurally_valid());
+  ASSERT_EQ(view.header()->scope_count, 1);
+  ASSERT_EQ(view.header()->field_count, 1);
+  auto const *flags = view.find_object_field(0, (2u << 16) | 2u);
+  ASSERT_NE(flags, nullptr);
+  EXPECT_EQ(flags->header_begin, 63);
+  EXPECT_EQ(flags->payload_begin, 64);
+  EXPECT_EQ(flags->wire_end, accepted.size());
+  accepted_memory.api().free(accepted_memory.api().opaque, indexed.index);
+  EXPECT_TRUE(accepted_memory.live.empty());
+
+  std::vector<std::uint8_t> rejected(64, 0x99);
+  TrackingAllocator rejected_memory;
+  RecursiveScanCounters rejected_counters;
+  RecursiveScanOptions rejected_options;
+  rejected_options.counters = &rejected_counters;
+  indexed = guest_exact_object_index(slice(rejected), rejected_options,
+                                     rejected_memory.api());
+  EXPECT_FALSE(indexed.ok());
+  EXPECT_EQ(indexed.status.issue,
+            static_cast<std::uint16_t>(ScanIssue::malformed_data));
+  EXPECT_EQ(indexed.status.message_id,
+            static_cast<std::uint16_t>(ScanMessage::too_many_nops));
+  EXPECT_EQ(indexed.status.offset, 63);
+  EXPECT_EQ(indexed.status.field_code, (9u << 16) | 9u);
+  EXPECT_EQ(indexed.status.aux, 64);
+  EXPECT_EQ(indexed.index, nullptr);
+  EXPECT_EQ(rejected_counters.wire_passes, 1);
+  EXPECT_EQ(rejected_counters.scope_entries, 1);
+  EXPECT_EQ(rejected_counters.field_headers, 64);
+  EXPECT_EQ(rejected_counters.material_fields, 0);
+  EXPECT_EQ(rejected_counters.leaf_routes, 0);
+  EXPECT_EQ(rejected_memory.calls, 0);
+  EXPECT_TRUE(rejected_memory.live.empty());
+}
+
 TEST(RecursiveIndex, RecursiveObjectArrayTopologyIsDirect) {
   // Memos array -> Memo object element -> Flags leaf.
   auto const input = bytes({0xF9, 0xEA, 0x22, 0, 0, 0, 1, 0xE1, 0xF1});

@@ -1826,6 +1826,19 @@ size_t js_wasm_allocator_physical_usable_size(const void *ptr)
     return malloc_usable_size((void *)ptr);
 }
 #endif
+
+#if defined(CONFIG_WASM_RESOURCE_PROBE)
+static size_t js_wasm_resource_peak_size_value;
+static size_t js_wasm_resource_peak_count_value;
+
+static void js_wasm_resource_note_peak(const JSMallocState *state)
+{
+    if (state->malloc_size > js_wasm_resource_peak_size_value) {
+        js_wasm_resource_peak_size_value = state->malloc_size;
+        js_wasm_resource_peak_count_value = state->malloc_count;
+    }
+}
+#endif
 #else
 #define js_def_raw_malloc(size) malloc(size)
 #define js_def_raw_free(ptr) free(ptr)
@@ -1869,6 +1882,9 @@ static void *js_def_malloc(JSMallocState *s, size_t size)
 
     s->malloc_count++;
     s->malloc_size += js_def_malloc_usable_size(ptr) + MALLOC_OVERHEAD;
+#if defined(CONFIG_WASM_RESOURCE_PROBE)
+    js_wasm_resource_note_peak(s);
+#endif
     return ptr;
 }
 
@@ -1906,6 +1922,9 @@ static void *js_def_realloc(JSMallocState *s, void *ptr, size_t size)
         return NULL;
 
     s->malloc_size += js_def_malloc_usable_size(ptr) - old_size;
+#if defined(CONFIG_WASM_RESOURCE_PROBE)
+    js_wasm_resource_note_peak(s);
+#endif
     return ptr;
 }
 
@@ -1925,6 +1944,34 @@ void JS_SetMemoryLimit(JSRuntime *rt, size_t limit)
 {
     rt->malloc_state.malloc_limit = limit;
 }
+
+#if defined(CONFIG_WASM_RESOURCE_PROBE)
+void js_wasm_resource_reset_peak(JSRuntime *rt)
+{
+    js_wasm_resource_peak_size_value = rt->malloc_state.malloc_size;
+    js_wasm_resource_peak_count_value = rt->malloc_state.malloc_count;
+}
+
+size_t js_wasm_resource_current_size(JSRuntime *rt)
+{
+    return rt->malloc_state.malloc_size;
+}
+
+size_t js_wasm_resource_current_count(JSRuntime *rt)
+{
+    return rt->malloc_state.malloc_count;
+}
+
+size_t js_wasm_resource_peak_size(void)
+{
+    return js_wasm_resource_peak_size_value;
+}
+
+size_t js_wasm_resource_peak_count(void)
+{
+    return js_wasm_resource_peak_count_value;
+}
+#endif
 
 /* use -1 to disable automatic GC */
 void JS_SetGCThreshold(JSRuntime *rt, size_t gc_threshold)

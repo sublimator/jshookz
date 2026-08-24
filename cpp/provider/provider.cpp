@@ -8,6 +8,7 @@
 
 #include "provider_internal.hpp"
 #include "bindings/hook_imports.hpp"
+#include "catl/xdata/static_protocol.h"
 #include "quickjs.hpp"
 
 #include <cstdlib>
@@ -32,6 +33,58 @@ static JSRuntime *rt = NULL;
 static JSContext *ctx = NULL;
 static uint32_t configuredMemoryLimit = 0;
 static uint32_t configuredStackLimit = 0;
+
+#ifdef CONFIG_WASM_RESOURCE_PROBE
+extern "C" {
+void js_wasm_resource_reset_peak(JSRuntime *runtime);
+size_t js_wasm_resource_current_size(JSRuntime *runtime);
+size_t js_wasm_resource_current_count(JSRuntime *runtime);
+size_t js_wasm_resource_peak_size(void);
+size_t js_wasm_resource_peak_count(void);
+}
+
+__attribute__((export_name("qjs_resource_reset_peak"))) void
+qjs_resource_reset_peak(void)
+{
+    if (rt != nullptr)
+        js_wasm_resource_reset_peak(rt);
+}
+
+__attribute__((export_name("qjs_resource_current_size"))) uint32_t
+qjs_resource_current_size(void)
+{
+    return rt == nullptr
+        ? 0
+        : static_cast<uint32_t>(js_wasm_resource_current_size(rt));
+}
+
+__attribute__((export_name("qjs_resource_current_count"))) uint32_t
+qjs_resource_current_count(void)
+{
+    return rt == nullptr
+        ? 0
+        : static_cast<uint32_t>(js_wasm_resource_current_count(rt));
+}
+
+__attribute__((export_name("qjs_resource_peak_size"))) uint32_t
+qjs_resource_peak_size(void)
+{
+    return static_cast<uint32_t>(js_wasm_resource_peak_size());
+}
+
+__attribute__((export_name("qjs_resource_peak_count"))) uint32_t
+qjs_resource_peak_count(void)
+{
+    return static_cast<uint32_t>(js_wasm_resource_peak_count());
+}
+
+__attribute__((export_name("qjs_resource_static_protocol_bytes"))) uint32_t
+qjs_resource_static_protocol_bytes(void)
+{
+    return static_cast<uint32_t>(
+        catl::xdata::xahau_static_protocol_bytes());
+}
+#endif
 
 static void
 destroy_runtime(void)

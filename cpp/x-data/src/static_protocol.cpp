@@ -36,4 +36,13 @@ ProtocolView const &xahau_static_protocol() noexcept {
   return xahau_static_data::PROTOCOL;
 }
 
+std::size_t xahau_static_protocol_bytes() noexcept {
+  using namespace xahau_static_data;
+  return sizeof(FIELD_NAME_BYTES) + sizeof(FIELD_NAMES) + sizeof(FIELDS) +
+         sizeof(FAST_ORDINALS) + sizeof(FALLBACK_FIELDS) +
+         sizeof(MATERIAL_FIELDS) + sizeof(TYPE_NAME_BYTES) + sizeof(TYPES) +
+         sizeof(DEFINITIONS_SHA256) + sizeof(MATERIALIZER_POLICY_SHA256) +
+         sizeof(PROTOCOL_IDENTITY) + sizeof(PROTOCOL);
+}
+
 } // namespace catl::xdata

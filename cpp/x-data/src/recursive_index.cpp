@@ -5,6 +5,7 @@
 #include "catl/xdata/types/issue.h"
 #include "catl/xdata/types/pathset.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -92,6 +93,25 @@ namespace {
 constexpr std::uint32_t kObjectEnd = (14u << 16) | 1u;
 constexpr std::uint32_t kArrayEnd = (15u << 16) | 1u;
 constexpr std::uint32_t kNop = (9u << 16) | 9u;
+constexpr std::uint8_t kNopHeader = 0x99;
+
+[[nodiscard]] std::uint32_t same_byte_prefix(std::uint8_t const *data,
+                                             std::uint32_t size,
+                                             std::uint8_t value) noexcept {
+  constexpr std::uint32_t word_bytes = sizeof(std::uint64_t);
+  std::uint64_t const repeated = std::uint64_t{value} * 0x0101010101010101ULL;
+  std::uint32_t matched = 0;
+  while (size - matched >= word_bytes) {
+    std::uint64_t word = 0;
+    std::memcpy(&word, data + matched, word_bytes);
+    if (word != repeated)
+      break;
+    matched += word_bytes;
+  }
+  while (matched < size && data[matched] == value)
+    ++matched;
+  return matched;
+}
 constexpr std::uint32_t kInlineFields = 8;
 constexpr std::uint32_t kInlineScopes = 4;
 
@@ -832,6 +852,11 @@ private:
       ++counters_->leaf_routes;
   }
 
+  void count_headers(std::uint32_t count) noexcept {
+    if (counters_ != nullptr)
+      counters_->field_headers += count;
+  }
+
   [[nodiscard]] bool close_scope(std::uint32_t scope_id,
                                  std::uint32_t content_end,
                                  std::uint32_t direct_count, ScopeKind kind,
@@ -889,6 +914,23 @@ private:
           cursor_.fail(ScanIssue::malformed_data, ScanMessage::too_many_nops,
                        header_begin, field_code, nop_count);
           return false;
+        }
+        std::uint32_t const allowed = 63 - nop_count;
+        std::uint32_t const inspected =
+            std::min(cursor_.remaining(), allowed + 1);
+        std::uint32_t const run =
+            same_byte_prefix(cursor_.at(), inspected, kNopHeader);
+        if (run > allowed) {
+          count_headers(allowed + 1);
+          cursor_.fail(ScanIssue::malformed_data, ScanMessage::too_many_nops,
+                       cursor_.pos + allowed, field_code, 64);
+          return false;
+        }
+        if (run != 0) {
+          count_headers(run);
+          nop_count += run;
+          if (!cursor_.advance(run))
+            return false;
         }
         continue;
       }

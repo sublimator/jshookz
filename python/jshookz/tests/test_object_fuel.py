@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import json
+import shutil
+import subprocess
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -13,16 +15,22 @@ import pytest
 
 from jshookz.host import WasmHost
 from jshookz.paths import (
+    REPO_ROOT,
+    WASI_TOOLCHAIN,
     XAHAU_HOOK_PROVIDER_WASM,
     XAHAU_RUNTIME_PROFILE_LOCK,
+)
+from jshookz.runtime_profile import (
+    profile_execution_limits,
+    verify_runtime_profile_lock,
 )
 
 
 PINNED_PROVIDER_SHA256 = (
-    "2e8272916a28abf76075704876755966a4e6dac4376de9e41a13615f389dca8b"
+    "3cff6ecc688f11061648a2ffa6337b932ac2d678211e12a7fcd8f84a4db645a6"
 )
 PINNED_RUNTIME_PROFILE_ID = (
-    "00a4c2fca32b27e3ec4f26047a895228d360e288bc1b1c08724e78e2310f47c8"
+    "01336bbec497e4a18928bb3175d3c9aa45482a3d9811414960b13c7fd0e5337c"
 )
 PINNED_WASMTIME = "47.0.1"
 PINNED_WASMTIME_DYLIB_SHA256 = (
@@ -151,9 +159,63 @@ MISSING_LOOKUP_STRUCTURE_SPREAD = 100.0
 MAX_SERIALIZED_BYTES = 1_048_576
 MAX_FIELDS = 32_768
 MAX_SCOPES = 32_769
-MAX_ARRAY_ELEMENTS_WITH_TWO_BLOBS = 32_765
+MAX_ARRAY_ELEMENTS = 32_767
+MAX_ELEMENT_NOPS = 30
+MAX_ROOT_NOPS = 29
+MAX_WIRE_SETUP_CHUNK = 131_072
+MAX_ELEMENT_SETUP_CHUNK = 8_192
 HEADROOM_BYTES = 1_048_576
 REPRESENTATIVE_OOM_HEAP_BYTES = 4 * 1024 * 1024
+WASM_MALLOC_OVERHEAD = 16
+MAXIMUM_REQUESTED_CORE = 4_194_336
+MAXIMUM_DUPLICATE_STACK = 528
+MAXIMUM_STATIC_PROTOCOL_BYTES = 23_724
+
+
+@pytest.fixture(scope="session")
+def resource_probe_wasm(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Build the non-product heap-ledger variant from the candidate sources."""
+    build = tmp_path_factory.mktemp("xahau-provider-resource-probe")
+    unwizered = build / "jshookz_provider.unwizered.wasm"
+    sealed = build / "jshookz_provider.resource-probe.wasm"
+    wizer = shutil.which("wizer")
+    assert wizer is not None, "wizer is required for the resource acceptance gate"
+
+    commands = (
+        (
+            "cmake",
+            "-B",
+            str(build),
+            "-S",
+            str(REPO_ROOT / "cpp/provider"),
+            f"-DCMAKE_TOOLCHAIN_FILE={WASI_TOOLCHAIN}",
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DXAHAU_HOOK_PROVIDER=ON",
+            "-DJSHOOKZ_RESOURCE_PROBE=ON",
+        ),
+        ("cmake", "--build", str(build), "--parallel", "4"),
+        (
+            wizer,
+            "--keep-init-func",
+            "true",
+            "--rename-func",
+            "_initialize=wizer.initialize",
+            "-o",
+            str(sealed),
+            str(unwizered),
+        ),
+    )
+    for command in commands:
+        completed = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert sealed.is_file()
+    return sealed
 
 
 COMMON_SETUP = r"""
@@ -180,50 +242,47 @@ function makeWire(elementCount) {
 """.strip()
 
 
-MAX_TOPOLOGY_SETUP = r"""
-function writeVL(out, offset, length) {
-  if (length <= 192) {
-    out[offset++] = length;
-  } else if (length <= 12480) {
-    const adjusted = length - 193;
-    out[offset++] = 193 + (adjusted >>> 8);
-    out[offset++] = adjusted & 255;
-  } else if (length <= 918744) {
-    const adjusted = length - 12481;
-    out[offset++] = 241 + (adjusted >>> 16);
-    out[offset++] = (adjusted >>> 8) & 255;
-    out[offset++] = adjusted & 255;
-  } else {
-    throw new RangeError("VL payload is too large");
+MAX_TOPOLOGY_SETUP = (
+    r"""
+function makeMaximumTopologyWire() {
+  globalThis.maximumWire = new Uint8Array({MAX_SERIALIZED_BYTES});
+  return maximumWire.length;
+}
+
+function fillMaximumNops(begin, end) {
+  maximumWire.fill(0x99, begin, end);
+  return end;
+}
+
+function writeMaximumElements(begin, end) {
+  let offset = {MAX_ROOT_NOPS} + 2 + begin * ({MAX_ELEMENT_NOPS} + 2);
+  for (let index = begin; index < end; ++index) {
+    maximumWire[offset++] = 0xEA; // Memo object element.
+    offset += {MAX_ELEMENT_NOPS};
+    maximumWire[offset++] = 0xE1;
   }
   return offset;
 }
 
-function makeMaximumTopologyWire() {
-  const elementCount = 32765;
-  const firstBlob = 918744;
-  const secondBlob = 64292;
-  const out = new Uint8Array(1048576);
-  let offset = 0;
-  out[offset++] = 0x73; // SigningPubKey
-  offset = writeVL(out, offset, firstBlob);
-  offset += firstBlob;
-  out[offset++] = 0x7D; // MemoData
-  offset = writeVL(out, offset, secondBlob);
-  offset += secondBlob;
-  out[offset++] = 0xF9; // Memos
-  for (let index = 0; index < elementCount; ++index) {
-    out[offset++] = 0xEA; // Memo
-    out[offset++] = 0xE1;
-  }
-  out[offset++] = 0xF1;
-  if (offset !== out.length)
-    throw new Error(`maximum fixture length ${offset}`);
-  return out;
+function finishMaximumTopologyWire() {
+  // NOPs consume wire but produce no field record.
+  maximumWire[{MAX_ROOT_NOPS}] = 0xF0; // Amounts: extended field ordinal.
+  maximumWire[{MAX_ROOT_NOPS} + 1] = 0x5C;
+  const end = {MAX_ROOT_NOPS} + 2 +
+    {MAX_ARRAY_ELEMENTS} * ({MAX_ELEMENT_NOPS} + 2);
+  maximumWire[end] = 0xF1;
+  if (end + 1 !== maximumWire.length)
+    throw new Error(`maximum fixture length ${end + 1}`);
+  return maximumWire.length;
 }
 
 "maximum topology helpers ready"
-""".strip()
+""".replace("{MAX_ARRAY_ELEMENTS}", str(MAX_ARRAY_ELEMENTS))
+    .replace("{MAX_SERIALIZED_BYTES}", str(MAX_SERIALIZED_BYTES))
+    .replace("{MAX_ROOT_NOPS}", str(MAX_ROOT_NOPS))
+    .replace("{MAX_ELEMENT_NOPS}", str(MAX_ELEMENT_NOPS))
+    .strip()
+)
 
 
 OBJECT_LOOKUP_SETUP = r"""
@@ -591,41 +650,56 @@ def test_object_rescan_poison_turns_the_large_hit_ceiling_red():
     assert spread <= SPREAD_CEILING
 
 
+def _maximum_setup_step(host: WasmHost, source: str):
+    assert host.execution_limits is not None
+    host.store.set_fuel(host.execution_limits.invocation_fuel)
+    result = host.eval(source)
+    assert result.ok, result.error
+    return result
+
+
+def _prepare_maximum_topology_wire(host: WasmHost) -> None:
+    _maximum_setup_step(host, MAX_TOPOLOGY_SETUP)
+    _maximum_setup_step(host, "makeMaximumTopologyWire()")
+    for begin in range(0, MAX_SERIALIZED_BYTES, MAX_WIRE_SETUP_CHUNK):
+        end = min(begin + MAX_WIRE_SETUP_CHUNK, MAX_SERIALIZED_BYTES)
+        _maximum_setup_step(host, f"fillMaximumNops({begin}, {end})")
+    for begin in range(0, MAX_ARRAY_ELEMENTS, MAX_ELEMENT_SETUP_CHUNK):
+        end = min(begin + MAX_ELEMENT_SETUP_CHUNK, MAX_ARRAY_ELEMENTS)
+        _maximum_setup_step(host, f"writeMaximumElements({begin}, {end})")
+    _maximum_setup_step(host, "finishMaximumTopologyWire()")
+
+
+def _mint_maximum_topology(host: WasmHost) -> None:
+    _maximum_setup_step(
+        host,
+        "globalThis.maximumRoot = util.decodeObject(maximumWire); "
+        "globalThis.maximumArray = maximumRoot.Amounts; maximumArray.length",
+    )
+    setup = _maximum_setup_step(
+        host,
+        "JSON.stringify({"
+        "bytes: maximumWire.length,"
+        "valid: util.validateObject(maximumWire),"
+        "elements: maximumArray.length,"
+        "fields: maximumArray.length + 1,"
+        "scopes: maximumArray.length + 2})",
+    )
+    assert json.loads(setup.result_value or "null") == {
+        "bytes": MAX_SERIALIZED_BYTES,
+        "valid": True,
+        "elements": MAX_ARRAY_ELEMENTS,
+        "fields": MAX_FIELDS,
+        "scopes": MAX_SCOPES,
+    }
+
+
 def _prepared_maximum_topology_host() -> WasmHost:
     host = WasmHost.profiled()
     host.init()
     try:
-        assert host.execution_limits is not None
-
-        def setup_step(source: str):
-            host.store.set_fuel(host.execution_limits.invocation_fuel)
-            result = host.eval(source)
-            assert result.ok, result.error
-            return result
-
-        setup_step(MAX_TOPOLOGY_SETUP)
-        setup_step(
-            "globalThis.maximumWire = makeMaximumTopologyWire(); maximumWire.length"
-        )
-        setup_step(
-            "globalThis.maximumRoot = util.decodeObject(maximumWire); "
-            "globalThis.maximumArray = maximumRoot.Memos; maximumArray.length"
-        )
-        setup = setup_step(
-            "JSON.stringify({"
-            "bytes: maximumWire.length,"
-            "valid: util.validateObject(maximumWire),"
-            "elements: maximumArray.length,"
-            "fields: maximumArray.length + 3,"
-            "scopes: maximumArray.length + 2})"
-        )
-        assert json.loads(setup.result_value or "null") == {
-            "bytes": MAX_SERIALIZED_BYTES,
-            "valid": True,
-            "elements": MAX_ARRAY_ELEMENTS_WITH_TWO_BLOBS,
-            "fields": MAX_FIELDS,
-            "scopes": MAX_ARRAY_ELEMENTS_WITH_TWO_BLOBS + 2,
-        }
+        _prepare_maximum_topology_wire(host)
+        _mint_maximum_topology(host)
         return host
     except BaseException:
         host.destroy()
@@ -662,6 +736,89 @@ def test_maximum_topology_fits_heap_and_post_success_headroom():
         host.destroy()
 
 
+def test_maximum_topology_records_exact_requested_and_charged_heap(
+    resource_probe_wasm: Path,
+):
+    lock = verify_runtime_profile_lock(
+        XAHAU_RUNTIME_PROFILE_LOCK,
+        XAHAU_HOOK_PROVIDER_WASM,
+    )
+    limits = profile_execution_limits(lock)
+    host = WasmHost(
+        wasm_path=resource_probe_wasm,
+        execution_limits=limits,
+    )
+    host.init()
+    exports = host.instance.exports(host.store)
+
+    def resource(name: str) -> int:
+        return exports[name](host.store)
+
+    try:
+        registration = (
+            resource("qjs_resource_current_size"),
+            resource("qjs_resource_current_count"),
+        )
+        _prepare_maximum_topology_wire(host)
+        pre_call = (
+            resource("qjs_resource_current_size"),
+            resource("qjs_resource_current_count"),
+        )
+        exports["qjs_resource_reset_peak"](host.store)
+        _mint_maximum_topology(host)
+        peak = (
+            resource("qjs_resource_peak_size"),
+            resource("qjs_resource_peak_count"),
+        )
+        post_success = (
+            resource("qjs_resource_current_size"),
+            resource("qjs_resource_current_count"),
+        )
+        static_bytes = resource("qjs_resource_static_protocol_bytes")
+
+        host.store.set_fuel(limits.invocation_fuel)
+        headroom = host.eval(
+            f"const measuredHeadroom = new Uint8Array({HEADROOM_BYTES});"
+            "measuredHeadroom[0] = 0xA5;"
+            "measuredHeadroom[measuredHeadroom.length - 1] = 0x5A;"
+            "measuredHeadroom[0] + measuredHeadroom[measuredHeadroom.length - 1]"
+        )
+        assert headroom.ok, headroom.error
+        assert headroom.result_value == str(0xA5 + 0x5A)
+    finally:
+        host.destroy()
+
+    assert {
+        "registration": registration,
+        "pre_call": pre_call,
+        "peak": peak,
+        "post_success": post_success,
+        "static_protocol": static_bytes,
+    } == {
+        "registration": (127_149, 1_981),
+        "pre_call": (1_179_489, 2_031),
+        "peak": (5_374_446, 2_044),
+        "post_success": (3_409_142, 2_058),
+        "static_protocol": MAXIMUM_STATIC_PROTOCOL_BYTES,
+    }
+
+    registration_requested = registration[0] - registration[1] * WASM_MALLOC_OVERHEAD
+    pre_call_requested = pre_call[0] - pre_call[1] * WASM_MALLOC_OVERHEAD
+    peak_requested = peak[0] - peak[1] * WASM_MALLOC_OVERHEAD
+    peak_requested_delta = peak_requested - pre_call_requested
+    peak_count_delta = peak[1] - pre_call[1]
+
+    assert pre_call_requested - registration_requested == 1_051_540
+    assert peak_requested_delta == MAXIMUM_REQUESTED_CORE + 413
+    assert peak[0] - pre_call[0] == (
+        MAXIMUM_REQUESTED_CORE + 413 + peak_count_delta * WASM_MALLOC_OVERHEAD
+    )
+    assert MAXIMUM_DUPLICATE_STACK == 11 * 6 * 8
+    assert peak[0] < limits.quickjs_heap_bytes
+    assert limits.quickjs_heap_bytes - post_success[0] == 13_368_074
+    assert limits.quickjs_heap_bytes - post_success[0] >= HEADROOM_BYTES
+
+
 def test_maximum_density_reflection_fits_the_profile_deterministically():
     samples = []
     for _ in range(2):
@@ -682,7 +839,7 @@ def test_maximum_density_reflection_fits_the_profile_deterministically():
             host.destroy()
 
     assert samples[0] == samples[1]
-    assert samples[0][:3] == (True, None, "32766")
+    assert samples[0][:3] == (True, None, str(MAX_ARRAY_ELEMENTS + 1))
     assert 0 < samples[0][3] <= 44_000_000
 
 
@@ -721,7 +878,7 @@ def test_representative_heap_oom_has_no_publication_and_same_runtime_retry():
                 unpublished,
                 retryLength: oomTarget.length,
                 sentinels: oomTarget[0] + oomTarget[oomTarget.length - 1],
-                sourceIdentity: maximumRoot.Memos === maximumArray,
+                sourceIdentity: maximumRoot.Amounts === maximumArray,
                 sourceLength: maximumArray.length,
               }};
             }})())
@@ -733,7 +890,7 @@ def test_representative_heap_oom_has_no_publication_and_same_runtime_retry():
             "retryLength": HEADROOM_BYTES,
             "sentinels": 0xA5 + 0x5A,
             "sourceIdentity": True,
-            "sourceLength": MAX_ARRAY_ELEMENTS_WITH_TWO_BLOBS,
+            "sourceLength": MAX_ARRAY_ELEMENTS,
         }
     finally:
         host.set_memory_limit(16 * 1024 * 1024)

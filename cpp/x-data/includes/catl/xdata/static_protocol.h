@@ -153,5 +153,6 @@ static_assert(sizeof(std::uint16_t) * ProtocolView::fast_type_count *
 
 // The only protocol selected by the sealed Xahau provider profile.
 [[nodiscard]] ProtocolView const &xahau_static_protocol() noexcept;
+[[nodiscard]] std::size_t xahau_static_protocol_bytes() noexcept;
 
 } // namespace catl::xdata

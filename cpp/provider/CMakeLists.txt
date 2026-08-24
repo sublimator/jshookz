@@ -31,6 +31,11 @@ option(
     "Build the runtime with only the Xahau Hook host-import surface"
     ON
 )
+option(
+    JSHOOKZ_RESOURCE_PROBE
+    "Expose non-product QuickJS heap accounting diagnostics"
+    OFF
+)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 23)
@@ -78,6 +83,20 @@ if(XAHAU_HOOK_PROVIDER)
         # growth granularity to happen to land on the profile value.
         -Wl,--initial-memory=393216
         -Wl,--max-memory=33554432
+    )
+endif()
+
+if(JSHOOKZ_RESOURCE_PROBE)
+    target_compile_definitions(jshookz_provider PRIVATE
+        CONFIG_WASM_RESOURCE_PROBE
+    )
+    target_link_options(jshookz_provider PRIVATE
+        -Wl,--export=qjs_resource_reset_peak
+        -Wl,--export=qjs_resource_current_size
+        -Wl,--export=qjs_resource_current_count
+        -Wl,--export=qjs_resource_peak_size
+        -Wl,--export=qjs_resource_peak_count
+        -Wl,--export=qjs_resource_static_protocol_bytes
     )
 endif()
 
