@@ -8,7 +8,7 @@ export function main(): never {
     );
   }
 
-  const greeting = rollback.require(
+  const greeting = rollback.requirePresent(
     state.get("GREETING"),
     "state disappeared",
     1,

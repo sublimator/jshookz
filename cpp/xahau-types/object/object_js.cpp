@@ -798,34 +798,31 @@ void clearRegistrar(JSRuntime *runtime) noexcept {
     return JS_NewUint32(
         ctx, static_cast<std::uint32_t>(readBigEndian(payload, size)));
   case Kind::hash256:
-    return makeHash256Bytes(ctx, payload, size);
+    return makeHash256View(ctx, ownerValue, payload, size);
   case Kind::blob:
-    return makeSTBlobBytes(ctx, payload, size);
-  case Kind::account_id: {
-    std::uint8_t zero[20] = {};
-    return makeAccountIDBytes(ctx, size == 0 ? zero : payload,
-                              size == 0 ? 20 : size);
-  }
+    return makeSTBlobView(ctx, ownerValue, payload, size);
+  case Kind::account_id:
+    return makeAccountIDView(ctx, ownerValue, payload, size);
   case Kind::number:
     return numberString(ctx, {payload, size});
   case Kind::hash128:
-    return makeHash128Bytes(ctx, payload, size);
+    return makeHash128View(ctx, ownerValue, payload, size);
   case Kind::hash160:
-    return makeHash160Bytes(ctx, payload, size);
+    return makeHash160View(ctx, ownerValue, payload, size);
   case Kind::hash192:
-    return makeHash192Bytes(ctx, payload, size);
+    return makeHash192View(ctx, ownerValue, payload, size);
   case Kind::amount:
-    return makeAmountBytes(ctx, payload, size);
+    return makeAmountView(ctx, ownerValue, payload, size);
   case Kind::currency:
-    return makeCurrencyBytes(ctx, payload, size);
+    return makeCurrencyView(ctx, ownerValue, payload, size);
   case Kind::issue:
-    return makeIssueBytes(ctx, payload, size);
+    return makeIssueView(ctx, ownerValue, payload, size);
   case Kind::path_set:
     return makePathSetBytes(ctx, ownerValue, payload, size);
   case Kind::vector256:
-    return makeVector256Bytes(ctx, payload, size);
+    return makeVector256View(ctx, ownerValue, payload, size);
   case Kind::xchain_bridge:
-    return makeXChainBridgeBytes(ctx, payload, size);
+    return makeXChainBridgeView(ctx, ownerValue, payload, size);
   case Kind::st_object:
     return newObjectWrapper(ctx, ownerValue, field.child_scope);
   case Kind::st_array:
@@ -1736,6 +1733,17 @@ struct MintOutcome {
   xdata::ScanStatus status{};
 };
 
+[[nodiscard]] xdata::ScanStatus
+inputTooLargeStatus(std::uint32_t size) noexcept {
+  return {
+      static_cast<std::uint16_t>(xdata::ScanIssue::resource_limit),
+      static_cast<std::uint16_t>(xdata::ScanMessage::input_too_large),
+      0,
+      0,
+      size,
+  };
+}
+
 [[nodiscard]] MintOutcome
 mintOwnedObjectBytes(JSContext *ctx, std::uint8_t *bytes, std::uint32_t size) {
   xdata::RecursiveScanOptions options{.protocol =
@@ -1762,6 +1770,8 @@ mintOwnedObjectBytes(JSContext *ctx, std::uint8_t *bytes, std::uint32_t size) {
 [[nodiscard]] MintOutcome copyAndMintObject(JSContext *ctx,
                                             std::uint8_t const *bytes,
                                             std::uint32_t size) {
+  if (size > xdata::RecursiveScanLimits{}.max_bytes)
+    return {JS_UNDEFINED, inputTooLargeStatus(size)};
   std::uint8_t *copy = nullptr;
   if (size != 0) {
     copy = static_cast<std::uint8_t *>(js_malloc(ctx, size));
@@ -2289,6 +2299,10 @@ namespace {
             {}};
   }
 
+  if (size > xdata::RecursiveScanLimits{}.max_bytes) {
+    JS_FreeValue(ctx, backing);
+    return {JS_UNDEFINED, inputTooLargeStatus(size)};
+  }
   std::uint8_t *copy = nullptr;
   if (size != 0) {
     copy = static_cast<std::uint8_t *>(js_malloc(ctx, size));

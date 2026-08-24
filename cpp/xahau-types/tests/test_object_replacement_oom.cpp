@@ -3,6 +3,7 @@
 #include "object/object.hpp"
 #include "result.hpp"
 
+#include <catl/xdata/recursive_index.h>
 #include <jshookz/qjs.hpp>
 
 #include <gtest/gtest.h>
@@ -1224,6 +1225,31 @@ void expectSafeDecodeFailure(JSContext *ctx, JSValueConst value) {
   EXPECT_FALSE(JS_HasException(ctx));
 }
 
+void expectByteLimitFailure(JSContext *ctx, JSValueConst value,
+                            std::uint32_t maximum, std::uint32_t actual) {
+  ASSERT_FALSE(JS_IsException(value));
+  ASSERT_TRUE(jshookz::provider::bindings::isResult(value));
+  LocalValue ok(ctx, JS_GetPropertyStr(ctx, value, "ok"));
+  LocalValue error(ctx, JS_GetPropertyStr(ctx, value, "error"));
+  ASSERT_FALSE(ok.isException());
+  ASSERT_FALSE(error.isException());
+  EXPECT_EQ(JS_ToBool(ctx, ok.get()), 0);
+  EXPECT_EQ(stringProperty(ctx, error.get(), "domain"), "parse");
+  EXPECT_EQ(stringProperty(ctx, error.get(), "issue"), "resource-limit");
+  EXPECT_EQ(stringProperty(ctx, error.get(), "limit"), "bytes");
+  LocalValue observedMaximum(ctx,
+                             JS_GetPropertyStr(ctx, error.get(), "maximum"));
+  LocalValue observedActualAtLeast(
+      ctx, JS_GetPropertyStr(ctx, error.get(), "actualAtLeast"));
+  std::uint32_t maximumValue = 0;
+  std::uint32_t actualValue = 0;
+  ASSERT_EQ(JS_ToUint32(ctx, &maximumValue, observedMaximum.get()), 0);
+  ASSERT_EQ(JS_ToUint32(ctx, &actualValue, observedActualAtLeast.get()), 0);
+  EXPECT_EQ(maximumValue, maximum);
+  EXPECT_EQ(actualValue, actual);
+  EXPECT_FALSE(JS_HasException(ctx));
+}
+
 template <class Call, class Expect, class InspectProfile>
 void exerciseEveryAllocationRequest(Runtime &runtime, char const *name,
                                     Call call, Expect expect,
@@ -1408,6 +1434,55 @@ TEST(ObjectUtilityOOM,
   malformedInput.reset();
   wrongKind.reset();
   detached.reset();
+  runtime.close();
+  EXPECT_EQ(runtime.allocations.liveBlocks, 0u);
+}
+
+TEST(ObjectUtilityCaps, OversizeInputsAreRejectedBeforePayloadCopy) {
+  Runtime runtime;
+  ASSERT_TRUE(runtime.open());
+  auto *ctx = runtime.context();
+  std::uint32_t const maximum = catl::xdata::RecursiveScanLimits{}.max_bytes;
+  std::uint32_t const actual = maximum + 1;
+  std::vector<std::uint8_t> oversized(actual, 0);
+
+  auto expectNoPayloadCopy = [&] {
+    ASSERT_LE(runtime.allocations.recordedCount,
+              runtime.allocations.recorded.size());
+    EXPECT_FALSE(containsRequest(
+        std::span<AllocationRequest const>{runtime.allocations.recorded.data(),
+                                           runtime.allocations.recordedCount},
+        actual, RequestKind::allocate));
+  };
+
+  runtime.allocations.startRecording();
+  LocalValue direct(
+      ctx, types::makeCertifiedObjectCopy(ctx, oversized.data(), actual));
+  runtime.allocations.stopRecording();
+  expectNoPayloadCopy();
+  expectExactTypeError(ctx, direct.get(),
+                       "serialized object exceeds byte limit", "direct copy");
+
+  LocalValue input(ctx, qjs::uint8Array(ctx, oversized));
+  ASSERT_FALSE(input.isException());
+
+  runtime.allocations.startRecording();
+  LocalValue safe(ctx, types::safeDecodeObjectBytes(ctx, input.get()));
+  runtime.allocations.stopRecording();
+  expectNoPayloadCopy();
+  expectByteLimitFailure(ctx, safe.get(), maximum, actual);
+
+  runtime.allocations.startRecording();
+  LocalValue asserted(ctx, types::decodeObjectBytes(ctx, input.get()));
+  runtime.allocations.stopRecording();
+  expectNoPayloadCopy();
+  expectExactTypeError(ctx, asserted.get(),
+                       "serialized object exceeds byte limit", "asserted copy");
+
+  direct.reset();
+  safe.reset();
+  asserted.reset();
+  input.reset();
   runtime.close();
   EXPECT_EQ(runtime.allocations.liveBlocks, 0u);
 }

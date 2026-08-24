@@ -13,15 +13,15 @@
 #include <gtest/gtest.h>
 
 #include <array>
-#include <cstring>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <string_view>
 #include <unordered_set>
 #include <vector>
 
-extern "C" bool register_cpp_types(JSContext *ctx);
-extern "C" bool register_uint_types(JSContext *ctx);
+extern "C" bool register_cpp_types(JSContext* ctx);
+extern "C" bool register_uint_types(JSContext* ctx);
 
 namespace {
 
@@ -44,11 +44,9 @@ hexBytes(char const* text)
 }
 
 JSValue
-makeIssueForAmount(
-    JSContext* ctx,
+makeIssueForAmount(JSContext* ctx, JSValueConst,
     jshookz::provider::types::AmountIssueKind kind,
-    std::uint8_t const* identity,
-    std::uint32_t length)
+    std::uint8_t const* identity, std::uint32_t length)
 {
     namespace types = jshookz::provider::types;
     if (kind == types::AmountIssueKind::native) {
@@ -58,7 +56,8 @@ makeIssueForAmount(
     if (kind == types::AmountIssueKind::iou)
         return types::makeIssueBytes(ctx, identity, length);
     if (identity == nullptr || length != 24)
-        return JS_ThrowInternalError(ctx, "invalid certified MPT issue identity");
+        return JS_ThrowInternalError(
+            ctx, "invalid certified MPT issue identity");
     std::uint8_t issue[44] = {};
     std::memcpy(issue, identity + 4, 20);
     issue[39] = 1;
@@ -71,11 +70,10 @@ makeIssueForAmount(
 
 }  // namespace
 
-class XahauTypes : public ::testing::Test
-{
+class XahauTypes : public ::testing::Test {
 protected:
-    JSRuntime *rt = nullptr;
-    JSContext *ctx = nullptr;
+    JSRuntime* rt = nullptr;
+    JSContext* ctx = nullptr;
 
     void
     SetUp() override
@@ -96,17 +94,17 @@ protected:
             ASSERT_TRUE(jshookz::provider::types::registerRichLeafTypes(ctx));
             namespace types = jshookz::provider::types;
             types::AmountLeafMaterializers const amountLeaves{
-                types::makeAccountIDBytes,
-                types::makeCurrencyBytes,
-                types::makeHash192Bytes,
+                types::makeAccountIDView,
+                types::makeCurrencyView,
+                types::makeHash192View,
                 types::makeXFLDecimalParts,
                 makeIssueForAmount,
             };
             ASSERT_TRUE(types::registerAmount(ctx, amountLeaves));
             ASSERT_TRUE(types::registerObjectTypes(ctx));
             types::PathSetLeafMaterializers const pathLeaves{
-                types::makeAccountIDBytes,
-                types::makeCurrencyBytes,
+                types::makeAccountIDView,
+                types::makeCurrencyView,
                 types::isCertifiedObjectRange,
             };
             ASSERT_TRUE(types::registerPathSet(ctx, pathLeaves));
@@ -129,16 +127,16 @@ protected:
     }
 
     jshookz::qjs::OwnedValue
-    eval(char const *src)
+    eval(char const* src)
     {
-        return jshookz::qjs::OwnedValue(
-            ctx, JS_Eval(ctx, src, std::strlen(src), "<test>", JS_EVAL_TYPE_GLOBAL));
+        return jshookz::qjs::OwnedValue(ctx,
+            JS_Eval(ctx, src, std::strlen(src), "<test>", JS_EVAL_TYPE_GLOBAL));
     }
 
     std::string
     to_string(JSValueConst value)
     {
-        char const *text = JS_ToCString(ctx, value);
+        char const* text = JS_ToCString(ctx, value);
         std::string out = text ? text : "";
         if (text)
             JS_FreeCString(ctx, text);
@@ -148,8 +146,7 @@ protected:
     void
     installRoot(std::vector<std::uint8_t> const& bytes)
     {
-        jshookz::qjs::OwnedValue value(
-            ctx,
+        jshookz::qjs::OwnedValue value(ctx,
             jshookz::provider::types::makeCertifiedObjectCopy(
                 ctx, bytes.data(), static_cast<std::uint32_t>(bytes.size())));
         ASSERT_FALSE(value.isException());
@@ -178,8 +175,7 @@ TEST_F(XahauTypes, Hash256Roundtrip)
         "'00000000000000000000000000000000000000000000000000000000000000ff'"
         ").toHex()");
     ASSERT_FALSE(v.isException());
-    EXPECT_EQ(
-        to_string(v.get()),
+    EXPECT_EQ(to_string(v.get()),
         "00000000000000000000000000000000000000000000000000000000000000FF");
 }
 
@@ -214,8 +210,16 @@ TEST_F(XahauTypes, CertifiedObjectIsLazyImmutableAndCanonical)
 {
     // Sequence is first on wire; canonical field-code order puts Flags first.
     installRoot({
-        0x24, 0x00, 0x00, 0x00, 0x07,
-        0x22, 0x00, 0x00, 0x00, 0x09,
+        0x24,
+        0x00,
+        0x00,
+        0x00,
+        0x07,
+        0x22,
+        0x00,
+        0x00,
+        0x00,
+        0x09,
     });
     auto value = eval(R"JS(
         (() => {
@@ -246,8 +250,7 @@ TEST_F(XahauTypes, CertifiedObjectIsLazyImmutableAndCanonical)
         })()
     )JS");
     ASSERT_FALSE(value.isException());
-    EXPECT_EQ(
-        to_string(value.get()),
+    EXPECT_EQ(to_string(value.get()),
         R"({"keys":["Flags","Sequence"],"same":true,"flags":9,"sequence":7,"fieldBytes":[0,0,0,9],"canonical":[34,0,0,0,9,36,0,0,0,7],"json":{"Flags":9,"Sequence":7},"jsonFresh":true,"extensible":false,"assignmentFailed":true,"absent":true})");
 }
 
@@ -271,21 +274,22 @@ TEST_F(XahauTypes, ObjectFieldSelectorFormsMatchTheDeclaredSurface)
     EXPECT_TRUE(JS_ToBool(ctx, value.get()));
 }
 
-TEST_F(XahauTypes,
-       ObjectReplacementIsIndependentAndAbsentRemovalPreservesIdentity) {
-  installRoot({
-      0x24,
-      0x00,
-      0x00,
-      0x00,
-      0x07,
-      0x22,
-      0x00,
-      0x00,
-      0x00,
-      0x09,
-  });
-  auto value = eval(R"JS(
+TEST_F(
+    XahauTypes, ObjectReplacementIsIndependentAndAbsentRemovalPreservesIdentity)
+{
+    installRoot({
+        0x24,
+        0x00,
+        0x00,
+        0x00,
+        0x07,
+        0x22,
+        0x00,
+        0x00,
+        0x00,
+        0x09,
+    });
+    auto value = eval(R"JS(
         (() => {
           const changed = root.withField(
             Field.Flags, new Uint8Array([0, 0, 0, 10]));
@@ -302,13 +306,14 @@ TEST_F(XahauTypes,
               "34,0,0,0,10,36,0,0,0,7";
         })()
     )JS");
-  ASSERT_FALSE(value.isException());
-  EXPECT_TRUE(JS_ToBool(ctx, value.get()));
+    ASSERT_FALSE(value.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, value.get()));
 }
 
-TEST_F(XahauTypes, ObjectReplacementAcceptsNumberEnumAndCanonicalRawContainer) {
-  installRoot({});
-  auto value = eval(R"JS(
+TEST_F(XahauTypes, ObjectReplacementAcceptsNumberEnumAndCanonicalRawContainer)
+{
+    installRoot({});
+    auto value = eval(R"JS(
         (() => {
           const number = root.withField("Number", "1.25");
           const transaction = root.withField("TransactionType", 0);
@@ -321,12 +326,11 @@ TEST_F(XahauTypes, ObjectReplacementAcceptsNumberEnumAndCanonicalRawContainer) {
           });
         })()
     )JS");
-  ASSERT_FALSE(value.isException());
-  EXPECT_EQ(
-      to_string(value.get()),
-      R"({"number":"1.25","bytes":[0,4,112,222,77,248,32,0,255,255,255,241],"transaction":0,"nestedSize":1})");
+    ASSERT_FALSE(value.isException());
+    EXPECT_EQ(to_string(value.get()),
+        R"({"number":"1.25","bytes":[0,4,112,222,77,248,32,0,255,255,255,241],"transaction":0,"nestedSize":1})");
 
-  auto rejects = eval(R"JS(
+    auto rejects = eval(R"JS(
         (() => {
           const invalid = [
             () => root.withField("Flags", new Uint8Array([0, 0, 1])),
@@ -342,43 +346,44 @@ TEST_F(XahauTypes, ObjectReplacementAcceptsNumberEnumAndCanonicalRawContainer) {
           });
         })()
     )JS");
-  ASSERT_FALSE(rejects.isException());
-  EXPECT_TRUE(JS_ToBool(ctx, rejects.get()));
+    ASSERT_FALSE(rejects.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, rejects.get()));
 }
 
-TEST_F(XahauTypes, ObjectReplacementNumberStringsMatchPinnedOracleFormatting) {
-  installRoot({});
-  auto value = eval(R"JS(
+TEST_F(XahauTypes, ObjectReplacementNumberStringsMatchPinnedOracleFormatting)
+{
+    installRoot({});
+    auto value = eval(R"JS(
         JSON.stringify([
           "0", "-0", "1", "1.25", "0.5", "-0.00125",
           "1e10", "1e11", "1e-10", "1e-11",
           "10000000000000005", "10000000000000015",
         ].map(input => root.withField("Number", input).Number))
     )JS");
-  ASSERT_FALSE(value.isException());
-  EXPECT_EQ(
-      to_string(value.get()),
-      R"(["0","0","1","1.25","0.5","-0.00125","10000000000","1000000000000000e-4","0.0000000001","1000000000000000e-26","1000000000000000e1","1000000000000002e1"])");
+    ASSERT_FALSE(value.isException());
+    EXPECT_EQ(to_string(value.get()),
+        R"(["0","0","1","1.25","0.5","-0.00125","10000000000","1000000000000000e-4","0.0000000001","1000000000000000e-26","1000000000000000e1","1000000000000002e1"])");
 }
 
-TEST_F(XahauTypes, ObjectReplacementStreamsCertifiedObjectAndArrayValues) {
-  installRoot({
-      0xF9,
-      0xEA,
-      0x24,
-      0,
-      0,
-      0,
-      4,
-      0x22,
-      0,
-      0,
-      0,
-      2,
-      0xE1,
-      0xF1,
-  });
-  auto value = eval(R"JS(
+TEST_F(XahauTypes, ObjectReplacementStreamsCertifiedObjectAndArrayValues)
+{
+    installRoot({
+        0xF9,
+        0xEA,
+        0x24,
+        0,
+        0,
+        0,
+        4,
+        0x22,
+        0,
+        0,
+        0,
+        2,
+        0xE1,
+        0xF1,
+    });
+    auto value = eval(R"JS(
         (() => {
           const element = root.Memos[0];
           const objectCopy = root.withField("Memo", element);
@@ -393,66 +398,69 @@ TEST_F(XahauTypes, ObjectReplacementStreamsCertifiedObjectAndArrayValues) {
             arrayCopy.Memos[0].Flags.toNumber() === 2 && mismatch;
         })()
     )JS");
-  ASSERT_FALSE(value.isException());
-  EXPECT_TRUE(JS_ToBool(ctx, value.get()));
+    ASSERT_FALSE(value.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, value.get()));
 }
 
-TEST_F(XahauTypes, ObjectReplacementAcceptsEveryExactNominalMaterializer) {
-  namespace types = jshookz::provider::types;
-  auto expose = [&](char const *name, JSValue value) {
-    EXPECT_FALSE(JS_IsException(value)) << name;
-    if (JS_IsException(value))
-      return;
-    jshookz::qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
-    ASSERT_FALSE(global.isException());
-    ASSERT_EQ(JS_SetPropertyStr(ctx, global.get(), name, value), 1);
-  };
+TEST_F(XahauTypes, ObjectReplacementAcceptsEveryExactNominalMaterializer)
+{
+    namespace types = jshookz::provider::types;
+    auto expose = [&](char const* name, JSValue value) {
+        EXPECT_FALSE(JS_IsException(value)) << name;
+        if (JS_IsException(value))
+            return;
+        jshookz::qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
+        ASSERT_FALSE(global.isException());
+        ASSERT_EQ(JS_SetPropertyStr(ctx, global.get(), name, value), 1);
+    };
 
-  std::array<std::uint8_t, 32> bytes{};
-  for (std::uint32_t i = 0; i < bytes.size(); ++i)
-    bytes[i] = static_cast<std::uint8_t>(i + 1);
-  std::array<std::uint8_t, 20> account{};
-  for (std::uint32_t i = 0; i < account.size(); ++i)
-    account[i] = static_cast<std::uint8_t>(0x40 + i);
-  std::array<std::uint8_t, 20> currency{};
-  currency[12] = 'U';
-  currency[13] = 'S';
-  currency[14] = 'D';
-  std::array<std::uint8_t, 8> amount{0x40, 0, 0, 0, 0, 0, 0, 42};
-  std::array<std::uint8_t, 20> nativeIssue{};
-  std::array<std::uint8_t, 82> bridge{};
-  bridge[0] = 20;
-  std::memcpy(bridge.data() + 1, account.data(), account.size());
-  bridge[41] = 20;
-  std::memcpy(bridge.data() + 42, account.data(), account.size());
+    std::array<std::uint8_t, 32> bytes{};
+    for (std::uint32_t i = 0; i < bytes.size(); ++i)
+        bytes[i] = static_cast<std::uint8_t>(i + 1);
+    std::array<std::uint8_t, 20> account{};
+    for (std::uint32_t i = 0; i < account.size(); ++i)
+        account[i] = static_cast<std::uint8_t>(0x40 + i);
+    std::array<std::uint8_t, 20> currency{};
+    currency[12] = 'U';
+    currency[13] = 'S';
+    currency[14] = 'D';
+    std::array<std::uint8_t, 8> amount{0x40, 0, 0, 0, 0, 0, 0, 42};
+    std::array<std::uint8_t, 20> nativeIssue{};
+    std::array<std::uint8_t, 82> bridge{};
+    bridge[0] = 20;
+    std::memcpy(bridge.data() + 1, account.data(), account.size());
+    bridge[41] = 20;
+    std::memcpy(bridge.data() + 42, account.data(), account.size());
 
-  expose("vUInt8", types::makeUIntValue(ctx, 8, 0x7f));
-  expose("vUInt16", types::makeUIntValue(ctx, 16, 0x1234));
-  expose("vUInt32", types::makeUIntValue(ctx, 32, 0x12345678));
-  expose("vUInt64", types::makeUIntValue(ctx, 64, 0x123456789abcdef0));
-  expose("vHash128", types::makeHash128Bytes(ctx, bytes.data(), 16));
-  expose("vHash160", types::makeHash160Bytes(ctx, bytes.data(), 20));
-  expose("vHash192", types::makeHash192Bytes(ctx, bytes.data(), 24));
-  expose("vHash256", types::makeHash256Bytes(ctx, bytes.data(), 32));
-  expose("vBlob", types::makeSTBlobBytes(ctx, bytes.data(), 7));
-  expose("vAccount",
-         types::makeAccountIDBytes(ctx, account.data(), account.size()));
-  expose("vAmount", types::makeAmountBytes(ctx, amount.data(), amount.size()));
-  expose("vCurrency",
-         types::makeCurrencyBytes(ctx, currency.data(), currency.size()));
-  expose("vIssue",
-         types::makeIssueBytes(ctx, nativeIssue.data(), nativeIssue.size()));
-  expose("vVector", types::makeVector256Bytes(ctx, bytes.data(), bytes.size()));
-  expose("vBridge",
-         types::makeXChainBridgeBytes(ctx, bridge.data(), bridge.size()));
+    expose("vUInt8", types::makeUIntValue(ctx, 8, 0x7f));
+    expose("vUInt16", types::makeUIntValue(ctx, 16, 0x1234));
+    expose("vUInt32", types::makeUIntValue(ctx, 32, 0x12345678));
+    expose("vUInt64", types::makeUIntValue(ctx, 64, 0x123456789abcdef0));
+    expose("vHash128", types::makeHash128Bytes(ctx, bytes.data(), 16));
+    expose("vHash160", types::makeHash160Bytes(ctx, bytes.data(), 20));
+    expose("vHash192", types::makeHash192Bytes(ctx, bytes.data(), 24));
+    expose("vHash256", types::makeHash256Bytes(ctx, bytes.data(), 32));
+    expose("vBlob", types::makeSTBlobBytes(ctx, bytes.data(), 7));
+    expose("vAccount",
+        types::makeAccountIDBytes(ctx, account.data(), account.size()));
+    expose(
+        "vAmount", types::makeAmountBytes(ctx, amount.data(), amount.size()));
+    expose("vCurrency",
+        types::makeCurrencyBytes(ctx, currency.data(), currency.size()));
+    expose("vIssue",
+        types::makeIssueBytes(ctx, nativeIssue.data(), nativeIssue.size()));
+    expose(
+        "vVector", types::makeVector256Bytes(ctx, bytes.data(), bytes.size()));
+    expose("vBridge",
+        types::makeXChainBridgeBytes(ctx, bridge.data(), bridge.size()));
 
-  installRoot(hexBytes("011201404142434445464748494A4B4C4D4E4F5051525300"));
-  auto path = eval("root.Paths");
-  ASSERT_FALSE(path.isException());
-  expose("vPathSet", path.release());
-  installRoot({});
+    installRoot(hexBytes("011201404142434445464748494A4B4C4D4E4F5051525300"));
+    auto path = eval("root.Paths");
+    ASSERT_FALSE(path.isException());
+    expose("vPathSet", path.release());
+    installRoot({});
 
-  auto result = eval(R"JS(
+    auto result = eval(R"JS(
         (() => {
           const inputs = [
             ["CloseResolution", vUInt8],
@@ -490,21 +498,32 @@ TEST_F(XahauTypes, ObjectReplacementAcceptsEveryExactNominalMaterializer) {
             Reflect.ownKeys(root).length === 0;
         })()
     )JS");
-  if (result.isException()) {
-    jshookz::qjs::OwnedValue error(ctx, JS_GetException(ctx));
-    FAIL() << to_string(error.get());
-  }
-  EXPECT_TRUE(JS_ToBool(ctx, result.get()));
+    if (result.isException()) {
+        jshookz::qjs::OwnedValue error(ctx, JS_GetException(ctx));
+        FAIL() << to_string(error.get());
+    }
+    EXPECT_TRUE(JS_ToBool(ctx, result.get()));
 }
-
 
 TEST_F(XahauTypes, NestedArraySharesElementIdentityAndRealIteratorSymbol)
 {
     // Memos -> two Memo object elements, each with a Flags leaf.
     installRoot({
         0xF9,
-        0xEA, 0x22, 0x00, 0x00, 0x00, 0x01, 0xE1,
-        0xEA, 0x22, 0x00, 0x00, 0x00, 0x02, 0xE1,
+        0xEA,
+        0x22,
+        0x00,
+        0x00,
+        0x00,
+        0x01,
+        0xE1,
+        0xEA,
+        0x22,
+        0x00,
+        0x00,
+        0x00,
+        0x02,
+        0xE1,
         0xF1,
     });
     auto value = eval(R"JS(
@@ -527,16 +546,14 @@ TEST_F(XahauTypes, NestedArraySharesElementIdentityAndRealIteratorSymbol)
         })()
     )JS");
     ASSERT_FALSE(value.isException());
-    EXPECT_EQ(
-        to_string(value.get()),
+    EXPECT_EQ(to_string(value.get()),
         R"({"rootKeys":["Memos"],"arrayKeys":["0","1","length"],"lengthOwn":true,"length":2,"firstSame":true,"numbers":[1,2],"json":{"Memos":[{"Memo":{"Flags":1}},{"Memo":{"Flags":2}}]},"arrayJson":[{"Memo":{"Flags":1}},{"Memo":{"Flags":2}}],"extensible":false,"absent":true})");
 }
 
 TEST_F(XahauTypes, ExactMintRejectsMalformedInputAndRegistrarRetries)
 {
     std::uint8_t const malformed[] = {0x22, 0x00};
-    jshookz::qjs::OwnedValue value(
-        ctx,
+    jshookz::qjs::OwnedValue value(ctx,
         jshookz::provider::types::makeCertifiedObjectCopy(
             ctx, malformed, sizeof(malformed)));
     EXPECT_TRUE(value.isException());
@@ -547,8 +564,8 @@ TEST_F(XahauTypes, ExactMintRejectsMalformedInputAndRegistrarRetries)
     EXPECT_TRUE(jshookz::provider::types::registerObjectTypes(ctx));
     EXPECT_FALSE(JS_HasException(ctx));
     installRoot({});
-    auto empty = eval(
-        "Object.keys(root).length === 0 && root.toBytes().length === 0");
+    auto empty =
+        eval("Object.keys(root).length === 0 && root.toBytes().length === 0");
     ASSERT_FALSE(empty.isException());
     EXPECT_TRUE(JS_ToBool(ctx, empty.get()));
 }
@@ -558,13 +575,11 @@ TEST_F(XahauTypes, ObjectByteUtilitiesUseExactInputAndNominalResultLaws)
     auto valid = eval("new Uint8Array([0x22, 0, 0, 0, 9])");
     ASSERT_FALSE(valid.isException());
     jshookz::qjs::OwnedValue predicate(
-        ctx,
-        jshookz::provider::types::validateObjectBytes(ctx, valid.get()));
+        ctx, jshookz::provider::types::validateObjectBytes(ctx, valid.get()));
     ASSERT_FALSE(predicate.isException());
     EXPECT_TRUE(JS_ToBool(ctx, predicate.get()));
 
-    installValue(
-        "decodedResult",
+    installValue("decodedResult",
         jshookz::provider::types::safeDecodeObjectBytes(ctx, valid.get()));
     auto success = eval(
         "decodedResult.ok && decodedResult.value.Flags.toNumber() === 9 && "
@@ -574,41 +589,36 @@ TEST_F(XahauTypes, ObjectByteUtilitiesUseExactInputAndNominalResultLaws)
 
     auto malformed = eval("new Uint8Array([0x22, 0])");
     ASSERT_FALSE(malformed.isException());
-    jshookz::qjs::OwnedValue invalidPredicate(
-        ctx,
-        jshookz::provider::types::validateObjectBytes(
-            ctx, malformed.get()));
+    jshookz::qjs::OwnedValue invalidPredicate(ctx,
+        jshookz::provider::types::validateObjectBytes(ctx, malformed.get()));
     ASSERT_FALSE(invalidPredicate.isException());
     EXPECT_FALSE(JS_ToBool(ctx, invalidPredicate.get()));
 
-    installValue(
-        "failedResult",
-        jshookz::provider::types::safeDecodeObjectBytes(
-            ctx, malformed.get()));
-    auto failure = eval(
-        "JSON.stringify({ok: failedResult.ok, "
-        "domain: failedResult.error.domain, "
-        "issue: failedResult.error.issue, "
-        "offset: failedResult.error.offset, "
-        "fieldCode: failedResult.error.fieldCode, "
-        "proto: Object.getPrototypeOf(failedResult.error) === null})");
+    installValue("failedResult",
+        jshookz::provider::types::safeDecodeObjectBytes(ctx, malformed.get()));
+    auto failure =
+        eval("JSON.stringify({ok: failedResult.ok, "
+             "domain: failedResult.error.domain, "
+             "issue: failedResult.error.issue, "
+             "offset: failedResult.error.offset, "
+             "fieldCode: failedResult.error.fieldCode, "
+             "proto: Object.getPrototypeOf(failedResult.error) === null})");
     ASSERT_FALSE(failure.isException());
-    EXPECT_EQ(
-        to_string(failure.get()),
+    EXPECT_EQ(to_string(failure.get()),
         R"({"ok":false,"domain":"parse","issue":"invalid-field","offset":1,"fieldCode":131074,"proto":true})");
 
     auto blob = eval("STBlob.from(new Uint8Array([0x22, 0, 0, 0, 7]))");
     ASSERT_FALSE(blob.isException());
     jshookz::qjs::OwnedValue fromBlob(
-        ctx,
-        jshookz::provider::types::decodeObjectBytes(ctx, blob.get()));
+        ctx, jshookz::provider::types::decodeObjectBytes(ctx, blob.get()));
     ASSERT_FALSE(fromBlob.isException());
     EXPECT_TRUE(jshookz::provider::types::isSTObject(fromBlob.get()));
 }
 
-TEST_F(XahauTypes,
-       ExplicitObjectUtilitiesPublishAtomicallyWithoutContainerGlobals) {
-  auto value = eval(R"JS(
+TEST_F(
+    XahauTypes, ExplicitObjectUtilitiesPublishAtomicallyWithoutContainerGlobals)
+{
+    auto value = eval(R"JS(
         (() => {
           const bytes = new Uint8Array([0x22, 0, 0, 0, 9]);
           const decoded = util.safeDecodeObject(bytes);
@@ -630,59 +640,49 @@ TEST_F(XahauTypes,
             published.every(name => Object.hasOwn(globalThis, name));
         })()
     )JS");
-  ASSERT_FALSE(value.isException());
-  EXPECT_TRUE(JS_ToBool(ctx, value.get()));
+    ASSERT_FALSE(value.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, value.get()));
 }
 
 TEST_F(XahauTypes, ObjectByteUtilitiesPublishExactWrongTerminatorAndTypeErrors)
 {
     auto wrongClose = eval("new Uint8Array([0xF1])");
     ASSERT_FALSE(wrongClose.isException());
-    installValue(
-        "closeResult",
-        jshookz::provider::types::safeDecodeObjectBytes(
-            ctx, wrongClose.get()));
-    auto close = eval(
-        "JSON.stringify(closeResult.error)");
+    installValue("closeResult",
+        jshookz::provider::types::safeDecodeObjectBytes(ctx, wrongClose.get()));
+    auto close = eval("JSON.stringify(closeResult.error)");
     ASSERT_FALSE(close.isException());
-    EXPECT_EQ(
-        to_string(close.get()),
+    EXPECT_EQ(to_string(close.get()),
         R"({"domain":"parse","issue":"wrong-terminator","offset":0,"expected":"root-eof","actual":983041})");
 
     auto malformed = eval("new Uint8Array([0x22, 0])");
     ASSERT_FALSE(malformed.isException());
     jshookz::qjs::OwnedValue decoded(
-        ctx,
-        jshookz::provider::types::decodeObjectBytes(
-            ctx, malformed.get()));
+        ctx, jshookz::provider::types::decodeObjectBytes(ctx, malformed.get()));
     ASSERT_TRUE(decoded.isException());
     jshookz::qjs::OwnedValue assertionError(ctx, JS_GetException(ctx));
     ASSERT_TRUE(JS_IsError(ctx, assertionError.get()));
     installValue("assertionError", assertionError.release());
-    auto assertion = eval(
-        "JSON.stringify({type: assertionError instanceof TypeError, "
-        "message: assertionError.message, offset: assertionError.offset, "
-        "fieldCode: assertionError.fieldCode, "
-        "stack: Object.hasOwn(assertionError, 'stack')})");
+    auto assertion =
+        eval("JSON.stringify({type: assertionError instanceof TypeError, "
+             "message: assertionError.message, offset: assertionError.offset, "
+             "fieldCode: assertionError.fieldCode, "
+             "stack: Object.hasOwn(assertionError, 'stack')})");
     ASSERT_FALSE(assertion.isException());
-    EXPECT_EQ(
-        to_string(assertion.get()),
+    EXPECT_EQ(to_string(assertion.get()),
         R"({"type":true,"message":"truncated field","offset":1,"fieldCode":131074,"stack":false})");
 
     auto wrongKind = eval("[0x22, 0, 0, 0, 1]");
     ASSERT_FALSE(wrongKind.isException());
-    jshookz::qjs::OwnedValue wrong(
-        ctx,
-        jshookz::provider::types::validateObjectBytes(
-            ctx, wrongKind.get()));
+    jshookz::qjs::OwnedValue wrong(ctx,
+        jshookz::provider::types::validateObjectBytes(ctx, wrongKind.get()));
     ASSERT_TRUE(wrong.isException());
     jshookz::qjs::OwnedValue contractError(ctx, JS_GetException(ctx));
     installValue("contractError", contractError.release());
-    auto contract = eval(
-        "contractError instanceof TypeError && "
-        "contractError.message === "
-        "'expected Uint8Array, ArrayBuffer, or STBlob' && "
-        "Reflect.ownKeys(contractError).length === 1");
+    auto contract = eval("contractError instanceof TypeError && "
+                         "contractError.message === "
+                         "'expected Uint8Array, ArrayBuffer, or STBlob' && "
+                         "Reflect.ownKeys(contractError).length === 1");
     ASSERT_FALSE(contract.isException());
     EXPECT_TRUE(JS_ToBool(ctx, contract.get()));
 }
@@ -771,8 +771,7 @@ TEST_F(XahauTypes, GeneratedFieldDescriptorsAreExactNominalAndComplete)
         })()
     )JS");
     ASSERT_FALSE(value.isException());
-    EXPECT_EQ(
-        to_string(value.get()),
+    EXPECT_EQ(to_string(value.get()),
         R"({"count":325,"ownKeyCount":325,"code":131074,"typeCode":2,"fieldCode":2,"frozen":true,"descriptorFrozen":true,"identity":true,"reflectionIdentity":true,"reflectionFlags":true,"plainPrototype":true,"samePrototype":true,"freezeIdentity":true,"sealIdentity":true,"deleteRejected":true,"setRejected":true,"sloppySetRejected":true,"strictSetRejected":true,"sloppyDeleteRejected":true,"strictDeleteRejected":true,"sameDefinition":true,"changedDefinition":true,"unknownDefinition":true,"accessorDefinition":true,"symbolDefinition":true,"unknownDelete":true,"symbolDelete":true,"unknownRead":true,"prototypeRejected":true,"inheritedShadowRejected":true,"lookup":9,"structuralMiss":true,"copiedMiss":true,"proxyMiss":true,"prototypeMiss":true,"getterReceiverRejected":true})");
 }
 
@@ -791,8 +790,8 @@ TEST_F(XahauTypes, GeneratedFieldRowsJoinStaticProtocolExactly)
     ASSERT_FALSE(fields.isException());
     std::unordered_set<void const*> identities;
 
-    for (std::uint32_t ordinal = 0;
-         ordinal < protocol.material_field_count; ++ordinal) {
+    for (std::uint32_t ordinal = 0; ordinal < protocol.material_field_count;
+         ++ordinal) {
         SCOPED_TRACE(ordinal);
         auto const* material = protocol.material_field(ordinal);
         ASSERT_NE(material, nullptr);
@@ -819,8 +818,8 @@ TEST_F(XahauTypes, GeneratedFieldRowsJoinStaticProtocolExactly)
         jshookz::qjs::OwnedValue repeated(
             ctx, JS_GetProperty(ctx, fields.get(), atom));
         ASSERT_FALSE(repeated.isException());
-        EXPECT_EQ(JS_VALUE_GET_PTR(repeated.get()),
-                  JS_VALUE_GET_PTR(observed.get()));
+        EXPECT_EQ(
+            JS_VALUE_GET_PTR(repeated.get()), JS_VALUE_GET_PTR(observed.get()));
 
         for (auto const* property : {"code", "typeCode", "fieldCode"}) {
             jshookz::qjs::OwnedValue number(
@@ -829,9 +828,10 @@ TEST_F(XahauTypes, GeneratedFieldRowsJoinStaticProtocolExactly)
             std::uint32_t actual = 0;
             ASSERT_EQ(JS_ToUint32(ctx, &actual, number.get()), 0);
             std::uint32_t const expectedNumber =
-                std::string_view(property) == "code" ? material->field_code :
-                std::string_view(property) == "typeCode" ?
-                    material->field_code >> 16 : material->field_code & 0xffffu;
+                std::string_view(property) == "code" ? material->field_code
+                : std::string_view(property) == "typeCode"
+                ? material->field_code >> 16
+                : material->field_code & 0xffffu;
             EXPECT_EQ(actual, expectedNumber);
         }
 
@@ -844,7 +844,7 @@ TEST_F(XahauTypes, GeneratedFieldRowsJoinStaticProtocolExactly)
         ASSERT_EQ(JS_GetOwnProperty(ctx, &descriptor, fields.get(), atom), 1);
         EXPECT_EQ(descriptor.flags, JS_PROP_ENUMERABLE);
         EXPECT_EQ(JS_VALUE_GET_PTR(descriptor.value),
-                  JS_VALUE_GET_PTR(observed.get()));
+            JS_VALUE_GET_PTR(observed.get()));
         EXPECT_TRUE(JS_IsUndefined(descriptor.getter));
         EXPECT_TRUE(JS_IsUndefined(descriptor.setter));
         JS_FreeValue(ctx, descriptor.value);
@@ -877,24 +877,18 @@ TEST_F(XahauTypes, RichFixedIssueVectorAndBridgeLeavesAreNominalAndImmutable)
     bridge[41] = 20;
     bridge[42] = 4;
 
-    installValue(
-        "hash192",
+    installValue("hash192",
         jshookz::provider::types::makeHash192Bytes(
             ctx, hash192, sizeof(hash192)));
-    installValue(
-        "currency",
+    installValue("currency",
         jshookz::provider::types::makeCurrencyBytes(
             ctx, currency, sizeof(currency)));
-    installValue(
-        "issue",
-        jshookz::provider::types::makeIssueBytes(
-            ctx, issue, sizeof(issue)));
-    installValue(
-        "vector",
+    installValue("issue",
+        jshookz::provider::types::makeIssueBytes(ctx, issue, sizeof(issue)));
+    installValue("vector",
         jshookz::provider::types::makeVector256Bytes(
             ctx, vector, sizeof(vector)));
-    installValue(
-        "bridge",
+    installValue("bridge",
         jshookz::provider::types::makeXChainBridgeBytes(
             ctx, bridge, sizeof(bridge)));
 
@@ -925,8 +919,7 @@ TEST_F(XahauTypes, RichFixedIssueVectorAndBridgeLeavesAreNominalAndImmutable)
         })()
     )JS");
     ASSERT_FALSE(value.isException());
-    EXPECT_EQ(
-        to_string(value.get()),
+    EXPECT_EQ(to_string(value.get()),
         R"({"hash":"1200000000000000000000000000000000000000000000EF","currency":"USD","issueKind":"iou","issueCurrencySame":true,"issueIssuerSame":true,"vectorLength":2,"vectorKeys":["0","1","length"],"vectorIdentity":true,"vectorFresh":true,"bridgeDoorSame":true,"bridgeIssueSame":true,"immutable":true})");
 
     std::uint8_t copiedCurrency[20] = {};
@@ -945,10 +938,10 @@ TEST_F(XahauTypes, RichFixedIssueVectorAndBridgeLeavesAreNominalAndImmutable)
 
 TEST_F(XahauTypes, ObjectMaterializesAmountPathSetAndBridgeWithExactIdentity)
 {
-    installRoot(hexBytes(
-        "61D4838D7EA4C680000000000000000000000000005553440000000000"
-        "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
-        "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8"));
+    installRoot(
+        hexBytes("61D4838D7EA4C680000000000000000000000000005553440000000000"
+                 "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+                 "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8"));
     auto amount = eval(R"JS(
         (() => {
           const value = root.Amount;
@@ -972,9 +965,8 @@ TEST_F(XahauTypes, ObjectMaterializesAmountPathSetAndBridgeWithExactIdentity)
     ASSERT_FALSE(amount.isException());
     EXPECT_TRUE(JS_ToBool(ctx, amount.get()));
 
-    installRoot(hexBytes(
-        "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8"
-        "011201B5F762798A53D543A014CAF8B297CFF8F2F937E800"));
+    installRoot(hexBytes("8114B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+                         "011201B5F762798A53D543A014CAF8B297CFF8F2F937E800"));
     auto paths = eval(R"JS(
         (() => {
           const value = root.Paths;
@@ -990,11 +982,10 @@ TEST_F(XahauTypes, ObjectMaterializesAmountPathSetAndBridgeWithExactIdentity)
     ASSERT_FALSE(paths.isException());
     EXPECT_TRUE(JS_ToBool(ctx, paths.get()));
 
-    installRoot(hexBytes(
-        "011914B5F762798A53D543A014CAF8B297CFF8F2F937E8"
-        "0000000000000000000000000000000000000000"
-        "14B5F762798A53D543A014CAF8B297CFF8F2F937E8"
-        "0000000000000000000000000000000000000000"));
+    installRoot(hexBytes("011914B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+                         "0000000000000000000000000000000000000000"
+                         "14B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+                         "0000000000000000000000000000000000000000"));
     auto bridge = eval(R"JS(
         (() => {
           const value = root.XChainBridge;

@@ -2,6 +2,11 @@
 
 #include "js.hpp"
 #include "object/nominal_payload.hpp"
+#include "object/object.hpp"
+
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+#include "tests/object_gc_lifetime_probe_hooks.hpp"
+#endif
 
 #include <catl/core/types.h>
 #include <catl/xdata/amount-rules.h>
@@ -20,6 +25,8 @@ JSClassID amountClassId;
 AmountLeafMaterializers leafMaterializers{};
 
 struct AmountState {
+  JSValue owner = JS_UNDEFINED;
+  std::uint8_t const *data = nullptr;
   std::array<std::uint8_t, 48> bytes{};
   std::uint8_t length = 0;
 };
@@ -30,14 +37,31 @@ struct AmountState {
 
 void amountFinalizer(JSRuntime *runtime, JSValue value) {
   auto *state = static_cast<AmountState *>(JS_GetOpaque(value, amountClassId));
-  if (state != nullptr)
-    js_free_rt(runtime, state);
+  if (state == nullptr)
+    return;
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+  if (!JS_IsUndefined(state->owner))
+    test::gcProbeFinalized(test::TrackedEntity::amount, value);
+#endif
+  JS_FreeValueRT(runtime, state->owner);
+  js_free_rt(runtime, state);
+}
+
+void amountMark(JSRuntime *runtime, JSValueConst value, JS_MarkFunc *mark) {
+  auto *state = static_cast<AmountState *>(JS_GetOpaque(value, amountClassId));
+  if (state != nullptr) {
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+    if (!test::gcProbeMarkEnabled(test::HiddenEdge::amountOwner))
+      return;
+#endif
+    JS_MarkValue(runtime, state->owner, mark);
+  }
 }
 
 JSClassDef const amountClass = {
     .class_name = "Amount",
     .finalizer = amountFinalizer,
-    .gc_mark = nullptr,
+    .gc_mark = amountMark,
     .call = nullptr,
     .exotic = nullptr,
 };
@@ -47,7 +71,7 @@ JSClassDef const amountClass = {
 }
 
 [[nodiscard]] Slice payload(AmountState const &state) noexcept {
-  return {state.bytes.data(), state.length};
+  return {state.data, state.length};
 }
 
 [[nodiscard]] xdata::AmountRules::Parts
@@ -68,27 +92,50 @@ parts(AmountState const &state) noexcept {
   return "native";
 }
 
-[[nodiscard]] JSValue newAmount(JSContext *ctx, std::uint8_t const *bytes,
+[[nodiscard]] JSValue newAmount(JSContext *ctx, JSValueConst owner,
+                                std::uint8_t const *bytes,
                                 std::uint32_t length) {
   if ((length != 8 && length != 33 && length != 48) || bytes == nullptr)
     return JS_ThrowTypeError(ctx, "Amount: invalid canonical byte length");
   Slice const wire{bytes, length};
   if (char const *error = xdata::AmountRules::certify(wire))
     return JS_ThrowTypeError(ctx, "Amount: %s", error);
+  if (!JS_IsUndefined(owner) &&
+      !isCertifiedObjectRange(ctx, owner, bytes, length))
+    return JS_HasException(ctx)
+               ? JS_EXCEPTION
+               : JS_ThrowTypeError(ctx, "Amount: certified owner is required");
 
   auto *state =
       static_cast<AmountState *>(js_mallocz(ctx, sizeof(AmountState)));
   if (state == nullptr)
     return oom(ctx);
-  std::memcpy(state->bytes.data(), bytes, length);
+  if (JS_IsUndefined(owner)) {
+    std::memcpy(state->bytes.data(), bytes, length);
+    state->data = state->bytes.data();
+  } else {
+    state->owner = JS_DupValue(ctx, owner);
+    state->data = bytes;
+  }
   state->length = static_cast<std::uint8_t>(length);
 
   JSValue value = JS_NewObjectClass(ctx, amountClassId);
   if (JS_IsException(value)) {
+    JS_FreeValue(ctx, state->owner);
     js_free(ctx, state);
     return value;
   }
   JS_SetOpaque(value, state);
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+  if (!JS_IsUndefined(owner)) {
+    test::gcProbeCreated(test::TrackedEntity::amount, value);
+    if (!test::gcProbePlantCycle(ctx, test::HiddenEdge::amountOwner, owner,
+                                 value, value)) {
+      JS_FreeValue(ctx, value);
+      return JS_EXCEPTION;
+    }
+  }
+#endif
   if (JS_PreventExtensions(ctx, value) < 0) {
     JS_FreeValue(ctx, value);
     return JS_EXCEPTION;
@@ -112,9 +159,9 @@ parts(AmountState const &state) noexcept {
 [[nodiscard]] JSValue amountToBytes(JSContext *ctx, JSValueConst thisValue, int,
                                     JSValueConst *) {
   auto const *state = amountState(ctx, thisValue);
-  return state == nullptr
-             ? JS_EXCEPTION
-             : qjs::uint8Array(ctx, {state->bytes.data(), state->length});
+  return state == nullptr ? JS_EXCEPTION
+                          : qjs::uint8Array(ctx, {payload(*state).data(),
+                                                  payload(*state).size()});
 }
 
 [[nodiscard]] JSValue amountIsKind(JSContext *ctx, JSValueConst thisValue,
@@ -206,8 +253,8 @@ parts(AmountState const &state) noexcept {
     return JS_EXCEPTION;
   auto const value = parts(*state);
   return value.kind == xdata::AmountRules::Kind::Iou
-             ? leafMaterializers.currency(ctx, value.currency.data(),
-                                          value.currency.size())
+             ? leafMaterializers.currency(ctx, state->owner,
+                                          payload(*state).data() + 8, 20)
              : JS_UNDEFINED;
 }
 
@@ -217,8 +264,8 @@ parts(AmountState const &state) noexcept {
     return JS_EXCEPTION;
   auto const value = parts(*state);
   return value.kind == xdata::AmountRules::Kind::Iou
-             ? leafMaterializers.accountID(ctx, value.issuer.data(),
-                                           value.issuer.size())
+             ? leafMaterializers.accountID(ctx, state->owner,
+                                           payload(*state).data() + 28, 20)
              : JS_UNDEFINED;
 }
 
@@ -228,8 +275,8 @@ parts(AmountState const &state) noexcept {
     return JS_EXCEPTION;
   auto const value = parts(*state);
   return value.kind == xdata::AmountRules::Kind::Mpt
-             ? leafMaterializers.hash192(ctx, value.mpt_id.data(),
-                                         value.mpt_id.size())
+             ? leafMaterializers.hash192(ctx, state->owner,
+                                         payload(*state).data() + 9, 24)
              : JS_UNDEFINED;
 }
 
@@ -240,12 +287,13 @@ parts(AmountState const &state) noexcept {
   auto const value = parts(*state);
   using Kind = xdata::AmountRules::Kind;
   if (value.kind == Kind::Native)
-    return leafMaterializers.issue(ctx, AmountIssueKind::native, nullptr, 0);
+    return leafMaterializers.issue(ctx, state->owner, AmountIssueKind::native,
+                                   nullptr, 0);
   if (value.kind == Kind::Iou)
-    return leafMaterializers.issue(ctx, AmountIssueKind::iou,
-                                   state->bytes.data() + 8, 40);
-  return leafMaterializers.issue(ctx, AmountIssueKind::mpt,
-                                 state->bytes.data() + 9, 24);
+    return leafMaterializers.issue(ctx, state->owner, AmountIssueKind::iou,
+                                   payload(*state).data() + 8, 40);
+  return leafMaterializers.issue(ctx, state->owner, AmountIssueKind::mpt,
+                                 payload(*state).data() + 9, 24);
 }
 
 [[nodiscard]] bool sameIssue(AmountState const &left, AmountState const &right,
@@ -254,8 +302,8 @@ parts(AmountState const &state) noexcept {
     return true;
   std::size_t const offset = kind == xdata::AmountRules::Kind::Iou ? 8 : 9;
   std::size_t const length = kind == xdata::AmountRules::Kind::Iou ? 40 : 24;
-  return std::memcmp(left.bytes.data() + offset, right.bytes.data() + offset,
-                     length) == 0;
+  return std::memcmp(payload(left).data() + offset,
+                     payload(right).data() + offset, length) == 0;
 }
 
 [[nodiscard]] int
@@ -426,7 +474,12 @@ bool registerAmount(JSContext *ctx, AmountLeafMaterializers const &leaves) {
 
 JSValue makeAmountBytes(JSContext *ctx, std::uint8_t const *bytes,
                         std::uint32_t length) {
-  return newAmount(ctx, bytes, length);
+  return newAmount(ctx, JS_UNDEFINED, bytes, length);
+}
+
+JSValue makeAmountView(JSContext *ctx, JSValueConst owner,
+                       std::uint8_t const *bytes, std::uint32_t length) {
+  return newAmount(ctx, owner, bytes, length);
 }
 
 bool isAmount(JSValueConst value) noexcept {
@@ -444,7 +497,7 @@ bool detail::readAmountNominalPayload(JSValueConst input,
   if (state == nullptr || (state->length != 8 && state->length != 33 &&
                            state->length != 48))
     return false;
-  output = {state->bytes.data(), state->length};
+  output = {state->data, state->length};
   return true;
 }
 

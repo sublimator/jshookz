@@ -126,7 +126,7 @@ def test_rollback_on_fail_rejects_structural_result_lookalikes():
     assert [call.name for call in result.call_log] == ["accept"]
 
 
-def test_rollback_require_collapses_host_failure_and_absence():
+def test_rollback_require_present_collapses_host_failure_and_absence():
     source = """
         export function main(_reserved) {
           const mode = otxn.type();
@@ -138,7 +138,7 @@ def test_rollback_require_collapses_host_failure_and_absence():
               71
             );
           }
-          const value = rollback.require(
+          const value = rollback.requirePresent(
             state.get("MISSING"),
             "required value missing",
             72
@@ -185,7 +185,7 @@ def test_rollback_require_collapses_host_failure_and_absence():
     ]
 
 
-def test_results_are_nominal_frozen_values_and_require_returns_truthy_values():
+def test_results_are_nominal_frozen_values_and_require_truthy_returns_values():
     source = """
         export function main() {
           const result = state.get("MISSING");
@@ -203,7 +203,7 @@ def test_results_are_nominal_frozen_values_and_require_returns_truthy_values():
 
           const values = [true, 1, 1n, "value", { present: true }];
           for (const item of values) {
-            if (rollback.require(item, "truthy value missing", 75) !== item) {
+            if (rollback.requireTruthy(item, "truthy value missing", 75) !== item) {
               rollback("truthy value changed", 76);
             }
           }
@@ -219,11 +219,11 @@ def test_results_are_nominal_frozen_values_and_require_returns_truthy_values():
     assert [call.name for call in result.call_log] == ["state", "accept"]
 
 
-def test_rollback_require_rejects_direct_falsy_values():
+def test_rollback_require_truthy_rejects_direct_falsy_values():
     for expression in ["false", "0", "0n", '""', "null", "undefined", "NaN"]:
         source = """
         export function main() {
-          rollback.require(EXPR, "direct value missing", 78);
+          rollback.requireTruthy(EXPR, "direct value missing", 78);
           accept("unexpected");
         }
         """.replace("EXPR", expression)
@@ -236,11 +236,11 @@ def test_rollback_require_rejects_direct_falsy_values():
         assert [call.name for call in result.call_log] == ["rollback"]
 
 
-def test_rollback_require_defaults_only_the_explicit_policy_code():
+def test_rollback_require_present_defaults_only_the_explicit_policy_code():
     result = HookRunner().run(
         '''
         export function main() {
-          rollback.require(state.get("MISSING"), "required value missing");
+          rollback.requirePresent(state.get("MISSING"), "required value missing");
           accept("unexpected");
         }
         '''
@@ -312,11 +312,11 @@ def test_accept_when_accepts_on_truthy_and_continues_on_falsy():
     assert [call.name for call in continued.call_log] == ["accept"]
 
 
-def test_accept_unless_accepts_on_absence_and_unwraps_presence():
+def test_accept_unless_present_accepts_on_absence_and_unwraps_presence():
     missing = HookRunner().run(
         '''
         export function main() {
-          const value = accept.unless(state.get("MISSING"), "no work", 85);
+          const value = accept.unlessPresent(state.get("MISSING"), "no work", 85);
           accept(`unexpected:${value}`, 1);
         }
         '''
@@ -331,7 +331,7 @@ def test_accept_unless_accepts_on_absence_and_unwraps_presence():
     present = present_runner.run(
         '''
         export function main() {
-          const value = accept.unless(state.get("MISSING"), "no work", 85);
+          const value = accept.unlessPresent(state.get("MISSING"), "no work", 85);
           accept(`had:${value.byteLength}`, 86);
         }
         '''
@@ -359,11 +359,11 @@ def test_rollback_when_does_not_treat_a_result_object_as_a_predicate():
     assert result.return_msg == b"result object is truthy"
 
 
-def test_rollback_require_rejects_a_missing_contract_policy():
+def test_rollback_require_present_rejects_a_missing_contract_policy():
     result = HookRunner().run(
         '''
         export function main() {
-          rollback.require(state.get("MISSING"));
+          rollback.requirePresent(state.get("MISSING"));
           accept("unexpected");
         }
         '''
@@ -371,7 +371,7 @@ def test_rollback_require_rejects_a_missing_contract_policy():
 
     assert not result.accepted
     assert not result.rejected
-    assert "rollback.require: expected rollback message" in str(result.error)
+    assert "rollback.requirePresent: expected rollback message" in str(result.error)
     assert [call.name for call in result.call_log] == ["state"]
 
 
@@ -759,7 +759,7 @@ def test_bounded_uint_values_pin_width_arithmetic_and_conversion_policy():
             rollback("saturating width contract mismatch", 105);
           }
 
-          const quotient = rollback.require(
+          const quotient = rollback.requirePresent(
             UInt64.mulDiv(UInt64.max, UInt64.max, UInt64.max),
             "mulDiv construction",
             112
@@ -767,7 +767,7 @@ def test_bounded_uint_values_pin_width_arithmetic_and_conversion_policy():
           if (!quotient.equals(UInt64.max)) {
             rollback("mulDiv exact result mismatch", 114);
           }
-          const floor = rollback.require(
+          const floor = rollback.requirePresent(
             UInt8.mulDiv(10, 3, 4),
             "mulDiv floor",
             116
@@ -1013,7 +1013,7 @@ def test_typescript_public_api_reaches_the_real_host():
           if (selected.length !== 1 || selected[0]?.toHex() !== "A1B2C3") {
             rollback("typed result mismatch", 97);
           }
-          const stored = rollback.require(
+          const stored = rollback.requirePresent(
             state.get("TYPED"),
             "typed state write disappeared",
             93,

@@ -127,9 +127,13 @@ def _field_header(type_code: int, field_code: int) -> bytes:
 
 def _field_payload(materializer: str, *, vl_encoded: bool) -> bytes:
     if vl_encoded:
-        # Match appendValidPayload in the native all-field fixture: the
-        # one-byte zero VL prefix represents an empty canonical payload.
-        return b"\x00"
+        # Keep every VL row nonempty so the 325-row runtime join exercises
+        # canonical JSON and byte emission for Blob, AccountID, and Vector256.
+        if materializer == "account_id":
+            return bytes.fromhex("14B5F762798A53D543A014CAF8B297CFF8F2F937E8")
+        if materializer == "vector256":
+            return b"\x20" + bytes(range(1, 33))
+        return b"\x01\xab"
     if materializer == "amount":
         return b"\x40" + bytes(7)
     if materializer == "number":
@@ -169,7 +173,9 @@ def _expected_field_rows() -> list[dict[str, object]]:
             materializer,
             vl_encoded=metadata["isVLEncoded"],
         )
-        wire_payload_size = 0 if metadata["isVLEncoded"] else len(encoded_payload)
+        wire_payload_size = (
+            encoded_payload[0] if metadata["isVLEncoded"] else len(encoded_payload)
+        )
         rows.append(
             {
                 "name": name,
@@ -208,6 +214,9 @@ JSON.stringify((() => {{
   const descriptorPrototype = Object.getPrototypeOf(Field[expected[0].name]);
   const materialPrototypes = {{}};
   const root = util.decodeObject(STBlob.fromHex(expected.map(row => row.wire).join("")));
+  const rendered = root.toJSON();
+  const canonicalHex = Array.from(root.toBytes(), byte =>
+    byte.toString(16).padStart(2, "0")).join("");
 
   const compareNames = (label, actual, wanted) => {{
     if (actual.length !== wanted.length ||
@@ -235,9 +244,13 @@ JSON.stringify((() => {{
   }}
 
   const expectedNames = expected.map(row => row.name);
+  const expectedWire = expected.map(row => row.wire).join("");
   compareNames("Field Reflect.ownKeys", ownKeys, expectedNames);
   compareNames("Field own names", ownNames, expectedNames);
   compareNames("Field enumerable names", enumerableNames, expectedNames);
+  compareNames("STObject.toJSON names", Object.keys(rendered), expectedNames);
+  if (canonicalHex !== expectedWire)
+    failures.push("STObject.toBytes differs from the complete 325-row wire");
   if (!Object.isFrozen(Field)) failures.push("Field table is not frozen");
   if (Object.getPrototypeOf(Field) !== Object.prototype)
     failures.push("Field table prototype is not Object.prototype");
@@ -250,6 +263,8 @@ JSON.stringify((() => {{
     const own = descriptors[row.name];
     const value = Field[row.name];
     const prefix = `Field.${{row.name}}`;
+    if (!Object.hasOwn(rendered, row.name))
+      failures.push(`${{prefix}}: toJSON omitted material field`);
     if (!own) {{ failures.push(`${{prefix}}: missing descriptor`); return; }}
     if (own.value !== value || values[index] !== value ||
         entries[index][0] !== row.name || entries[index][1] !== value ||

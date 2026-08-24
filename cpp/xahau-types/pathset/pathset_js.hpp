@@ -7,9 +7,9 @@
 namespace jshookz::provider::types {
 
 struct PathSetLeafMaterializers {
-  JSValue (*accountID)(JSContext *, std::uint8_t const *,
+  JSValue (*accountID)(JSContext *, JSValueConst, std::uint8_t const *,
                        std::uint32_t) = nullptr;
-  JSValue (*currency)(JSContext *, std::uint8_t const *,
+  JSValue (*currency)(JSContext *, JSValueConst, std::uint8_t const *,
                       std::uint32_t) = nullptr;
   // Allocation-free/no-JavaScript proof that owner is the provider's exact
   // certified immutable backing and that the complete range lies within it.

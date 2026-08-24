@@ -16,6 +16,25 @@ EDGES = (
     "array-cache-value",
     "iterator-array",
     "field-table-descriptor",
+    "blob-owner",
+    "hash256-owner",
+    "account-id-owner",
+    "amount-owner",
+    "hash128-owner",
+    "hash160-owner",
+    "hash192-owner",
+    "currency-owner",
+    "issue-owner",
+    "issue-cache-value",
+    "vector256-owner",
+    "vector256-cache-value",
+    "vector256-iterator",
+    "xchain-bridge-owner",
+    "xchain-bridge-cache-value",
+    "path-set-owner",
+    "path-parent",
+    "path-hop-parent",
+    "path-iterator-parent",
 )
 RED_EXIT = 23
 RADIX_STDOUT = """\
@@ -115,7 +134,7 @@ def main() -> int:
 
     print(
         "object GC/lifetime/radix controls: ok "
-        "(6 green, 6 GC red, lifetime order, 5 topology banks, 2 radix red)"
+        "(25 green, 25 GC red, lifetime order, 5 topology banks, 2 radix red)"
     )
     return 0
 

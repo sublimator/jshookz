@@ -559,40 +559,64 @@ TEST(ScanCorpus, EveryRejectedPathSetFailsStrictCodecIndependently)
     EXPECT_EQ(seen_rejections.size(), 13u);
 }
 
-TEST(ScanCorpus, SkipObjectIllegalMaskUsesLocateAndSucceeds)
-{
-    auto const protocol = Protocol::load_embedded_xahau_protocol();
-    // Paths field followed by illegal hop mask 0x02 and the PathSet end.
-    // Locate must find the extent even though CertifyWire rejects this payload.
-    std::vector<uint8_t> object{0x01, 0x12, 0x02, 0x00};
-    ParserContext ctx{Slice{object.data(), object.size()}};
-    reset_pathset_route_counts();
-    EXPECT_NO_THROW(skip_object(ctx, protocol));
-    EXPECT_FALSE(ctx.failed());
-    EXPECT_EQ(ctx.pos(), object.size());
-    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::Locate), 1u);
-    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::CertifyWire), 0u);
-    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::TraverseAdmitted), 0u);
-    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::MeasureDirectory), 0u);
-    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::FillDirectory), 0u);
+TEST(ScanCorpus, SkipObjectIllegalMaskUsesCertifyAndRejects) {
+  auto const protocol = Protocol::load_embedded_xahau_protocol();
+  // Paths field followed by illegal hop mask 0x02 and the PathSet end.
+  std::vector<uint8_t> object{0x01, 0x12, 0x02, 0x00};
+  ParserContext ctx{Slice{object.data(), object.size()}};
+  reset_pathset_route_counts();
+  EXPECT_THROW(skip_object(ctx, protocol), std::exception);
+  EXPECT_TRUE(ctx.failed());
+  EXPECT_EQ(pathset_route_count(PathSetRuleRoute::Locate), 0u);
+  EXPECT_EQ(pathset_route_count(PathSetRuleRoute::CertifyWire), 1u);
+  EXPECT_EQ(pathset_route_count(PathSetRuleRoute::TraverseAdmitted), 0u);
+  EXPECT_EQ(pathset_route_count(PathSetRuleRoute::MeasureDirectory), 0u);
+  EXPECT_EQ(pathset_route_count(PathSetRuleRoute::FillDirectory), 0u);
 }
 
-TEST(ScanCorpus, SkipObjectMissingPathSetEndUsesLocateAndFails)
-{
-    auto const protocol = Protocol::load_embedded_xahau_protocol();
-    std::vector<uint8_t> object{0x01, 0x12, 0x01, 0xb5, 0xf7, 0x62, 0x79, 0x8a,
-        0x53, 0xd5, 0x43, 0xa0, 0x14, 0xca, 0xf8, 0xb2, 0x97, 0xcf, 0xf8, 0xf2,
-        0xf9, 0x37, 0xe8};
-    ParserContext ctx{Slice{object.data(), object.size()}};
-    reset_pathset_route_counts();
-    EXPECT_THROW(skip_object(ctx, protocol), std::exception);
-    EXPECT_TRUE(ctx.failed());
-    EXPECT_EQ(ctx.pos(), object.size());
-    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::Locate), 1u);
-    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::CertifyWire), 0u);
-    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::TraverseAdmitted), 0u);
-    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::MeasureDirectory), 0u);
-    EXPECT_EQ(pathset_route_count(PathSetRuleRoute::FillDirectory), 0u);
+TEST(ScanCorpus, SkipObjectEmptyPathSetUsesCertifyAndRejects) {
+  auto const protocol = Protocol::load_embedded_xahau_protocol();
+  std::vector<uint8_t> object{0x01, 0x12, 0x00};
+  ParserContext ctx{Slice{object.data(), object.size()}};
+  reset_pathset_route_counts();
+  EXPECT_THROW(skip_object(ctx, protocol), std::exception);
+  EXPECT_TRUE(ctx.failed());
+  EXPECT_EQ(pathset_route_count(PathSetRuleRoute::Locate), 0u);
+  EXPECT_EQ(pathset_route_count(PathSetRuleRoute::CertifyWire), 1u);
+}
+
+TEST(ScanCorpus, CertifyAndSkipRejectNumberConstructorOverflow) {
+  auto const protocol = Protocol::load_embedded_xahau_protocol();
+  std::vector<uint8_t> object{0x91, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff,
+                              0xff, 0xff, 0x00, 0x00, 0x80, 0x00};
+  Slice const backing{object.data(), object.size()};
+
+  NullSink locate_sink;
+  EXPECT_TRUE(scan_scope<ScanMode::Locate>(backing, 0, protocol, locate_sink));
+  NullSink certify_sink;
+  EXPECT_FALSE(
+      scan_scope<ScanMode::CertifyWire>(backing, 0, protocol, certify_sink));
+
+  ParserContext ctx{backing};
+  EXPECT_THROW(skip_object(ctx, protocol), std::exception);
+  EXPECT_TRUE(ctx.failed());
+}
+
+TEST(ScanCorpus, SkipObjectMissingPathSetEndUsesCertifyAndFails) {
+  auto const protocol = Protocol::load_embedded_xahau_protocol();
+  std::vector<uint8_t> object{0x01, 0x12, 0x01, 0xb5, 0xf7, 0x62, 0x79, 0x8a,
+                              0x53, 0xd5, 0x43, 0xa0, 0x14, 0xca, 0xf8, 0xb2,
+                              0x97, 0xcf, 0xf8, 0xf2, 0xf9, 0x37, 0xe8};
+  ParserContext ctx{Slice{object.data(), object.size()}};
+  reset_pathset_route_counts();
+  EXPECT_THROW(skip_object(ctx, protocol), std::exception);
+  EXPECT_TRUE(ctx.failed());
+  EXPECT_EQ(ctx.pos(), object.size());
+  EXPECT_EQ(pathset_route_count(PathSetRuleRoute::Locate), 0u);
+  EXPECT_EQ(pathset_route_count(PathSetRuleRoute::CertifyWire), 1u);
+  EXPECT_EQ(pathset_route_count(PathSetRuleRoute::TraverseAdmitted), 0u);
+  EXPECT_EQ(pathset_route_count(PathSetRuleRoute::MeasureDirectory), 0u);
+  EXPECT_EQ(pathset_route_count(PathSetRuleRoute::FillDirectory), 0u);
 }
 
 TEST(ScanCorpus, NegativeMptJsonMatchesView)

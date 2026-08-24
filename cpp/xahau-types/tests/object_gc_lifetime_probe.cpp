@@ -1,6 +1,11 @@
+#include "amount/amount_js.hpp"
+#include "js.hpp"
+#include "leaf/leaf.hpp"
 #include "object/field_js.hpp"
 #include "object/object.hpp"
 #include "object_gc_lifetime_probe_hooks.hpp"
+#include "pathset/pathset_js.hpp"
+#include "quickjs.hpp"
 
 #include <quickjs.h>
 
@@ -15,6 +20,35 @@ namespace types = jshookz::provider::types;
 namespace probe = jshookz::provider::types::test;
 
 namespace {
+
+[[nodiscard]] JSValue makeIssueForAmount(JSContext *ctx, JSValueConst owner,
+                                         types::AmountIssueKind kind,
+                                         std::uint8_t const *identity,
+                                         std::uint32_t length) {
+  if (kind == types::AmountIssueKind::native) {
+    std::uint8_t native[20] = {};
+    return JS_IsUndefined(owner)
+               ? types::makeIssueBytes(ctx, native, sizeof(native))
+               : types::makeIssueDerivedBytes(ctx, owner, native,
+                                              sizeof(native));
+  }
+  if (kind == types::AmountIssueKind::iou)
+    return JS_IsUndefined(owner)
+               ? types::makeIssueBytes(ctx, identity, length)
+               : types::makeIssueView(ctx, owner, identity, length);
+  if (identity == nullptr || length != 24)
+    return JS_ThrowInternalError(ctx, "invalid certified MPT issue identity");
+  std::uint8_t issue[44] = {};
+  std::memcpy(issue, identity + 4, 20);
+  issue[39] = 1;
+  issue[40] = identity[3];
+  issue[41] = identity[2];
+  issue[42] = identity[1];
+  issue[43] = identity[0];
+  return JS_IsUndefined(owner)
+             ? types::makeIssueBytes(ctx, issue, sizeof(issue))
+             : types::makeIssueDerivedBytes(ctx, owner, issue, sizeof(issue));
+}
 
 constexpr std::size_t entityCount =
     static_cast<std::size_t>(probe::TrackedEntity::count);
@@ -81,7 +115,27 @@ public:
       error_ = "JS_NewContext failed";
       return;
     }
-    if (!types::registerObjectTypes(context_))
+    jshookz::provider::qjs::resetByteClassRegistry();
+    LocalValue global(context_, JS_GetGlobalObject(context_));
+    types::AmountLeafMaterializers const amountLeaves{
+        types::makeAccountIDView, types::makeCurrencyView,
+        types::makeHash192View,   types::makeXFLDecimalParts,
+        makeIssueForAmount,
+    };
+    types::PathSetLeafMaterializers const pathLeaves{
+        types::makeAccountIDView,
+        types::makeCurrencyView,
+        types::isCertifiedObjectRange,
+    };
+    if (global.isException() ||
+        !types::registerSTBlob(context_, global.get()) ||
+        !types::registerHash256(context_, global.get()) ||
+        !types::registerAccountID(context_, global.get()) ||
+        !types::registerXFL(context_) ||
+        !types::registerRichLeafTypes(context_) ||
+        !types::registerAmount(context_, amountLeaves) ||
+        !types::registerObjectTypes(context_) ||
+        !types::registerPathSet(context_, pathLeaves))
       error_ = takeException("registerObjectTypes failed");
   }
 
@@ -93,6 +147,8 @@ public:
       JS_FreeContext(context_);
     if (runtime_ != nullptr) {
       types::unregisterObjectTypes(runtime_);
+      types::unregisterRichLeafTypes(runtime_);
+      jshookz::provider::qjs::resetByteClassRegistry();
       JS_FreeRuntime(runtime_);
     }
   }
@@ -144,6 +200,38 @@ using ExpectedCounts = std::array<std::uint32_t, entityCount>;
     return "field-table";
   case probe::TrackedEntity::fieldDescriptor:
     return "field-descriptor";
+  case probe::TrackedEntity::blob:
+    return "blob";
+  case probe::TrackedEntity::hash256:
+    return "hash256";
+  case probe::TrackedEntity::accountID:
+    return "account-id";
+  case probe::TrackedEntity::amount:
+    return "amount";
+  case probe::TrackedEntity::hash128:
+    return "hash128";
+  case probe::TrackedEntity::hash160:
+    return "hash160";
+  case probe::TrackedEntity::hash192:
+    return "hash192";
+  case probe::TrackedEntity::currency:
+    return "currency";
+  case probe::TrackedEntity::issue:
+    return "issue";
+  case probe::TrackedEntity::vector256:
+    return "vector256";
+  case probe::TrackedEntity::vectorIterator:
+    return "vector-iterator";
+  case probe::TrackedEntity::xchainBridge:
+    return "xchain-bridge";
+  case probe::TrackedEntity::pathSet:
+    return "path-set";
+  case probe::TrackedEntity::path:
+    return "path";
+  case probe::TrackedEntity::pathHop:
+    return "path-hop";
+  case probe::TrackedEntity::pathIterator:
+    return "path-iterator";
   case probe::TrackedEntity::count:
     return "count";
   }
@@ -178,6 +266,16 @@ using ExpectedCounts = std::array<std::uint32_t, entityCount>;
   return false;
 }
 
+void dumpLiveCounts() {
+  for (std::size_t i = 0; i < entityCount; ++i) {
+    auto const entity = static_cast<probe::TrackedEntity>(i);
+    auto const observed = probe::gcProbeCounts(entity);
+    if (observed.created != 0)
+      std::fprintf(stderr, "%s live counts: %u/%u\n", entityName(entity),
+                   observed.created, observed.finalized);
+  }
+}
+
 [[nodiscard]] LocalValue mint(JSContext *ctx, std::uint8_t const *bytes,
                               std::uint32_t size) {
   return LocalValue(ctx, types::makeCertifiedObjectCopy(ctx, bytes, size));
@@ -207,6 +305,164 @@ using ExpectedCounts = std::array<std::uint32_t, entityCount>;
     return false;
   LocalValue bytes(ctx, JS_Call(ctx, method.get(), object, 0, nullptr));
   return !bytes.isException() && JS_IsObject(bytes.get());
+}
+
+[[nodiscard]] LocalValue callAt(JSContext *ctx, JSValueConst value,
+                                std::uint32_t index) {
+  LocalValue method(ctx, JS_GetPropertyStr(ctx, value, "at"));
+  LocalValue argument(ctx, JS_NewUint32(ctx, index));
+  if (method.isException() || argument.isException())
+    return LocalValue(ctx, JS_EXCEPTION);
+  JSValueConst arguments[] = {argument.get()};
+  return LocalValue(ctx, JS_Call(ctx, method.get(), value, 1, arguments));
+}
+
+[[nodiscard]] std::vector<std::uint8_t> decodeHex(char const *hex) {
+  auto nibble = [](char value) -> std::uint8_t {
+    if (value >= '0' && value <= '9')
+      return static_cast<std::uint8_t>(value - '0');
+    if (value >= 'A' && value <= 'F')
+      return static_cast<std::uint8_t>(value - 'A' + 10);
+    return static_cast<std::uint8_t>(value - 'a' + 10);
+  };
+  std::size_t const length = std::strlen(hex);
+  std::vector<std::uint8_t> bytes(length / 2);
+  for (std::size_t i = 0; i < bytes.size(); ++i)
+    bytes[i] = static_cast<std::uint8_t>((nibble(hex[i * 2]) << 4) |
+                                         nibble(hex[i * 2 + 1]));
+  return bytes;
+}
+
+[[nodiscard]] bool prepareRichCycle(RuntimeFixture &fixture,
+                                    probe::HiddenEdge edge) {
+  auto *ctx = fixture.context();
+  char const *field = nullptr;
+  char const *wire = nullptr;
+  switch (edge) {
+  case probe::HiddenEdge::blobOwner:
+    field = "PublicKey";
+    wire = "710701020304050607";
+    break;
+  case probe::HiddenEdge::hash256Owner:
+    field = "LedgerHash";
+    wire = "510102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20";
+    break;
+  case probe::HiddenEdge::accountIDOwner:
+    field = "Account";
+    wire = "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8";
+    break;
+  case probe::HiddenEdge::amountOwner:
+    field = "Amount";
+    wire = "61400000000000002A";
+    break;
+  case probe::HiddenEdge::hash128Owner:
+    field = "EmailHash";
+    wire = "410102030405060708090A0B0C0D0E0F10";
+    break;
+  case probe::HiddenEdge::hash160Owner:
+    field = "TakerPaysCurrency";
+    wire = "01110102030405060708090A0B0C0D0E0F1011121314";
+    break;
+  case probe::HiddenEdge::hash192Owner:
+    field = "MPTokenIssuanceID";
+    wire = "01150102030405060708090A0B0C0D0E0F101112131415161718";
+    break;
+  case probe::HiddenEdge::currencyOwner:
+    field = "BaseAsset";
+    wire = "011A0000000000000000000000005553440000000000";
+    break;
+  case probe::HiddenEdge::issueOwner:
+  case probe::HiddenEdge::issueCacheValue:
+    field = "LockingChainIssue";
+    wire = "01180000000000000000000000000000000000000000";
+    break;
+  case probe::HiddenEdge::vector256Owner:
+  case probe::HiddenEdge::vector256CacheValue:
+  case probe::HiddenEdge::vector256Iterator:
+    field = "Indexes";
+    wire = "0113200102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1"
+           "F20";
+    break;
+  case probe::HiddenEdge::xchainBridgeOwner:
+  case probe::HiddenEdge::xchainBridgeCacheValue:
+    field = "XChainBridge";
+    wire = "011914B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+           "0000000000000000000000000000000000000000"
+           "14B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+           "0000000000000000000000000000000000000000";
+    break;
+  default:
+    return false;
+  }
+  auto const bytes = decodeHex(wire);
+  LocalValue root = mint(ctx, bytes.data(), bytes.size());
+  LocalValue parent(ctx, JS_GetPropertyStr(ctx, root.get(), field));
+  if (root.isException() || parent.isException() || !JS_IsObject(parent.get()))
+    return false;
+
+  if (edge == probe::HiddenEdge::issueCacheValue) {
+    LocalValue child;
+    {
+      PendingTarget pending(parent.get());
+      child = LocalValue(ctx, JS_GetPropertyStr(ctx, parent.get(), "currency"));
+    }
+    return !child.isException() && JS_IsObject(child.get());
+  }
+  if (edge == probe::HiddenEdge::vector256CacheValue) {
+    LocalValue child;
+    {
+      PendingTarget pending(parent.get());
+      child = LocalValue(ctx, JS_GetPropertyUint32(ctx, parent.get(), 0));
+    }
+    return !child.isException() && JS_IsObject(child.get());
+  }
+  if (edge == probe::HiddenEdge::xchainBridgeCacheValue) {
+    LocalValue child;
+    {
+      PendingTarget pending(parent.get());
+      child = LocalValue(
+          ctx, JS_GetPropertyStr(ctx, parent.get(), "LockingChainDoor"));
+    }
+    return !child.isException() && JS_IsObject(child.get());
+  }
+  if (edge == probe::HiddenEdge::vector256Iterator) {
+    LocalValue iterator = iteratorFor(ctx, parent.get());
+    return !iterator.isException() && JS_IsObject(iterator.get());
+  }
+  return true;
+}
+
+[[nodiscard]] bool preparePathCycle(RuntimeFixture &fixture,
+                                    probe::HiddenEdge edge) {
+  auto *ctx = fixture.context();
+  static constexpr std::uint8_t bytes[] = {
+      0x81, 0x14, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49,
+      0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 0x50, 0x51, 0x52, 0x53, 0x01, 0x12,
+      0x01, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A,
+      0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 0x50, 0x51, 0x52, 0x53, 0x00,
+  };
+  LocalValue root = mint(ctx, bytes, sizeof(bytes));
+  LocalValue pathSet(ctx, JS_GetPropertyStr(ctx, root.get(), "Paths"));
+  if (root.isException() || pathSet.isException() ||
+      !types::isPathSet(pathSet.get()))
+    return false;
+  if (edge == probe::HiddenEdge::pathSetOwner)
+    return true;
+  if (edge == probe::HiddenEdge::pathIteratorParent) {
+    LocalValue iterator = iteratorFor(ctx, pathSet.get());
+    return !iterator.isException() && JS_IsObject(iterator.get());
+  }
+
+  LocalValue path = callAt(ctx, pathSet.get(), 0);
+  if (path.isException() || !types::isPath(path.get()))
+    return false;
+  if (edge == probe::HiddenEdge::pathParent)
+    return true;
+  if (edge == probe::HiddenEdge::pathHopParent) {
+    LocalValue hop = callAt(ctx, path.get(), 0);
+    return !hop.isException() && types::isPathHop(hop.get());
+  }
+  return false;
 }
 
 [[nodiscard]] ExpectedCounts expectedFor(probe::HiddenEdge edge) {
@@ -244,6 +500,74 @@ using ExpectedCounts = std::array<std::uint32_t, entityCount>;
     set(probe::TrackedEntity::fieldTable, 1);
     set(probe::TrackedEntity::fieldDescriptor, 1);
     break;
+  case probe::HiddenEdge::blobOwner:
+  case probe::HiddenEdge::hash256Owner:
+  case probe::HiddenEdge::accountIDOwner:
+  case probe::HiddenEdge::amountOwner:
+  case probe::HiddenEdge::hash128Owner:
+  case probe::HiddenEdge::hash160Owner:
+  case probe::HiddenEdge::hash192Owner:
+  case probe::HiddenEdge::currencyOwner:
+  case probe::HiddenEdge::issueOwner:
+  case probe::HiddenEdge::issueCacheValue:
+  case probe::HiddenEdge::vector256Owner:
+  case probe::HiddenEdge::vector256CacheValue:
+  case probe::HiddenEdge::vector256Iterator:
+  case probe::HiddenEdge::xchainBridgeOwner:
+  case probe::HiddenEdge::xchainBridgeCacheValue:
+    set(probe::TrackedEntity::owner, 1);
+    set(probe::TrackedEntity::object, 1);
+    if (edge == probe::HiddenEdge::blobOwner)
+      set(probe::TrackedEntity::blob, 1);
+    else if (edge == probe::HiddenEdge::hash256Owner)
+      set(probe::TrackedEntity::hash256, 1);
+    else if (edge == probe::HiddenEdge::accountIDOwner)
+      set(probe::TrackedEntity::accountID, 1);
+    else if (edge == probe::HiddenEdge::amountOwner)
+      set(probe::TrackedEntity::amount, 1);
+    else if (edge == probe::HiddenEdge::hash128Owner)
+      set(probe::TrackedEntity::hash128, 1);
+    else if (edge == probe::HiddenEdge::hash160Owner)
+      set(probe::TrackedEntity::hash160, 1);
+    else if (edge == probe::HiddenEdge::hash192Owner)
+      set(probe::TrackedEntity::hash192, 1);
+    else if (edge == probe::HiddenEdge::currencyOwner)
+      set(probe::TrackedEntity::currency, 1);
+    else if (edge == probe::HiddenEdge::issueOwner)
+      set(probe::TrackedEntity::issue, 1);
+    else if (edge == probe::HiddenEdge::issueCacheValue) {
+      set(probe::TrackedEntity::issue, 1);
+      set(probe::TrackedEntity::currency, 1);
+    } else if (edge == probe::HiddenEdge::vector256Owner)
+      set(probe::TrackedEntity::vector256, 1);
+    else if (edge == probe::HiddenEdge::vector256CacheValue) {
+      set(probe::TrackedEntity::vector256, 1);
+      set(probe::TrackedEntity::hash256, 1);
+    } else if (edge == probe::HiddenEdge::vector256Iterator) {
+      set(probe::TrackedEntity::vector256, 1);
+      set(probe::TrackedEntity::vectorIterator, 1);
+    } else if (edge == probe::HiddenEdge::xchainBridgeOwner)
+      set(probe::TrackedEntity::xchainBridge, 1);
+    else {
+      set(probe::TrackedEntity::xchainBridge, 1);
+      set(probe::TrackedEntity::accountID, 1);
+    }
+    break;
+  case probe::HiddenEdge::pathSetOwner:
+  case probe::HiddenEdge::pathParent:
+  case probe::HiddenEdge::pathHopParent:
+  case probe::HiddenEdge::pathIteratorParent:
+    set(probe::TrackedEntity::owner, 1);
+    set(probe::TrackedEntity::object, 1);
+    set(probe::TrackedEntity::pathSet, 1);
+    if (edge == probe::HiddenEdge::pathParent ||
+        edge == probe::HiddenEdge::pathHopParent)
+      set(probe::TrackedEntity::path, 1);
+    if (edge == probe::HiddenEdge::pathHopParent)
+      set(probe::TrackedEntity::pathHop, 1);
+    if (edge == probe::HiddenEdge::pathIteratorParent)
+      set(probe::TrackedEntity::pathIterator, 1);
+    break;
   case probe::HiddenEdge::none:
     break;
   }
@@ -277,6 +601,13 @@ using ExpectedCounts = std::array<std::uint32_t, entityCount>;
       return false;
     return true;
   }
+
+  if (edge >= probe::HiddenEdge::blobOwner &&
+      edge <= probe::HiddenEdge::xchainBridgeCacheValue)
+    return prepareRichCycle(fixture, edge);
+  if (edge >= probe::HiddenEdge::pathSetOwner &&
+      edge <= probe::HiddenEdge::pathIteratorParent)
+    return preparePathCycle(fixture, edge);
 
   auto const *bytes = edge == probe::HiddenEdge::objectOwner ? objectBytes
                       : edge == probe::HiddenEdge::objectCacheValue
@@ -341,6 +672,7 @@ using ExpectedCounts = std::array<std::uint32_t, entityCount>;
     if (!probe::gcProbeSourceFinalized() || !probe::gcProbeAllFinalized()) {
       std::fprintf(stderr, "enabled edge retained: %s\n",
                    probe::hiddenEdgeName(edge));
+      dumpLiveCounts();
       return 71;
     }
     std::printf("collected %s\n", probe::hiddenEdgeName(edge));
@@ -359,6 +691,7 @@ using ExpectedCounts = std::array<std::uint32_t, entityCount>;
   if (!probe::gcProbeSourceFinalized() || !probe::gcProbeAllFinalized()) {
     std::fprintf(stderr, "red-cycle cleanup failed: %s\n",
                  probe::hiddenEdgeName(edge));
+    dumpLiveCounts();
     return 73;
   }
   return 23;

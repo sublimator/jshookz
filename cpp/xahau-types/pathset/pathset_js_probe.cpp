@@ -12,7 +12,7 @@ namespace qjs = jshookz::provider::qjs;
 
 namespace {
 
-JSValue bytesLeaf(JSContext *ctx, std::uint8_t const *bytes,
+JSValue bytesLeaf(JSContext *ctx, JSValueConst, std::uint8_t const *bytes,
                   std::uint32_t length) {
   return qjs::uint8Array(ctx, {bytes, length});
 }
@@ -24,7 +24,7 @@ JSValue decimalLeaf(JSContext *ctx, bool negative, std::uint64_t magnitude,
   return JS_NewBigUint64(ctx, magnitude);
 }
 
-JSValue issueLeaf(JSContext *ctx, types::AmountIssueKind kind,
+JSValue issueLeaf(JSContext *ctx, JSValueConst, types::AmountIssueKind kind,
                   std::uint8_t const *, std::uint32_t) {
   return JS_NewUint32(ctx, static_cast<std::uint8_t>(kind));
 }

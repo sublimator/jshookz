@@ -68,30 +68,57 @@ namespace {
 namespace qjs = jshookz::provider::qjs;
 namespace types = jshookz::provider::types;
 
-[[nodiscard]] JSValue
-makeIssueForAmount(
-    JSContext* ctx,
-    types::AmountIssueKind kind,
-    std::uint8_t const* identity,
-    std::uint32_t length)
-{
-    if (kind == types::AmountIssueKind::native) {
-        std::uint8_t native[20] = {};
-        return types::makeIssueBytes(ctx, native, sizeof(native));
-    }
-    if (kind == types::AmountIssueKind::iou)
-        return types::makeIssueBytes(ctx, identity, length);
-    if (identity == nullptr || length != 24)
-        return JS_ThrowInternalError(
-            ctx, "invalid certified MPT issue identity");
-    std::uint8_t issue[44] = {};
-    std::memcpy(issue, identity + 4, 20);
-    issue[39] = 1;
-    issue[40] = identity[3];
-    issue[41] = identity[2];
-    issue[42] = identity[1];
-    issue[43] = identity[0];
-    return types::makeIssueBytes(ctx, issue, sizeof(issue));
+[[nodiscard]] JSValue makeIssueForAmount(JSContext *ctx, JSValueConst owner,
+                                         types::AmountIssueKind kind,
+                                         std::uint8_t const *identity,
+                                         std::uint32_t length) {
+  if (kind == types::AmountIssueKind::native) {
+    std::uint8_t native[20] = {};
+    return JS_IsUndefined(owner)
+               ? types::makeIssueBytes(ctx, native, sizeof(native))
+               : types::makeIssueDerivedBytes(ctx, owner, native,
+                                              sizeof(native));
+  }
+  if (kind == types::AmountIssueKind::iou)
+    return JS_IsUndefined(owner)
+               ? types::makeIssueBytes(ctx, identity, length)
+               : types::makeIssueView(ctx, owner, identity, length);
+  if (identity == nullptr || length != 24)
+    return JS_ThrowInternalError(ctx, "invalid certified MPT issue identity");
+  std::uint8_t issue[44] = {};
+  std::memcpy(issue, identity + 4, 20);
+  issue[39] = 1;
+  issue[40] = identity[3];
+  issue[41] = identity[2];
+  issue[42] = identity[1];
+  issue[43] = identity[0];
+  return JS_IsUndefined(owner)
+             ? types::makeIssueBytes(ctx, issue, sizeof(issue))
+             : types::makeIssueDerivedBytes(ctx, owner, issue, sizeof(issue));
+}
+
+[[nodiscard]] JSValue makeAccountIDForOwner(JSContext *ctx, JSValueConst owner,
+                                            std::uint8_t const *bytes,
+                                            std::uint32_t length) {
+  return JS_IsUndefined(owner)
+             ? types::makeAccountIDBytes(ctx, bytes, length)
+             : types::makeAccountIDView(ctx, owner, bytes, length);
+}
+
+[[nodiscard]] JSValue makeCurrencyForOwner(JSContext *ctx, JSValueConst owner,
+                                           std::uint8_t const *bytes,
+                                           std::uint32_t length) {
+  return JS_IsUndefined(owner)
+             ? types::makeCurrencyBytes(ctx, bytes, length)
+             : types::makeCurrencyView(ctx, owner, bytes, length);
+}
+
+[[nodiscard]] JSValue makeHash192ForOwner(JSContext *ctx, JSValueConst owner,
+                                          std::uint8_t const *bytes,
+                                          std::uint32_t length) {
+  return JS_IsUndefined(owner)
+             ? types::makeHash192Bytes(ctx, bytes, length)
+             : types::makeHash192View(ctx, owner, bytes, length);
 }
 
 [[nodiscard]] JSValueConst
@@ -136,38 +163,31 @@ JSCFunctionListEntry const utilFunctions[] = {
     JS_CFUNC_DEF("decodeObject", 1, decodeObject),
 };
 
-}  // namespace
+} // namespace
 
-extern "C" bool
-register_cpp_types(JSContext* ctx)
-{
-    qjs::resetByteClassRegistry();
-    qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
-    if (global.isException())
-        return false;
-    types::AmountLeafMaterializers const amountLeaves{
-        types::makeAccountIDBytes,
-        types::makeCurrencyBytes,
-        types::makeHash192Bytes,
-        types::makeXFLDecimalParts,
-        makeIssueForAmount,
-    };
-    types::PathSetLeafMaterializers const pathLeaves{
-        types::makeAccountIDBytes,
-        types::makeCurrencyBytes,
-        types::isCertifiedObjectRange,
-    };
-    return types::registerSTBlob(ctx, global.get()) &&
-        types::registerHash256(ctx, global.get()) &&
-        types::registerAccountID(ctx, global.get()) &&
-        types::registerXFL(ctx) &&
-        types::registerRichLeafTypes(ctx) &&
-        types::registerAmount(ctx, amountLeaves) &&
-        types::registerObjectTypes(ctx) &&
-        types::registerPathSet(ctx, pathLeaves) &&
-        types::registerFieldDescriptors(ctx, global.get()) &&
-        jshookz::qjs::installFactory(
-            ctx, global.get(), "util", utilFunctions);
+extern "C" bool register_cpp_types(JSContext *ctx) {
+  qjs::resetByteClassRegistry();
+  qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
+  if (global.isException())
+    return false;
+  types::AmountLeafMaterializers const amountLeaves{
+      makeAccountIDForOwner,      makeCurrencyForOwner, makeHash192ForOwner,
+      types::makeXFLDecimalParts, makeIssueForAmount,
+  };
+  types::PathSetLeafMaterializers const pathLeaves{
+      makeAccountIDForOwner,
+      makeCurrencyForOwner,
+      types::isCertifiedObjectRange,
+  };
+  return types::registerSTBlob(ctx, global.get()) &&
+         types::registerHash256(ctx, global.get()) &&
+         types::registerAccountID(ctx, global.get()) &&
+         types::registerXFL(ctx) && types::registerRichLeafTypes(ctx) &&
+         types::registerAmount(ctx, amountLeaves) &&
+         types::registerObjectTypes(ctx) &&
+         types::registerPathSet(ctx, pathLeaves) &&
+         types::registerFieldDescriptors(ctx, global.get()) &&
+         jshookz::qjs::installFactory(ctx, global.get(), "util", utilFunctions);
 }
 
 extern "C" void

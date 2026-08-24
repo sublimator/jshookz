@@ -1,5 +1,10 @@
 #include "js.hpp"
 #include "object/nominal_payload.hpp"
+#include "object/object.hpp"
+
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+#include "tests/object_gc_lifetime_probe_hooks.hpp"
+#endif
 
 #include <cstring>
 #include <limits>
@@ -11,54 +16,101 @@ namespace {
 
 JSClassID js_blob_class_id;
 
-struct JSBlob
-{
-    uint8_t* data = nullptr;
-    size_t len = 0;
+struct JSBlob {
+  JSValue owner = JS_UNDEFINED;
+  uint8_t *owned = nullptr;
+  uint8_t const *data = nullptr;
+  size_t len = 0;
 };
 
-void
-js_blob_finalizer(JSRuntime* rt, JSValue val)
-{
-    auto* blob = static_cast<JSBlob*>(JS_GetOpaque(val, js_blob_class_id));
-    if (!blob)
-        return;
-    if (blob->data)
-        js_free_rt(rt, blob->data);
-    js_free_rt(rt, blob);
+void js_blob_finalizer(JSRuntime *rt, JSValue val) {
+  auto *blob = static_cast<JSBlob *>(JS_GetOpaque(val, js_blob_class_id));
+  if (!blob)
+    return;
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+  if (!JS_IsUndefined(blob->owner))
+    test::gcProbeFinalized(test::TrackedEntity::blob, val);
+#endif
+  if (blob->owned)
+    js_free_rt(rt, blob->owned);
+  JS_FreeValueRT(rt, blob->owner);
+  js_free_rt(rt, blob);
+}
+
+void js_blob_mark(JSRuntime *rt, JSValueConst val, JS_MarkFunc *mark) {
+  auto const *blob =
+      static_cast<JSBlob const *>(JS_GetOpaque(val, js_blob_class_id));
+  if (blob) {
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+    if (!test::gcProbeMarkEnabled(test::HiddenEdge::blobOwner))
+      return;
+#endif
+    JS_MarkValue(rt, blob->owner, mark);
+  }
 }
 
 JSClassDef js_blob_class = {
     .class_name = "STBlob",
     .finalizer = js_blob_finalizer,
+    .gc_mark = js_blob_mark,
 };
 
-JSValue
-newBlobUninitialized(JSContext* ctx, size_t len, std::uint8_t** data)
-{
-    *data = nullptr;
-    auto* blob = (JSBlob*)js_mallocz(ctx, sizeof(JSBlob));
-    if (!blob)
-        return JS_ThrowOutOfMemory(ctx);
-    if (len != 0) {
-        blob->data = (uint8_t*)js_malloc(ctx, len);
-        if (!blob->data) {
-            js_free(ctx, blob);
-            return JS_ThrowOutOfMemory(ctx);
-        }
+JSValue newBlobUninitialized(JSContext *ctx, size_t len, std::uint8_t **data) {
+  *data = nullptr;
+  auto *blob = (JSBlob *)js_mallocz(ctx, sizeof(JSBlob));
+  if (!blob)
+    return JS_ThrowOutOfMemory(ctx);
+  if (len != 0) {
+    blob->owned = (uint8_t *)js_malloc(ctx, len);
+    if (!blob->owned) {
+      js_free(ctx, blob);
+      return JS_ThrowOutOfMemory(ctx);
     }
-    blob->len = len;
+  }
+  blob->data = blob->owned;
+  blob->len = len;
 
-    JSValue obj = JS_NewObjectClass(ctx, js_blob_class_id);
-    if (JS_IsException(obj)) {
-        if (blob->data)
-            js_free(ctx, blob->data);
-        js_free(ctx, blob);
-        return obj;
-    }
-    JS_SetOpaque(obj, blob);
-    *data = blob->data;
+  JSValue obj = JS_NewObjectClass(ctx, js_blob_class_id);
+  if (JS_IsException(obj)) {
+    if (blob->owned)
+      js_free(ctx, blob->owned);
+    js_free(ctx, blob);
     return obj;
+  }
+  JS_SetOpaque(obj, blob);
+  *data = blob->owned;
+  return obj;
+}
+
+JSValue newBlobView(JSContext *ctx, JSValueConst owner, uint8_t const *data,
+                    size_t len) {
+  if (!isCertifiedObjectRange(ctx, owner, data,
+                              static_cast<std::uint32_t>(len)))
+    return JS_HasException(ctx)
+               ? JS_EXCEPTION
+               : JS_ThrowTypeError(ctx, "STBlob: certified owner is required");
+  auto *blob = static_cast<JSBlob *>(js_mallocz(ctx, sizeof(JSBlob)));
+  if (!blob)
+    return JS_ThrowOutOfMemory(ctx);
+  blob->owner = JS_DupValue(ctx, owner);
+  blob->data = data;
+  blob->len = len;
+  JSValue obj = JS_NewObjectClass(ctx, js_blob_class_id);
+  if (JS_IsException(obj)) {
+    JS_FreeValue(ctx, blob->owner);
+    js_free(ctx, blob);
+    return obj;
+  }
+  JS_SetOpaque(obj, blob);
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+  test::gcProbeCreated(test::TrackedEntity::blob, obj);
+  if (!test::gcProbePlantCycle(ctx, test::HiddenEdge::blobOwner, owner, obj,
+                               obj)) {
+    JS_FreeValue(ctx, obj);
+    return JS_EXCEPTION;
+  }
+#endif
+  return obj;
 }
 
 JSValue
@@ -190,77 +242,65 @@ JSCFunctionListEntry const statics[] = {
     JS_CFUNC_DEF("fromHex", 1, js_blob_from_hex),
 };
 
-}  // namespace
+} // namespace
 
-bool
-registerSTBlob(JSContext* ctx, JSValueConst global)
-{
-    return registerClass(
-        ctx,
-        global,
-        "STBlob",
-        &js_blob_class_id,
-        &js_blob_class,
-        proto,
-        statics,
-        qjs::ByteClassFamily::stBlob,
-        js_blob_to_bytes);
+bool registerSTBlob(JSContext *ctx, JSValueConst global) {
+  return registerClass(ctx, global, "STBlob", &js_blob_class_id, &js_blob_class,
+                       proto, statics, qjs::ByteClassFamily::stBlob,
+                       js_blob_to_bytes);
 }
 
-JSValue
-makeSTBlobBytes(JSContext* ctx, std::uint8_t const* bytes, std::uint32_t length)
-{
-    return newBlob(ctx, bytes, length);
+JSValue makeSTBlobBytes(JSContext *ctx, std::uint8_t const *bytes,
+                        std::uint32_t length) {
+  return newBlob(ctx, bytes, length);
 }
 
-JSValue
-makeSTBlobUninitialized(
-    JSContext* ctx, std::uint32_t length, std::uint8_t** data)
-{
-    return newBlobUninitialized(ctx, length, data);
+JSValue makeSTBlobView(JSContext *ctx, JSValueConst owner,
+                       std::uint8_t const *bytes, std::uint32_t length) {
+  return newBlobView(ctx, owner, bytes, length);
 }
 
-JSObjectByteSpanStatus
-getSTBlobByteSpanNoThrow(
-    JSContext* ctx,
-    JSValueConst input,
-    JSValue* owned_backing,
-    std::uint8_t const** data,
-    std::size_t* size) noexcept
-{
-    *owned_backing = JS_UNDEFINED;
-    *data = nullptr;
-    *size = 0;
-    if (!JS_IsObject(input) || JS_GetClassID(input) != js_blob_class_id)
-        return JS_OBJECT_BYTES_WRONG_KIND;
-    auto const* blob = static_cast<JSBlob const*>(
-        JS_GetOpaque(input, js_blob_class_id));
-    if (blob == nullptr || (blob->len != 0 && blob->data == nullptr))
-        return JS_OBJECT_BYTES_UNUSABLE;
-    *owned_backing = JS_DupValue(ctx, input);
-    *data = blob->data;
-    *size = blob->len;
-    return JS_OBJECT_BYTES_OK;
+JSValue makeSTBlobUninitialized(JSContext *ctx, std::uint32_t length,
+                                std::uint8_t **data) {
+  return newBlobUninitialized(ctx, length, data);
 }
 
-bool
-detail::readSTBlobNominalPayload(
-    JSValueConst input, NominalPayloadView& output) noexcept
-{
-    output = {};
-    if (!JS_IsObject(input) || JS_GetClassID(input) != js_blob_class_id)
-        return false;
-    auto const* blob = static_cast<JSBlob const*>(
-        JS_GetOpaque(input, js_blob_class_id));
-    if (blob == nullptr ||
-        blob->len > std::numeric_limits<std::uint32_t>::max() ||
-        (blob->len != 0 && blob->data == nullptr))
-        return false;
-    output = {blob->data, static_cast<std::uint32_t>(blob->len)};
-    return true;
+JSObjectByteSpanStatus getSTBlobByteSpanNoThrow(JSContext *ctx,
+                                                JSValueConst input,
+                                                JSValue *owned_backing,
+                                                std::uint8_t const **data,
+                                                std::size_t *size) noexcept {
+  *owned_backing = JS_UNDEFINED;
+  *data = nullptr;
+  *size = 0;
+  if (!JS_IsObject(input) || JS_GetClassID(input) != js_blob_class_id)
+    return JS_OBJECT_BYTES_WRONG_KIND;
+  auto const *blob =
+      static_cast<JSBlob const *>(JS_GetOpaque(input, js_blob_class_id));
+  if (blob == nullptr || (blob->len != 0 && blob->data == nullptr))
+    return JS_OBJECT_BYTES_UNUSABLE;
+  *owned_backing = JS_DupValue(ctx, input);
+  *data = blob->data;
+  *size = blob->len;
+  return JS_OBJECT_BYTES_OK;
 }
 
-}  // namespace jshookz::provider::types
+bool detail::readSTBlobNominalPayload(JSValueConst input,
+                                      NominalPayloadView &output) noexcept {
+  output = {};
+  if (!JS_IsObject(input) || JS_GetClassID(input) != js_blob_class_id)
+    return false;
+  auto const *blob =
+      static_cast<JSBlob const *>(JS_GetOpaque(input, js_blob_class_id));
+  if (blob == nullptr ||
+      blob->len > std::numeric_limits<std::uint32_t>::max() ||
+      (blob->len != 0 && blob->data == nullptr))
+    return false;
+  output = {blob->data, static_cast<std::uint32_t>(blob->len)};
+  return true;
+}
+
+} // namespace jshookz::provider::types
 
 namespace jshookz::provider {
 

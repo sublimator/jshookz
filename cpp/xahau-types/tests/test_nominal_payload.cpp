@@ -36,6 +36,31 @@ struct alignas(std::max_align_t) AllocationHeader {
 struct AllocationControl {
   std::size_t requests = 0;
   std::size_t liveBlocks = 0;
+  bool recording = false;
+  std::size_t recordedRequests = 0;
+  std::size_t maximumRecordedRequest = 0;
+  std::size_t secondLargestRecordedRequest = 0;
+
+  void startRecording() noexcept {
+    recordedRequests = 0;
+    maximumRecordedRequest = 0;
+    secondLargestRecordedRequest = 0;
+    recording = true;
+  }
+
+  void stopRecording() noexcept { recording = false; }
+
+  void record(std::size_t size) noexcept {
+    if (!recording)
+      return;
+    ++recordedRequests;
+    if (size > maximumRecordedRequest) {
+      secondLargestRecordedRequest = maximumRecordedRequest;
+      maximumRecordedRequest = size;
+    } else if (size > secondLargestRecordedRequest) {
+      secondLargestRecordedRequest = size;
+    }
+  }
 };
 
 [[nodiscard]] bool wouldExceed(JSMallocState const *state, std::size_t oldSize,
@@ -50,6 +75,7 @@ struct AllocationControl {
 void *countingMalloc(JSMallocState *state, std::size_t size) {
   auto *control = static_cast<AllocationControl *>(state->opaque);
   ++control->requests;
+  control->record(size);
   if (size == 0 ||
       size >
           std::numeric_limits<std::size_t>::max() - sizeof(AllocationHeader) ||
@@ -86,6 +112,7 @@ void *countingRealloc(JSMallocState *state, void *pointer, std::size_t size) {
   }
   auto *control = static_cast<AllocationControl *>(state->opaque);
   ++control->requests;
+  control->record(size);
   auto *header = static_cast<AllocationHeader *>(pointer) - 1;
   std::size_t const oldSize = header->size;
   if (size >
@@ -114,7 +141,7 @@ constexpr JSMallocFunctions countingAllocator = {
     .js_malloc_usable_size = countingUsableSize,
 };
 
-[[nodiscard]] JSValue makeIssueForAmount(JSContext *ctx,
+[[nodiscard]] JSValue makeIssueForAmount(JSContext *ctx, JSValueConst,
                                          types::AmountIssueKind kind,
                                          std::uint8_t const *identity,
                                          std::uint32_t length) {
@@ -182,15 +209,15 @@ protected:
     ASSERT_TRUE(types::registerXFL(context));
     ASSERT_TRUE(types::registerRichLeafTypes(context));
     types::AmountLeafMaterializers const amountLeaves{
-        types::makeAccountIDBytes, types::makeCurrencyBytes,
-        types::makeHash192Bytes, types::makeXFLDecimalParts,
+        types::makeAccountIDView, types::makeCurrencyView,
+        types::makeHash192View,   types::makeXFLDecimalParts,
         makeIssueForAmount,
     };
     ASSERT_TRUE(types::registerAmount(context, amountLeaves));
     ASSERT_TRUE(types::registerObjectTypes(context));
     types::PathSetLeafMaterializers const pathLeaves{
-        types::makeAccountIDBytes,
-        types::makeCurrencyBytes,
+        types::makeAccountIDView,
+        types::makeCurrencyView,
         types::isCertifiedObjectRange,
     };
     ASSERT_TRUE(types::registerPathSet(context, pathLeaves));
@@ -440,6 +467,44 @@ TEST_F(NominalPayloadTest, PreservesEmptyAndVariableCanonicalPayloads) {
       EXPECT_EQ(std::memcmp(payload.data, vector.expected.data(), payload.size),
                 0);
   }
+  EXPECT_FALSE(JS_HasException(context));
+}
+
+TEST_F(NominalPayloadTest,
+       MaterializedVectorRetainsSoleOwnerWithoutPayloadCopy) {
+  constexpr std::uint32_t payloadSize = 32 * 1024;
+  std::vector<std::uint8_t> wire;
+  wire.reserve(payloadSize + 5);
+  wire.insert(wire.end(), {0x01, 0x13, 0xf1, 0x4f, 0x3f});
+  for (std::uint32_t i = 0; i < payloadSize; ++i)
+    wire.push_back(static_cast<std::uint8_t>(i));
+
+  allocations.startRecording();
+  qjs::OwnedValue root(context, types::makeCertifiedObjectCopy(
+                                    context, wire.data(),
+                                    static_cast<std::uint32_t>(wire.size())));
+  allocations.stopRecording();
+  ASSERT_FALSE(root.isException());
+  ASSERT_GT(allocations.recordedRequests, 0u);
+  EXPECT_EQ(allocations.maximumRecordedRequest, wire.size());
+  EXPECT_LT(allocations.secondLargestRecordedRequest, payloadSize);
+
+  allocations.startRecording();
+  qjs::OwnedValue vector(context,
+                         JS_GetPropertyStr(context, root.get(), "Indexes"));
+  allocations.stopRecording();
+  ASSERT_FALSE(vector.isException());
+  ASSERT_GT(allocations.recordedRequests, 0u);
+  EXPECT_LT(allocations.maximumRecordedRequest, payloadSize);
+
+  std::uint8_t scratch[8]{};
+  types::NominalPayloadView payload;
+  ASSERT_TRUE(types::readNominalPayload(context, vector.get(),
+                                        xdata::MaterializerKind::vector256,
+                                        scratch, payload));
+  ASSERT_EQ(payload.size, payloadSize);
+  EXPECT_NE(payload.data, wire.data() + 5);
+  EXPECT_EQ(std::memcmp(payload.data, wire.data() + 5, payload.size), 0);
   EXPECT_FALSE(JS_HasException(context));
 }
 

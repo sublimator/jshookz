@@ -57,7 +57,7 @@ export function main(): never {
     );
   }
 
-  const greeting = rollback.require(
+  const greeting = rollback.requirePresent(
     state.get("GREETING"),
     "state disappeared",
     1,
@@ -80,7 +80,7 @@ export function main(): never {
     "batch write failed",
   );
 
-  const first = rollback.require(
+  const first = rollback.requirePresent(
     state.get("FIRST"),
     "first value disappeared",
     1,

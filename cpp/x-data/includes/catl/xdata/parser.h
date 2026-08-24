@@ -1,8 +1,10 @@
 #pragma once
 
 #include "catl/core/types.h"  // For Slice, Hash256, etc.
-#include "catl/xdata/fields.h"
+#include "catl/xdata/codecs/xchain_bridge.h"
 #include "catl/xdata/exception_policy.h"
+#include "catl/xdata/fields.h"
+#include "catl/xdata/number-rules.h"
 #include "catl/xdata/parser-context.h"
 #include "catl/xdata/parser-error.h"
 #include "catl/xdata/pathset-rules.h"
@@ -14,7 +16,6 @@
 #include "catl/xdata/types/issue.h"
 #include "catl/xdata/types/number.h"
 #include "catl/xdata/types/pathset.h"
-#include "catl/xdata/codecs/xchain_bridge.h"
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -29,7 +30,7 @@ namespace catl::xdata {
 // hostile blob of nested-object headers from an untrusted peer or file can't
 // drive unbounded recursion into a stack-exhaustion SIGSEGV (which escapes
 // the std::exception handlers callers wrap us in).
-inline constexpr int kMaxParseDepth = 256;
+inline constexpr int kMaxParseDepth = 10;
 
 // Helper functions to check for end markers
 inline bool
@@ -54,8 +55,8 @@ throw_if_failed(ParserContext const& ctx)
 }
 
 // Forward declarations
-inline void
-skip_array(ParserContext& ctx, const Protocol& protocol, int depth = 0);
+inline void skip_array(
+    ParserContext& ctx, const Protocol& protocol, int depth = 0);
 
 // Get fixed size for a type (returns 0 for variable/special types)
 inline size_t
@@ -71,75 +72,62 @@ skip_object(ParserContext& ctx, const Protocol& protocol, int depth = 0)
 {
     if (depth > kMaxParseDepth)
         CATL_XDATA_THROW(ParserError("STObject nesting exceeds maximum depth"));
-    while (!ctx.cursor.empty())
-    {
+    while (!ctx.cursor.empty()) {
         throw_if_failed(ctx);
         auto [header_slice, field_code] = read_field_header(ctx.cursor);
-        if (field_code == 0)
-        {
+        if (field_code == 0) {
             // Ugh
             CATL_XDATA_THROW(ParserError("Error or end"));
         }
 
         const FieldDef* field = protocol.get_field_by_code(field_code);
-        if (!field)
-        {
+        if (!field) {
             CATL_XDATA_THROW(ParserError(
                 "Unknown field code: " + std::to_string(field_code)));
         }
 
         // Check for end marker
-        if (is_object_end_marker(field))
-        {
+        if (is_object_end_marker(field)) {
             break;  // ObjectEndMarker
         }
 
         // Skip field data
-        if (field->meta.type == FieldTypes::STObject)
-        {
+        if (field->meta.type == FieldTypes::STObject) {
             skip_object(ctx, protocol, depth + 1);
-        }
-        else if (field->meta.type == FieldTypes::STArray)
-        {
+        } else if (field->meta.type == FieldTypes::STArray) {
             skip_array(ctx, protocol, depth + 1);
-        }
-        else if (field->meta.type == FieldTypes::PathSet)
-        {
+        } else if (field->meta.type == FieldTypes::PathSet) {
             PathSetNullSink sink;
-            PathSetRules::walk<PathSetRuleMode::Locate>(ctx, sink);
+            PathSetRules::walk<PathSetRuleMode::CertifyWire>(ctx, sink);
             throw_if_failed(ctx);
-        }
-        else if (field->meta.is_vl_encoded)
-        {
+        } else if (field->meta.is_vl_encoded) {
             size_t length = read_vl_length(ctx.cursor);
             ctx.cursor.advance(length);
-        }
-        else if (field->meta.type == FieldTypes::Amount)
-        {
+        } else if (field->meta.type == FieldTypes::Amount) {
             // Amount is special - size depends on first byte
             size_t amount_size = get_amount_size(ctx.cursor.peek_u8());
             ctx.cursor.advance(amount_size);
-        }
-        else if (field->meta.type == FieldTypes::Issue)
-        {
+        } else if (field->meta.type == FieldTypes::Issue) {
             // Issue is special - 20 bytes for XRP, 40 bytes for non-XRP
             size_t issue_size = get_issue_size(ctx.cursor);
             ctx.cursor.advance(issue_size);
-        }
-        else if (field->meta.type == FieldTypes::XChainBridge)
-        {
+        } else if (field->meta.type == FieldTypes::XChainBridge) {
             size_t bridge_size =
                 codecs::XChainBridgeCodec::wire_size(ctx.cursor);
             ctx.cursor.advance(bridge_size);
-        }
-        else
-        {
+        } else if (field->meta.type == FieldTypes::Number) {
+            constexpr size_t width = 12;
+            if (ctx.remaining() < width ||
+                !NumberRules::certify(Slice{ctx.at(), width})) {
+                ctx.fail("invalid Number representation");
+                throw_if_failed(ctx);
+            }
+            ctx.cursor.advance(width);
+        } else {
             // Fixed size
             size_t fixed_size = get_fixed_size(field->meta.type);
-            if (fixed_size == 0)
-            {
-                CATL_XDATA_THROW(ParserError(
-                    "Unknown field type size: " +
+            if (fixed_size == 0) {
+                CATL_XDATA_THROW(ParserError("Unknown field type size: " +
                     std::string(field->meta.type.name)));
             }
             ctx.cursor.advance(fixed_size);
@@ -153,8 +141,7 @@ skip_array(ParserContext& ctx, const Protocol& protocol, int depth)
 {
     if (depth > kMaxParseDepth)
         CATL_XDATA_THROW(ParserError("STArray nesting exceeds maximum depth"));
-    while (!ctx.cursor.empty())
-    {
+    while (!ctx.cursor.empty()) {
         throw_if_failed(ctx);
         auto [header_slice, field_code] = read_field_header(ctx.cursor);
         if (field_code == 0)
@@ -165,22 +152,19 @@ skip_array(ParserContext& ctx, const Protocol& protocol, int depth)
             break;
 
         // Check for end marker
-        if (is_array_end_marker(field))
-        {
+        if (is_array_end_marker(field)) {
             break;  // ArrayEndMarker
         }
 
         // Array elements are: Field header + STObject content + ObjectEndMarker
         // We already read the field header, now skip the object content
-        if (field->meta.type == FieldTypes::STObject)
-        {
+        if (field->meta.type == FieldTypes::STObject) {
             // skip_object will consume everything up to and including the
             // ObjectEndMarker
             skip_object(ctx, protocol, depth + 1);
-        }
-        else
-        {
-            CATL_XDATA_THROW(ParserError("Array elements must be STObject type"));
+        } else {
+            CATL_XDATA_THROW(
+                ParserError("Array elements must be STObject type"));
         }
     }
 }
@@ -189,9 +173,7 @@ skip_array(ParserContext& ctx, const Protocol& protocol, int depth)
 template <SliceVisitor Visitor>
 void
 parse_with_visitor(
-    ParserContext& ctx,
-    const Protocol& protocol,
-    Visitor&& visitor)
+    ParserContext& ctx, const Protocol& protocol, Visitor&& visitor)
 {
     FieldPath path;
     parse_with_visitor_impl(ctx, protocol, visitor, path, 0);
@@ -200,38 +182,31 @@ parse_with_visitor(
 // Implementation that maintains the path
 template <SliceVisitor Visitor>
 void
-parse_with_visitor_impl(
-    ParserContext& ctx,
-    const Protocol& protocol,
-    Visitor&& visitor,
-    FieldPath& path,
-    int depth = 0)
+parse_with_visitor_impl(ParserContext& ctx, const Protocol& protocol,
+    Visitor&& visitor, FieldPath& path, int depth = 0)
 {
     if (depth > kMaxParseDepth)
-        CATL_XDATA_THROW(ParserError("STObject/STArray nesting exceeds maximum depth"));
-    while (!ctx.cursor.empty())
-    {
+        CATL_XDATA_THROW(
+            ParserError("STObject/STArray nesting exceeds maximum depth"));
+    while (!ctx.cursor.empty()) {
         throw_if_failed(ctx);
         auto [header_slice, field_code] = read_field_header(ctx.cursor);
         if (field_code == 0)
             break;
 
         const FieldDef* field = protocol.get_field_by_code(field_code);
-        if (!field)
-        {
+        if (!field) {
             CATL_XDATA_THROW(ParserError(
                 "Unknown field code: " + std::to_string(field_code)));
         }
 
         // Check for end markers
-        if (is_object_end_marker(field) || is_array_end_marker(field))
-        {
+        if (is_object_end_marker(field) || is_array_end_marker(field)) {
             // End marker - we're done with this level
             break;
         }
 
-        if (field->meta.type == FieldTypes::STObject)
-        {
+        if (field->meta.type == FieldTypes::STObject) {
             // Track start position for size calculation
             size_t start_pos = ctx.cursor.pos - header_slice.size();
 
@@ -240,8 +215,7 @@ parse_with_visitor_impl(
 
             //@@start selective-descent
             // Ask visitor if they want to descend
-            if (detail::call_object_start(visitor, path, start_slice))
-            {
+            if (detail::call_object_start(visitor, path, start_slice)) {
                 // Add to path and recurse
                 path.push_back({field, -1});
                 parse_with_visitor_impl(
@@ -250,9 +224,7 @@ parse_with_visitor_impl(
 
                 // parse_with_visitor_impl consumes the ObjectEndMarker when it
                 // sees it
-            }
-            else
-            {
+            } else {
                 // Skip the object
                 skip_object(ctx, protocol, depth + 1);
             }
@@ -266,9 +238,7 @@ parse_with_visitor_impl(
             FieldSlice end_slice{field, header_slice, object_data};
 
             detail::call_object_end(visitor, path, end_slice);
-        }
-        else if (field->meta.type == FieldTypes::STArray)
-        {
+        } else if (field->meta.type == FieldTypes::STArray) {
             // Track start position for size calculation
             size_t start_pos = ctx.cursor.pos - header_slice.size();
 
@@ -276,14 +246,12 @@ parse_with_visitor_impl(
             FieldSlice start_slice{field, header_slice, Slice{}};
 
             // Ask visitor if they want to descend
-            if (detail::call_array_start(visitor, path, start_slice))
-            {
+            if (detail::call_array_start(visitor, path, start_slice)) {
                 // Add to path
                 path.push_back({field, -1});
 
                 size_t element_index = 0;
-                while (!ctx.cursor.empty())
-                {
+                while (!ctx.cursor.empty()) {
                     // Read the field header for this array element
                     auto [elem_header, elem_code] =
                         read_field_header(ctx.cursor);
@@ -292,8 +260,7 @@ parse_with_visitor_impl(
 
                     const FieldDef* elem_field =
                         protocol.get_field_by_code(elem_code);
-                    if (is_array_end_marker(elem_field))
-                    {
+                    if (is_array_end_marker(elem_field)) {
                         // Rewind since we'll read it again outside the loop
                         ctx.cursor.pos -= elem_header.size();
                         break;  // Found ArrayEndMarker
@@ -307,8 +274,7 @@ parse_with_visitor_impl(
                     // - Followed by object contents (fields)
                     // - Terminated by ObjectEndMarker
 
-                    if (elem_field->meta.type == FieldTypes::STObject)
-                    {
+                    if (elem_field->meta.type == FieldTypes::STObject) {
                         // Add the element type field to path
                         path.push_back({elem_field, -1});
 
@@ -322,14 +288,11 @@ parse_with_visitor_impl(
 
                         // Parse the STObject content
                         if (detail::call_object_start(
-                                visitor, path, elem_start_slice))
-                        {
+                                visitor, path, elem_start_slice)) {
                             // Parse the object's fields
                             parse_with_visitor_impl(
                                 ctx, protocol, visitor, path, depth + 1);
-                        }
-                        else
-                        {
+                        } else {
                             skip_object(ctx, protocol, depth + 1);
                         }
 
@@ -337,20 +300,16 @@ parse_with_visitor_impl(
                         size_t elem_end_pos = ctx.cursor.pos;
                         size_t elem_size =
                             elem_end_pos - elem_start_pos - elem_header.size();
-                        Slice elem_data{
-                            ctx.cursor.data.data() + elem_start_pos +
-                                elem_header.size(),
+                        Slice elem_data{ctx.cursor.data.data() +
+                                elem_start_pos + elem_header.size(),
                             elem_size};
                         FieldSlice elem_end_slice{
                             elem_field, elem_header, elem_data};
 
-                        detail::call_object_end(
-                            visitor, path, elem_end_slice);
+                        detail::call_object_end(visitor, path, elem_end_slice);
 
                         path.pop_back();
-                    }
-                    else
-                    {
+                    } else {
                         CATL_XDATA_THROW(ParserError(
                             "Array elements must be STObject type, got: " +
                             std::string(elem_field->meta.type.name)));
@@ -364,14 +323,11 @@ parse_with_visitor_impl(
                 auto [end_header2, end_code2] = read_field_header(ctx.cursor);
                 const FieldDef* end_field2 =
                     protocol.get_field_by_code(end_code2);
-                if (!is_array_end_marker(end_field2))
-                {
+                if (!is_array_end_marker(end_field2)) {
                     CATL_XDATA_THROW(ParserError(
                         "Expected ArrayEndMarker but got something else"));
                 }
-            }
-            else
-            {
+            } else {
                 // Skip the array
                 skip_array(ctx, protocol, depth + 1);
             }
@@ -384,59 +340,46 @@ parse_with_visitor_impl(
             FieldSlice end_slice{field, header_slice, array_data};
 
             detail::call_array_end(visitor, path, end_slice);
-        }
-        else
-        {
+        } else {
             //@@start leaf-field
             // Leaf field - determine size and read. PathSetRules consumes the
             // complete admitted slice including END_BYTE in one forward pass.
             size_t field_size = 0;
             Slice field_data;
 
-            if (field->meta.is_vl_encoded)
-            {
+            if (field->meta.is_vl_encoded) {
                 field_size = read_vl_length(ctx.cursor);
                 // field_size is now the actual data size, cursor is positioned
                 // after VL prefix
-            }
-            else if (field->meta.type == FieldTypes::Amount)
-            {
+            } else if (field->meta.type == FieldTypes::Amount) {
                 // Amount is special - peek at first byte to determine size
                 field_size = get_amount_size(ctx.cursor.peek_u8());
-            }
-            else if (field->meta.type == FieldTypes::Issue)
-            {
+            } else if (field->meta.type == FieldTypes::Issue) {
                 // Issue is special - 20 bytes for XRP, 40 bytes for non-XRP
                 field_size = get_issue_size(ctx.cursor);
-            }
-            else if (field->meta.type == FieldTypes::XChainBridge)
-            {
-                field_size =
-                    codecs::XChainBridgeCodec::wire_size(ctx.cursor);
-            }
-            else if (field->meta.type == FieldTypes::PathSet)
-            {
+            } else if (field->meta.type == FieldTypes::XChainBridge) {
+                field_size = codecs::XChainBridgeCodec::wire_size(ctx.cursor);
+            } else if (field->meta.type == FieldTypes::PathSet) {
                 size_t start_pos = ctx.cursor.pos;
                 PathSetNullSink sink;
                 PathSetRules::walk<PathSetRuleMode::CertifyWire>(ctx, sink);
                 throw_if_failed(ctx);
                 field_size = ctx.cursor.pos - start_pos;
-                field_data = Slice{
-                    ctx.cursor.data.data() + start_pos, field_size};
-            }
-            else
-            {
+                field_data =
+                    Slice{ctx.cursor.data.data() + start_pos, field_size};
+            } else {
                 field_size = get_fixed_size(field->meta.type);
-                if (field_size == 0)
-                {
-                    CATL_XDATA_THROW(ParserError(
-                        "Unknown field type size: " +
+                if (field_size == 0) {
+                    CATL_XDATA_THROW(ParserError("Unknown field type size: " +
                         std::string(field->meta.type.name)));
                 }
             }
 
             if (field->meta.type != FieldTypes::PathSet)
                 field_data = ctx.cursor.read_slice(field_size);
+            if (field->meta.type == FieldTypes::Number &&
+                !NumberRules::certify(field_data))
+                CATL_XDATA_THROW(ParserError("invalid Number representation"));
             path.push_back({field, -1});
             detail::call_field(
                 visitor, path, FieldSlice{field, header_slice, field_data});

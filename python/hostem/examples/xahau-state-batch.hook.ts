@@ -7,7 +7,7 @@ export function main(): never {
     "batch write failed",
   );
 
-  const first = rollback.require(
+  const first = rollback.requirePresent(
     state.get("FIRST"),
     "first value disappeared",
     1,

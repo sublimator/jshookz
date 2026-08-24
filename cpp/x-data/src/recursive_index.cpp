@@ -2,6 +2,8 @@
 
 #include "catl/xdata/amount-rules.h"
 #include "catl/xdata/number-rules.h"
+#include "catl/xdata/parser-context.h"
+#include "catl/xdata/pathset-rules.h"
 #include "catl/xdata/types/issue.h"
 #include "catl/xdata/types/pathset.h"
 
@@ -1116,49 +1118,16 @@ private:
   }
 
   [[nodiscard]] bool scan_pathset(std::uint32_t field_code) noexcept {
-    bool saw_hop = false;
-    bool path_has_hop = false;
-    while (cursor_.remaining() != 0) {
-      std::uint32_t const token_offset = cursor_.pos;
-      std::uint8_t const type = cursor_.at()[0];
-      ++cursor_.pos;
-      if (type == PathSet::END_BYTE) {
-        if (!saw_hop || !path_has_hop) {
-          cursor_.fail(ScanIssue::malformed_data, ScanMessage::invalid_pathset,
-                       token_offset, field_code, type);
-          return false;
-        }
-        return true;
-      }
-      if (type == PathSet::PATH_SEPARATOR) {
-        if (!path_has_hop) {
-          cursor_.fail(ScanIssue::malformed_data, ScanMessage::invalid_pathset,
-                       token_offset, field_code, type);
-          return false;
-        }
-        path_has_hop = false;
-        continue;
-      }
-      std::uint8_t constexpr legal =
-          PathSet::TYPE_ACCOUNT | PathSet::TYPE_CURRENCY | PathSet::TYPE_ISSUER;
-      std::uint8_t const mask = type & legal;
-      if (mask == 0 || (type & static_cast<std::uint8_t>(~legal)) != 0) {
-        cursor_.fail(ScanIssue::malformed_data, ScanMessage::invalid_pathset,
-                     token_offset, field_code, type);
-        return false;
-      }
-      std::uint32_t components = 0;
-      components += (mask & PathSet::TYPE_ACCOUNT) != 0;
-      components += (mask & PathSet::TYPE_CURRENCY) != 0;
-      components += (mask & PathSet::TYPE_ISSUER) != 0;
-      if (!cursor_.advance(components * 20, ScanMessage::invalid_pathset,
-                           field_code))
-        return false;
-      saw_hop = true;
-      path_has_hop = true;
-    }
+    ParserContext context{cursor_.bytes};
+    context.cursor.pos = cursor_.pos;
+    PathSetNullSink sink;
+    bool const accepted =
+        PathSetRules::walk<PathSetRuleMode::CertifyWire>(context, sink);
+    cursor_.pos = static_cast<std::uint32_t>(context.pos());
+    if (accepted && !context.failed())
+      return true;
     cursor_.fail(ScanIssue::malformed_data, ScanMessage::invalid_pathset,
-                 cursor_.pos, field_code);
+                 context.fail_offset(), field_code);
     return false;
   }
 

@@ -10,8 +10,10 @@
 
 #include "runtime_profile_limits.h"
 
-#include <array>
-#include <cstring>
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+#include "tests/object_gc_lifetime_probe_hooks.hpp"
+#endif
+
 #include <limits>
 #include <span>
 #include <type_traits>
@@ -25,10 +27,6 @@ namespace xdata = catl::xdata;
 
 constexpr std::uint32_t kMaximumPayloadBytes =
     xdata::xahau_profile_limits::serialized_object_max_bytes;
-constexpr std::uint8_t kAccountCached = 1u << 0;
-constexpr std::uint8_t kCurrencyCached = 1u << 1;
-constexpr std::uint8_t kIssuerCached = 1u << 2;
-
 JSClassID pathSetClassId;
 JSClassID pathClassId;
 JSClassID pathHopClassId;
@@ -51,11 +49,7 @@ struct PathState {
 
 struct PathHopState {
   JSValue parent = JS_UNDEFINED;
-  std::array<std::uint8_t, 20> account{};
-  std::array<std::uint8_t, 20> currency{};
-  std::array<std::uint8_t, 20> issuer{};
   std::uint32_t hopOrdinal = 0;
-  std::uint8_t cachedComponents = 0;
 };
 
 enum class IteratorKind : std::uint8_t {
@@ -95,6 +89,9 @@ void pathSetFinalizer(JSRuntime *runtime, JSValue value) {
       static_cast<PathSetState *>(JS_GetOpaque(value, pathSetClassId));
   if (state == nullptr)
     return;
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+  test::gcProbeFinalized(test::TrackedEntity::pathSet, value);
+#endif
   if (state->directory != nullptr)
     js_free_rt(runtime, state->directory);
   JS_FreeValueRT(runtime, state->owner);
@@ -104,14 +101,22 @@ void pathSetFinalizer(JSRuntime *runtime, JSValue value) {
 void pathSetMark(JSRuntime *runtime, JSValueConst value, JS_MarkFunc *mark) {
   auto const *state =
       static_cast<PathSetState const *>(JS_GetOpaque(value, pathSetClassId));
-  if (state != nullptr)
+  if (state != nullptr) {
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+    if (!test::gcProbeMarkEnabled(test::HiddenEdge::pathSetOwner))
+      return;
+#endif
     JS_MarkValue(runtime, state->owner, mark);
+  }
 }
 
 void pathFinalizer(JSRuntime *runtime, JSValue value) {
   auto *state = static_cast<PathState *>(JS_GetOpaque(value, pathClassId));
   if (state == nullptr)
     return;
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+  test::gcProbeFinalized(test::TrackedEntity::path, value);
+#endif
   JS_FreeValueRT(runtime, state->parent);
   freeState(runtime, state);
 }
@@ -119,8 +124,13 @@ void pathFinalizer(JSRuntime *runtime, JSValue value) {
 void pathMark(JSRuntime *runtime, JSValueConst value, JS_MarkFunc *mark) {
   auto const *state =
       static_cast<PathState const *>(JS_GetOpaque(value, pathClassId));
-  if (state != nullptr)
+  if (state != nullptr) {
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+    if (!test::gcProbeMarkEnabled(test::HiddenEdge::pathParent))
+      return;
+#endif
     JS_MarkValue(runtime, state->parent, mark);
+  }
 }
 
 void pathHopFinalizer(JSRuntime *runtime, JSValue value) {
@@ -128,6 +138,9 @@ void pathHopFinalizer(JSRuntime *runtime, JSValue value) {
       static_cast<PathHopState *>(JS_GetOpaque(value, pathHopClassId));
   if (state == nullptr)
     return;
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+  test::gcProbeFinalized(test::TrackedEntity::pathHop, value);
+#endif
   JS_FreeValueRT(runtime, state->parent);
   freeState(runtime, state);
 }
@@ -135,8 +148,13 @@ void pathHopFinalizer(JSRuntime *runtime, JSValue value) {
 void pathHopMark(JSRuntime *runtime, JSValueConst value, JS_MarkFunc *mark) {
   auto const *state =
       static_cast<PathHopState const *>(JS_GetOpaque(value, pathHopClassId));
-  if (state != nullptr)
+  if (state != nullptr) {
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+    if (!test::gcProbeMarkEnabled(test::HiddenEdge::pathHopParent))
+      return;
+#endif
     JS_MarkValue(runtime, state->parent, mark);
+  }
 }
 
 void iteratorFinalizer(JSRuntime *runtime, JSValue value) {
@@ -144,6 +162,9 @@ void iteratorFinalizer(JSRuntime *runtime, JSValue value) {
       static_cast<IteratorState *>(JS_GetOpaque(value, iteratorClassId));
   if (state == nullptr)
     return;
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+  test::gcProbeFinalized(test::TrackedEntity::pathIterator, value);
+#endif
   JS_FreeValueRT(runtime, state->parent);
   freeState(runtime, state);
 }
@@ -151,8 +172,13 @@ void iteratorFinalizer(JSRuntime *runtime, JSValue value) {
 void iteratorMark(JSRuntime *runtime, JSValueConst value, JS_MarkFunc *mark) {
   auto const *state =
       static_cast<IteratorState const *>(JS_GetOpaque(value, iteratorClassId));
-  if (state != nullptr)
+  if (state != nullptr) {
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+    if (!test::gcProbeMarkEnabled(test::HiddenEdge::pathIteratorParent))
+      return;
+#endif
     JS_MarkValue(runtime, state->parent, mark);
+  }
 }
 
 JSClassDef const pathSetClass = {
@@ -266,6 +292,14 @@ JSClassDef const iteratorClass = {
   state->bytes = bytes;
   state->length = length;
   JS_SetOpaque(value, state);
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+  test::gcProbeCreated(test::TrackedEntity::pathSet, value);
+  if (!test::gcProbePlantCycle(ctx, test::HiddenEdge::pathSetOwner, owner,
+                               value, value)) {
+    JS_FreeValue(ctx, value);
+    return JS_EXCEPTION;
+  }
+#endif
   if (!preventExtensions(ctx, value)) {
     JS_FreeValue(ctx, value);
     return JS_EXCEPTION;
@@ -286,6 +320,17 @@ JSClassDef const iteratorClass = {
   state->parent = JS_DupValue(ctx, parent);
   state->pathIndex = index;
   JS_SetOpaque(value, state);
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+  test::gcProbeCreated(test::TrackedEntity::path, value);
+  auto const *pathSet =
+      static_cast<PathSetState const *>(JS_GetOpaque(parent, pathSetClassId));
+  if (pathSet == nullptr ||
+      !test::gcProbePlantCycle(ctx, test::HiddenEdge::pathParent,
+                               pathSet->owner, value, value)) {
+    JS_FreeValue(ctx, value);
+    return JS_EXCEPTION;
+  }
+#endif
   if (!preventExtensions(ctx, value)) {
     JS_FreeValue(ctx, value);
     return JS_EXCEPTION;
@@ -306,6 +351,17 @@ JSClassDef const iteratorClass = {
   state->parent = JS_DupValue(ctx, parent);
   state->hopOrdinal = ordinal;
   JS_SetOpaque(value, state);
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+  test::gcProbeCreated(test::TrackedEntity::pathHop, value);
+  auto const *pathSet =
+      static_cast<PathSetState const *>(JS_GetOpaque(parent, pathSetClassId));
+  if (pathSet == nullptr ||
+      !test::gcProbePlantCycle(ctx, test::HiddenEdge::pathHopParent,
+                               pathSet->owner, value, value)) {
+    JS_FreeValue(ctx, value);
+    return JS_EXCEPTION;
+  }
+#endif
   if (!preventExtensions(ctx, value)) {
     JS_FreeValue(ctx, value);
     return JS_EXCEPTION;
@@ -326,6 +382,27 @@ JSClassDef const iteratorClass = {
   state->parent = JS_DupValue(ctx, parent);
   state->kind = kind;
   JS_SetOpaque(value, state);
+#if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+  test::gcProbeCreated(test::TrackedEntity::pathIterator, value);
+  JSValueConst pathSetValue = parent;
+  if (kind == IteratorKind::path) {
+    auto const *path =
+        static_cast<PathState const *>(JS_GetOpaque(parent, pathClassId));
+    if (path == nullptr) {
+      JS_FreeValue(ctx, value);
+      return JS_ThrowInternalError(ctx, "Path iterator provenance is invalid");
+    }
+    pathSetValue = path->parent;
+  }
+  auto const *pathSet = static_cast<PathSetState const *>(
+      JS_GetOpaque(pathSetValue, pathSetClassId));
+  if (pathSet == nullptr ||
+      !test::gcProbePlantCycle(ctx, test::HiddenEdge::pathIteratorParent,
+                               pathSet->owner, value, value)) {
+    JS_FreeValue(ctx, value);
+    return JS_EXCEPTION;
+  }
+#endif
   if (!preventExtensions(ctx, value)) {
     JS_FreeValue(ctx, value);
     return JS_EXCEPTION;
@@ -463,36 +540,24 @@ enum class Component : std::uint8_t {
     return JS_ThrowInternalError(ctx, "PathHop provenance is invalid");
 
   std::uint8_t const *source = nullptr;
-  std::array<std::uint8_t, 20> *cache = nullptr;
-  std::uint8_t bit = 0;
   bool isCurrency = false;
   switch (component) {
   case Component::account:
     source = resolved.account;
-    cache = &hop->account;
-    bit = kAccountCached;
     break;
   case Component::currency:
     source = resolved.currency;
-    cache = &hop->currency;
-    bit = kCurrencyCached;
     isCurrency = true;
     break;
   case Component::issuer:
     source = resolved.issuer;
-    cache = &hop->issuer;
-    bit = kIssuerCached;
     break;
   }
   if (source == nullptr)
     return JS_UNDEFINED;
-  if ((hop->cachedComponents & bit) == 0) {
-    std::memcpy(cache->data(), source, cache->size());
-    hop->cachedComponents |= bit;
-  }
   return isCurrency
-             ? leafMaterializers.currency(ctx, cache->data(), cache->size())
-             : leafMaterializers.accountID(ctx, cache->data(), cache->size());
+             ? leafMaterializers.currency(ctx, parent->owner, source, 20)
+             : leafMaterializers.accountID(ctx, parent->owner, source, 20);
 }
 
 [[nodiscard]] JSValue pathHopAccount(JSContext *ctx, JSValueConst value) {

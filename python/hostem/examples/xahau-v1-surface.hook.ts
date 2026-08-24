@@ -52,7 +52,7 @@ function typecheckV1Surface(blob: STBlob, hash: Hash256, account: AccountID): vo
   state.get("key").okOr(undefined);
   state.set("key", blob).moot();
   rollback.onFail(state.get("key"), "state read failed");
-  rollback.require(state.get("key"), "state is required", 2);
+  rollback.requirePresent(state.get("key"), "state is required", 2);
   emit.reserve(1).moot();
   emit.prepare(blob).okOr(blob);
   emit.tx(blob).okOr(undefined);
@@ -65,7 +65,7 @@ export function main(): never {
 }
 
 export function callback(info: CallbackInfo): never {
-  if (info.failed !== ((info.rawFlags & 1) !== 0)) {
+  if (info.failureBitSet !== ((info.rawFlags & 1) !== 0)) {
     return rollback("callback info invariant failed", 1);
   }
   return accept("callback declarations compile", 0);

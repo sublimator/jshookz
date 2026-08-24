@@ -61,16 +61,28 @@ registerHiddenClass(
 
 // Provider-only materializer seams. These mint exact nominal values without
 // routing through public JavaScript factories.
-[[nodiscard]] JSValue makeUIntValue(
-    JSContext* ctx, std::uint8_t bits, std::uint64_t value);
-[[nodiscard]] JSValue makeSTBlobBytes(
-    JSContext* ctx, std::uint8_t const* bytes, std::uint32_t length);
-[[nodiscard]] JSValue makeSTBlobUninitialized(
-    JSContext* ctx, std::uint32_t length, std::uint8_t** data);
-[[nodiscard]] JSValue makeHash256Bytes(
-    JSContext* ctx, std::uint8_t const* bytes, std::uint32_t length);
-[[nodiscard]] JSValue makeAccountIDBytes(
-    JSContext* ctx, std::uint8_t const* bytes, std::uint32_t length);
+[[nodiscard]] JSValue makeUIntValue(JSContext *ctx, std::uint8_t bits,
+                                    std::uint64_t value);
+[[nodiscard]] JSValue makeSTBlobBytes(JSContext *ctx, std::uint8_t const *bytes,
+                                      std::uint32_t length);
+[[nodiscard]] JSValue makeSTBlobView(JSContext *ctx, JSValueConst owner,
+                                     std::uint8_t const *bytes,
+                                     std::uint32_t length);
+[[nodiscard]] JSValue makeSTBlobUninitialized(JSContext *ctx,
+                                              std::uint32_t length,
+                                              std::uint8_t **data);
+[[nodiscard]] JSValue makeHash256Bytes(JSContext *ctx,
+                                       std::uint8_t const *bytes,
+                                       std::uint32_t length);
+[[nodiscard]] JSValue makeHash256View(JSContext *ctx, JSValueConst owner,
+                                      std::uint8_t const *bytes,
+                                      std::uint32_t length);
+[[nodiscard]] JSValue makeAccountIDBytes(JSContext *ctx,
+                                         std::uint8_t const *bytes,
+                                         std::uint32_t length);
+[[nodiscard]] JSValue makeAccountIDView(JSContext *ctx, JSValueConst owner,
+                                        std::uint8_t const *bytes,
+                                        std::uint32_t encodedLength);
 
 // Provider-only nominal seams used by composite rich types. Readers perform
 // no allocation or JavaScript operation, accept only the exact registered

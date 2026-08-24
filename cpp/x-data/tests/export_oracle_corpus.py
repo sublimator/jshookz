@@ -8,16 +8,24 @@ Retains debug-json envelopes (fields, canonical_blob, json, commit).
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-CODEC = Path.home() / "projects/xahaud-worktrees/xahaud-hookz-test-vectors/build/xahau-codec"
+CODEC = Path(
+    os.environ.get(
+        "XAHAU_CODEC",
+        Path.home()
+        / "projects/xahaud-worktrees/xahaud-hookz-test-vectors/build/xahau-codec",
+    )
+)
 OUT = Path(__file__).with_name("oracle_corpus.json")
 GENESIS = "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
 ZERO_B58 = "rrrrrrrrrrrrrrrrrrrrrhoLvTp"
 ORACLE_COMMIT = "cb829d7657607643f0bdc29c65f9a41fbd86a688"
+ORACLE_PROVENANCE: dict[str, object] = {}
 XCHAIN_NATIVE = (
     "011914B5F762798A53D543A014CAF8B297CFF8F2F937E8"
     "0000000000000000000000000000000000000000"
@@ -58,6 +66,39 @@ def run_codec(args: list[str], input_text: str | None = None) -> tuple[int, str,
     return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
 
 
+def verify_codec_provenance() -> dict[str, object]:
+    code, out, err = run_codec(["--version-json"])
+    if code != 0:
+        raise RuntimeError(f"xahau-codec --version-json failed: {err or out}")
+    try:
+        version = json.loads(out)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"xahau-codec version is not JSON: {out}") from exc
+    if not isinstance(version, dict):
+        raise RuntimeError("xahau-codec version JSON is not an object")
+    commit_hash = version.get("commit_hash")
+    commit = version.get("commit")
+    dirty = version.get("dirty")
+    if commit_hash != ORACLE_COMMIT or commit != ORACLE_COMMIT:
+        raise RuntimeError(
+            "oracle executable is not the exact pin: "
+            f"commit_hash={commit_hash!r} commit={commit!r} "
+            f"expected={ORACLE_COMMIT}"
+        )
+    if dirty is not False:
+        raise RuntimeError(
+            f"oracle executable must report dirty=false (observed {dirty!r})"
+        )
+    return {
+        "commit": commit,
+        "commit_hash": commit_hash,
+        "dirty": dirty,
+        "branch": version.get("branch"),
+        "version": version.get("version"),
+        "full_version": version.get("full_version"),
+    }
+
+
 def encode(json_text: str, codec_type: str = "stobject") -> str:
     args = ["encode"]
     if codec_type != "stobject":
@@ -81,9 +122,9 @@ def classify_hex(blob: str, codec_type: str = "stobject") -> tuple[str, dict | s
         except json.JSONDecodeError as exc:
             raise RuntimeError(f"debug-json not JSON for {blob}: {out}") from exc
         commit = envelope.get("commit")
-        if commit and not str(commit).startswith(ORACLE_COMMIT[:9]):
+        if commit != ORACLE_COMMIT:
             raise RuntimeError(
-                f"oracle commit {commit} does not match pin {ORACLE_COMMIT}"
+                f"debug-json commit {commit!r} does not equal pin {ORACLE_COMMIT}"
             )
         return "accept", envelope
     if "Too many NOPS" in err:
@@ -112,7 +153,8 @@ def case(
         "codec_type": codec_type,
         "blob": blob.upper(),
         "notes": notes,
-        "oracle_commit": ORACLE_COMMIT,
+        "oracle_commit": ORACLE_PROVENANCE["commit_hash"],
+        "oracle_dirty": ORACLE_PROVENANCE["dirty"],
     }
     if trailing_ok:
         item["trailing_ok"] = True
@@ -138,6 +180,9 @@ def main() -> int:
     if not CODEC.is_file():
         print(f"missing xahau-codec at {CODEC}", file=sys.stderr)
         return 1
+
+    global ORACLE_PROVENANCE
+    ORACLE_PROVENANCE = verify_codec_provenance()
 
     cases = []
 
@@ -516,7 +561,8 @@ def main() -> int:
 
     payload = {
         "oracle_repo": "xahaud-worktrees/xahaud-hookz-test-vectors",
-        "oracle_commit": ORACLE_COMMIT,
+        "oracle_commit": ORACLE_PROVENANCE["commit_hash"],
+        "oracle_provenance": ORACLE_PROVENANCE,
         "notes": (
             "Account empty VL (8100) is defaulted STAccount, 0 payload bytes. "
             "Account 20 zero bytes is an explicit all-zero AccountID "

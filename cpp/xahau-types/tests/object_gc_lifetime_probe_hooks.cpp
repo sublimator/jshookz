@@ -47,6 +47,10 @@ bool gcProbeMarkEnabled(HiddenEdge edge) noexcept {
   return edge != state.selected || !state.disableSelectedMark;
 }
 
+bool gcProbeSelected(HiddenEdge edge) noexcept {
+  return edge == state.selected;
+}
+
 bool gcProbePlantCycle(JSContext *ctx, HiddenEdge edge,
                        JSValueConst propertyOwner, JSValueConst propertyValue,
                        JSValueConst markSource) {
@@ -68,6 +72,14 @@ bool gcProbePlantPendingCycle(JSContext *ctx, HiddenEdge edge,
   if (edge != state.selected || JS_IsUndefined(state.pendingTarget))
     return true;
   return gcProbePlantCycle(ctx, edge, propertyOwner, state.pendingTarget,
+                           state.pendingTarget);
+}
+
+bool gcProbePlantPendingOwnerCycle(JSContext *ctx, HiddenEdge edge,
+                                   JSValueConst owner) {
+  if (edge != state.selected || JS_IsUndefined(state.pendingTarget))
+    return true;
+  return gcProbePlantCycle(ctx, edge, owner, state.pendingTarget,
                            state.pendingTarget);
 }
 
@@ -119,6 +131,44 @@ char const *hiddenEdgeName(HiddenEdge edge) noexcept {
     return "iterator-array";
   case HiddenEdge::fieldTableDescriptor:
     return "field-table-descriptor";
+  case HiddenEdge::blobOwner:
+    return "blob-owner";
+  case HiddenEdge::hash256Owner:
+    return "hash256-owner";
+  case HiddenEdge::accountIDOwner:
+    return "account-id-owner";
+  case HiddenEdge::amountOwner:
+    return "amount-owner";
+  case HiddenEdge::hash128Owner:
+    return "hash128-owner";
+  case HiddenEdge::hash160Owner:
+    return "hash160-owner";
+  case HiddenEdge::hash192Owner:
+    return "hash192-owner";
+  case HiddenEdge::currencyOwner:
+    return "currency-owner";
+  case HiddenEdge::issueOwner:
+    return "issue-owner";
+  case HiddenEdge::issueCacheValue:
+    return "issue-cache-value";
+  case HiddenEdge::vector256Owner:
+    return "vector256-owner";
+  case HiddenEdge::vector256CacheValue:
+    return "vector256-cache-value";
+  case HiddenEdge::vector256Iterator:
+    return "vector256-iterator";
+  case HiddenEdge::xchainBridgeOwner:
+    return "xchain-bridge-owner";
+  case HiddenEdge::xchainBridgeCacheValue:
+    return "xchain-bridge-cache-value";
+  case HiddenEdge::pathSetOwner:
+    return "path-set-owner";
+  case HiddenEdge::pathParent:
+    return "path-parent";
+  case HiddenEdge::pathHopParent:
+    return "path-hop-parent";
+  case HiddenEdge::pathIteratorParent:
+    return "path-iterator-parent";
   }
   return "unknown";
 }
@@ -126,10 +176,33 @@ char const *hiddenEdgeName(HiddenEdge edge) noexcept {
 bool parseHiddenEdge(char const *name, HiddenEdge &edge) noexcept {
   if (name == nullptr)
     return false;
-  for (HiddenEdge candidate :
-       {HiddenEdge::objectOwner, HiddenEdge::objectCacheValue,
-        HiddenEdge::arrayOwner, HiddenEdge::arrayCacheValue,
-        HiddenEdge::iteratorArray, HiddenEdge::fieldTableDescriptor}) {
+  for (HiddenEdge candidate : {
+           HiddenEdge::objectOwner,
+           HiddenEdge::objectCacheValue,
+           HiddenEdge::arrayOwner,
+           HiddenEdge::arrayCacheValue,
+           HiddenEdge::iteratorArray,
+           HiddenEdge::fieldTableDescriptor,
+           HiddenEdge::blobOwner,
+           HiddenEdge::hash256Owner,
+           HiddenEdge::accountIDOwner,
+           HiddenEdge::amountOwner,
+           HiddenEdge::hash128Owner,
+           HiddenEdge::hash160Owner,
+           HiddenEdge::hash192Owner,
+           HiddenEdge::currencyOwner,
+           HiddenEdge::issueOwner,
+           HiddenEdge::issueCacheValue,
+           HiddenEdge::vector256Owner,
+           HiddenEdge::vector256CacheValue,
+           HiddenEdge::vector256Iterator,
+           HiddenEdge::xchainBridgeOwner,
+           HiddenEdge::xchainBridgeCacheValue,
+           HiddenEdge::pathSetOwner,
+           HiddenEdge::pathParent,
+           HiddenEdge::pathHopParent,
+           HiddenEdge::pathIteratorParent,
+       }) {
     if (std::strcmp(name, hiddenEdgeName(candidate)) == 0) {
       edge = candidate;
       return true;

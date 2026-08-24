@@ -15,6 +15,25 @@ enum class HiddenEdge : std::uint8_t {
   arrayCacheValue,
   iteratorArray,
   fieldTableDescriptor,
+  blobOwner,
+  hash256Owner,
+  accountIDOwner,
+  amountOwner,
+  hash128Owner,
+  hash160Owner,
+  hash192Owner,
+  currencyOwner,
+  issueOwner,
+  issueCacheValue,
+  vector256Owner,
+  vector256CacheValue,
+  vector256Iterator,
+  xchainBridgeOwner,
+  xchainBridgeCacheValue,
+  pathSetOwner,
+  pathParent,
+  pathHopParent,
+  pathIteratorParent,
 };
 
 enum class TrackedEntity : std::uint8_t {
@@ -24,6 +43,22 @@ enum class TrackedEntity : std::uint8_t {
   iterator,
   fieldTable,
   fieldDescriptor,
+  blob,
+  hash256,
+  accountID,
+  amount,
+  hash128,
+  hash160,
+  hash192,
+  currency,
+  issue,
+  vector256,
+  vectorIterator,
+  xchainBridge,
+  pathSet,
+  path,
+  pathHop,
+  pathIterator,
   count,
 };
 
@@ -77,12 +112,16 @@ void configureGCProbe(HiddenEdge edge, bool disableSelectedMark) noexcept;
 void enableAllGCProbeMarks() noexcept;
 
 [[nodiscard]] bool gcProbeMarkEnabled(HiddenEdge edge) noexcept;
+[[nodiscard]] bool gcProbeSelected(HiddenEdge edge) noexcept;
 [[nodiscard]] bool gcProbePlantCycle(JSContext *ctx, HiddenEdge edge,
                                      JSValueConst propertyOwner,
                                      JSValueConst propertyValue,
                                      JSValueConst markSource);
 [[nodiscard]] bool gcProbePlantPendingCycle(JSContext *ctx, HiddenEdge edge,
                                             JSValueConst propertyOwner);
+[[nodiscard]] bool gcProbePlantPendingOwnerCycle(JSContext *ctx,
+                                                 HiddenEdge edge,
+                                                 JSValueConst owner);
 
 void gcProbeSetPendingTarget(JSValueConst target) noexcept;
 void gcProbeClearPendingTarget() noexcept;

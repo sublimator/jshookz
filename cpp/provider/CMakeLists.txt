@@ -106,7 +106,7 @@ set_source_files_properties(${JSHOOKZ_QUICKJS_C_SOURCES} PROPERTIES COMPILE_OPTI
 )
 # C++ flags
 set_source_files_properties(${JSHOOKZ_PROVIDER_CPP_SOURCES} PROPERTIES COMPILE_OPTIONS
-    "-O2;-fno-exceptions;-fno-rtti;-Wno-c99-designator;-mllvm;-wasm-enable-sjlj"
+    "-O2;-fno-exceptions;-fno-rtti;-Werror=switch;-Wno-c99-designator;-mllvm;-wasm-enable-sjlj"
 )
 
 # wasi-sdk reactor mode: no main(), exports _initialize
