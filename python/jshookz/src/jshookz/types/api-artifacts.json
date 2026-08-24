@@ -1,8 +1,8 @@
 {
   "artifacts": {
     "python/jshookz/src/jshookz/types/hooks-api.d.ts": "5d7ad4750fa82d8c3f1c2c264f7876f83f077ecedc19542ec7eaeaf6a3d68254",
-    "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts": "2ef67b54207ed04d5c462e8f312fed3994df9a7e04c553256ca7accf936f49e5",
-    "python/jshookz/src/jshookz/types/xahau-quickjs-v1.surface.json": "9db5ce8e3ae2f7e47073da3d7e90e5f646b1e02cbd278b26df25ef098f160d46"
+    "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts": "b8d21e9614cdacfe5f55890c03c954efb3d5fb47b80179b97226c37703b538cb",
+    "python/jshookz/src/jshookz/types/xahau-quickjs-v1.surface.json": "077ac6b060d4e5c136f26dc04a2dd324c6283027e159490534af93d0b600478f"
   },
   "schema": "jshookz.api-artifacts.v1"
 }

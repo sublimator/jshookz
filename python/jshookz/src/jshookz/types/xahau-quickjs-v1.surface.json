@@ -43,7 +43,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "2ef67b54207ed04d5c462e8f312fed3994df9a7e04c553256ca7accf936f49e5"
+    "sha256": "b8d21e9614cdacfe5f55890c03c954efb3d5fb47b80179b97226c37703b538cb"
   },
   "globals": {
     "AccountID": "object",

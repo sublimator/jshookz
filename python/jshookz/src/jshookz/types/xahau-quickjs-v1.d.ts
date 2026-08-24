@@ -726,6 +726,20 @@ declare global {
   }
 
   /**
+   * Host-backed object. Bytes still live on the host; each named field and
+   * `get` is a crossing. This is not `STObject`: after mint, getters are total.
+   * Nested objects are further `HostObject` subclasses
+   * (`instanceof HostObject` and `instanceof HostPayment`). The provider
+   * constructs them; there is no public constructor.
+   */
+  interface HostObject {
+    readonly [__providerValueBrand]: "HostObject";
+    get<T>(field: SerializedField<T>): HostResult<T | undefined>;
+    get(field: string): HostResult<SerializedValue>;
+    materialize(): HostResult<STObject>;
+  }
+
+  /**
    * Host-backed STArray. The wire form is terminator-delimited, not counted:
    * `count()` walks, `at(i)` is O(i) from the start. `forEach` is the cheap
    * traversal — one walk, one error channel.

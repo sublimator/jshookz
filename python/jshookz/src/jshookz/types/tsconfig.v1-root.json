@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": false,
+    "lib": ["ES2023"],
+    "target": "ES2023"
+  },
+  "files": ["xahau-quickjs-v1.d.ts"]
+}
