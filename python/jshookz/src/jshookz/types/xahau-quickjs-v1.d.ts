@@ -281,6 +281,13 @@ declare global {
     readonly zero: UInt8;
     readonly max: UInt8;
     from(value: bigint | number): UIntResult<UInt8>;
+    /**
+     * Exact integer floor of (multiplicand x multiplier) / divisor:
+     * arbitrary-precision intermediate, no XFL rounding (contrast
+     * `UInt64.mulDivXfl`, the C-hook XFL idiom). Fails on a zero
+     * divisor, an operand outside the width, or a result that
+     * overflows it.
+     */
     mulDiv(
       multiplicand: UIntInput<8>,
       multiplier: UIntInput<8>,
@@ -296,6 +303,13 @@ declare global {
     readonly zero: UInt16;
     readonly max: UInt16;
     from(value: bigint | number): UIntResult<UInt16>;
+    /**
+     * Exact integer floor of (multiplicand x multiplier) / divisor:
+     * arbitrary-precision intermediate, no XFL rounding (contrast
+     * `UInt64.mulDivXfl`, the C-hook XFL idiom). Fails on a zero
+     * divisor, an operand outside the width, or a result that
+     * overflows it.
+     */
     mulDiv(
       multiplicand: UIntInput<16>,
       multiplier: UIntInput<16>,
@@ -311,6 +325,13 @@ declare global {
     readonly zero: UInt32;
     readonly max: UInt32;
     from(value: bigint | number): UIntResult<UInt32>;
+    /**
+     * Exact integer floor of (multiplicand x multiplier) / divisor:
+     * arbitrary-precision intermediate, no XFL rounding (contrast
+     * `UInt64.mulDivXfl`, the C-hook XFL idiom). Fails on a zero
+     * divisor, an operand outside the width, or a result that
+     * overflows it.
+     */
     mulDiv(
       multiplicand: UIntInput<32>,
       multiplier: UIntInput<32>,
@@ -326,6 +347,13 @@ declare global {
     readonly zero: UInt64;
     readonly max: UInt64;
     from(value: bigint | number): UIntResult<UInt64>;
+    /**
+     * Exact integer floor of (multiplicand x multiplier) / divisor:
+     * arbitrary-precision intermediate, no XFL rounding (contrast
+     * `UInt64.mulDivXfl`, the C-hook XFL idiom). Fails on a zero
+     * divisor, an operand outside the width, or a result that
+     * overflows it.
+     */
     mulDiv(
       multiplicand: UIntInput<64>,
       multiplier: UIntInput<64>,

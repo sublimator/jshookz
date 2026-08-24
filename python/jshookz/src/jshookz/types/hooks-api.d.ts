@@ -40,6 +40,30 @@ declare global {
    * deliberately versioned subset; tooling must not silently widen that subset.
    */
 
+  /**
+   * MODULE CONTRACT — how a hook binds to the provider. A hook is one
+   * ES module; the provider invokes its EXPORTS by name:
+   *
+   * - `export function main(reserved: number): never` — the hook entry
+   *   point. The Wasm `qjs_hook` export locates the module's exported
+   *   `main` and calls it. A hook terminates through `accept` /
+   *   `rollback` (hence `never`); returning without a terminal is an
+   *   execution error, not an implicit accept.
+   * - `export function callback(info: CallbackInfo): never` — the
+   *   emitted-transaction callback entry, invoked through `qjs_cbak`.
+   *   Required exactly when the hook expects callbacks; the provider
+   *   raises a TypeError when the export is missing or not callable.
+   * - `export const hookConfig = defineHookConfig({ ... })` — optional
+   *   module configuration; unmarked `XFLDecimal` arithmetic resolves
+   *   its profile through this export (declared-then-bare, 0060).
+   *
+   * The C SDK's entry-point NAME (`hook`) is a global NAMESPACE here;
+   * the module entry is `main`, never `hook` — `export function hook`
+   * shadows the namespace and does not compile.
+   */
+  type HookEntry = (reserved: number) => never;
+  type CallbackEntry = (info: CallbackInfo) => never;
+
   type BytesLike = Uint8Array | ArrayBuffer | readonly number[];
   /** Contiguous serialized-object input; indexed JavaScript arrays are excluded. */
   type ObjectBytes = Uint8Array | ArrayBuffer | STBlob;
@@ -246,6 +270,15 @@ declare global {
    * `read.value === undefined` as the absent/default case, and only then use the
    * decoded value. Persisted malformed bytes must not silently take the absent
    * default.
+   *
+   * CAPACITY MODEL: the provider reads the FULL stored value host-side;
+   * there is no guest buffer, so no source length ever produces a host
+   * TOO_SMALL here. Length discipline belongs to the schema: any length
+   * the schema refuses is a ParseError `wrong-length` carrying
+   * `expectedLength` AND `actualLength` — `actualLength` is the
+   * direction witness for C idioms that treated short and oversize
+   * differently (`tl > 0 && tl != N`: short rolled back, oversize hit
+   * the C buffer's TOO_SMALL and silently defaulted).
    */
   type SchemaReadResult<T> = Result<T | undefined, HostError | ParseError>;
   /** Same type; kept so existing `state.get` prose still type-checks. */
@@ -260,8 +293,13 @@ declare global {
    * `{ rollback: msg }` is terminal with the site's exact message;
    * `hostError: "propagate"` keeps the host failure as a Result.
    * Defaulting a value stays at the call site — `read(...) ?? fallback`
-   * — visible, and exactly the fold C's `!= width` idiom performed
-   * (host failure, wrong size, and absence all took the default).
+   * — visible, matching the UNIFORM C `!= width` fold (host failure,
+   * wrong size, and absence all took the default). C idioms that split
+   * wrong-length BY DIRECTION (`tl > 0 && tl != N`: short rolls back,
+   * oversize silently defaults through the C buffer's TOO_SMALL) have
+   * no single policy token: under the capacity model oversize is a
+   * ParseError like any other, and the split is written explicitly
+   * against `error.actualLength` (`okOrHandle` on the plain read).
    */
   interface ReadPolicies {
     readonly missing: "none" | "rollback" | { readonly rollback: string };
@@ -348,6 +386,13 @@ declare global {
     readonly zero: UInt8;
     readonly max: UInt8;
     from(value: bigint | number): UIntResult<UInt8>;
+    /**
+     * Exact integer floor of (multiplicand x multiplier) / divisor:
+     * arbitrary-precision intermediate, no XFL rounding (contrast
+     * `UInt64.mulDivXfl`, the C-hook XFL idiom). Fails on a zero
+     * divisor, an operand outside the width, or a result that
+     * overflows it.
+     */
     mulDiv(
       multiplicand: UIntInput<8>,
       multiplier: UIntInput<8>,
@@ -361,6 +406,13 @@ declare global {
     readonly zero: UInt16;
     readonly max: UInt16;
     from(value: bigint | number): UIntResult<UInt16>;
+    /**
+     * Exact integer floor of (multiplicand x multiplier) / divisor:
+     * arbitrary-precision intermediate, no XFL rounding (contrast
+     * `UInt64.mulDivXfl`, the C-hook XFL idiom). Fails on a zero
+     * divisor, an operand outside the width, or a result that
+     * overflows it.
+     */
     mulDiv(
       multiplicand: UIntInput<16>,
       multiplier: UIntInput<16>,
@@ -374,6 +426,13 @@ declare global {
     readonly zero: UInt32;
     readonly max: UInt32;
     from(value: bigint | number): UIntResult<UInt32>;
+    /**
+     * Exact integer floor of (multiplicand x multiplier) / divisor:
+     * arbitrary-precision intermediate, no XFL rounding (contrast
+     * `UInt64.mulDivXfl`, the C-hook XFL idiom). Fails on a zero
+     * divisor, an operand outside the width, or a result that
+     * overflows it.
+     */
     mulDiv(
       multiplicand: UIntInput<32>,
       multiplier: UIntInput<32>,
@@ -387,6 +446,13 @@ declare global {
     readonly zero: UInt64;
     readonly max: UInt64;
     from(value: bigint | number): UIntResult<UInt64>;
+    /**
+     * Exact integer floor of (multiplicand x multiplier) / divisor:
+     * arbitrary-precision intermediate, no XFL rounding (contrast
+     * `UInt64.mulDivXfl`, the C-hook XFL idiom). Fails on a zero
+     * divisor, an operand outside the width, or a result that
+     * overflows it.
+     */
     mulDiv(
       multiplicand: UIntInput<64>,
       multiplier: UIntInput<64>,
@@ -673,17 +739,37 @@ declare global {
       readonly sourceLength: SourceLength;
     }
     /**
-     * Reader-authority projection: admits any source whose byte length
-     * the witness accepts and decodes the record as the source's
-     * prefix — the C idiom of reading a record into a fixed capacity
-     * and using the leading fields. A source outside the admitted
-     * range is a `wrong-length` ParseError; zero-fill and truncation
-     * NEVER happen implicitly. The admitted minimum must cover
-     * `record.byteLength`; the provider throws at construction on a
-     * range the prefix cannot satisfy (programmer error, like a
-     * malformed `cell` name).
+     * Reader-authority GUARDED-PREFIX projection: admits any source
+     * whose byte length the witness accepts and decodes the record as
+     * the source's prefix — the C idiom that length-guards a read and
+     * then uses the leading fields (`if (len < N) …; use first N`). A
+     * source outside the admitted range is a `wrong-length` ParseError;
+     * nothing is ever filled or truncated. The admitted minimum must
+     * cover `record.byteLength`; the provider throws at construction
+     * on a range the prefix cannot satisfy (programmer error, like a
+     * malformed `cell` name). For the OTHER fixed-capacity C idiom —
+     * the pre-zeroed oversized buffer whose short reads keep a zero
+     * tail — use `zeroPadded`, which declares the fill.
      */
     function prefix<Name extends string, Size extends number, Value>(
+      record: RecordSchema<Name, Size, Value>,
+      options: PrefixOptions,
+    ): BinarySchema<Value>;
+
+    /**
+     * Reader-authority ZERO-FILL projection: admits any source whose
+     * byte length the witness accepts, explicitly zero-fills a source
+     * shorter than the record up to `record.byteLength`, then decodes
+     * — the dominant C state-read idiom (`PE_ZERO(gv, 80);
+     * state_foreign(gv, 80, …)`: short values leave the untouched tail
+     * zero and the code reads fields out of it). Choosing this schema
+     * IS the zero-fill declaration; nothing is ever filled implicitly
+     * anywhere else. The witness may admit down to zero bytes —
+     * `SourceLength.between(0, cap)` is the at-most form. A source
+     * past the admitted ceiling is a `wrong-length` ParseError exactly
+     * as in `prefix`.
+     */
+    function zeroPadded<Name extends string, Size extends number, Value>(
       record: RecordSchema<Name, Size, Value>,
       options: PrefixOptions,
     ): BinarySchema<Value>;
@@ -1076,6 +1162,16 @@ declare global {
     }): XFLResult<XFLDecimal>;
     log(): XFLResult<XFLDecimal>;
     root(degree: number): XFLResult<XFLDecimal>;
+    /**
+     * C's `float_int` as a domain Result: the value times
+     * 10^`decimalPlaces` (default 0), truncated toward zero to an
+     * integer — `decimalPlaces: 6` turns an XFL amount into micro
+     * units. Fails when the scaled result exceeds the 16-significant-
+     * decimal-digit XFL result domain (max 9999999999999999) or when
+     * the value is negative — C's float_int cannot return a negative;
+     * the ratified posture for C's `absolute` flag (0055, 0060) is an
+     * explicit `.negate()` at the site, never an option here.
+     */
     toInt(decimalPlaces?: number): XFLResult<bigint>;
     toString(): string;
     equals(other: XFLDecimal): boolean;
@@ -2092,6 +2188,16 @@ declare global {
   }
 
   namespace state {
+    /**
+     * Key layout. `length` is the final key width in bytes (state keys
+     * are 32). Padding fills with ZERO bytes (0x00): `"right"` appends
+     * zeros after the payload — payload left-aligned, the C idiom
+     * `uint8_t k[32] = {0}; k[0] = tag;` — and `"left"` prepends them
+     * (payload right-aligned). `"none"` demands the parts already
+     * total exactly `length` bytes; a mismatch throws (programmer
+     * error, like a malformed `cell` name). Parts longer than `length`
+     * always throw; padding never truncates.
+     */
     interface KeyOptions {
       readonly length?: number;
       readonly pad?: "left" | "right" | "none";
@@ -2139,6 +2245,12 @@ declare global {
     function set(key: StateKeyLike, value: StateValueLike): HostVoidResult;
     function del(key: StateKeyLike): HostVoidResult;
     function setMany(items: readonly Put[]): HostVoidResult;
+    /**
+     * Accessor over another account's namespaced state: same read and
+     * write shapes as own state. Writes are grant-gated by the host
+     * (`state_foreign_set` authorization); an unauthorized write is an
+     * ordinary `HostError`, not a distinct channel.
+     */
     function foreign(account: AccountID, namespace: Hash256): Accessor;
   }
 
@@ -2173,6 +2285,8 @@ declare global {
      */
     namespace build {
       interface InvokeOptions {
+        /** Sending account (0087 wave-1: emitted Invokes set it in C). */
+        readonly account?: AccountID;
         readonly destination?: AccountID;
         readonly hookParameters?: readonly HookParameter[];
         readonly blob?: StateValueLike;
@@ -2187,6 +2301,8 @@ declare global {
       }
 
       interface PaymentOptions {
+        /** Sending account (0087 wave-1: emitted Payments set it in C). */
+        readonly account?: AccountID;
         readonly destination: AccountID;
         readonly amount: Amount;
         readonly sourceTag?: UInt32;
@@ -2219,10 +2335,7 @@ declare global {
       }
 
       interface RemitOptions {
-        /**
-         * Sending account; the only builder that lacked one (0070:286,
-         * 0084:161-169).
-         */
+        /** Sending account (0070:286, 0084:161-169). */
         readonly account?: AccountID;
         readonly destination: AccountID;
         readonly uri?: StateValueLike;
