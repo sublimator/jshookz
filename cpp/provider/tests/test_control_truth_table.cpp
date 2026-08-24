@@ -293,6 +293,27 @@ TEST_F(ControlTruthTable, VoidResultsThrowOnValueVerbs)
     expectThrow("accept.unlessTruthy(VOIDOK, 'm')");
 }
 
+// 0076 ruling (operator, 2026-08-24): no per-call provenance duck-check —
+// hooks are fuel-metered and nothing can CONSTRUCT a Result, so the only
+// stripping vector (accidental shallow copy) is linted at the copy site.
+// These rows pin the residual as contract: a clone is an ordinary object
+// at every guard, not a Result.
+TEST_F(ControlTruthTable, ProvenanceStrippedClonesAreDirectValues)
+{
+    expectReturn(
+        "typeof rollback.requirePresent(Object.assign({}, FAILED), 'm')"
+        " === 'object' ? 1 : 0",
+        1);
+    expectReturn(
+        "typeof rollback.requireTruthy(Object.assign({}, FAILED), 'm')"
+        " === 'object' ? 1 : 0",
+        1);
+    expectReturn(
+        "typeof accept.unlessPresent(Object.assign({}, VOIDOK), 'm')"
+        " === 'object' ? 1 : 0",
+        1);
+}
+
 TEST_F(ControlTruthTable, WhenIsPlainBooleanDispatch)
 {
     expectRollback("rollback.when(true, 'm')");

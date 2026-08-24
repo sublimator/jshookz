@@ -2377,6 +2377,12 @@ declare global {
       message?: string | BytesLike | STBlob,
     ): readonly T[];
 
+    /** Return one `undefined` slot per successful host effect. */
+    function onAnyFail(
+      results: readonly HostVoidResult[],
+      message?: string | BytesLike | STBlob,
+    ): readonly undefined[];
+
     /** Apply a contract-owned rollback policy when any domain result failed. */
     function onAnyFail<T, Error>(
       results: readonly Result<T, Error>[],
