@@ -55,7 +55,8 @@ declare global {
    *
    * There are five ways to leave a value Result; anything else is a bug:
    * `okOr`, `okOrHandle`, `okMapOr`, exhaustive `.ok` narrowing, or a
-   * `rollback.*` consumer. `moot` lives on the effect family
+   * terminal consumer (`rollback.*`, `accept.unlessPresent`,
+   * `accept.unlessTruthy`). `moot` lives on the effect family
    * (`VoidResultInstance`), which is nominally not a Result.
    */
   abstract class ResultInstance<T, Error> {
@@ -2402,6 +2403,13 @@ declare global {
       message: string | BytesLike | STBlob,
       code: number,
     ): readonly T[];
+
+    /** Effect form: one `undefined` slot per effect unless every one failed. */
+    function onAllFail<Error>(
+      results: readonly VoidResult<Error>[],
+      message: string | BytesLike | STBlob,
+      code: number,
+    ): readonly undefined[];
   }
 
   /**

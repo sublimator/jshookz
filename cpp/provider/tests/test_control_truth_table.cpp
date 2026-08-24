@@ -84,6 +84,16 @@ protected:
             set("FAILED", result_failure(ctx, error.release()));
         }
         set("UNCODED", result_failure(ctx, result_error(ctx, "test")));
+        {
+            jshookz::qjs::OwnedValue error(
+                ctx, result_error(ctx, "test"));
+            ASSERT_GE(
+                JS_SetPropertyStr(
+                    ctx, error.get(), "code", JS_NewInt32(ctx, 21)),
+                0);
+            set("VOIDFAIL",
+                result_failure(ctx, error.release(), /*effect=*/true));
+        }
         set("VOIDOK", effect_success(ctx));
         ASSERT_FALSE(JS_HasException(ctx));
     }
@@ -291,6 +301,19 @@ TEST_F(ControlTruthTable, VoidResultsThrowOnValueVerbs)
     expectThrow("rollback.requireTruthy(VOIDOK, 'm')");
     expectThrow("accept.unlessPresent(VOIDOK, 'm')");
     expectThrow("accept.unlessTruthy(VOIDOK, 'm')");
+}
+
+// Effect arrays through the aggregates (0081): success is silent,
+// failure terminates; slots carry undefined.
+TEST_F(ControlTruthTable, EffectArraysFitTheAggregates)
+{
+    expectReturn(
+        "rollback.onAnyFail([VOIDOK, VOIDOK], 'm').length", 2);
+    expectRollback("rollback.onAnyFail([VOIDOK, VOIDFAIL], 'm')");
+    expectReturn(
+        "rollback.onAllFail([VOIDOK, VOIDFAIL], 'm', 34).length", 2);
+    expectRollback("rollback.onAllFail([VOIDFAIL, VOIDFAIL], 'm', 34)");
+    EXPECT_EQ(g_last_rollback_code, 34);
 }
 
 // 0076 ruling (operator, 2026-08-24): no per-call provenance duck-check —
