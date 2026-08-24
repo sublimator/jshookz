@@ -281,13 +281,19 @@ declare global {
     : T;
   /**
    * Return of a policied read: a bare value, unless `hostError:
-   * "propagate"` keeps the host channel as a `HostResult`.
+   * "propagate"` keeps the host channel as a `HostResult`. A policy
+   * object whose `hostError` is an un-narrowed union that merely
+   * INCLUDES `"propagate"` types as the honest union of both shapes,
+   * forcing the caller to discriminate (gemini s6 review: the earlier
+   * tuple check silently chose the bare shape there).
    */
-  type PolicyRead<T, P extends ReadPolicies> = [P["hostError"]] extends [
-    "propagate",
-  ]
-    ? HostResult<PolicyOutcome<T, P>>
-    : PolicyOutcome<T, P>;
+  type PolicyRead<T, P extends ReadPolicies> =
+    | ("propagate" extends P["hostError"]
+        ? HostResult<PolicyOutcome<T, P>>
+        : never)
+    | (Exclude<P["hostError"], "propagate"> extends never
+        ? never
+        : PolicyOutcome<T, P>);
 
   /** Failure from constructing or operating on a bounded unsigned integer. */
   interface UIntError {
