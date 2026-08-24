@@ -337,4 +337,11 @@ bool serializedFieldCode(JSValueConst value, std::uint32_t &code) noexcept {
   return xdata::xahau_static_protocol().field_by_code(code) != nullptr;
 }
 
+bool
+isSerializedField(JSValueConst value) noexcept
+{
+    return JS_IsObject(value) && JS_GetClassID(value) == fieldClassId &&
+        JS_GetOpaque(value, fieldClassId) != nullptr;
+}
+
 } // namespace jshookz::provider::types

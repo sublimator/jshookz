@@ -6,6 +6,8 @@
 #include "pathset/pathset_js.hpp"
 #include "result.hpp"
 
+#include "runtime_type.hpp"
+
 #include <jshookz/qjs.hpp>
 
 #include <gtest/gtest.h>
@@ -388,6 +390,53 @@ TEST_F(NominalPayloadTest,
     }
   }
   EXPECT_FALSE(JS_HasException(context));
+}
+
+TEST_F(NominalPayloadTest,
+    RuntimeTypeClassificationIsAllocationFreeAfterRegistration)
+{
+    qjs::OwnedValue global(context, JS_GetGlobalObject(context));
+    ASSERT_FALSE(global.isException());
+    qjs::OwnedValue stBlobType(
+        context, JS_GetPropertyStr(context, global.get(), "STBlob"));
+    qjs::OwnedValue uintRoot(
+        context, JS_GetPropertyStr(context, global.get(), "UInt"));
+    qjs::OwnedValue uint8Type(
+        context, JS_GetPropertyStr(context, global.get(), "UInt8"));
+    ASSERT_FALSE(stBlobType.isException());
+    ASSERT_FALSE(uintRoot.isException());
+    ASSERT_FALSE(uint8Type.isException());
+
+    qjs::OwnedValue blob(context, types::makeSTBlobBytes(context, nullptr, 0));
+    qjs::OwnedValue uint8(context, types::makeUIntValue(context, 8, 7));
+    qjs::OwnedValue uint16(context, types::makeUIntValue(context, 16, 7));
+    ASSERT_FALSE(blob.isException());
+    ASSERT_FALSE(uint8.isException());
+    ASSERT_FALSE(uint16.isException());
+
+    // Warm the ordinary-object Symbol.hasInstance lookup before measuring.
+    ASSERT_EQ(JS_IsInstanceOf(context, blob.get(), stBlobType.get()), 1);
+    ASSERT_EQ(JS_IsInstanceOf(context, uint8.get(), uintRoot.get()), 1);
+    ASSERT_EQ(JS_IsInstanceOf(context, uint8.get(), uint8Type.get()), 1);
+    ASSERT_EQ(JS_IsInstanceOf(context, uint16.get(), uint8Type.get()), 0);
+    ASSERT_FALSE(JS_HasException(context));
+
+    auto const requestsBefore = allocations.requests;
+    for (std::uint32_t iteration = 0; iteration < 4096; ++iteration)
+    {
+        ASSERT_EQ(JS_IsInstanceOf(context, blob.get(), stBlobType.get()), 1);
+        ASSERT_EQ(JS_IsInstanceOf(context, uint8.get(), uintRoot.get()), 1);
+        ASSERT_EQ(JS_IsInstanceOf(context, uint8.get(), uint8Type.get()), 1);
+        ASSERT_EQ(JS_IsInstanceOf(context, uint16.get(), uint8Type.get()), 0);
+        ASSERT_TRUE(types::runtimeTypeClassifies(
+            types::RuntimeTypeId::stBlob, blob.get()));
+        ASSERT_TRUE(types::runtimeTypeClassifies(
+            types::RuntimeTypeId::uInt, uint16.get()));
+        ASSERT_FALSE(types::runtimeTypeClassifies(
+            types::RuntimeTypeId::uInt8, uint16.get()));
+    }
+    EXPECT_EQ(allocations.requests, requestsBefore);
+    EXPECT_FALSE(JS_HasException(context));
 }
 
 TEST_F(NominalPayloadTest, PreservesEmptyAndVariableCanonicalPayloads) {

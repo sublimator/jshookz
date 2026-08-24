@@ -1086,6 +1086,10 @@ TEST_F(ObjectReflectionOOM,
       {
         PreparedContainer source(context, blueprint);
         ASSERT_TRUE(source.prepare());
+        // Source verification is part of the asserted transaction. Stabilize
+        // its lazy engine tables before attributing any retained state to the
+        // deliberately failed operation below.
+        expectSourceBytes(context, source, blueprint);
         AllocationState const sourceState = runtime.allocator.state();
         std::size_t const rejectionsBefore = runtime.allocator.rejections;
         runtime.allocator.rejectRelative(ordinal);
@@ -1328,6 +1332,7 @@ TEST_F(ObjectReflectionOOM,
         {
           PreparedContainer source(context, blueprint);
           ASSERT_TRUE(source.prepare());
+          expectSourceBytes(context, source, blueprint);
           AllocationState const sourceState = runtime.allocator.state();
           JSPropertyDescriptor failedDescriptor{
               .flags = 0,
@@ -1531,6 +1536,7 @@ void sweepSingularDescriptorEnvelope(ReflectionRuntime &runtime,
         identity = source.valueAt(position);
         ASSERT_FALSE(identity.isException());
       }
+      expectSourceBytes(context, source, blueprint);
       AllocationState const sourceState = runtime.allocator.state();
       std::size_t const rejectionsBefore = runtime.allocator.rejections;
       runtime.allocator.rejectRelative(ordinal);

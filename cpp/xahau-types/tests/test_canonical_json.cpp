@@ -3,6 +3,7 @@
 #include "object/field_js.hpp"
 #include "object/object.hpp"
 #include "quickjs.hpp"
+#include "runtime_type.hpp"
 
 #include "catl/xdata/static_protocol.h"
 
@@ -642,6 +643,130 @@ TEST(FieldDescriptorOOM,
   types::unregisterObjectTypes(runtime);
   JS_FreeRuntime(runtime);
   EXPECT_EQ(allocator.liveBlocks, 0u);
+}
+
+TEST(
+    RuntimeTypeRegistrarOOM,
+    EveryClassifierPublicationAllocationIsAtomicLeakFreeAndRetryable)
+{
+    std::size_t requestCount = 0;
+    {
+        AllocatorControl measured;
+        JSRuntime* runtime = JS_NewRuntime2(&testAllocator, &measured);
+        ASSERT_NE(runtime, nullptr);
+        JSContext* context = JS_NewContext(runtime);
+        ASSERT_NE(context, nullptr);
+        {
+            LocalValue global(context, JS_GetGlobalObject(context));
+            ASSERT_FALSE(JS_IsException(global.get()));
+            measured.startRecording();
+            std::size_t const before = measured.requests;
+            ASSERT_TRUE(types::publishRuntimeType(
+                context,
+                global.get(),
+                "RuntimeTypeOOMProbe",
+                types::RuntimeTypeId::uInt8));
+            requestCount = measured.requests - before;
+            measured.stopRecording();
+            ASSERT_EQ(measured.recordedCount, requestCount);
+            ASSERT_GT(requestCount, 0u);
+            EXPECT_FALSE(JS_HasException(context));
+        }
+        JS_FreeContext(context);
+        JS_FreeRuntime(runtime);
+        EXPECT_EQ(measured.liveBlocks, 0u);
+    }
+
+    for (std::size_t ordinal = 1; ordinal <= requestCount; ++ordinal)
+    {
+        SCOPED_TRACE(ordinal);
+        AllocatorControl allocator;
+        JSRuntime* runtime = JS_NewRuntime2(&testAllocator, &allocator);
+        ASSERT_NE(runtime, nullptr);
+        JSContext* context = JS_NewContext(runtime);
+        ASSERT_NE(context, nullptr);
+        {
+            LocalValue global(context, JS_GetGlobalObject(context));
+            ASSERT_FALSE(JS_IsException(global.get()));
+            std::size_t const rejectionsBefore = allocator.rejections;
+            allocator.rejectAt = allocator.requests + ordinal;
+            bool const registered = types::publishRuntimeType(
+                context,
+                global.get(),
+                "RuntimeTypeOOMProbe",
+                types::RuntimeTypeId::uInt8);
+            allocator.rejectAt = 0;
+            ASSERT_EQ(allocator.rejections, rejectionsBefore + 1);
+            if (!registered)
+            {
+                expectOnePendingOOM(context, ordinal);
+                LocalValue unpublished(
+                    context,
+                    JS_GetPropertyStr(
+                        context, global.get(), "RuntimeTypeOOMProbe"));
+                ASSERT_FALSE(JS_IsException(unpublished.get()));
+                EXPECT_TRUE(JS_IsUndefined(unpublished.get()));
+                JSAtom const probeAtom =
+                    JS_NewAtom(context, "RuntimeTypeOOMProbe");
+                ASSERT_NE(probeAtom, JS_ATOM_NULL);
+                int const partiallyPublished =
+                    JS_HasProperty(context, global.get(), probeAtom);
+                JS_FreeAtom(context, probeAtom);
+                EXPECT_EQ(partiallyPublished, 0)
+                    << "failed publication left an own global slot";
+                ASSERT_TRUE(types::publishRuntimeType(
+                    context,
+                    global.get(),
+                    "RuntimeTypeOOMProbe",
+                    types::RuntimeTypeId::uInt8));
+            }
+            LocalValue published(
+                context,
+                JS_GetPropertyStr(
+                    context, global.get(), "RuntimeTypeOOMProbe"));
+            ASSERT_FALSE(JS_IsException(published.get()));
+            EXPECT_TRUE(JS_IsObject(published.get()));
+            EXPECT_FALSE(JS_HasException(context));
+        }
+        JS_FreeContext(context);
+        JS_FreeRuntime(runtime);
+        EXPECT_EQ(allocator.liveBlocks, 0u);
+    }
+}
+
+TEST(RuntimeTypeEfficiency, ClassifierOnlyNounsHaveSmallFixedFootprint)
+{
+    AllocatorControl allocator;
+    JSRuntime* runtime = JS_NewRuntime2(&testAllocator, &allocator);
+    ASSERT_NE(runtime, nullptr);
+    JSContext* context = JS_NewContext(runtime);
+    ASSERT_NE(context, nullptr);
+    {
+        LocalValue global(context, JS_GetGlobalObject(context));
+        ASSERT_FALSE(JS_IsException(global.get()));
+        JSMemoryUsage before{};
+        JS_ComputeMemoryUsage(runtime, &before);
+        for (std::size_t index = 0; index < 29; ++index)
+        {
+            std::string const name =
+                "RuntimeTypeFootprint" + std::to_string(index);
+            ASSERT_TRUE(types::publishRuntimeType(
+                context,
+                global.get(),
+                name.c_str(),
+                types::RuntimeTypeId::uInt8));
+        }
+        JSMemoryUsage after{};
+        JS_ComputeMemoryUsage(runtime, &after);
+        EXPECT_EQ(after.obj_count - before.obj_count, 58);
+        EXPECT_EQ(after.c_func_count - before.c_func_count, 29);
+        EXPECT_EQ(after.atom_count - before.atom_count, 29);
+        EXPECT_LT(after.memory_used_size - before.memory_used_size, 10 * 1024);
+        EXPECT_LT(after.malloc_size - before.malloc_size, 12 * 1024);
+    }
+    JS_FreeContext(context);
+    JS_FreeRuntime(runtime);
+    EXPECT_EQ(allocator.liveBlocks, 0u);
 }
 
 TEST(ObjectRegistrarOOM,

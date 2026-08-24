@@ -52,7 +52,7 @@
       {"name": "_initialize", "kind": "function", "params": [], "results": []},
       {"name": "free", "kind": "function", "params": ["i32"], "results": []},
       {"name": "malloc", "kind": "function", "params": ["i32"], "results": ["i32"]},
-      {"name": "memory", "kind": "memory", "minimum_pages": 6, "maximum_pages": 512, "memory64": false, "shared": false},
+      {"name": "memory", "kind": "memory", "minimum_pages": 7, "maximum_pages": 512, "memory64": false, "shared": false},
       {"name": "qjs_cbak", "kind": "function", "params": ["i32", "i32", "i32"], "results": ["i32"]},
       {"name": "qjs_compile", "kind": "function", "params": ["i32", "i32"], "results": ["i32"]},
       {"name": "qjs_compile_module", "kind": "function", "params": ["i32", "i32"], "results": ["i32"]},

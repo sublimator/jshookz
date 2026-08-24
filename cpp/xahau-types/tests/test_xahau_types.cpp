@@ -623,32 +623,310 @@ TEST_F(XahauTypes, ObjectByteUtilitiesUseExactInputAndNominalResultLaws)
 }
 
 TEST_F(
-    XahauTypes, ExplicitObjectUtilitiesPublishAtomicallyWithoutContainerGlobals)
+    XahauTypes, ExplicitObjectUtilitiesPublishWithRuntimeTypeObjects)
 {
     auto value = eval(R"JS(
         (() => {
           const bytes = new Uint8Array([0x22, 0, 0, 0, 9]);
           const decoded = util.safeDecodeObject(bytes);
           const asserted = util.decodeObject(bytes);
-          const hidden = [
+          const runtimeNouns = [
             "Hash128", "Hash160", "Hash192", "Currency", "Issue",
             "Amount", "NativeAmount", "IOUAmount", "MPTAmount",
             "XFLDecimal", "PathSet", "Path", "PathHop", "Vector256",
-            "XChainBridge", "STObject", "STArray",
+            "XChainBridge", "STObject", "STArray", "SerializedField",
+            "Hash",
           ];
-          const published = ["STBlob", "Hash256", "AccountID", "Field", "util"];
+          const published = [
+            "STBlob", "Hash256", "AccountID", "Field", "util",
+            ...runtimeNouns,
+          ];
           return Object.isFrozen(util) &&
             Reflect.ownKeys(util).join(",") ===
               "validateObject,safeDecodeObject,decodeObject" &&
             util.validateObject(bytes) && !util.validateObject(bytes.subarray(0, 2)) &&
             decoded.ok && decoded.value.Flags.toNumber() === 9 &&
             asserted.Flags.toNumber() === 9 &&
-            hidden.every(name => !Object.hasOwn(globalThis, name)) &&
+            runtimeNouns.every(name =>
+              typeof globalThis[name]?.[Symbol.hasInstance] === "function") &&
             published.every(name => Object.hasOwn(globalThis, name));
         })()
     )JS");
     ASSERT_FALSE(value.isException());
     EXPECT_TRUE(JS_ToBool(ctx, value.get()));
+}
+
+TEST_F(XahauTypes, RuntimeTypeObjectsUseOneSealedNominalClassifier)
+{
+    namespace types = jshookz::provider::types;
+
+    std::array<std::uint8_t, 16> hash128{};
+    std::array<std::uint8_t, 20> hash160{};
+    std::array<std::uint8_t, 24> hash192{};
+    std::array<std::uint8_t, 32> hash256{};
+    std::array<std::uint8_t, 20> currency{};
+    std::array<std::uint8_t, 20> issue{};
+    std::array<std::uint8_t, 32> vector{};
+    std::array<std::uint8_t, 82> bridge{};
+    bridge[0] = 20;
+    bridge[41] = 20;
+
+    installValue(
+        "accountIDValue", types::makeAccountIDBytes(ctx, hash160.data(), 20));
+    installValue(
+        "hash128Value", types::makeHash128Bytes(ctx, hash128.data(), 16));
+    installValue(
+        "hash160Value", types::makeHash160Bytes(ctx, hash160.data(), 20));
+    installValue(
+        "hash192Value", types::makeHash192Bytes(ctx, hash192.data(), 24));
+    installValue(
+        "hash256Value", types::makeHash256Bytes(ctx, hash256.data(), 32));
+    installValue(
+        "currencyValue", types::makeCurrencyBytes(ctx, currency.data(), 20));
+    installValue("issueValue", types::makeIssueBytes(ctx, issue.data(), 20));
+    installValue(
+        "vectorValue", types::makeVector256Bytes(ctx, vector.data(), 32));
+    installValue(
+        "bridgeValue", types::makeXChainBridgeBytes(ctx, bridge.data(), 82));
+    installValue(
+        "xflValue",
+        types::makeXFLDecimalParts(ctx, false, 1000000000000000ULL, -96));
+
+    auto const native = hexBytes("400000000000002A");
+    auto const iou = hexBytes(
+        "D4838D7EA4C680000000000000000000000000005553440000000000"
+        "B5F762798A53D543A014CAF8B297CFF8F2F937E8");
+    auto const mpt = hexBytes(
+        "600000000000000001"
+        "000102030405060708090A0B0C0D0E0F1011121314151617");
+    installValue(
+        "nativeAmountValue",
+        types::makeAmountBytes(ctx, native.data(), native.size()));
+    installValue(
+        "iouAmountValue", types::makeAmountBytes(ctx, iou.data(), iou.size()));
+    installValue(
+        "mptAmountValue", types::makeAmountBytes(ctx, mpt.data(), mpt.size()));
+
+    installValue(
+        "resultValue",
+        jshookz::provider::bindings::result_success(ctx, JS_NewInt32(ctx, 7)));
+    installValue(
+        "voidResultValue", jshookz::provider::bindings::effect_success(ctx));
+    installValue(
+        "stObjectValue", types::makeCertifiedObjectCopy(ctx, nullptr, 0));
+
+    installRoot(hexBytes("011201B5F762798A53D543A014CAF8B297CFF8F2F937E800"));
+    auto paths = eval(
+        "globalThis.pathSetValue = root.Paths;"
+        "globalThis.pathValue = pathSetValue.at(0);"
+        "globalThis.pathHopValue = pathValue.at(0);");
+    ASSERT_FALSE(paths.isException());
+
+    installRoot(hexBytes("F9EA2200000001E1F1"));
+    auto array = eval("globalThis.stArrayValue = root.Memos");
+    ASSERT_FALSE(array.isException());
+
+    auto value = eval(R"JS(
+        (() => {
+          const nouns = [
+            "AccountID", "Amount", "Currency", "Hash", "Hash128",
+            "Hash160", "Hash192", "Hash256", "IOUAmount", "Issue",
+            "MPTAmount", "NativeAmount", "Path", "PathHop", "PathSet",
+            "Result", "STArray", "STBlob", "STObject", "SerializedField",
+            "UInt", "UInt8", "UInt16", "UInt32", "UInt64", "Vector256",
+            "VoidResult", "XChainBridge", "XFLDecimal",
+          ];
+          const cases = [
+            ["AccountID", accountIDValue, ["AccountID"]],
+            ["native amount", nativeAmountValue, ["Amount", "NativeAmount"]],
+            ["IOU amount", iouAmountValue, ["Amount", "IOUAmount"]],
+            ["MPT amount", mptAmountValue, ["Amount", "MPTAmount"]],
+            ["Currency", currencyValue, ["Currency"]],
+            ["Hash128", hash128Value, ["Hash", "Hash128"]],
+            ["Hash160", hash160Value, ["Hash", "Hash160"]],
+            ["Hash192", hash192Value, ["Hash", "Hash192"]],
+            ["Hash256", hash256Value, ["Hash", "Hash256"]],
+            ["Issue", issueValue, ["Issue"]],
+            ["Path", pathValue, ["Path"]],
+            ["PathHop", pathHopValue, ["PathHop"]],
+            ["PathSet", pathSetValue, ["PathSet"]],
+            ["Result", resultValue, ["Result"]],
+            ["STArray", stArrayValue, ["STArray"]],
+            ["STBlob", STBlob.from(new Uint8Array()), ["STBlob"]],
+            ["STObject", stObjectValue, ["STObject"]],
+            ["SerializedField", Field.Flags, ["SerializedField"]],
+            ["UInt8", UInt8.zero, ["UInt", "UInt8"]],
+            ["UInt16", UInt16.zero, ["UInt", "UInt16"]],
+            ["UInt32", UInt32.zero, ["UInt", "UInt32"]],
+            ["UInt64", UInt64.zero, ["UInt", "UInt64"]],
+            ["Vector256", vectorValue, ["Vector256"]],
+            ["VoidResult", voidResultValue, ["VoidResult"]],
+            ["XChainBridge", bridgeValue, ["XChainBridge"]],
+            ["XFLDecimal", xflValue, ["XFLDecimal"]],
+          ];
+          const failures = [];
+          const fail = (where) => failures.push(where);
+
+          for (const name of nouns) {
+            const noun = globalThis[name];
+            const descriptor = Object.getOwnPropertyDescriptor(
+              noun, Symbol.hasInstance);
+            if (typeof noun !== "object" || noun === null ||
+                Object.getPrototypeOf(noun) !== Object.prototype ||
+                !Object.isFrozen(noun) || Object.isExtensible(noun) ||
+                Object.hasOwn(noun, "prototype") || !descriptor ||
+                typeof descriptor.value !== "function" ||
+                descriptor.writable || descriptor.enumerable ||
+                descriptor.configurable)
+              fail(`shape:${name}`);
+            try { Reflect.construct(noun, []); fail(`construct:${name}`); }
+            catch (error) {
+              if (!(error instanceof TypeError)) fail(`construct-error:${name}`);
+            }
+            if (Reflect.set(noun, Symbol.hasInstance, () => true) ||
+                Reflect.deleteProperty(noun, Symbol.hasInstance) ||
+                Reflect.defineProperty(noun, Symbol.hasInstance,
+                  {value: () => true}))
+              fail(`mutable:${name}`);
+          }
+
+          for (const [label, instance, positives] of cases) {
+            const expected = new Set(positives);
+            for (const name of nouns) {
+              if ((instance instanceof globalThis[name]) !== expected.has(name))
+                fail(`matrix:${label}:${name}`);
+            }
+
+            let callbacks = 0;
+            const proxy = new Proxy(instance, {
+              get() { ++callbacks; throw new Error("get trap"); },
+              getPrototypeOf() {
+                ++callbacks;
+                throw new Error("getPrototypeOf trap");
+              },
+            });
+            for (const name of nouns) {
+              if (proxy instanceof globalThis[name])
+                fail(`proxy:${label}:${name}`);
+            }
+            if (callbacks !== 0) fail(`proxy-callback:${label}`);
+
+            let clone = {};
+            try { clone = JSON.parse(JSON.stringify(instance)); }
+            catch (_) {}
+            for (const name of nouns) {
+              if (clone instanceof globalThis[name])
+                fail(`clone:${label}:${name}`);
+            }
+          }
+
+          const forged = {
+            ok: true,
+            value: 7,
+            bits: 64,
+            byteLength: 32,
+            kind: "native",
+            code: Field.Flags.code,
+            typeCode: Field.Flags.typeCode,
+            fieldCode: Field.Flags.fieldCode,
+            [Symbol.toStringTag]: "Amount",
+          };
+          const plainValues = [
+            null, undefined, false, 0, 0n, "", "value", {}, forged,
+            Object.assign({}, forged), Object.create(forged),
+          ];
+          for (const candidate of plainValues) {
+            for (const name of nouns) {
+              if (candidate instanceof globalThis[name])
+                fail(`plain:${String(candidate)}:${name}`);
+            }
+          }
+
+          return failures.join("\n");
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException());
+    EXPECT_EQ(to_string(value.get()), "");
+}
+
+TEST_F(XahauTypes, RuntimeTypeRegistrationIsRepeatableAndKeepsOldValuesNominal)
+{
+    namespace types = jshookz::provider::types;
+    std::array<std::uint8_t, 20> currencyBytes{};
+    currencyBytes[12] = 'U';
+    currencyBytes[13] = 'S';
+    currencyBytes[14] = 'D';
+    installValue(
+        "oldCurrency",
+        types::makeCurrencyBytes(
+            ctx,
+            currencyBytes.data(),
+            static_cast<std::uint32_t>(currencyBytes.size())));
+    installValue("oldUInt8", types::makeUIntValue(ctx, 8, 7));
+    installValue("oldBlob", types::makeSTBlobBytes(ctx, nullptr, 0));
+    installValue(
+        "oldResult",
+        jshookz::provider::bindings::result_success(ctx, JS_NewInt32(ctx, 9)));
+    installValue(
+        "oldVoidResult", jshookz::provider::bindings::effect_success(ctx));
+
+    auto before = eval("globalThis.__priorNouns = [Currency, UInt8]");
+    ASSERT_FALSE(before.isException());
+    ASSERT_TRUE(jshookz::provider::bindings::registerResult(ctx));
+    ASSERT_TRUE(register_cpp_types(ctx));
+    ASSERT_TRUE(register_uint_types(ctx));
+    ASSERT_FALSE(JS_HasException(ctx));
+
+    auto after = eval(R"JS(
+        (() => {
+          const prior = globalThis.__priorNouns;
+          return oldCurrency instanceof Currency &&
+            oldUInt8 instanceof UInt && oldUInt8 instanceof UInt8 &&
+            !(oldUInt8 instanceof UInt16) &&
+            oldBlob instanceof STBlob &&
+            util.decodeObject(oldBlob) instanceof STObject &&
+            oldResult instanceof Result && oldVoidResult instanceof VoidResult &&
+            Currency !== prior[0] && UInt8 !== prior[1];
+        })()
+    )JS");
+    ASSERT_FALSE(after.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, after.get()));
+}
+
+TEST_F(XahauTypes, QuickJSStructuredCloneCannotForgeProviderNominality)
+{
+    namespace types = jshookz::provider::types;
+    auto source = eval(R"JS(({
+      bits: UInt8.zero.bits,
+      byteLength: Hash256.zero.byteLength,
+      [Symbol.toStringTag]: "UInt8",
+    }))JS");
+    ASSERT_FALSE(source.isException());
+
+    std::size_t encodedSize = 0;
+    std::uint8_t* encoded = JS_WriteObject(ctx, &encodedSize, source.get(), 0);
+    ASSERT_NE(encoded, nullptr);
+    jshookz::qjs::OwnedValue clone(
+        ctx, JS_ReadObject(ctx, encoded, encodedSize, 0));
+    js_free(ctx, encoded);
+    ASSERT_FALSE(clone.isException());
+
+    jshookz::qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
+    ASSERT_FALSE(global.isException());
+    jshookz::qjs::OwnedValue uint8Type(
+        ctx, JS_GetPropertyStr(ctx, global.get(), "UInt8"));
+    ASSERT_FALSE(uint8Type.isException());
+    EXPECT_EQ(JS_IsInstanceOf(ctx, clone.get(), uint8Type.get()), 0);
+
+    jshookz::qjs::OwnedValue genuine(ctx, types::makeUIntValue(ctx, 8, 7));
+    ASSERT_FALSE(genuine.isException());
+    encodedSize = 0;
+    encoded = JS_WriteObject(ctx, &encodedSize, genuine.get(), 0);
+    EXPECT_EQ(encoded, nullptr);
+    ASSERT_TRUE(JS_HasException(ctx));
+    jshookz::qjs::OwnedValue exception(ctx, JS_GetException(ctx));
+    EXPECT_TRUE(JS_IsError(ctx, exception.get()));
+    EXPECT_FALSE(JS_HasException(ctx));
 }
 
 TEST_F(XahauTypes, ObjectByteUtilitiesPublishExactWrongTerminatorAndTypeErrors)

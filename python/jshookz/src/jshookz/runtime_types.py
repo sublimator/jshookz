@@ -1,0 +1,90 @@
+"""Observe A-prime runtime type objects from an executing provider WASM."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import TypedDict
+
+from .host import WasmHost
+
+SCHEMA = "jshookz.runtime-type-observation.v1"
+
+
+class RuntimeGlobal(TypedDict):
+    name: str
+    kind: str
+    frozen: bool
+    extensible: bool
+    ordinary_object: bool
+    own_has_instance: bool
+    has_instance_callable: bool
+    has_instance_writable: bool | None
+    has_instance_enumerable: bool | None
+    has_instance_configurable: bool | None
+    own_prototype: bool
+    constructible: bool
+
+
+class RuntimeTypeObservation(TypedDict):
+    schema: str
+    globals: list[RuntimeGlobal]
+
+
+_OBSERVE_GLOBALS = r"""
+JSON.stringify({
+  schema: "jshookz.runtime-type-observation.v1",
+  globals: Object.getOwnPropertyNames(globalThis).sort().map(name => {
+    const value = globalThis[name];
+    const kind = value === null ? "null" : typeof value;
+    const objectLike = (kind === "object" || kind === "function");
+    const descriptor = objectLike
+      ? Object.getOwnPropertyDescriptor(value, Symbol.hasInstance)
+      : undefined;
+    let constructible = false;
+    if (objectLike) {
+      try {
+        // Use the observed value only as newTarget. Calling it would execute
+        // provider or language constructors (Date reaches the ledger clock).
+        Reflect.construct(Object, [], value);
+        constructible = true;
+      } catch (_) {}
+    }
+    return {
+      name,
+      kind,
+      frozen: objectLike && Object.isFrozen(value),
+      extensible: objectLike && Object.isExtensible(value),
+      ordinary_object: kind === "object" &&
+        Object.getPrototypeOf(value) === Object.prototype,
+      own_has_instance: descriptor !== undefined,
+      has_instance_callable: descriptor !== undefined &&
+        typeof descriptor.value === "function",
+      has_instance_writable: descriptor === undefined ? null : descriptor.writable,
+      has_instance_enumerable: descriptor === undefined ? null : descriptor.enumerable,
+      has_instance_configurable: descriptor === undefined ? null : descriptor.configurable,
+      own_prototype: objectLike && Object.hasOwn(value, "prototype"),
+      constructible,
+    };
+  }),
+})
+""".strip()
+
+
+def observe_runtime_types(wasm_path: str | Path) -> RuntimeTypeObservation:
+    """Inspect one built provider; the declaration and policy are not inputs."""
+    host = WasmHost(wasm_path=Path(wasm_path))
+    host.init()
+    try:
+        result = host.eval(_OBSERVE_GLOBALS)
+    finally:
+        host.destroy()
+    if not result.ok or result.result_value is None:
+        raise RuntimeError(result.error or "provider runtime observation failed")
+    value = json.loads(result.result_value)
+    if not isinstance(value, dict) or value.get("schema") != SCHEMA:
+        raise ValueError("provider returned an invalid runtime-type observation")
+    rows = value.get("globals")
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise ValueError("provider returned invalid runtime global rows")
+    return value

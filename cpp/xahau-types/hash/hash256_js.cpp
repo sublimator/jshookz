@@ -223,9 +223,20 @@ registerHash256(JSContext* ctx, JSValueConst global)
         &js_hash256_class,
         proto,
         statics,
+        RuntimeTypeId::hash256,
         qjs::ByteClassFamily::serializedType,
         js_hash256_to_bytes,
         install_hash256_constants);
+}
+
+bool
+isHash256(JSValueConst value) noexcept
+{
+    if (!JS_IsObject(value) || JS_GetClassID(value) != js_hash256_class_id)
+        return false;
+    auto const* state = static_cast<Hash256State const*>(
+        JS_GetOpaque(value, js_hash256_class_id));
+    return state != nullptr && state->data != nullptr;
 }
 
 JSValue makeHash256Bytes(JSContext *ctx, std::uint8_t const *bytes,

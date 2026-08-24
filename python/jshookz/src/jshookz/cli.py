@@ -47,8 +47,9 @@ def cmd_info(args: argparse.Namespace) -> int:
 
 def cmd_compile_hook(args: argparse.Namespace) -> int:
     """Compile TypeScript/JavaScript to provider-compatible Hook bytecode."""
-    from .hook_compiler import DEFAULT_DECLARATIONS, compile_hook
     from pathlib import Path
+
+    from .hook_compiler import DEFAULT_DECLARATIONS, compile_hook
 
     source = Path(args.source)
     output = Path(args.output) if args.output else source.with_suffix(".qjsc")
@@ -138,6 +139,16 @@ def cmd_verify_profile(args: argparse.Namespace) -> int:
     profile = verify_runtime_profile_lock(args.profile, args.wasm)
     print(f"bytecode_abi_id={profile.bytecode_abi_id.hex()}")
     print(f"runtime_profile_id={profile.runtime_profile_id.hex()}")
+    return 0
+
+
+def cmd_observe_runtime_types(args: argparse.Namespace) -> int:
+    """Print the globals actually observed in one executing provider WASM."""
+    import json
+
+    from .runtime_types import observe_runtime_types
+
+    print(json.dumps(observe_runtime_types(args.wasm), sort_keys=True))
     return 0
 
 
@@ -255,6 +266,18 @@ def main() -> None:
     p_verify_profile.add_argument("profile", help="Runtime-profile lock JSON")
     p_verify_profile.add_argument("--wasm", required=True, help="Exact provider WASM")
     p_verify_profile.set_defaults(func=cmd_verify_profile)
+
+    # observe-runtime-types
+    p_observe_types = sub.add_parser(
+        "observe-runtime-types",
+        help="Inspect runtime type-object globals in an exact provider WASM",
+    )
+    p_observe_types.add_argument(
+        "--wasm",
+        default=paths.XAHAU_HOOK_PROVIDER_WASM,
+        help="Exact provider WASM (defaults to the local build)",
+    )
+    p_observe_types.set_defaults(func=cmd_observe_runtime_types)
 
     args = parser.parse_args()
     sys.exit(args.func(args))

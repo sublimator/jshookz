@@ -1,4 +1,5 @@
 #include "result.hpp"
+#include "runtime_type.hpp"
 
 namespace jshookz::provider::bindings {
 namespace {
@@ -174,11 +175,11 @@ result_failure(JSContext* ctx, JSValue error, bool effect)
 bool
 registerResult(JSContext* ctx)
 {
-    JS_NewClassID(&resultClassId);
-    if (JS_NewClass(JS_GetRuntime(ctx), resultClassId, &resultClass) < 0)
+    if (!::jshookz::qjs::defineClass(
+            JS_GetRuntime(ctx), &resultClassId, &resultClass))
         return false;
-    JS_NewClassID(&effectResultClassId);
-    if (JS_NewClass(JS_GetRuntime(ctx), effectResultClassId, &resultClass) < 0)
+    if (!::jshookz::qjs::defineClass(
+            JS_GetRuntime(ctx), &effectResultClassId, &resultClass))
         return false;
     qjs::OwnedValue prototype(ctx, JS_NewObject(ctx));
     if (prototype.isException())
@@ -200,7 +201,16 @@ registerResult(JSContext* ctx)
 
     JS_SetClassProto(ctx, resultClassId, prototype.release());
     JS_SetClassProto(ctx, effectResultClassId, effectPrototype.release());
-    return !JS_HasException(ctx);
+    qjs::OwnedValue global(ctx, JS_GetGlobalObject(ctx));
+    return !global.isException() &&
+        types::publishRuntimeType(
+               ctx, global.get(), "Result", types::RuntimeTypeId::result) &&
+        types::publishRuntimeType(
+               ctx,
+               global.get(),
+               "VoidResult",
+               types::RuntimeTypeId::voidResult) &&
+        !JS_HasException(ctx);
 }
 
 bool

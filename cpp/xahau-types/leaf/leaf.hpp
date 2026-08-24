@@ -6,11 +6,23 @@
 
 namespace jshookz::provider::types {
 
+enum class RichLeafKind : std::uint8_t {
+  hash128,
+  hash160,
+  hash192,
+  currency,
+  issue,
+  vector256,
+  xChainBridge,
+};
+
 // Register the constructorless rich leaves used by recursive STObject
 // materialization.  No JavaScript factory/global is published: only the
 // provider can mint these exact nominal classes.
 [[nodiscard]] bool registerRichLeafTypes(JSContext *ctx);
 void unregisterRichLeafTypes(JSRuntime *runtime) noexcept;
+
+[[nodiscard]] bool isRichLeaf(JSValueConst value, RichLeafKind kind) noexcept;
 
 // Provider-only factories.  Inputs are canonical value payloads from the
 // recursive certifier: no field header and no VL prefix.

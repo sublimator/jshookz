@@ -43,5 +43,7 @@ struct AmountLeafMaterializers {
                                      std::uint32_t length);
 
 [[nodiscard]] bool isAmount(JSValueConst value) noexcept;
+[[nodiscard]] bool isAmountKind(JSValueConst value,
+                                AmountIssueKind kind) noexcept;
 
 } // namespace jshookz::provider::types

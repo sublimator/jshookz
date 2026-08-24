@@ -27,10 +27,10 @@ from jshookz.runtime_profile import (
 
 
 PINNED_PROVIDER_SHA256 = (
-    "40f9ac0203afa9296196c627bc94e669ad789322ddc1e4ab58ba0cf6d32a5e21"
+    "63aaec6e6945e6a8e65cbf7ba5291e0a9fbabe2812a212eff71331535f65279c"
 )
 PINNED_RUNTIME_PROFILE_ID = (
-    "60950ca8b6fe4dd2a35559367051998bc04f75e8aa41934dd4caad0de5a1c3ba"
+    "cdfe22988756ee4f41608b56641b3cda553ea2d3b7636ba52803c568ff1d78a8"
 )
 PINNED_WASMTIME = "47.0.1"
 PINNED_WASMTIME_DYLIB_SHA256 = (
@@ -795,10 +795,10 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
         "post_success": post_success,
         "static_protocol": static_bytes,
     } == {
-        "registration": (127_189, 1_981),
-        "pre_call": (1_179_529, 2_031),
-        "peak": (5_374_486, 2_044),
-        "post_success": (3_409_182, 2_058),
+        "registration": (134_860, 2_110),
+        "pre_call": (1_187_200, 2_160),
+        "peak": (5_382_157, 2_173),
+        "post_success": (3_418_901, 2_187),
         "static_protocol": MAXIMUM_STATIC_PROTOCOL_BYTES,
     }
 
@@ -815,7 +815,7 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     )
     assert MAXIMUM_DUPLICATE_STACK == 11 * 6 * 8
     assert peak[0] < limits.quickjs_heap_bytes
-    assert limits.quickjs_heap_bytes - post_success[0] == 13_368_034
+    assert limits.quickjs_heap_bytes - post_success[0] == 13_358_315
     assert limits.quickjs_heap_bytes - post_success[0] >= HEADROOM_BYTES
 
 

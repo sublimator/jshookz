@@ -131,9 +131,15 @@ registerByteClass(
 {
     if (family == ByteClassFamily::none)
         return true;
-    if (classId == JS_INVALID_CLASS_ID ||
-        toBytes == nullptr ||
-        byteClassCount == byteClasses.size())
+    if (classId == JS_INVALID_CLASS_ID || toBytes == nullptr)
+        return false;
+    for (std::size_t index = 0; index < byteClassCount; ++index)
+    {
+        auto const& entry = byteClasses[index];
+        if (entry.classId == classId)
+            return entry.family == family && entry.toBytes == toBytes;
+    }
+    if (byteClassCount == byteClasses.size())
         return false;
     byteClasses[byteClassCount++] = {classId, family, toBytes};
     return true;

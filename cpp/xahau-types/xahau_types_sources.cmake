@@ -4,6 +4,7 @@ set(JSHOOKZ_XAHAU_TYPES_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR})
 set(JSHOOKZ_XAHAU_TYPES_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/js.cpp
     ${CMAKE_CURRENT_LIST_DIR}/quickjs.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/runtime_type.cpp
     ${CMAKE_CURRENT_LIST_DIR}/result_js.cpp
     ${CMAKE_CURRENT_LIST_DIR}/blob/blob_js.cpp
     ${CMAKE_CURRENT_LIST_DIR}/hash/hash256_js.cpp

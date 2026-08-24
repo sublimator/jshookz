@@ -95,13 +95,16 @@ def test_legacy_rich_roots_are_not_public_constructors(tmp_path: Path):
     assert compile_hook(source).bytecode
 
 
-def test_selected_provider_minted_types_have_no_value_namespace(tmp_path: Path):
+def test_selected_provider_minted_types_have_narrowing_runtime_nouns(
+    tmp_path: Path,
+):
     source = tmp_path / "provider-minted-types.hook.ts"
     source.write_text(
         """
         declare const decimal: XFLDecimal;
         declare const amount: Amount;
         declare const pathSet: PathSet;
+        declare const candidate: unknown;
 
         export function main(): never {
           const negative: boolean = decimal.isNegative();
@@ -109,32 +112,35 @@ def test_selected_provider_minted_types_have_no_value_namespace(tmp_path: Path):
           const amountKind: "native" | "iou" | "mpt" = amount.kind;
           const firstPath = pathSet.at(0);
 
-          // @ts-expect-error XFLDecimal exists only in the type namespace.
-          const decimalValue = XFLDecimal;
+          const decimalType: RuntimeType<XFLDecimal> = XFLDecimal;
           // @ts-expect-error XFLDecimal has no public prototype value.
           const decimalPrototype = XFLDecimal.prototype;
           // @ts-expect-error XFLDecimal has no public constructor value.
           const constructedDecimal = new XFLDecimal();
-          // @ts-expect-error XFLDecimal cannot be an instanceof target.
-          const decimalInstance = decimal instanceof XFLDecimal;
+          const decimalInstance: boolean = decimal instanceof XFLDecimal;
 
-          // @ts-expect-error Amount exists only in the type namespace.
-          const amountValue = Amount;
+          const amountType: RuntimeType<Amount> = Amount;
           // @ts-expect-error Amount has no public prototype value.
           const amountPrototype = Amount.prototype;
           // @ts-expect-error Amount has no public constructor value.
           const constructedAmount = new Amount();
-          // @ts-expect-error Amount cannot be an instanceof target.
-          const amountInstance = amount instanceof Amount;
+          const amountInstance: boolean = amount instanceof Amount;
 
-          // @ts-expect-error PathSet exists only in the type namespace.
-          const pathSetValue = PathSet;
+          const pathSetType: RuntimeType<PathSet> = PathSet;
           // @ts-expect-error PathSet has no public prototype value.
           const pathSetPrototype = PathSet.prototype;
           // @ts-expect-error PathSet has no public constructor value.
           const constructedPathSet = new PathSet();
-          // @ts-expect-error PathSet cannot be an instanceof target.
-          const pathSetInstance = pathSet instanceof PathSet;
+          const pathSetInstance: boolean = pathSet instanceof PathSet;
+
+          if (candidate instanceof Amount) {
+            const narrowed: Amount = candidate;
+            void narrowed.kind;
+          }
+
+          void decimalType;
+          void amountType;
+          void pathSetType;
 
           trace(
             "provider minted",
@@ -143,16 +149,13 @@ def test_selected_provider_minted_types_have_no_value_namespace(tmp_path: Path):
               zero,
               amountKind,
               firstPath,
-              decimalValue,
-              decimalPrototype,
-              constructedDecimal,
-              decimalInstance,
-              amountValue,
-              amountPrototype,
-              constructedAmount,
-              amountInstance,
-              pathSetValue,
-              pathSetPrototype,
+                  decimalPrototype,
+                  constructedDecimal,
+                  decimalInstance,
+                  amountPrototype,
+                  constructedAmount,
+                  amountInstance,
+                  pathSetPrototype,
               constructedPathSet,
               pathSetInstance,
             ],

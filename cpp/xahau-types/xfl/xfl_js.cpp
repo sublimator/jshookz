@@ -67,6 +67,13 @@ registerXFL(JSContext* ctx)
         ctx, &js_xfl_class_id, &js_xfl_class, proto);
 }
 
+bool
+isXFLDecimal(JSValueConst value) noexcept
+{
+    return JS_IsObject(value) && JS_GetClassID(value) == js_xfl_class_id &&
+        JS_GetOpaque(value, js_xfl_class_id) != nullptr;
+}
+
 JSValue
 makeXFLDecimalParts(
     JSContext* ctx,

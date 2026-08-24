@@ -241,9 +241,20 @@ registerAccountID(JSContext* ctx, JSValueConst global)
         &js_accountid_class,
         proto,
         statics,
+        RuntimeTypeId::accountID,
         qjs::ByteClassFamily::serializedType,
         js_accountid_to_bytes,
         install_account_constants);
+}
+
+bool
+isAccountID(JSValueConst value) noexcept
+{
+    if (!JS_IsObject(value) || JS_GetClassID(value) != js_accountid_class_id)
+        return false;
+    auto const* state = static_cast<AccountIDState const*>(
+        JS_GetOpaque(value, js_accountid_class_id));
+    return state != nullptr && state->data != nullptr;
 }
 
 JSValue makeAccountIDBytes(JSContext *ctx, std::uint8_t const *bytes,

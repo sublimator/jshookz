@@ -38,6 +38,7 @@ registerClass(
     JSClassDef const* class_def,
     std::span<JSCFunctionListEntry const> prototypeFunctions,
     std::span<JSCFunctionListEntry const> staticFunctions,
+    RuntimeTypeId runtimeType,
     qjs::ByteClassFamily byteFamily,
     JSCFunction* toBytes,
     FactoryInitializer initializeFactory)
@@ -56,6 +57,7 @@ registerClass(
         !qjs::installFunctions(ctx, factory.get(), staticFunctions) ||
         (initializeFactory != nullptr &&
          !initializeFactory(ctx, factory.get())) ||
+        !installRuntimeTypeClassifier(ctx, factory.get(), runtimeType) ||
         !qjs::freezeObject(ctx, factory.get()))
         return false;
     return JS_SetPropertyStr(ctx, global, name, factory.release()) >= 0;
@@ -163,6 +165,47 @@ JSCFunctionListEntry const utilFunctions[] = {
     JS_CFUNC_DEF("decodeObject", 1, decodeObject),
 };
 
+struct RuntimeNoun
+{
+    char const* name;
+    types::RuntimeTypeId type;
+};
+
+// Hidden native classes gain nouns only after every mint path they classify is
+// registered. Existing public factories install the same callback before they
+// freeze; UInt and Result publish in their independently ordered registrars.
+[[nodiscard]] bool
+publishCppRuntimeTypes(JSContext* ctx, JSValueConst global)
+{
+    constexpr RuntimeNoun nouns[] = {
+        {"Amount", types::RuntimeTypeId::amount},
+        {"Currency", types::RuntimeTypeId::currency},
+        {"Hash", types::RuntimeTypeId::hash},
+        {"Hash128", types::RuntimeTypeId::hash128},
+        {"Hash160", types::RuntimeTypeId::hash160},
+        {"Hash192", types::RuntimeTypeId::hash192},
+        {"IOUAmount", types::RuntimeTypeId::iouAmount},
+        {"Issue", types::RuntimeTypeId::issue},
+        {"MPTAmount", types::RuntimeTypeId::mptAmount},
+        {"NativeAmount", types::RuntimeTypeId::nativeAmount},
+        {"Path", types::RuntimeTypeId::path},
+        {"PathHop", types::RuntimeTypeId::pathHop},
+        {"PathSet", types::RuntimeTypeId::pathSet},
+        {"STArray", types::RuntimeTypeId::stArray},
+        {"STObject", types::RuntimeTypeId::stObject},
+        {"SerializedField", types::RuntimeTypeId::serializedField},
+        {"Vector256", types::RuntimeTypeId::vector256},
+        {"XChainBridge", types::RuntimeTypeId::xChainBridge},
+        {"XFLDecimal", types::RuntimeTypeId::xflDecimal},
+    };
+    for (auto const& noun : nouns)
+    {
+        if (!types::publishRuntimeType(ctx, global, noun.name, noun.type))
+            return false;
+    }
+    return true;
+}
+
 } // namespace
 
 extern "C" bool register_cpp_types(JSContext *ctx) {
@@ -187,6 +230,7 @@ extern "C" bool register_cpp_types(JSContext *ctx) {
          types::registerObjectTypes(ctx) &&
          types::registerPathSet(ctx, pathLeaves) &&
          types::registerFieldDescriptors(ctx, global.get()) &&
+         publishCppRuntimeTypes(ctx, global.get()) &&
          jshookz::qjs::installFactory(ctx, global.get(), "util", utilFunctions);
 }
 

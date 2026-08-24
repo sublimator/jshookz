@@ -487,6 +487,29 @@ bool isAmount(JSValueConst value) noexcept {
          JS_GetOpaque(value, amountClassId) != nullptr;
 }
 
+bool
+isAmountKind(JSValueConst value, AmountIssueKind expected) noexcept
+{
+    if (!JS_IsObject(value) || JS_GetClassID(value) != amountClassId)
+        return false;
+    auto const* state =
+        static_cast<AmountState const*>(JS_GetOpaque(value, amountClassId));
+    if (state == nullptr || state->data == nullptr)
+        return false;
+    using Kind = xdata::AmountRules::Kind;
+    Kind const actual = xdata::AmountRules::kind(payload(*state));
+    switch (expected)
+    {
+        case AmountIssueKind::native:
+            return actual == Kind::Native;
+        case AmountIssueKind::iou:
+            return actual == Kind::Iou;
+        case AmountIssueKind::mpt:
+            return actual == Kind::Mpt;
+    }
+    return false;
+}
+
 bool detail::readAmountNominalPayload(JSValueConst input,
                                       NominalPayloadView &output) noexcept {
   output = {};

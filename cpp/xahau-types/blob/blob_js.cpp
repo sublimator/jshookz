@@ -246,8 +246,18 @@ JSCFunctionListEntry const statics[] = {
 
 bool registerSTBlob(JSContext *ctx, JSValueConst global) {
   return registerClass(ctx, global, "STBlob", &js_blob_class_id, &js_blob_class,
-                       proto, statics, qjs::ByteClassFamily::stBlob,
-                       js_blob_to_bytes);
+                       proto, statics, RuntimeTypeId::stBlob,
+                       qjs::ByteClassFamily::stBlob, js_blob_to_bytes);
+}
+
+bool
+isSTBlob(JSValueConst value) noexcept
+{
+    if (!JS_IsObject(value) || JS_GetClassID(value) != js_blob_class_id)
+        return false;
+    auto const* blob =
+        static_cast<JSBlob const*>(JS_GetOpaque(value, js_blob_class_id));
+    return blob != nullptr && (blob->len == 0 || blob->data != nullptr);
 }
 
 JSValue makeSTBlobBytes(JSContext *ctx, std::uint8_t const *bytes,

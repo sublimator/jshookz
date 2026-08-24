@@ -68,7 +68,7 @@ def test_native_amount_issue_currency_retains_the_certified_owner():
     }
 
 
-def test_legacy_rich_roots_are_non_constructible_factory_objects():
+def test_legacy_rich_roots_are_non_constructible_runtime_type_objects():
     host = WasmHost.profiled()
     host.init()
     try:
@@ -86,13 +86,13 @@ def test_legacy_rich_roots_are_non_constructible_factory_objects():
 
     assert result.ok, result.error
     assert json.loads(result.result_value) == [
-        ["object", False, True, True],
-        ["object", False, True, True],
-        ["object", False, True, True],
+        ["object", False, True, False],
+        ["object", False, True, False],
+        ["object", False, True, False],
     ]
 
 
-def test_selected_value_types_have_no_global_factory_or_constructor():
+def test_selected_value_types_have_runtime_nouns_but_no_constructor():
     host = WasmHost.profiled()
     host.init()
     try:
@@ -111,9 +111,9 @@ def test_selected_value_types_have_no_global_factory_or_constructor():
 
     assert result.ok, result.error
     assert json.loads(result.result_value) == [
-        ["XFLDecimal", True, True, True, True],
-        ["Amount", True, True, True, True],
-        ["PathSet", True, True, True, True],
+        ["XFLDecimal", False, False, True, False],
+        ["Amount", False, False, True, False],
+        ["PathSet", False, False, True, False],
     ]
 
 

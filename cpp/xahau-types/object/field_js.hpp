@@ -14,5 +14,6 @@ namespace jshookz::provider::types {
 // Allocation-free exact-provenance classifier for method/replacement input.
 [[nodiscard]] bool serializedFieldCode(JSValueConst value,
                                        std::uint32_t &code) noexcept;
+[[nodiscard]] bool isSerializedField(JSValueConst value) noexcept;
 
 } // namespace jshookz::provider::types

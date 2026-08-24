@@ -1,10 +1,12 @@
 #include "result.hpp"
+#include "runtime_type.hpp"
+
 #include "object/nominal_payload.hpp"
 #include "quickjs.hpp"
 
 #include <cmath>
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <limits>
 
 namespace {
@@ -505,6 +507,14 @@ newFactory(JSContext* ctx, std::uint8_t bits)
                 JS_CFUNC_generic_magic,
                 bits),
             JS_PROP_ENUMERABLE) < 0 ||
+        !jshookz::provider::types::installRuntimeTypeClassifier(
+            ctx,
+            factory.get(),
+            bits == 8        ? jshookz::provider::types::RuntimeTypeId::uInt8
+                : bits == 16 ? jshookz::provider::types::RuntimeTypeId::uInt16
+                : bits == 32
+                ? jshookz::provider::types::RuntimeTypeId::uInt32
+                : jshookz::provider::types::RuntimeTypeId::uInt64) ||
         !jshookz::provider::qjs::freezeObject(ctx, factory.get()))
         return JS_EXCEPTION;
     return factory.release();
@@ -513,6 +523,17 @@ newFactory(JSContext* ctx, std::uint8_t bits)
 }  // namespace
 
 namespace jshookz::provider::types {
+
+bool
+isUInt(JSValueConst value, std::uint8_t expectedBits) noexcept
+{
+    if (!JS_IsObject(value) || JS_GetClassID(value) != uintClassId)
+        return false;
+    auto const* integer =
+        static_cast<UIntValue const*>(JS_GetOpaque(value, uintClassId));
+    return integer != nullptr &&
+        (expectedBits == 0 || integer->bits == expectedBits);
+}
 
 bool
 detail::readUIntNominalPayload(
@@ -545,8 +566,8 @@ makeUIntValue(JSContext* ctx, std::uint8_t bits, std::uint64_t value)
 extern "C" bool
 register_uint_types(JSContext* ctx)
 {
-    JS_NewClassID(&uintClassId);
-    if (JS_NewClass(JS_GetRuntime(ctx), uintClassId, &uintClass) < 0)
+    if (!jshookz::qjs::defineClass(
+            JS_GetRuntime(ctx), &uintClassId, &uintClass))
         return false;
 
     OwnedValue prototype(ctx, JS_NewObject(ctx));
@@ -568,5 +589,11 @@ register_uint_types(JSContext* ctx)
         if (JS_SetPropertyStr(ctx, global.get(), name, newFactory(ctx, bits)) < 0)
             return false;
     }
+    if (!jshookz::provider::types::publishRuntimeType(
+            ctx,
+            global.get(),
+            "UInt",
+            jshookz::provider::types::RuntimeTypeId::uInt))
+        return false;
     return !JS_HasException(ctx);
 }

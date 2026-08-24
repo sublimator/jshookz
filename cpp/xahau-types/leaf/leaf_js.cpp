@@ -1466,7 +1466,7 @@ bool registerRichLeafTypes(JSContext *ctx) {
     return false;
   JSRuntime *runtime = JS_GetRuntime(ctx);
   if (registeredRuntime != nullptr)
-    return registeredRuntime == runtime;
+    return registeredRuntime == runtime && registerByteFamilies();
 
   vectorExotic.get_own_property = vectorOwnProperty;
   vectorExotic.get_own_property_names = vectorOwnNames;
@@ -1492,6 +1492,38 @@ bool registerRichLeafTypes(JSContext *ctx) {
 void unregisterRichLeafTypes(JSRuntime *runtime) noexcept {
   if (runtime != nullptr && runtime == registeredRuntime)
     registeredRuntime = nullptr;
+}
+
+bool
+isRichLeaf(JSValueConst value, RichLeafKind kind) noexcept
+{
+    JSClassID id = JS_INVALID_CLASS_ID;
+    switch (kind)
+    {
+        case RichLeafKind::hash128:
+            id = classId(LeafKind::hash128);
+            break;
+        case RichLeafKind::hash160:
+            id = classId(LeafKind::hash160);
+            break;
+        case RichLeafKind::hash192:
+            id = classId(LeafKind::hash192);
+            break;
+        case RichLeafKind::currency:
+            id = classId(LeafKind::currency);
+            break;
+        case RichLeafKind::issue:
+            id = classId(LeafKind::issue);
+            break;
+        case RichLeafKind::vector256:
+            id = classId(LeafKind::vector256);
+            break;
+        case RichLeafKind::xChainBridge:
+            id = classId(LeafKind::xchainBridge);
+            break;
+    }
+    return JS_IsObject(value) && id != JS_INVALID_CLASS_ID &&
+        JS_GetClassID(value) == id && JS_GetOpaque(value, id) != nullptr;
 }
 
 JSValue makeHash128Bytes(JSContext *ctx, std::uint8_t const *bytes,

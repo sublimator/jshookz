@@ -1,6 +1,7 @@
 #pragma once
 
 #include "quickjs.hpp"
+#include "runtime_type.hpp"
 
 #include <new>
 #include <span>
@@ -37,6 +38,7 @@ registerClass(
     JSClassDef const* class_def,
     std::span<JSCFunctionListEntry const> prototypeFunctions,
     std::span<JSCFunctionListEntry const> staticFunctions,
+    RuntimeTypeId runtimeType,
     jshookz::provider::qjs::ByteClassFamily byteFamily =
         jshookz::provider::qjs::ByteClassFamily::none,
     JSCFunction* toBytes = nullptr,
@@ -58,6 +60,16 @@ registerHiddenClass(
 [[nodiscard]] bool registerHash256(JSContext* ctx, JSValueConst global);
 [[nodiscard]] bool registerAccountID(JSContext* ctx, JSValueConst global);
 [[nodiscard]] bool registerXFL(JSContext* ctx);
+
+// Allocation-free exact nominal classifiers used by the one A-prime
+// Symbol.hasInstance implementation.
+[[nodiscard]] bool isSTBlob(JSValueConst value) noexcept;
+[[nodiscard]] bool isHash256(JSValueConst value) noexcept;
+[[nodiscard]] bool isAccountID(JSValueConst value) noexcept;
+// expectedBits == 0 selects the UInt family root.
+[[nodiscard]] bool isUInt(JSValueConst value,
+                          std::uint8_t expectedBits) noexcept;
+[[nodiscard]] bool isXFLDecimal(JSValueConst value) noexcept;
 
 // Provider-only materializer seams. These mint exact nominal values without
 // routing through public JavaScript factories.

@@ -78,10 +78,10 @@ if(XAHAU_HOOK_PROVIDER)
         wasi_preview1_shims.c
     )
     target_link_options(jshookz_provider PRIVATE
-        # The accepted provider ABI starts at exactly six 64-KiB pages. Make
+        # The accepted provider ABI starts at exactly seven 64-KiB pages. Make
         # that an input to initialization rather than relying on allocator
         # growth granularity to happen to land on the profile value.
-        -Wl,--initial-memory=393216
+        -Wl,--initial-memory=458752
         -Wl,--max-memory=33554432
     )
 endif()
