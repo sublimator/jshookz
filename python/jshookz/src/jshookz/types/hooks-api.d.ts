@@ -2410,6 +2410,7 @@ declare global {
    *
    * @serial-scalar   UInt8 UInt16 UInt32 as number
    * @serial-scalar   UInt64 as bigint
+   * @serial-scalar   Number as string
    * @serial-sentinel Done NotPresent Unknown
    * @serial-unmapped UInt96 UInt192 UInt384 UInt512 Validation
    *
