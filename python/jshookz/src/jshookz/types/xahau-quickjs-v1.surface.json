@@ -43,19 +43,39 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "6624962d5ff2b81638179682d078b7e4a3107f65de5a0cc908b1b743861c95fc"
+    "sha256": "4c74812d6280351f888d9794ba848ecc65ec6f477ac9eedc48c2fe0b96905ccb"
   },
   "globals": {
     "AccountID": "object",
+    "Amount": "object",
+    "Currency": "object",
     "Field": "object",
     "Hash": "object",
+    "Hash128": "object",
+    "Hash160": "object",
+    "Hash192": "object",
     "Hash256": "object",
+    "IOUAmount": "object",
+    "Issue": "object",
+    "MPTAmount": "object",
+    "NativeAmount": "object",
+    "Path": "object",
+    "PathHop": "object",
+    "PathSet": "object",
+    "Result": "object",
+    "STArray": "object",
     "STBlob": "object",
+    "STObject": "object",
+    "SerializedField": "object",
     "UInt": "object",
     "UInt16": "object",
     "UInt32": "object",
     "UInt64": "object",
     "UInt8": "object",
+    "Vector256": "object",
+    "VoidResult": "object",
+    "XChainBridge": "object",
+    "XFLDecimal": "object",
     "accept": "function",
     "emit": "object",
     "hook": "object",
@@ -519,10 +539,25 @@
       "one": "value",
       "zero": "value"
     },
+    "Amount": {
+      "drops": "function",
+      "from": "function",
+      "iou": "function",
+      "mpt": "function"
+    },
+    "Currency": {
+      "from": "function",
+      "native": "value"
+    },
     "Hash256": {
       "from": "function",
       "fromHex": "function",
       "zero": "value"
+    },
+    "Issue": {
+      "iou": "function",
+      "mpt": "function",
+      "native": "function"
     },
     "STBlob": {
       "from": "function",
@@ -551,6 +586,11 @@
       "from": "function",
       "max": "value",
       "mulDiv": "function",
+      "zero": "value"
+    },
+    "XFLDecimal": {
+      "from": "function",
+      "one": "value",
       "zero": "value"
     }
   }

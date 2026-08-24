@@ -6,5 +6,5 @@
     "lib": ["ES2023"],
     "target": "ES2023"
   },
-  "files": ["xahau-quickjs-v1.d.ts"]
+  "files": ["xahau-quickjs-v1.d.ts", "v1-noun-fixtures.ts"]
 }

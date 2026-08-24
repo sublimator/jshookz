@@ -109,6 +109,12 @@ declare global {
 
   }
 
+  /** Conceptual result nouns (0085 close): the runtime already
+   * classifies via isResult/isEffectResult; these make it public. */
+  const Result: RuntimeType<Result<unknown, unknown>>;
+
+  const VoidResult: RuntimeType<VoidResult<unknown>>;
+
   /**
    * Nominal family of effect Results: host writes whose success carries no
    * value. Deliberately NOT assignable to `Result<T, Error>` — an effect
@@ -487,7 +493,33 @@ declare global {
    */
   const Hash: RuntimeType<Hash>;
 
+  const Hash128: RuntimeType<Hash128>;
+
+  const Hash160: RuntimeType<Hash160>;
+
+  const Hash192: RuntimeType<Hash192>;
+
   const UInt: RuntimeType<UInt>;
+
+  const PathHop: RuntimeType<PathHop>;
+
+  const Path: RuntimeType<Path>;
+
+  const PathSet: RuntimeType<PathSet>;
+
+  const Vector256: RuntimeType<Vector256>;
+
+  const XChainBridge: RuntimeType<XChainBridge>;
+
+  const STObject: RuntimeType<STObject>;
+
+  const STArray: RuntimeType<STArray<STObject>>;
+
+  const NativeAmount: RuntimeType<NativeAmount>;
+
+  const IOUAmount: RuntimeType<IOUAmount>;
+
+  const MPTAmount: RuntimeType<MPTAmount>;
 
   /** @serial AccountID */
   interface AccountID {
@@ -521,6 +553,13 @@ declare global {
     equals(other: Currency): boolean;
   }
 
+  interface CurrencyFactory extends RuntimeType<Currency> {
+    readonly native: Currency;
+    from(value: BytesLike | string): Currency;
+  }
+
+  const Currency: CurrencyFactory;
+
   /** @serial Issue */
   interface Issue {
     readonly [__providerValueBrand]: "Issue";
@@ -531,6 +570,14 @@ declare global {
     toBytes(): Uint8Array;
     equals(other: Issue): boolean;
   }
+
+  interface IssueFactory extends RuntimeType<Issue> {
+    native(): Issue;
+    iou(currency: Currency, issuer: AccountID): Issue;
+    mpt(mptIssuanceId: Hash192): Issue;
+  }
+
+  const Issue: IssueFactory;
 
   /** Immutable provider-minted sequence for the serialized Vector256 wire type. */
   /** @serial Vector256 */
@@ -555,6 +602,19 @@ declare global {
     equals(other: XChainBridge): boolean;
   }
 
+  /** Failure from constructing or operating on an `XFLDecimal`. */
+  interface XFLError {
+    readonly domain: "xfl";
+    readonly issue:
+      | "overflow"
+      | "underflow"
+      | "division-by-zero"
+      | "out-of-range"
+      | "invalid";
+  }
+
+  type XFLResult<T> = Result<T, XFLError>;
+
   /**
    * XFLDecimal — the bounded decimal value used for issued amounts on Xahau.
    *
@@ -578,6 +638,18 @@ declare global {
     isNegative(): boolean;
     isZero(): boolean;
   }
+
+  interface XFLDecimalFactory extends RuntimeType<XFLDecimal> {
+    readonly zero: XFLDecimal;
+    readonly one: XFLDecimal;
+    /**
+     * Construct `mantissa × 10^exponent`. The value comes first so ordinary
+     * calls read in the same order as the decimal quantity they express.
+     */
+    from(mantissa: bigint | number, exponent?: number): XFLResult<XFLDecimal>;
+  }
+
+  const XFLDecimal: XFLDecimalFactory;
 
   /** @serial Amount */
   interface Amount {
@@ -607,6 +679,15 @@ declare global {
     equals(other: Amount): boolean;
     compare(other: Amount): -1 | 0 | 1;
   }
+
+  interface AmountFactory extends RuntimeType<Amount> {
+    from(value: BytesLike | STBlob): Amount;
+    drops(value: Drops): NativeAmount;
+    iou(value: XFLDecimal, currency: Currency, issuer: AccountID): IOUAmount;
+    mpt(value: bigint, mptIssuanceId: Hash192): MPTAmount;
+  }
+
+  const Amount: AmountFactory;
 
   interface NativeAmount extends Amount {
     readonly kind: "native";
@@ -679,6 +760,11 @@ declare global {
     readonly typeCode: TypeCode;
     readonly fieldCode: FieldCode;
   }
+
+  /** Field-descriptor runtime noun (0085 close). */
+  const SerializedField: RuntimeType<
+    SerializedField<unknown, number, number, number>
+  >;
 
   type SerializedFieldValue<T> =
     T extends SerializedField<infer V> ? unknown extends V ? never : V : never;

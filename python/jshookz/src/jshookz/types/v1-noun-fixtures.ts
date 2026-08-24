@@ -1,0 +1,168 @@
+/**
+ * v1 runtime-noun conformance fixtures (0088 third turn, 2026-08-24).
+ *
+ * Compiled by tsconfig.v1-root.json with the exact v1 declaration as the
+ * only other root, so these prove the SHIPPED surface: every selected
+ * noun is a runtime type object — `instanceof` classifies and narrows —
+ * and `new` / `.prototype` stay red (each `@ts-expect-error` line is a
+ * negative fixture; the file only compiles while every one still fails).
+ */
+export {};
+
+declare const unknownValue: unknown;
+
+// ---- instanceof narrows every published v1 noun ----
+
+if (unknownValue instanceof AccountID) { const v: AccountID = unknownValue; void v; }
+if (unknownValue instanceof Hash) { const v: Hash = unknownValue; void v; }
+if (unknownValue instanceof Hash128) { const v: Hash128 = unknownValue; void v; }
+if (unknownValue instanceof Hash160) { const v: Hash160 = unknownValue; void v; }
+if (unknownValue instanceof Hash192) { const v: Hash192 = unknownValue; void v; }
+if (unknownValue instanceof Hash256) { const v: Hash256 = unknownValue; void v; }
+if (unknownValue instanceof STBlob) { const v: STBlob = unknownValue; void v; }
+if (unknownValue instanceof UInt) { const v: UInt = unknownValue; void v; }
+if (unknownValue instanceof UInt8) { const v: UInt8 = unknownValue; void v; }
+if (unknownValue instanceof UInt16) { const v: UInt16 = unknownValue; void v; }
+if (unknownValue instanceof UInt32) { const v: UInt32 = unknownValue; void v; }
+if (unknownValue instanceof UInt64) { const v: UInt64 = unknownValue; void v; }
+if (unknownValue instanceof Amount) { const v: Amount = unknownValue; void v; }
+if (unknownValue instanceof Currency) { const v: Currency = unknownValue; void v; }
+if (unknownValue instanceof IOUAmount) { const v: IOUAmount = unknownValue; void v; }
+if (unknownValue instanceof Issue) { const v: Issue = unknownValue; void v; }
+if (unknownValue instanceof MPTAmount) { const v: MPTAmount = unknownValue; void v; }
+if (unknownValue instanceof NativeAmount) { const v: NativeAmount = unknownValue; void v; }
+if (unknownValue instanceof Path) { const v: Path = unknownValue; void v; }
+if (unknownValue instanceof PathHop) { const v: PathHop = unknownValue; void v; }
+if (unknownValue instanceof PathSet) { const v: PathSet = unknownValue; void v; }
+if (unknownValue instanceof Result) { const v: Result<unknown, unknown> = unknownValue; void v; }
+if (unknownValue instanceof VoidResult) { const v: VoidResult<unknown> = unknownValue; void v; }
+if (unknownValue instanceof STArray) { const v: STArray<STObject> = unknownValue; void v; }
+if (unknownValue instanceof STObject) { const v: STObject = unknownValue; void v; }
+if (unknownValue instanceof SerializedField) {
+  const v: SerializedField<unknown, number, number, number> = unknownValue; void v;
+}
+if (unknownValue instanceof Vector256) { const v: Vector256 = unknownValue; void v; }
+if (unknownValue instanceof XChainBridge) { const v: XChainBridge = unknownValue; void v; }
+if (unknownValue instanceof XFLDecimal) { const v: XFLDecimal = unknownValue; void v; }
+
+// ---- `new` stays red on every published v1 noun ----
+
+// @ts-expect-error the noun is not constructible
+const c01 = new AccountID(); void c01;
+// @ts-expect-error the noun is not constructible
+const c02 = new Hash(); void c02;
+// @ts-expect-error the noun is not constructible
+const c03 = new Hash128(); void c03;
+// @ts-expect-error the noun is not constructible
+const c04 = new Hash160(); void c04;
+// @ts-expect-error the noun is not constructible
+const c05 = new Hash192(); void c05;
+// @ts-expect-error the noun is not constructible
+const c06 = new Hash256(); void c06;
+// @ts-expect-error the noun is not constructible
+const c07 = new STBlob(); void c07;
+// @ts-expect-error the noun is not constructible
+const c08 = new UInt(); void c08;
+// @ts-expect-error the noun is not constructible
+const c09 = new UInt8(); void c09;
+// @ts-expect-error the noun is not constructible
+const c10 = new UInt16(); void c10;
+// @ts-expect-error the noun is not constructible
+const c11 = new UInt32(); void c11;
+// @ts-expect-error the noun is not constructible
+const c12 = new UInt64(); void c12;
+// @ts-expect-error the noun is not constructible
+const c13 = new Amount(); void c13;
+// @ts-expect-error the noun is not constructible
+const c14 = new Currency(); void c14;
+// @ts-expect-error the noun is not constructible
+const c15 = new IOUAmount(); void c15;
+// @ts-expect-error the noun is not constructible
+const c16 = new Issue(); void c16;
+// @ts-expect-error the noun is not constructible
+const c17 = new MPTAmount(); void c17;
+// @ts-expect-error the noun is not constructible
+const c18 = new NativeAmount(); void c18;
+// @ts-expect-error the noun is not constructible
+const c19 = new Path(); void c19;
+// @ts-expect-error the noun is not constructible
+const c20 = new PathHop(); void c20;
+// @ts-expect-error the noun is not constructible
+const c21 = new PathSet(); void c21;
+// @ts-expect-error the noun is not constructible
+const c22 = new Result(); void c22;
+// @ts-expect-error the noun is not constructible
+const c23 = new VoidResult(); void c23;
+// @ts-expect-error the noun is not constructible
+const c24 = new STArray(); void c24;
+// @ts-expect-error the noun is not constructible
+const c25 = new STObject(); void c25;
+// @ts-expect-error the noun is not constructible
+const c26 = new SerializedField(); void c26;
+// @ts-expect-error the noun is not constructible
+const c27 = new Vector256(); void c27;
+// @ts-expect-error the noun is not constructible
+const c28 = new XChainBridge(); void c28;
+// @ts-expect-error the noun is not constructible
+const c29 = new XFLDecimal(); void c29;
+
+// ---- `.prototype` stays unpromised on every published v1 noun ----
+
+// @ts-expect-error no prototype is promised
+const p01 = AccountID.prototype; void p01;
+// @ts-expect-error no prototype is promised
+const p02 = Hash.prototype; void p02;
+// @ts-expect-error no prototype is promised
+const p03 = Hash128.prototype; void p03;
+// @ts-expect-error no prototype is promised
+const p04 = Hash160.prototype; void p04;
+// @ts-expect-error no prototype is promised
+const p05 = Hash192.prototype; void p05;
+// @ts-expect-error no prototype is promised
+const p06 = Hash256.prototype; void p06;
+// @ts-expect-error no prototype is promised
+const p07 = STBlob.prototype; void p07;
+// @ts-expect-error no prototype is promised
+const p08 = UInt.prototype; void p08;
+// @ts-expect-error no prototype is promised
+const p09 = UInt8.prototype; void p09;
+// @ts-expect-error no prototype is promised
+const p10 = UInt16.prototype; void p10;
+// @ts-expect-error no prototype is promised
+const p11 = UInt32.prototype; void p11;
+// @ts-expect-error no prototype is promised
+const p12 = UInt64.prototype; void p12;
+// @ts-expect-error no prototype is promised
+const p13 = Amount.prototype; void p13;
+// @ts-expect-error no prototype is promised
+const p14 = Currency.prototype; void p14;
+// @ts-expect-error no prototype is promised
+const p15 = IOUAmount.prototype; void p15;
+// @ts-expect-error no prototype is promised
+const p16 = Issue.prototype; void p16;
+// @ts-expect-error no prototype is promised
+const p17 = MPTAmount.prototype; void p17;
+// @ts-expect-error no prototype is promised
+const p18 = NativeAmount.prototype; void p18;
+// @ts-expect-error no prototype is promised
+const p19 = Path.prototype; void p19;
+// @ts-expect-error no prototype is promised
+const p20 = PathHop.prototype; void p20;
+// @ts-expect-error no prototype is promised
+const p21 = PathSet.prototype; void p21;
+// @ts-expect-error no prototype is promised
+const p22 = Result.prototype; void p22;
+// @ts-expect-error no prototype is promised
+const p23 = VoidResult.prototype; void p23;
+// @ts-expect-error no prototype is promised
+const p24 = STArray.prototype; void p24;
+// @ts-expect-error no prototype is promised
+const p25 = STObject.prototype; void p25;
+// @ts-expect-error no prototype is promised
+const p26 = SerializedField.prototype; void p26;
+// @ts-expect-error no prototype is promised
+const p27 = Vector256.prototype; void p27;
+// @ts-expect-error no prototype is promised
+const p28 = XChainBridge.prototype; void p28;
+// @ts-expect-error no prototype is promised
+const p29 = XFLDecimal.prototype; void p29;
