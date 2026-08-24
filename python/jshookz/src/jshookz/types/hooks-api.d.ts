@@ -3,6 +3,7 @@ export {};
 declare const __stObjectBrand: unique symbol;
 declare const __stArrayBrand: unique symbol;
 declare const __providerValueBrand: unique symbol;
+declare const __binarySchemaBrand: unique symbol;
 
 declare global {
   /**
@@ -35,6 +36,16 @@ declare global {
   type HashWidth = 16 | 20 | 24 | 32 | 48 | 64;
   type UInt32OrHash = UInt32 | Hash256;
   type JSFalsy = false | 0 | 0n | "" | null | undefined;
+  /**
+   * Rich provider values (AccountID, Hash256, STBlob, the UInt family,
+   * XFLDecimal, Amount, Currency…) are ordinary objects and therefore
+   * ALWAYS JS-truthy — including `UInt64.zero`, `XFLDecimal.zero`,
+   * `Hash256.zero`, `AccountID.zero`, and `Currency.native`. Their
+   * zero/native/sentinel STATES are domain facts, tested with
+   * `isZero()`, `isNative`, `equals(...)` and friends — never with
+   * truthiness. Presence is its own question: the Present verbs. These
+   * aliases name the LANGUAGE's coercion law, not a domain claim.
+   */
   type JSTruthy<T> = Exclude<T, JSFalsy>;
   /** A successful, non-nullish value; falsy-but-present values qualify. */
   type Present<T> = Exclude<T, null | undefined>;
@@ -184,6 +195,14 @@ declare global {
       };
   type ParseResult<T> = Result<T, ParseError>;
 
+  /** Application-value failure while encoding for the wire. */
+  type EncodeError = {
+    readonly domain: "encode";
+    readonly issue: "invalid-value";
+    readonly field?: string;
+  };
+  type EncodeResult = Result<STBlob, EncodeError>;
+
   /** Data failure from certifying one complete serialized STObject root. */
   type ObjectParseError =
     | { readonly domain: "parse"; readonly issue: "malformed"; readonly offset: number }
@@ -306,8 +325,12 @@ declare global {
   }
   const UInt64: UInt64Factory;
 
-  /** Structural decoding contract accepted by typed state reads. */
+  /**
+   * Decoding contract accepted by typed state reads. Sealed: schemas are
+   * provider-minted proof objects (`cell`/`record` factories).
+   */
   interface BinarySchema<T> {
+    readonly [__binarySchemaBrand]: T;
     readonly byteLength: number;
     safeParse(value: BytesLike | STBlob): ParseResult<T>;
   }
@@ -348,8 +371,8 @@ declare global {
     readonly byteLength: Width;
     safeParse(value: BytesLike | STBlob): ParseResult<T>;
     parse(value: BytesLike | STBlob): T;
-    /** Result-valued encode: rejects out-of-domain values as ParseError. */
-    safeEncode(value: T): ParseResult<STBlob>;
+    /** Result-valued encode: rejects out-of-domain values as EncodeError. */
+    safeEncode(value: T): EncodeResult;
     /**
      * Assertion form for programmer-guaranteed values. Throws when the value
      * leaves the codec's domain; prefer `safeEncode` for data-driven values.
@@ -424,7 +447,7 @@ declare global {
      * and returns the exact record bytes, or a ParseError naming the first
      * out-of-domain field.
      */
-    safeEncode(value: Value): ParseResult<STBlob>;
+    safeEncode(value: Value): EncodeResult;
 
     /**
      * Assertion form for programmer-guaranteed values. Throws on
@@ -1028,7 +1051,8 @@ declare global {
     get<T>(field: SerializedField<T>): T | undefined;
     get(field: string): SerializedValue;
     fieldBytes(field: string | number | SerializedField<unknown>): STBlob | undefined;
-    withField(field: string | number | SerializedField<unknown>, value: Exclude<SerializedValue, undefined> | Uint8Array | ArrayBuffer): STObject;
+    withField<T>(field: SerializedField<T>, value: T | Uint8Array | ArrayBuffer): STObject;
+    withField(field: string | number, value: Exclude<SerializedValue, undefined> | Uint8Array | ArrayBuffer): STObject;
     withoutField(field: string | number | SerializedField<unknown>): STObject;
     toBytes(): Uint8Array;
     toJSON(): unknown;
@@ -1177,6 +1201,7 @@ declare global {
    * constructs them; there is no public constructor.
    */
   class HostObject {
+    readonly [__providerValueBrand]: "HostObject";
     protected constructor();
     get<T>(field: SerializedField<T>): HostResult<T | undefined>;
     get(field: string): HostResult<SerializedValue>;

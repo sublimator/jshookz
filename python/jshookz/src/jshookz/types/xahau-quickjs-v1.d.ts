@@ -30,6 +30,16 @@ declare global {
 
   type JSFalsy = false | 0 | 0n | "" | null | undefined;
 
+  /**
+   * Rich provider values (AccountID, Hash256, STBlob, the UInt family,
+   * XFLDecimal, Amount, Currency…) are ordinary objects and therefore
+   * ALWAYS JS-truthy — including `UInt64.zero`, `XFLDecimal.zero`,
+   * `Hash256.zero`, `AccountID.zero`, and `Currency.native`. Their
+   * zero/native/sentinel STATES are domain facts, tested with
+   * `isZero()`, `isNative`, `equals(...)` and friends — never with
+   * truthiness. Presence is its own question: the Present verbs. These
+   * aliases name the LANGUAGE's coercion law, not a domain claim.
+   */
   type JSTruthy<T> = Exclude<T, JSFalsy>;
 
   /** A successful, non-nullish value; falsy-but-present values qualify. */
@@ -153,6 +163,15 @@ declare global {
    * same host rules and preserve the corresponding Hook status exactly.
    */
   type HostResult<T> = Result<T, HostError>;
+
+  /** Application-value failure while encoding for the wire. */
+  type EncodeError = {
+    readonly domain: "encode";
+    readonly issue: "invalid-value";
+    readonly field?: string;
+  };
+
+  type EncodeResult = Result<STBlob, EncodeError>;
 
   /** Data failure from certifying one complete serialized STObject root. */
   type ObjectParseError =
@@ -556,7 +575,8 @@ declare global {
     get<T>(field: SerializedField<T>): T | undefined;
     get(field: string): SerializedValue;
     fieldBytes(field: string | number | SerializedField<unknown>): STBlob | undefined;
-    withField(field: string | number | SerializedField<unknown>, value: Exclude<SerializedValue, undefined> | Uint8Array | ArrayBuffer): STObject;
+    withField<T>(field: SerializedField<T>, value: T | Uint8Array | ArrayBuffer): STObject;
+    withField(field: string | number, value: Exclude<SerializedValue, undefined> | Uint8Array | ArrayBuffer): STObject;
     withoutField(field: string | number | SerializedField<unknown>): STObject;
     toBytes(): Uint8Array;
     toJSON(): unknown;
