@@ -266,11 +266,6 @@ declare global {
 
   const UInt64: UInt64Factory;
 
-  interface SerializationOptions {
-    readonly field?: string | number;
-    readonly includeFieldHeader?: boolean;
-  }
-
   /** @serial Blob */
   interface STBlob {
     readonly [__providerValueBrand]: "STBlob";
