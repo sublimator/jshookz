@@ -32,6 +32,42 @@ IOU_AMOUNT_OBJECTS = {
 }
 
 
+def test_native_amount_issue_currency_retains_the_certified_owner():
+    host = WasmHost.profiled()
+    host.init()
+    try:
+        result = host.eval(
+            "JSON.stringify((() => {"
+            "  const amount = util.decodeObject("
+            "    STBlob.fromHex('61400000000000002A')).Amount;"
+            "  const issue = amount.issue;"
+            "  const currency = issue.currency;"
+            "  return {"
+            "    amountKind: amount.kind,"
+            "    issueKind: issue.kind,"
+            "    issueBytes: issue.toBytes().byteLength,"
+            "    currencySame: currency === issue.currency,"
+            "    currencyNative: currency.isNative,"
+            "    currencyText: currency.toString(),"
+            "    currencyHex: currency.toHex()"
+            "  };"
+            "})())"
+        )
+    finally:
+        host.destroy()
+
+    assert result.ok, result.error
+    assert json.loads(result.result_value) == {
+        "amountKind": "native",
+        "issueKind": "native",
+        "issueBytes": 20,
+        "currencySame": True,
+        "currencyNative": True,
+        "currencyText": "XAH",
+        "currencyHex": "00" * 20,
+    }
+
+
 def test_legacy_rich_roots_are_non_constructible_factory_objects():
     host = WasmHost.profiled()
     host.init()

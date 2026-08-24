@@ -35,6 +35,12 @@ enum class LeafKind : std::uint8_t {
   count,
 };
 
+enum class PayloadOrigin : std::uint8_t {
+  copied,
+  ownerView,
+  ownerDerived,
+};
+
 constexpr std::size_t kindCount = static_cast<std::size_t>(LeafKind::count);
 
 JSClassID classIds[kindCount]{};
@@ -51,7 +57,8 @@ struct IssueState {
   JSValue owner = JS_UNDEFINED;
   std::uint8_t const *data = nullptr;
   std::uint8_t bytes[44];
-  std::uint32_t length;
+  std::uint8_t length;
+  PayloadOrigin origin;
   JSValue cache[3];
 };
 
@@ -862,11 +869,14 @@ JSValue issueCurrency(JSContext *ctx, JSValueConst value) {
     return JS_UNDEFINED;
   if (!JS_IsUndefined(state->cache[0]))
     return JS_DupValue(ctx, state->cache[0]);
-  return publishIssueChild(
-      ctx, *state, 0,
-      JS_IsUndefined(state->owner)
-          ? makeCurrencyBytes(ctx, state->data, 20)
-          : makeCurrencyView(ctx, state->owner, state->data, 20));
+  JSValue child = JS_UNDEFINED;
+  if (state->origin == PayloadOrigin::copied)
+    child = makeCurrencyBytes(ctx, state->data, 20);
+  else if (state->origin == PayloadOrigin::ownerDerived)
+    child = makeCurrencyDerivedBytes(ctx, state->owner, state->data, 20);
+  else
+    child = makeCurrencyView(ctx, state->owner, state->data, 20);
+  return publishIssueChild(ctx, *state, 0, child);
 }
 
 JSValue issueIssuer(JSContext *ctx, JSValueConst value) {
@@ -877,6 +887,8 @@ JSValue issueIssuer(JSContext *ctx, JSValueConst value) {
     return JS_UNDEFINED;
   if (!JS_IsUndefined(state->cache[1]))
     return JS_DupValue(ctx, state->cache[1]);
+  if (state->origin == PayloadOrigin::ownerDerived)
+    return internalError(ctx, "derived IOU Issue is not a provider value");
   return publishIssueChild(
       ctx, *state, 1,
       JS_IsUndefined(state->owner)
@@ -1551,6 +1563,14 @@ JSValue makeCurrencyView(JSContext *ctx, JSValueConst owner,
                       "Currency construction requires 20 certified bytes");
 }
 
+JSValue makeCurrencyDerivedBytes(JSContext *ctx, JSValueConst owner,
+                                 std::uint8_t const *bytes,
+                                 std::uint32_t length) {
+  return newFixedDerived<20>(
+      ctx, LeafKind::currency, owner, bytes, length,
+      "Currency derived construction requires a certified owner");
+}
+
 bool readCurrencyBytes(JSContext *ctx, JSValueConst value,
                        std::uint8_t *output) noexcept {
   if (output == nullptr || !runtimeReady(ctx) || !JS_IsObject(value) ||
@@ -1657,12 +1677,6 @@ bool detail::readRichLeafNominalPayload(
 
 namespace {
 
-enum class PayloadOrigin : std::uint8_t {
-  copied,
-  ownerView,
-  ownerDerived,
-};
-
 [[nodiscard]] JSValue newIssue(JSContext *ctx, JSValueConst owner,
                                std::uint8_t const *bytes, std::uint32_t length,
                                PayloadOrigin origin) {
@@ -1675,6 +1689,8 @@ enum class PayloadOrigin : std::uint8_t {
                : JS_ThrowTypeError(ctx, "Issue: certified owner is required");
   if (origin == PayloadOrigin::ownerDerived && !JS_IsObject(owner))
     return internalError(ctx, "Issue derived value requires certified owner");
+  if (origin == PayloadOrigin::ownerDerived && length == 40)
+    return internalError(ctx, "derived IOU Issue is not a provider value");
   auto *state = static_cast<IssueState *>(js_malloc(ctx, sizeof(IssueState)));
   if (state == nullptr)
     return oom(ctx);
@@ -1685,7 +1701,8 @@ enum class PayloadOrigin : std::uint8_t {
     std::memcpy(state->bytes, bytes, length);
     state->data = state->bytes;
   }
-  state->length = length;
+  state->length = static_cast<std::uint8_t>(length);
+  state->origin = origin;
   for (JSValue &cached : state->cache)
     cached = JS_UNDEFINED;
   JSValue value = newStateObject(ctx, LeafKind::issue, state);

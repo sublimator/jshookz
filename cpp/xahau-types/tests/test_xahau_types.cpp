@@ -44,17 +44,22 @@ hexBytes(char const* text)
 }
 
 JSValue
-makeIssueForAmount(JSContext* ctx, JSValueConst,
+makeIssueForAmount(JSContext* ctx, JSValueConst owner,
     jshookz::provider::types::AmountIssueKind kind,
     std::uint8_t const* identity, std::uint32_t length)
 {
     namespace types = jshookz::provider::types;
     if (kind == types::AmountIssueKind::native) {
         std::uint8_t native[20] = {};
-        return types::makeIssueBytes(ctx, native, sizeof(native));
+        return JS_IsUndefined(owner)
+            ? types::makeIssueBytes(ctx, native, sizeof(native))
+            : types::makeIssueDerivedBytes(
+                  ctx, owner, native, sizeof(native));
     }
     if (kind == types::AmountIssueKind::iou)
-        return types::makeIssueBytes(ctx, identity, length);
+        return JS_IsUndefined(owner)
+            ? types::makeIssueBytes(ctx, identity, length)
+            : types::makeIssueView(ctx, owner, identity, length);
     if (identity == nullptr || length != 24)
         return JS_ThrowInternalError(
             ctx, "invalid certified MPT issue identity");
@@ -65,7 +70,9 @@ makeIssueForAmount(JSContext* ctx, JSValueConst,
     issue[41] = identity[2];
     issue[42] = identity[1];
     issue[43] = identity[0];
-    return types::makeIssueBytes(ctx, issue, sizeof(issue));
+    return JS_IsUndefined(owner)
+        ? types::makeIssueBytes(ctx, issue, sizeof(issue))
+        : types::makeIssueDerivedBytes(ctx, owner, issue, sizeof(issue));
 }
 
 }  // namespace
@@ -938,6 +945,22 @@ TEST_F(XahauTypes, RichFixedIssueVectorAndBridgeLeavesAreNominalAndImmutable)
 
 TEST_F(XahauTypes, ObjectMaterializesAmountPathSetAndBridgeWithExactIdentity)
 {
+    installRoot(hexBytes("61400000000000002A"));
+    auto nativeAmount = eval(R"JS(
+        (() => {
+          const value = root.Amount;
+          const issue = value.issue;
+          const currency = issue.currency;
+          return value.kind === "native" && value.drops === 42n &&
+            issue.kind === "native" && issue.toBytes().byteLength === 20 &&
+            currency === issue.currency && currency.isNative &&
+            currency.toString() === "XAH" &&
+            currency.toBytes().every(byte => byte === 0);
+        })()
+    )JS");
+    ASSERT_FALSE(nativeAmount.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, nativeAmount.get()));
+
     installRoot(
         hexBytes("61D4838D7EA4C680000000000000000000000000005553440000000000"
                  "B5F762798A53D543A014CAF8B297CFF8F2F937E8"

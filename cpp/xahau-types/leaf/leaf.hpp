@@ -44,6 +44,10 @@ void unregisterRichLeafTypes(JSRuntime *runtime) noexcept;
 [[nodiscard]] JSValue makeCurrencyView(JSContext *ctx, JSValueConst owner,
                                        std::uint8_t const *bytes,
                                        std::uint32_t length);
+[[nodiscard]] JSValue makeCurrencyDerivedBytes(JSContext *ctx,
+                                               JSValueConst owner,
+                                               std::uint8_t const *bytes,
+                                               std::uint32_t length);
 [[nodiscard]] bool readCurrencyBytes(JSContext *ctx, JSValueConst value,
                                      std::uint8_t *output) noexcept;
 [[nodiscard]] JSValue makeIssueBytes(JSContext *ctx, std::uint8_t const *bytes,
