@@ -348,8 +348,9 @@ declare global {
 
   /**
    * Immutable provider-minted fixed-width unsigned integer. Width interfaces
-   * extend this type-only nominal base; the value-level `UIntN` globals are
-   * frozen factory objects, not constructors or `instanceof` targets.
+   * extend this type-only nominal base. The value-level `UIntN` globals are
+   * frozen, non-constructible factory/type objects: `instanceof` classifies
+   * and narrows; `new` and `.prototype` are not API.
    *
    * JavaScript operators intentionally remain available through the default
    * primitive record projections (`u32be`, `u64be`). Choose this value type
