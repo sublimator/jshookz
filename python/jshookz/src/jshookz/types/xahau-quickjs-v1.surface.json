@@ -43,7 +43,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "56b4b2974b8a63a550721abd60350e392990762e76666f050b1a7c810e584957"
+    "sha256": "3c72969a4c85474aa0e973c0032b4efa91a1802cbc311335a71bb2c1b9398f6e"
   },
   "globals": {
     "AccountID": "object",
@@ -416,7 +416,10 @@
         "subtract": "function",
         "toBigInt": "function",
         "toNumber": "function",
-        "toString": "function"
+        "toString": "function",
+        "wrappingAdd": "function",
+        "wrappingMultiply": "function",
+        "wrappingSubtract": "function"
       },
       "own": [
         "add",
@@ -430,7 +433,10 @@
         "subtract",
         "toBigInt",
         "toNumber",
-        "toString"
+        "toString",
+        "wrappingAdd",
+        "wrappingMultiply",
+        "wrappingSubtract"
       ],
       "probe": "UInt8.zero"
     },
@@ -536,6 +542,7 @@
       "from": "function",
       "max": "value",
       "mulDiv": "function",
+      "mulDivI64Ceiling": "function",
       "zero": "value"
     },
     "UInt8": {

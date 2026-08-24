@@ -164,6 +164,26 @@ declare global {
    */
   type HostResult<T> = Result<T, HostError>;
 
+  /** A pure binary-codec validation result; no Hooks host call occurred. */
+  type ParseError =
+    | {
+        readonly domain: "parse";
+        readonly issue: "wrong-length";
+        readonly expectedLength: number;
+        readonly actualLength: number;
+      }
+    | {
+        readonly domain: "parse";
+        readonly issue: "invalid-value";
+      }
+    | {
+        readonly domain: "parse";
+        readonly issue: "invalid-field";
+        readonly field: string;
+      };
+
+  type ParseResult<T> = Result<T, ParseError>;
+
   /** Application-value failure while encoding for the wire. */
   type EncodeError = {
     readonly domain: "encode";
@@ -224,6 +244,13 @@ declare global {
     subtract(other: UIntInput<Bits>): UIntResult<UInt<Bits>>;
     saturatingAdd(other: UInt<Bits>): UInt<Bits>;
     saturatingSubtract(other: UInt<Bits>): UInt<Bits>;
+    /**
+     * Modular arithmetic at the declared width — C's silent wrap under an
+     * honest name. Total by construction; the disposition is the name.
+     */
+    wrappingAdd(other: UInt<Bits>): UInt<Bits>;
+    wrappingSubtract(other: UInt<Bits>): UInt<Bits>;
+    wrappingMultiply(other: UInt<Bits>): UInt<Bits>;
   }
 
   interface UInt8 extends UInt<8> {}
@@ -282,9 +309,65 @@ declare global {
       multiplier: UIntInput<64>,
       divisor: UIntInput<64>,
     ): UIntResult<UInt64>;
+    /**
+     * C's int64 ceiling-division domain: operands must fit int64, the
+     * intermediate product is exact, rounding is CEILING, and the result
+     * fails when it exceeds INT64_MAX or the divisor is zero. This is the
+     * exact boundary the elp-staking port flipped (same transaction,
+     * opposite terminal); the name carries both domain and rounding.
+     */
+    mulDivI64Ceiling(
+      multiplicand: UIntInput<64>,
+      multiplier: UIntInput<64>,
+      divisor: UIntInput<64>,
+    ): UIntResult<UInt64>;
   }
 
   const UInt64: UInt64Factory;
+
+  /**
+   * Decoding contract accepted by typed state reads. Sealed: schemas are
+   * provider-minted proof objects (`cell`/`record` factories).
+   */
+  interface BinarySchema<T> {
+    readonly [__binarySchemaBrand]: T;
+    readonly byteLength: number;
+    safeParse(value: BytesLike | STBlob): ParseResult<T>;
+  }
+
+  /**
+   * Schema-batch values: object key is the wire name, value is a codec.
+   * A `RecordField` is a nameless unit codec; the batch supplies the name
+   * from the key (also `ParseError.field`). A `BinarySchema` already has a
+   * name and is accepted as-is.
+   */
+  type BatchSchemaField = RecordField<unknown, number> | BinarySchema<unknown>;
+
+  type BatchSchemaValue<F> = F extends BinarySchema<infer U>
+    ? U
+    : F extends RecordField<infer U, number>
+      ? U
+      : never;
+
+  /**
+   * Per-key outcome of a schema batch: a provider Result, so the whole
+   * verb family consumes it directly — `rollback.requirePresent(b.KEY,
+   * msg)` demands it, `.okOr(default)` defaults it, `.ok` narrows it.
+   * Missing is a successful `undefined`; invalid carries the ParseError;
+   * host failure is BATCH-level (one crossing, one host Result).
+   */
+  type BatchOutcome<T> = Result<T | undefined, ParseError>;
+
+  type BatchOutcomes<T extends Record<string, BatchSchemaField>> = {
+    readonly [K in keyof T]: BatchOutcome<BatchSchemaValue<T[K]>>;
+  };
+
+  /** Width-known element codec. Offset is not part of the unit; composition assigns it. */
+  abstract class RecordField<T, Width extends number = number> {
+    private readonly __recordFieldBrand: T;
+    private constructor();
+    readonly byteLength: Width;
+  }
 
   /** @serial Blob */
   interface STBlob {

@@ -270,6 +270,13 @@ declare global {
     subtract(other: UIntInput<Bits>): UIntResult<UInt<Bits>>;
     saturatingAdd(other: UInt<Bits>): UInt<Bits>;
     saturatingSubtract(other: UInt<Bits>): UInt<Bits>;
+    /**
+     * Modular arithmetic at the declared width — C's silent wrap under an
+     * honest name. Total by construction; the disposition is the name.
+     */
+    wrappingAdd(other: UInt<Bits>): UInt<Bits>;
+    wrappingSubtract(other: UInt<Bits>): UInt<Bits>;
+    wrappingMultiply(other: UInt<Bits>): UInt<Bits>;
   }
 
 
@@ -322,6 +329,18 @@ declare global {
       multiplier: UIntInput<64>,
       divisor: UIntInput<64>,
     ): UIntResult<UInt64>;
+    /**
+     * C's int64 ceiling-division domain: operands must fit int64, the
+     * intermediate product is exact, rounding is CEILING, and the result
+     * fails when it exceeds INT64_MAX or the divisor is zero. This is the
+     * exact boundary the elp-staking port flipped (same transaction,
+     * opposite terminal); the name carries both domain and rounding.
+     */
+    mulDivI64Ceiling(
+      multiplicand: UIntInput<64>,
+      multiplier: UIntInput<64>,
+      divisor: UIntInput<64>,
+    ): UIntResult<UInt64>;
   }
   const UInt64: UInt64Factory;
 
@@ -347,6 +366,17 @@ declare global {
     : F extends RecordField<infer U, number>
       ? U
       : never;
+  /**
+   * Per-key outcome of a schema batch: a provider Result, so the whole
+   * verb family consumes it directly — `rollback.requirePresent(b.KEY,
+   * msg)` demands it, `.okOr(default)` defaults it, `.ok` narrows it.
+   * Missing is a successful `undefined`; invalid carries the ParseError;
+   * host failure is BATCH-level (one crossing, one host Result).
+   */
+  type BatchOutcome<T> = Result<T | undefined, ParseError>;
+  type BatchOutcomes<T extends Record<string, BatchSchemaField>> = {
+    readonly [K in keyof T]: BatchOutcome<BatchSchemaValue<T[K]>>;
+  };
   type BatchSchemaValues<T extends Record<string, BatchSchemaField>> = {
     readonly [K in keyof T]: BatchSchemaValue<T[K]> | undefined;
   };
@@ -829,6 +859,12 @@ declare global {
     exponent(): number;
     toDecimal(): XFLDecimal;
     static fromRaw(raw: bigint): XFLResult<XFLWord>;
+    /**
+     * Compatibility boundary for ported C: admits exactly the words the
+     * C `> 0` predicate accepts, preserving noncanonical positive words
+     * as-is. For ported semantics only — new code uses `fromRaw`.
+     */
+    static fromRawCompat(raw: bigint): XFLResult<XFLWord>;
     static fromDecimal(value: XFLDecimal): XFLWord;
   }
 
@@ -1886,7 +1922,7 @@ declare global {
      */
     function params<
       const T extends { readonly [K: string]: BatchSchemaField },
-    >(fields: T): Result<BatchSchemaValues<T>, HostError | ParseError>;
+    >(fields: T): HostResult<BatchOutcomes<T>>;
     /**
      * Minted originating-transaction metadata, if the host supplied it.
      */
@@ -2007,8 +2043,17 @@ declare global {
       }
 
       interface RemitOptions {
+        /**
+         * Sending account; the only builder that lacked one (0070:286,
+         * 0084:161-169).
+         */
+        readonly account?: AccountID;
         readonly destination: AccountID;
         readonly uri?: StateValueLike;
+        /**
+         * An EMPTY amounts array is refused at BUILD time with stage
+         * "amounts" — not deferred to emit (0070:294-297, 0084:161-169).
+         */
         readonly amounts?: readonly Amount[];
         readonly sourceTag?: UInt32;
         readonly destinationTag?: UInt32;
@@ -2225,7 +2270,7 @@ declare global {
      */
     function params<
       const T extends { readonly [K: string]: BatchSchemaField },
-    >(fields: T): Result<BatchSchemaValues<T>, HostError | ParseError>;
+    >(fields: T): HostResult<BatchOutcomes<T>>;
     function paramSet(targetHook: Hash256, name: StateKeyLike, value: BytesLike): HostVoidResult;
     function skip(targetHook: Hash256, remove?: boolean): HostVoidResult;
     function again(): HostVoidResult;
