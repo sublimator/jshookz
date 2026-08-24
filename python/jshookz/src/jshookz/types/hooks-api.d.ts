@@ -2408,6 +2408,12 @@ declare global {
       results: readonly HostVoidResult[],
       message?: string | BytesLike | STBlob,
     ): readonly undefined[];
+    /** Domain effect form with a contract-owned policy. */
+    function onAnyFail<Error>(
+      results: readonly VoidResult<Error>[],
+      message: string | BytesLike | STBlob,
+      code: number,
+    ): readonly undefined[];
 
     /** Apply a contract-owned rollback policy when any domain result failed. */
     function onAnyFail<T, Error>(
@@ -2429,7 +2435,10 @@ declare global {
       code: number,
     ): readonly T[];
 
-    /** Effect form: one `undefined` slot per effect unless every one failed. */
+    /**
+     * Effect form: one `undefined` slot per SUCCESSFUL effect (failures
+     * are skipped, not slotted); rolls back only when every one failed.
+     */
     function onAllFail<Error>(
       results: readonly VoidResult<Error>[],
       message: string | BytesLike | STBlob,

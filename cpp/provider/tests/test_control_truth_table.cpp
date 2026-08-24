@@ -310,8 +310,9 @@ TEST_F(ControlTruthTable, EffectArraysFitTheAggregates)
     expectReturn(
         "rollback.onAnyFail([VOIDOK, VOIDOK], 'm').length", 2);
     expectRollback("rollback.onAnyFail([VOIDOK, VOIDFAIL], 'm')");
+    // Successes only: the failed effect is skipped, not slotted.
     expectReturn(
-        "rollback.onAllFail([VOIDOK, VOIDFAIL], 'm', 34).length", 2);
+        "rollback.onAllFail([VOIDOK, VOIDFAIL], 'm', 34).length", 1);
     expectRollback("rollback.onAllFail([VOIDFAIL, VOIDFAIL], 'm', 34)");
     EXPECT_EQ(g_last_rollback_code, 34);
 }
