@@ -678,7 +678,7 @@ declare global {
   }
 
   /** @serial Hash128 */
-  interface Hash128 {
+  interface Hash128 extends Hash<16> {
     readonly [__providerValueBrand]: "Hash128";
     readonly byteLength: 16;
     toBytes(): Uint8Array;
@@ -689,7 +689,7 @@ declare global {
   }
 
   /** @serial Hash160 */
-  interface Hash160 {
+  interface Hash160 extends Hash<20> {
     readonly [__providerValueBrand]: "Hash160";
     readonly byteLength: 20;
     toBytes(): Uint8Array;
@@ -700,7 +700,7 @@ declare global {
   }
 
   /** @serial Hash192 */
-  interface Hash192 {
+  interface Hash192 extends Hash<24> {
     readonly [__providerValueBrand]: "Hash192";
     readonly byteLength: 24;
     toBytes(): Uint8Array;
@@ -711,7 +711,7 @@ declare global {
   }
 
   /** @serial Hash256 */
-  interface Hash256 {
+  interface Hash256 extends Hash<32> {
     readonly [__providerValueBrand]: "Hash256";
     toHex(): HexString;
     toBytes(): Uint8Array;

@@ -3,6 +3,11 @@ export {};
 declare const __stObjectBrand: unique symbol;
 declare const __stArrayBrand: unique symbol;
 declare const __providerValueBrand: unique symbol;
+declare const __binarySchemaBrand: unique symbol;
+declare const __resultBrand: unique symbol;
+declare const __voidResultBrand: unique symbol;
+declare const __recordFieldBrand: unique symbol;
+declare const __serializedFieldBrand: unique symbol;
 
 declare global {
   /**
@@ -38,6 +43,8 @@ declare global {
   type LedgerSequence = number;
 
   type RippleTime = number;
+
+  type HashWidth = 16 | 20 | 24 | 32 | 48 | 64;
 
   type JSFalsy = false | 0 | 0n | "" | null | undefined;
 
@@ -388,7 +395,7 @@ declare global {
     equals(other: BytesLike | STBlob): boolean;
   }
 
-  interface STBlobFactory {
+  interface STBlobFactory extends RuntimeType<STBlob> {
     from(value: BytesLike): STBlob;
     /** Decode an even-length hexadecimal literal. */
     fromHex(value: HexString): STBlob;
@@ -396,8 +403,18 @@ declare global {
 
   const STBlob: STBlobFactory;
 
+  /** @inner-rich-type Hash */
+  interface Hash<Width extends HashWidth = HashWidth> {
+    readonly byteLength: Width;
+    toBytes(): Uint8Array;
+    toHex(): HexString;
+    isZero(): boolean;
+    equals(other: BytesLike | Hash<Width>): boolean;
+    compare(other: Hash<Width>): -1 | 0 | 1;
+  }
+
   /** @serial Hash128 */
-  interface Hash128 {
+  interface Hash128 extends Hash<16> {
     readonly [__providerValueBrand]: "Hash128";
     readonly byteLength: 16;
     toBytes(): Uint8Array;
@@ -408,7 +425,7 @@ declare global {
   }
 
   /** @serial Hash160 */
-  interface Hash160 {
+  interface Hash160 extends Hash<20> {
     readonly [__providerValueBrand]: "Hash160";
     readonly byteLength: 20;
     toBytes(): Uint8Array;
@@ -419,7 +436,7 @@ declare global {
   }
 
   /** @serial Hash192 */
-  interface Hash192 {
+  interface Hash192 extends Hash<24> {
     readonly [__providerValueBrand]: "Hash192";
     readonly byteLength: 24;
     toBytes(): Uint8Array;
@@ -430,7 +447,7 @@ declare global {
   }
 
   /** @serial Hash256 */
-  interface Hash256 {
+  interface Hash256 extends Hash<32> {
     readonly [__providerValueBrand]: "Hash256";
     toHex(): HexString;
     toBytes(): Uint8Array;
@@ -438,7 +455,7 @@ declare global {
     equals(other: Hash256): boolean;
   }
 
-  interface Hash256Factory {
+  interface Hash256Factory extends RuntimeType<Hash256> {
     readonly zero: Hash256;
     from(value: BytesLike): Hash256;
     /** Decode exactly 32 bytes from an even-length hexadecimal literal. */
@@ -456,7 +473,7 @@ declare global {
     equals(other: AccountID): boolean;
   }
 
-  interface AccountIDFactory {
+  interface AccountIDFactory extends RuntimeType<AccountID> {
     /** XRP's native-issue account: 20 zero bytes. */
     readonly zero: AccountID;
     /** Ripple's no-account sentinel: integer one as a 20-byte AccountID. */
