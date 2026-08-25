@@ -1530,7 +1530,8 @@ TEST_F(XahauTypes, ObjectMaterializesAmountPathSetAndBridgeWithExactIdentity)
             !converted.isZero() &&
             Object.getPrototypeOf(converted) === decimalPrototype &&
             Reflect.ownKeys(decimalPrototype).join(",") ===
-              "isNegative,isZero" && Object.isFrozen(decimalPrototype) &&
+              "isNegative,isZero,sign,negate,equals,compare" &&
+            Object.isFrozen(decimalPrototype) &&
             !("raw" in decimal) && !("mantissa" in decimal) &&
             !("exponent" in decimal) &&
             value.currency.toString() === "USD" &&
