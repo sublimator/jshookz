@@ -154,13 +154,24 @@ check_generated_definitions() {
     scripts/check-generated-definitions.sh
 }
 
-build_host_cpp() {
+configure_host_cpp() {
     conan profile detect --force
     conan install cpp --output-folder=build/cpp --build=missing \
       -s compiler.cppstd=23 -s build_type=Release
     cmake -S cpp -B build/cpp -G Ninja \
       -DCMAKE_TOOLCHAIN_FILE="$repo_root/build/cpp/conan_toolchain.cmake" \
       -DCMAKE_BUILD_TYPE=Release
+}
+
+build_host_cpp_fast() {
+    configure_host_cpp
+    cmake --build build/cpp --target provider_static_poison_bad_alloc
+    ctest --test-dir build/cpp --output-on-failure \
+      --tests-regex '^provider_static_compiled_poison_bad_alloc$'
+}
+
+build_host_cpp_full() {
+    configure_host_cpp
     cmake --build build/cpp
     ctest --test-dir build/cpp --output-on-failure
 }
@@ -196,7 +207,7 @@ package_smoke() {
 
 print_identity
 if [[ "$mode" == host-cpp ]]; then
-    run_stage host-cpp build_host_cpp
+    run_stage host-cpp-fast build_host_cpp_fast
 else
     run_stage gate-authority check_gate_authority
     run_stage locked-environments install_locked_environments
@@ -204,7 +215,7 @@ else
     run_stage provider-build build_provider
     run_stage f0-identity check_f0_identity
     run_stage generated-definitions check_generated_definitions
-    run_stage host-cpp build_host_cpp
+    run_stage host-cpp build_host_cpp_full
     run_stage product-tests test_product_surfaces
     run_stage wasm-stack check_wasm_stack
     run_stage package-smoke package_smoke

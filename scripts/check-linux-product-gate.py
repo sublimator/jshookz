@@ -54,13 +54,14 @@ HASH_KEYS = {
     "WIZER_SHA256",
 }
 REQUIRED_STAGES = {
+    "host-cpp-fast": "build_host_cpp_fast",
     "gate-authority": "check_gate_authority",
     "locked-environments": "install_locked_environments",
     "api-artifacts": "verify_api_artifacts",
     "provider-build": "build_provider",
     "f0-identity": "check_f0_identity",
     "generated-definitions": "check_generated_definitions",
-    "host-cpp": "build_host_cpp",
+    "host-cpp": "build_host_cpp_full",
     "product-tests": "test_product_surfaces",
     "wasm-stack": "check_wasm_stack",
     "package-smoke": "package_smoke",
@@ -88,9 +89,15 @@ FUNCTION_TOKENS = {
     "build_provider": ("jshookz_cli build provider",),
     "check_f0_identity": ("check-f0-provider-identity.py",),
     "check_generated_definitions": ("check-generated-definitions.sh",),
-    "build_host_cpp": (
+    "configure_host_cpp": (
         "conan install cpp",
         "cmake -S cpp",
+    ),
+    "build_host_cpp_fast": (
+        "--target provider_static_poison_bad_alloc",
+        "--tests-regex '^provider_static_compiled_poison_bad_alloc$'",
+    ),
+    "build_host_cpp_full": (
         "cmake --build build/cpp",
         "ctest --test-dir build/cpp",
     ),
