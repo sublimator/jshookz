@@ -17,6 +17,7 @@ SURFACE = (
     / "xahau-quickjs-v1.surface.json"
 )
 RAW_BYTE_APIS = ("JS_GetArrayBuffer(", "JS_GetTypedArrayBuffer(")
+RAW_BYTE_PARSER_SOURCE = "xahau-types/quickjs.cpp"
 
 
 def _cpp_sources() -> dict[str, str]:
@@ -33,7 +34,7 @@ def _raw_byte_api_uses(sources: dict[str, str]) -> list[str]:
     return sorted(
         name
         for name, source in sources.items()
-        if Path(name).name != "quickjs.cpp"
+        if name != RAW_BYTE_PARSER_SOURCE
         and any(api in source for api in RAW_BYTE_APIS)
     )
 
@@ -41,10 +42,11 @@ def _raw_byte_api_uses(sources: dict[str, str]) -> list[str]:
 def test_raw_byte_api_fence_detects_a_binding_bypass():
     assert _raw_byte_api_uses(
         {
-            "quickjs.cpp": "JS_GetArrayBuffer(ctx, &size, value);",
+            RAW_BYTE_PARSER_SOURCE: "JS_GetArrayBuffer(ctx, &size, value);",
             "bad_binding.cpp": "JS_GetTypedArrayBuffer(ctx, value, 0, 0, 0);",
+            "provider/bindings/quickjs.cpp": ("JS_GetArrayBuffer(ctx, &size, value);"),
         }
-    ) == ["bad_binding.cpp"]
+    ) == ["bad_binding.cpp", "provider/bindings/quickjs.cpp"]
 
 
 def test_provider_byte_inputs_funnel_through_byte_view():

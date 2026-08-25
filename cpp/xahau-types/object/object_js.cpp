@@ -2181,7 +2181,11 @@ bool registerObjectTypes(JSContext *ctx) {
   if (!qjs::defineClass(JS_GetRuntime(ctx), &ownerClassId, &ownerClass) ||
       !qjs::defineClass(JS_GetRuntime(ctx), &objectClassId, &objectClass) ||
       !qjs::defineClass(JS_GetRuntime(ctx), &arrayClassId, &arrayClass) ||
-      !qjs::defineClass(JS_GetRuntime(ctx), &iteratorClassId, &iteratorClass)) {
+      !qjs::defineClass(JS_GetRuntime(ctx), &iteratorClassId, &iteratorClass) ||
+      !jshookz::provider::qjs::registerByteClass(
+          objectClassId,
+          jshookz::provider::qjs::ByteClassFamily::serializedType,
+          objectToBytes)) {
     clearRegistrar(JS_GetRuntime(ctx));
     return atomFailure(ctx);
   }

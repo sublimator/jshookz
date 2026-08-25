@@ -12,6 +12,15 @@ class _EffectHost:
         return 0
 
 
+class _RecordingEffectHost:
+    def __init__(self) -> None:
+        self.state_set_calls = 0
+
+    def state_set(self, *_args: object) -> int:
+        self.state_set_calls += 1
+        return 0
+
+
 _NOMINAL_MATRIX = r"""
 JSON.stringify((() => {
   const empty = util.decodeObject(new Uint8Array());
@@ -163,6 +172,29 @@ def test_sealed_provider_runtime_type_observation_is_actual_global_state() -> No
         assert row["has_instance_configurable"] is False
         assert not row["own_prototype"]
         assert not row["constructible"]
+
+
+def test_sealed_provider_state_set_accepts_stobject_serialized_type() -> None:
+    handler = _RecordingEffectHost()
+    host = WasmHost(
+        handler=handler,
+        wasm_path=XAHAU_HOOK_PROVIDER_WASM,
+        fuel=50_000_000,
+    )
+    host.init()
+    try:
+        result = host.eval(
+            "const object = util.decodeObject("
+            "new Uint8Array([0x22, 0, 0, 0, 9]));"
+            "const outcome = state.set('K', object);"
+            "JSON.stringify({ok: outcome.ok, bytes: object.toBytes().length})"
+        )
+    finally:
+        host.destroy()
+
+    assert result.ok, result.error
+    assert result.result_value == '{"ok":true,"bytes":5}'
+    assert handler.state_set_calls == 1
 
 
 def _run_nominal_matrix():

@@ -834,6 +834,26 @@ TEST_F(
     EXPECT_TRUE(JS_ToBool(ctx, value.get()));
 }
 
+TEST_F(XahauTypes, STObjectJoinsSerializedByteFamily)
+{
+    auto const expected = hexBytes("2200000009");
+    jshookz::qjs::OwnedValue object(
+        ctx,
+        jshookz::provider::types::makeCertifiedObjectCopy(
+            ctx,
+            expected.data(),
+            static_cast<std::uint32_t>(expected.size())));
+    ASSERT_FALSE(object.isException());
+
+    auto bytes = jshookz::provider::qjs::ByteView::get(
+        ctx,
+        object.get(),
+        jshookz::provider::qjs::BytePolicy::stateValueLike);
+    ASSERT_TRUE(static_cast<bool>(bytes));
+    ASSERT_EQ(bytes.size(), expected.size());
+    EXPECT_EQ(std::memcmp(bytes.data(), expected.data(), expected.size()), 0);
+}
+
 TEST_F(XahauTypes, RuntimeTypeObjectsUseOneSealedNominalClassifier)
 {
     namespace types = jshookz::provider::types;
