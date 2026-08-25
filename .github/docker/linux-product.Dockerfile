@@ -6,8 +6,8 @@ SHELL ["/bin/bash", "-euxo", "pipefail", "-c"]
 
 COPY scripts/linux-product-gate.lock.env /opt/jshookz/linux-product-gate.lock.env
 
-# Keep the container narrow: this image exists only to reproduce the Linux
-# compiler, Conan, CMake and CTest path that exposed issue 0096.
+# Keep the container narrow: it exists only to compile and execute the
+# provider-static poison probes under Linux/GCC for issue 0096.
 RUN source /opt/jshookz/linux-product-gate.lock.env && \
     sed -i \
       's|http://ports.ubuntu.com/ubuntu-ports|http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports|g' \

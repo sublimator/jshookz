@@ -3,12 +3,11 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: linux-product-gate.sh poison|host-cpp
+Usage: linux-product-gate.sh poison
 
-Internal Linux container gate. Source arrives as a git archive on stdin.
-
-  poison   Build and run only the bad-allocation poison probe.
-  host-cpp Build every host-C++ target and run complete CTest.
+Internal Linux container gate. Source arrives as a git archive on stdin. The
+gate builds and runs every provider-static poison probe, including the
+bad-allocation probe that exposed issue 0096.
 EOF
 }
 
@@ -18,7 +17,7 @@ if [[ $# -ne 1 ]]; then
 fi
 mode="$1"
 case "$mode" in
-    poison|host-cpp) ;;
+    poison) ;;
     -h|--help)
         usage
         exit 0
@@ -38,11 +37,11 @@ source /opt/jshookz/linux-product-gate.lock.env
     exit 1
 }
 
-work_root="$(mktemp -d /tmp/jshookz-linux-host-cpp.XXXXXX)"
+work_root="$(mktemp -d /tmp/jshookz-linux-poison.XXXXXX)"
 repo_root="$work_root/source"
 cleanup() {
     case "$work_root" in
-        /tmp/jshookz-linux-host-cpp.*) rm -rf -- "$work_root" ;;
+        /tmp/jshookz-linux-poison.*) rm -rf -- "$work_root" ;;
         *) printf 'refusing unsafe cleanup path: %s\n' "$work_root" >&2 ;;
     esac
 }
@@ -67,13 +66,16 @@ ninja --version
 cmake -S cpp -B build/cpp -G Ninja \
     -DCMAKE_BUILD_TYPE=Release
 
-if [[ "$mode" == poison ]]; then
-    cmake --build build/cpp --target provider_static_poison_bad_alloc
-    ctest --test-dir build/cpp --output-on-failure \
-        --tests-regex '^provider_static_compiled_poison_bad_alloc$'
-else
-    cmake --build build/cpp
-    ctest --test-dir build/cpp --output-on-failure
-fi
+cmake --build build/cpp --target \
+    provider_static_poison_dynamic_protocol \
+    provider_static_poison_field_types \
+    provider_static_poison_ordinary_new \
+    provider_static_poison_aligned_new \
+    provider_static_poison_vector \
+    provider_static_poison_string \
+    provider_static_poison_bad_alloc \
+    provider_static_poison_pre_main_malloc
+ctest --test-dir build/cpp --output-on-failure \
+    --tests-regex '^provider_static_compiled_poison_'
 
 printf 'GATE_RESULT=PASS mode=%s source=%s\n' "$mode" "$JSHOOKZ_SOURCE_COMMIT"

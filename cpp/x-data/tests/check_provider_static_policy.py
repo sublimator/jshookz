@@ -38,8 +38,8 @@ FORBIDDEN_SOURCE_PATTERNS = {
 FORBIDDEN_SYMBOL_PATTERNS = {
     "operator new": r"(?:^|\s)_*Zn(?:w|a)",
     "operator delete": r"(?:^|\s)_*Zd(?:l|a)",
-    "C allocation": r"(?:^|\s)_*(?:malloc|calloc|realloc|aligned_alloc|posix_memalign)(?:$|\s)",
-    "C deallocation": r"(?:^|\s)_*free(?:$|\s)",
+    "C allocation": r"(?:^|\s)_*(?:malloc|calloc|realloc|aligned_alloc|posix_memalign)(?:@\S+|$|\s)",
+    "C deallocation": r"(?:^|\s)_*free(?:@\S+|$|\s)",
     "bad_alloc route": r"(?:__throw_bad_alloc|bad_alloc)",
     "dynamic initializer": r"(?:__GLOBAL__sub_I|__cxx_global_var_init)",
     "STL vector ownership": r"vector",
@@ -156,8 +156,8 @@ def run_red_controls(inventory: Path) -> list[str]:
     symbol_samples = {
         "operator new": "                 U __Znwm",
         "operator delete": "                 U __ZdlPv",
-        "C allocation": "                 U _malloc",
-        "C deallocation": "                 U _free",
+        "C allocation": "                 U malloc@GLIBC_2.17",
+        "C deallocation": "                 U free@GLIBC_2.17",
         "bad_alloc route": "                 U __ZSt17__throw_bad_allocv",
         "dynamic initializer": "00000000 t ___cxx_global_var_init",
         "STL vector ownership": "__ZNSt3__16vectorIiNS_9allocatorIiEEE",

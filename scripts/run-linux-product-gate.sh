@@ -5,10 +5,9 @@ usage() {
     cat <<'EOF'
 Usage: scripts/run-linux-product-gate.sh MODE [--commit COMMIT] [--rebuild-image]
 
-Run an exact committed source tree through the pinned Linux host-C++ gate.
+Run an exact committed source tree through the pinned Linux poison gate.
 
-  poison   Build and run only the issue-0096 bad-allocation poison probe.
-  host-cpp Build every host-C++ target and run complete CTest.
+  poison   Build and run every provider-static poison probe on Linux.
 
 The checkout is never mounted into Docker. No workstation package cache or
 build output is used.
@@ -22,7 +21,7 @@ fi
 mode="$1"
 shift
 case "$mode" in
-    poison|host-cpp) ;;
+    poison) ;;
     -h|--help)
         usage
         exit 0
@@ -97,7 +96,7 @@ command -v docker >/dev/null || {
 source scripts/linux-product-gate.lock.env
 source_commit="$(git rev-parse --verify "${source_ref}^{commit}")"
 authority_commit="$(git rev-parse HEAD)"
-image_tag="jshookz-linux-host-cpp:${authority_commit:0:16}"
+image_tag="jshookz-linux-poison:${authority_commit:0:16}"
 docker_arch="$(docker info --format '{{.Architecture}}')"
 case "$docker_arch" in
     amd64|x86_64) linux_platform=linux/amd64 ;;

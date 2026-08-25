@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the small shared Linux host-C++ gate boundary."""
+"""Check the small shared Linux provider-static poison gate boundary."""
 
 from __future__ import annotations
 
@@ -25,12 +25,16 @@ LOCK_KEYS = {
 WORKFLOW_PRODUCT_TOKENS = (
     "astral-sh/setup-uv@v6",
     "actions/setup-node@v5",
+    "python3 -m pip install --user 'conan>=2,<3'",
     "uv sync --project python/jshookz --locked --group dev",
     "uv sync --project python/hostem --locked --group dev",
     "generate_raw_hook_abi.py --check",
     "jshookz build provider",
     "check-generated-definitions.sh",
-    "./scripts/run-linux-product-gate.sh host-cpp",
+    "./scripts/run-linux-product-gate.sh poison",
+    "conan install cpp --output-folder=build/cpp --build=missing",
+    "cmake -S cpp -B build/cpp",
+    "ctest --test-dir build/cpp --output-on-failure",
     "pytest -q python/jshookz/tests",
     "pytest -q python/hostem/tests",
     "pytest -q cpp/x-data/tests",
@@ -93,20 +97,17 @@ def validate(root: Path) -> list[str]:
     for token in WORKFLOW_PRODUCT_TOKENS:
         if token not in workflow:
             errors.append(f"workflow lost product step: {token}")
-    if workflow.count("./scripts/run-linux-product-gate.sh host-cpp") != 1:
-        errors.append("workflow must call the shared host-C++ gate exactly once")
-    for stale in ("conan install cpp", "cmake -S cpp", "ctest --test-dir build/cpp"):
-        if stale in workflow:
-            errors.append(f"workflow regained handwritten host-C++ command: {stale}")
+    if workflow.count("./scripts/run-linux-product-gate.sh poison") != 1:
+        errors.append("workflow must call the Linux poison gate exactly once")
 
     gate = texts["scripts/linux-product-gate.sh"]
     for token in (
-        "poison|host-cpp",
+        "Usage: linux-product-gate.sh poison",
         "cmake -S cpp -B build/cpp -G Ninja",
-        "--target provider_static_poison_bad_alloc",
-        "--tests-regex '^provider_static_compiled_poison_bad_alloc$'",
-        "cmake --build build/cpp",
-        "ctest --test-dir build/cpp --output-on-failure",
+        "cmake --build build/cpp --target",
+        "provider_static_poison_bad_alloc",
+        "provider_static_poison_pre_main_malloc",
+        "--tests-regex '^provider_static_compiled_poison_'",
         "GATE_RESULT=PASS",
     ):
         if token not in gate:
@@ -114,7 +115,7 @@ def validate(root: Path) -> list[str]:
 
     wrapper = texts["scripts/run-linux-product-gate.sh"]
     for token in (
-        "poison|host-cpp",
+        "Usage: scripts/run-linux-product-gate.sh MODE",
         'git archive --format=tar "$source_commit"',
         "docker info --format '{{.Architecture}}'",
         "--platform \"$linux_platform\"",
@@ -147,9 +148,9 @@ def self_test(root: Path) -> list[str]:
         mutations = (
             (
                 ".github/workflows/wasm.yml",
-                "./scripts/run-linux-product-gate.sh host-cpp",
                 "./scripts/run-linux-product-gate.sh poison",
-                "shared host-C++ gate exactly once",
+                "true # removed Linux poison gate",
+                "Linux poison gate exactly once",
             ),
             (
                 "scripts/linux-product-gate.sh",
@@ -190,9 +191,9 @@ def main() -> int:
         print("\n".join(errors))
         return 1
     print(
-        "Linux host-C++ gate mutation controls pass"
+        "Linux poison gate mutation controls pass"
         if args.self_test
-        else "Linux local/CI host-C++ gate parity exact"
+        else "Linux local/CI poison gate parity exact"
     )
     return 0
 
