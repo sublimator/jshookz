@@ -19,7 +19,8 @@ RUN source /opt/jshookz/linux-product-gate.lock.env && \
       cmake \
       libboost-dev \
       libgtest-dev \
-      ninja-build && \
+      ninja-build \
+      python3 && \
     rm -rf /var/lib/apt/lists/*
 
 ENV CMAKE_BUILD_PARALLEL_LEVEL=2 \
