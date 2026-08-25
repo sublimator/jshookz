@@ -312,6 +312,9 @@ enum class Arithmetic : int
     subtract,
     saturatingAdd,
     saturatingSubtract,
+    wrappingAdd,
+    wrappingSubtract,
+    wrappingMultiply,
 };
 
 JSValue
@@ -319,6 +322,9 @@ JSValue
 // @binding provider:UInt.subtract
 // @binding provider:UInt.saturatingAdd
 // @binding provider:UInt.saturatingSubtract
+// @binding provider:UInt.wrappingAdd
+// @binding provider:UInt.wrappingSubtract
+// @binding provider:UInt.wrappingMultiply
 uintArithmetic(
     JSContext* ctx,
     JSValueConst thisValue,
@@ -335,22 +341,27 @@ uintArithmetic(
     auto const operation = static_cast<Arithmetic>(magic);
     bool const saturating = operation == Arithmetic::saturatingAdd ||
         operation == Arithmetic::saturatingSubtract;
+    bool const wrapping = operation == Arithmetic::wrappingAdd ||
+        operation == Arithmetic::wrappingSubtract ||
+        operation == Arithmetic::wrappingMultiply;
     std::uint64_t other = 0;
-    InputStatus const status = saturating
+    InputStatus const status = saturating || wrapping
         ? readSameWidthUInt(argv[0], integer->bits, other)
         : readUInt(ctx, argv[0], integer->bits, other);
     if (status != InputStatus::valid) {
-        if (!saturating)
+        if (!saturating && !wrapping)
             return inputFailure(ctx, status, integer->bits);
         if (status == InputStatus::invalidType)
             return JS_ThrowTypeError(
                 ctx,
-                "UInt%u saturating arithmetic expects a same-width UInt",
-                integer->bits);
+                "UInt%u %s arithmetic expects a same-width UInt",
+                integer->bits,
+                saturating ? "saturating" : "wrapping");
         return JS_ThrowRangeError(
             ctx,
-            "UInt%u saturating arithmetic expects a same-width UInt",
-            integer->bits);
+            "UInt%u %s arithmetic expects a same-width UInt",
+            integer->bits,
+            saturating ? "saturating" : "wrapping");
     }
 
     std::uint64_t const limit = maximum(integer->bits);
@@ -372,10 +383,20 @@ uintArithmetic(
             : integer->value + other;
         return newUInt(ctx, integer->bits, value);
     }
-    return newUInt(
-        ctx,
-        integer->bits,
-        integer->value < other ? 0 : integer->value - other);
+    if (operation == Arithmetic::saturatingSubtract)
+        return newUInt(
+            ctx,
+            integer->bits,
+            integer->value < other ? 0 : integer->value - other);
+
+    std::uint64_t value = 0;
+    if (operation == Arithmetic::wrappingAdd)
+        value = integer->value + other;
+    else if (operation == Arithmetic::wrappingSubtract)
+        value = integer->value - other;
+    else
+        value = integer->value * other;
+    return newUInt(ctx, integer->bits, value & limit);
 }
 
 JSValue
@@ -461,6 +482,15 @@ JSCFunctionListEntry const uintPrototypeFunctions[] = {
     JS_CFUNC_MAGIC_DEF(
         "saturatingSubtract", 1, uintArithmetic,
         static_cast<int>(Arithmetic::saturatingSubtract)),
+    JS_CFUNC_MAGIC_DEF(
+        "wrappingAdd", 1, uintArithmetic,
+        static_cast<int>(Arithmetic::wrappingAdd)),
+    JS_CFUNC_MAGIC_DEF(
+        "wrappingSubtract", 1, uintArithmetic,
+        static_cast<int>(Arithmetic::wrappingSubtract)),
+    JS_CFUNC_MAGIC_DEF(
+        "wrappingMultiply", 1, uintArithmetic,
+        static_cast<int>(Arithmetic::wrappingMultiply)),
 };
 
 JSValue

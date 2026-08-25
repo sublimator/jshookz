@@ -255,6 +255,69 @@ TEST_F(XahauTypes, UIntAddOverflowIsResult)
     EXPECT_EQ(to_string(domain.get()), "uint");
 }
 
+TEST_F(XahauTypes, UIntWrappingArithmetic)
+{
+    auto value = eval(R"JS(
+        (() => {
+          const failures = [];
+          const operations = [
+            ["wrappingAdd", (Type, zero, max, one) => [
+              [max, one, 0n],
+              [zero, max, max.toBigInt()],
+            ]],
+            ["wrappingSubtract", (Type, zero, max, one) => [
+              [zero, one, max.toBigInt()],
+              [max, zero, max.toBigInt()],
+            ]],
+            ["wrappingMultiply", (Type, zero, max, one) => [
+              [max, Type.from(2).okOr(null), max.toBigInt() - 1n],
+              [max, zero, 0n],
+              [max, one, max.toBigInt()],
+            ]],
+          ];
+
+          for (const bits of [8, 16, 32, 64]) {
+            const Type = globalThis[`UInt${bits}`];
+            const zero = Type.zero;
+            const max = Type.max;
+            const one = Type.from(1).okOr(null);
+            const sibling = bits === 8 ? UInt16.zero : UInt8.zero;
+
+            for (const [name, vectors] of operations) {
+              if (typeof max[name] !== "function") {
+                failures.push(`UInt${bits}.${name}: missing`);
+                continue;
+              }
+              for (const [left, right, expected] of vectors(Type, zero, max, one)) {
+                const result = left[name](right);
+                if (result.toBigInt() !== expected || result.bits !== bits ||
+                    !(result instanceof UInt) || !(result instanceof Type) ||
+                    result instanceof (bits === 8 ? UInt16 : UInt8))
+                  failures.push(`UInt${bits}.${name}: value or brand`);
+              }
+              try {
+                max[name](1n);
+                failures.push(`UInt${bits}.${name}: primitive accepted`);
+              } catch (error) {
+                if (!(error instanceof TypeError))
+                  failures.push(`UInt${bits}.${name}: primitive error`);
+              }
+              try {
+                max[name](sibling);
+                failures.push(`UInt${bits}.${name}: wrong width accepted`);
+              } catch (error) {
+                if (!(error instanceof RangeError))
+                  failures.push(`UInt${bits}.${name}: wrong-width error`);
+              }
+            }
+          }
+          return failures.join("\n");
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException());
+    EXPECT_EQ(to_string(value.get()), "");
+}
+
 TEST_F(XahauTypes, CertifiedObjectIsLazyImmutableAndCanonical)
 {
     // Sequence is first on wire; canonical field-code order puts Flags first.
