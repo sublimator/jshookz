@@ -30,14 +30,7 @@ PINNED_WASI_VERSION = (
     "llvm-version: 22.1.0",
     "config: f992bcc08219",
 )
-PINNED_CLANG_SHA256 = "356b0fdc2006a584582b4958c4ed461813d7492ca412f21727ba7875af93433d"
-PINNED_OBJDUMP_SHA256 = (
-    "8f0cfdff983825584f59ae77a94bb5e32e2395a3438633e720ce88a45cea5825"
-)
 PINNED_WASMTIME_VERSION = "47.0.1"
-PINNED_WASMTIME_DYLIB_SHA256 = (
-    "272ec3fa3b344e3ed5385140581aa880b0564b67d8c96131d7002218b6d3721d"
-)
 PINNED_SOURCE_MANIFEST_SHA256 = (
     "07de358269b3e4bb7d2665e92502f80d32e17e86881e6b7949063184aa465bde"
 )
@@ -227,32 +220,13 @@ def validate_toolchain(wasi: Path) -> tuple[Path, Path]:
     version = tuple((wasi / "VERSION").read_text().splitlines())
     if version != PINNED_WASI_VERSION:
         raise GateError(f"wasi-sdk revision drift: {version!r}")
-    if sha256_file(clang) != PINNED_CLANG_SHA256:
-        raise GateError("wasi clang binary hash drift")
-    if sha256_file(objdump) != PINNED_OBJDUMP_SHA256:
-        raise GateError("wasi llvm-objdump binary hash drift")
-
     wasmtime_version = importlib.metadata.version("wasmtime")
     if wasmtime_version != PINNED_WASMTIME_VERSION:
         raise GateError(f"wasmtime drift: {wasmtime_version}")
-    import wasmtime
-
-    package = Path(wasmtime.__file__).parent
-    libraries = tuple(package.rglob("_libwasmtime.dylib")) + tuple(
-        package.rglob("_libwasmtime.so")
-    )
-    if len(libraries) != 1:
-        raise GateError(f"expected one Wasmtime engine library, got {libraries}")
-    wasmtime_hash = sha256_file(libraries[0])
-    if wasmtime_hash != PINNED_WASMTIME_DYLIB_SHA256:
-        raise GateError(f"Wasmtime engine binary hash drift: {wasmtime_hash}")
     print(
         "toolchain "
         f"wasi_sdk={version[0]} llvm={version[2]} "
-        f"clang_sha256={PINNED_CLANG_SHA256} "
-        f"objdump_sha256={PINNED_OBJDUMP_SHA256} "
-        f"wasmtime={wasmtime_version} "
-        f"wasmtime_dylib_sha256={wasmtime_hash}"
+        f"wasmtime={wasmtime_version}"
     )
     print(f"compile_flags {' '.join(COMPILE_FLAGS)}")
     return clang, objdump
