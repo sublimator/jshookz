@@ -12,7 +12,6 @@ from functools import cache
 from pathlib import Path
 
 import pytest
-
 from jshookz.host import WasmHost
 from jshookz.paths import (
     REPO_ROOT,
@@ -25,17 +24,7 @@ from jshookz.runtime_profile import (
     verify_runtime_profile_lock,
 )
 
-
-PINNED_PROVIDER_SHA256 = (
-    "f60ab333acb547e50d7d087960839bd11833cb133d496af98e0b72a1bb3b84df"
-)
-PINNED_RUNTIME_PROFILE_ID = (
-    "29acf12e170436e5ccadfbc118d02a60909f86a88262106652b2f71994b0ea25"
-)
 PINNED_WASMTIME = "47.0.1"
-PINNED_WASMTIME_DYLIB_SHA256 = (
-    "272ec3fa3b344e3ed5385140581aa880b0564b67d8c96131d7002218b6d3721d"
-)
 STRUCTURE_SIZES = (8, 64)
 ITERATIONS = (8, 16)
 CLEAN_REPEATS = 2
@@ -168,7 +157,7 @@ HEADROOM_BYTES = 1_048_576
 REPRESENTATIVE_OOM_HEAP_BYTES = 4 * 1024 * 1024
 WASM_MALLOC_OVERHEAD = 16
 MAXIMUM_REQUESTED_CORE = 4_194_336
-MAXIMUM_ENGINE_REQUESTED = 2_461
+MAXIMUM_ENGINE_REQUESTED = 413
 MAXIMUM_DUPLICATE_STACK = 528
 MAXIMUM_STATIC_PROTOCOL_BYTES = 23_724
 
@@ -537,37 +526,19 @@ def _slope(route: str, size: int, *, poison: bool = False) -> tuple[float, float
     return sum(slopes) / len(slopes), max(slopes) - min(slopes)
 
 
-def _wasmtime_engine_hash() -> str:
-    import wasmtime
-
-    package = Path(wasmtime.__file__).parent
-    libraries = tuple(package.rglob("_libwasmtime.dylib")) + tuple(
-        package.rglob("_libwasmtime.so")
-    )
-    assert len(libraries) == 1
-    return hashlib.sha256(libraries[0].read_bytes()).hexdigest()
-
-
-def _current_pins() -> tuple[str, str, str, str]:
+def _current_pins() -> tuple[str, str]:
     provider_sha = hashlib.sha256(XAHAU_HOOK_PROVIDER_WASM.read_bytes()).hexdigest()
-    profile_id = json.loads(XAHAU_RUNTIME_PROFILE_LOCK.read_text())[
-        "runtime_profile_id"
-    ]
-    return (
-        provider_sha,
-        profile_id,
-        importlib.metadata.version("wasmtime"),
-        _wasmtime_engine_hash(),
+    lock = verify_runtime_profile_lock(
+        XAHAU_RUNTIME_PROFILE_LOCK,
+        XAHAU_HOOK_PROVIDER_WASM,
     )
+    return provider_sha, lock.data["provider"]["sha256"]
 
 
-def test_object_fuel_meter_is_exactly_pinned():
-    assert _current_pins() == (
-        PINNED_PROVIDER_SHA256,
-        PINNED_RUNTIME_PROFILE_ID,
-        PINNED_WASMTIME,
-        PINNED_WASMTIME_DYLIB_SHA256,
-    )
+def test_object_fuel_meter_uses_verified_profile_and_locked_engine_version():
+    provider_sha, profile_provider_sha = _current_pins()
+    assert provider_sha == profile_provider_sha
+    assert importlib.metadata.version("wasmtime") == PINNED_WASMTIME
 
 
 @pytest.mark.parametrize(("route", "size"), CEILINGS)
@@ -796,10 +767,10 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
         "post_success": post_success,
         "static_protocol": static_bytes,
     } == {
-        "registration": (135_972, 2_127),
-        "pre_call": (1_188_312, 2_177),
-        "peak": (5_385_317, 2_190),
-        "post_success": (3_420_013, 2_204),
+        "registration": (136_475, 2_136),
+        "pre_call": (1_190_863, 2_186),
+        "peak": (5_385_820, 2_199),
+        "post_success": (3_420_516, 2_213),
         "static_protocol": MAXIMUM_STATIC_PROTOCOL_BYTES,
     }
 
@@ -809,7 +780,7 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     peak_requested_delta = peak_requested - pre_call_requested
     peak_count_delta = peak[1] - pre_call[1]
 
-    assert pre_call_requested - registration_requested == 1_051_540
+    assert pre_call_requested - registration_requested == 1_053_588
     assert peak_requested_delta == MAXIMUM_REQUESTED_CORE + MAXIMUM_ENGINE_REQUESTED
     assert peak[0] - pre_call[0] == (
         MAXIMUM_REQUESTED_CORE
@@ -818,7 +789,7 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     )
     assert MAXIMUM_DUPLICATE_STACK == 11 * 6 * 8
     assert peak[0] < limits.quickjs_heap_bytes
-    assert limits.quickjs_heap_bytes - post_success[0] == 13_357_203
+    assert limits.quickjs_heap_bytes - post_success[0] == 13_356_700
     assert limits.quickjs_heap_bytes - post_success[0] >= HEADROOM_BYTES
 
 

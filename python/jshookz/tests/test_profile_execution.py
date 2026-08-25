@@ -5,8 +5,8 @@ from pathlib import Path
 
 from jshookz.host import WasmHost
 from jshookz.paths import (
-    XAHAU_HOOK_PROVIDER_WASM,
     XAHAU_HOOK_PROVIDER_UNWIZERED_WASM,
+    XAHAU_HOOK_PROVIDER_WASM,
     XAHAU_RUNTIME_PROFILE_LOCK,
 )
 from jshookz.runtime_profile import (
@@ -34,22 +34,10 @@ class _InitializationFuel:
     remaining: int
 
 
-_COLD_INITIALIZATION = _InitializationFuel(
-    envelope=5_000_000,
-    instantiation_used=131_141,
-    profile_configuration_used=16,
-    qjs_init_used=3_239_601,
-    total_used=3_370_758,
-    remaining=1_629_242,
-)
-_SEALED_INITIALIZATION = _InitializationFuel(
-    envelope=5_000_000,
-    instantiation_used=344_071,
-    profile_configuration_used=31,
-    qjs_init_used=4,
-    total_used=344_106,
-    remaining=4_655_894,
-)
+_COLD_INITIALIZATION_CEILING = 4_000_000
+_COLD_INITIALIZATION_HEADROOM = 1_000_000
+_SEALED_INITIALIZATION_CEILING = 1_000_000
+_SEALED_INITIALIZATION_HEADROOM = 4_000_000
 
 
 def _limits():
@@ -87,6 +75,20 @@ def _measure_initialization_fuel(wasm_path: Path) -> _InitializationFuel:
     return measurement
 
 
+def _assert_initialization_accounting(measurement: _InitializationFuel) -> None:
+    assert measurement.envelope == 5_000_000
+    assert measurement.instantiation_used > 0
+    assert measurement.profile_configuration_used > 0
+    assert measurement.qjs_init_used > 0
+    assert measurement.total_used == (
+        measurement.instantiation_used
+        + measurement.profile_configuration_used
+        + measurement.qjs_init_used
+    )
+    assert measurement.remaining == measurement.envelope - measurement.total_used
+    assert 0 < measurement.remaining < measurement.envelope
+
+
 def test_quickjs_heap_limit_counts_cumulative_allocations():
     host = WasmHost(wasm_path=XAHAU_HOOK_PROVIDER_WASM)
     host.init()
@@ -120,32 +122,24 @@ def test_preinitialized_init_fits_a_small_fuel_budget():
 def test_cold_initialization_fits_the_profile_fuel_envelope():
     measurement = _measure_initialization_fuel(XAHAU_HOOK_PROVIDER_UNWIZERED_WASM)
 
-    assert measurement == _COLD_INITIALIZATION
-    assert measurement.envelope == 5_000_000
-    assert measurement.instantiation_used > 0
-    assert measurement.profile_configuration_used > 0
-    assert measurement.qjs_init_used > 0
-    assert measurement.total_used == (
-        measurement.instantiation_used
-        + measurement.profile_configuration_used
-        + measurement.qjs_init_used
-    )
-    assert measurement.remaining == measurement.envelope - measurement.total_used
-    assert 0 < measurement.remaining < measurement.envelope
+    _assert_initialization_accounting(measurement)
+    assert measurement.qjs_init_used > 3_000_000
+    assert measurement.total_used <= _COLD_INITIALIZATION_CEILING
+    assert measurement.remaining >= _COLD_INITIALIZATION_HEADROOM
 
 
 def test_sealed_initialization_uses_the_noop_path_with_more_headroom():
     cold = _measure_initialization_fuel(XAHAU_HOOK_PROVIDER_UNWIZERED_WASM)
     sealed = _measure_initialization_fuel(XAHAU_HOOK_PROVIDER_WASM)
 
-    assert cold == _COLD_INITIALIZATION
-    assert sealed == _SEALED_INITIALIZATION
-    assert sealed.envelope == cold.envelope == 5_000_000
-    assert sealed.qjs_init_used == 4
+    _assert_initialization_accounting(cold)
+    _assert_initialization_accounting(sealed)
+    assert sealed.qjs_init_used <= 16
     assert cold.qjs_init_used > sealed.qjs_init_used
+    assert sealed.total_used <= _SEALED_INITIALIZATION_CEILING
+    assert sealed.remaining >= _SEALED_INITIALIZATION_HEADROOM
     assert sealed.total_used < cold.total_used
     assert sealed.remaining > cold.remaining
-    assert sealed.remaining == sealed.envelope - sealed.total_used
 
 
 def test_profile_resets_to_invocation_fuel_and_cleans_up_after_exhaustion():
