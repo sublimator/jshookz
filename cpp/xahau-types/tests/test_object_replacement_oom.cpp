@@ -368,6 +368,15 @@ void expectExactOOM(JSContext *ctx, JSValueConst failed, std::size_t ordinal) {
   EXPECT_FALSE(JS_HasException(ctx)) << "allocator ordinal " << ordinal;
 }
 
+void warmExactOOMDiagnostic(JSContext *ctx) {
+  // New public names can move QuickJS's runtime-owned diagnostic tables across
+  // a lazy growth boundary. Stabilize that unrelated state before measuring
+  // whether the failed private radix transaction rolls every byte back.
+  LocalValue warm(ctx, JS_ThrowOutOfMemory(ctx));
+  expectExactOOM(ctx, warm.get(), 0);
+  warm.reset();
+}
+
 void expectExactTypeError(JSContext *ctx, JSValueConst failed,
                           char const *message, char const *route) {
   ASSERT_TRUE(JS_IsException(failed)) << route;
@@ -2157,6 +2166,7 @@ void exerciseArrayMissOOM(ArrayMissShape shape) {
       ASSERT_TRUE(fixture.prepare());
       LocalValue seed(ctx);
       ASSERT_TRUE(seedArrayMissShape(ctx, fixture, shape, seed));
+      warmExactOOMDiagnostic(ctx);
       std::size_t const liveBefore = injected.allocations.liveBlocks;
       std::size_t const chargedBefore = runtimeMallocSize(ctx);
       std::size_t const rejectionsBefore = injected.allocations.rejections;
