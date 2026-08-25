@@ -9,6 +9,77 @@ declare const __voidResultBrand: unique symbol;
 declare const __recordFieldBrand: unique symbol;
 declare const __serializedFieldBrand: unique symbol;
 
+/**
+ * Type-only surface shared by every nominal provider-produced Result.
+ *
+ * There are five ways to leave a value Result; anything else is a bug:
+ * `okOr`, `okOrHandle`, `okMapOr`, exhaustive `.ok` narrowing, or a
+ * terminal consumer (`rollback.*`, `accept.unlessPresent`,
+ * `accept.unlessTruthy`). `moot` lives on the effect family
+ * (`__VoidResultOps`), which is nominally not a Result.
+ */
+interface __ResultOps<T, Error> {
+  readonly [__resultBrand]: [T, Error];
+
+  /**
+   * Return `.value` whenever `.ok` is true, including a successful
+   * `undefined`; return `fallback` only when `.ok` is false. The fallback
+   * expression is evaluated before this method is called; use `okOrHandle`
+   * when producing it has work or side effects.
+  */
+  okOr<Fallback>(fallback: Fallback): T | Fallback;
+
+  /**
+   * Return `.value` whenever `.ok` is true; otherwise invoke `handler` once
+   * with `.error` and return the value it produces.
+   *
+   * A handler may terminate instead of producing a fallback — a
+   * `never`-returning handler is legitimate Result elimination, and
+   * `rollback.onFail` is the idiomatic spelling of that pattern.
+   */
+  okOrHandle<Fallback>(handler: (error: Error) => Fallback): T | Fallback;
+
+  /**
+   * Transform a successful value and return it directly; return `fallback`
+   * when this Result is a failure. The fallback expression is evaluated
+   * before this method is called.
+   *
+   * Use this only when discarding the failure is deliberate. In particular,
+   * malformed persisted state should normally remain loud rather than be
+   * collapsed into the same value used for absent state.
+   */
+  okMapOr<Value, Fallback>(
+    handler: (value: T) => Value,
+    fallback: Fallback,
+  ): Value | Fallback;
+
+}
+
+/**
+ * Nominal family of effect Results: host writes whose success carries no
+ * value. Deliberately NOT assignable to `Result<T, Error>` — an effect
+ * outcome is consumed by `moot`, an eliminator, or `rollback.onFail`,
+ * never by a value verb.
+ */
+interface __VoidResultOps<Error> {
+  readonly [__voidResultBrand]: Error;
+
+  /**
+   * Declare the failure of this effect Result moot: neither outcome bears
+   * on contract correctness. JavaScript exceptions and provider faults are
+   * not Result failures and are not suppressed.
+   */
+  moot(): void;
+
+  /** As on value Results; a successful effect yields `undefined`. */
+  okOr<Fallback>(fallback: Fallback): undefined | Fallback;
+  okOrHandle<Fallback>(handler: (error: Error) => Fallback): undefined | Fallback;
+  okMapOr<Value, Fallback>(
+    handler: (value: void) => Value,
+    fallback: Fallback,
+  ): Value | Fallback;
+}
+
 declare global {
   /**
    * Exact JavaScript surface implemented by the sealed xahau-quickjs-v1
@@ -63,82 +134,11 @@ declare global {
   /** A successful, non-nullish value; falsy-but-present values qualify. */
   type Present<T> = Exclude<T, null | undefined>;
 
-  /**
-   * Type-only surface shared by every nominal provider-produced Result.
-   *
-   * There are five ways to leave a value Result; anything else is a bug:
-   * `okOr`, `okOrHandle`, `okMapOr`, exhaustive `.ok` narrowing, or a
-   * terminal consumer (`rollback.*`, `accept.unlessPresent`,
-   * `accept.unlessTruthy`). `moot` lives on the effect family
-   * (`__VoidResultOps`), which is nominally not a Result.
-   */
-  interface __ResultOps<T, Error> {
-    readonly [__resultBrand]: [T, Error];
-
-    /**
-     * Return `.value` whenever `.ok` is true, including a successful
-     * `undefined`; return `fallback` only when `.ok` is false. The fallback
-     * expression is evaluated before this method is called; use `okOrHandle`
-     * when producing it has work or side effects.
-    */
-    okOr<Fallback>(fallback: Fallback): T | Fallback;
-
-    /**
-     * Return `.value` whenever `.ok` is true; otherwise invoke `handler` once
-     * with `.error` and return the value it produces.
-     *
-     * A handler may terminate instead of producing a fallback — a
-     * `never`-returning handler is legitimate Result elimination, and
-     * `rollback.onFail` is the idiomatic spelling of that pattern.
-     */
-    okOrHandle<Fallback>(handler: (error: Error) => Fallback): T | Fallback;
-
-    /**
-     * Transform a successful value and return it directly; return `fallback`
-     * when this Result is a failure. The fallback expression is evaluated
-     * before this method is called.
-     *
-     * Use this only when discarding the failure is deliberate. In particular,
-     * malformed persisted state should normally remain loud rather than be
-     * collapsed into the same value used for absent state.
-     */
-    okMapOr<Value, Fallback>(
-      handler: (value: T) => Value,
-      fallback: Fallback,
-    ): Value | Fallback;
-
-  }
-
   /** Conceptual result nouns (0085 close): the runtime already
    * classifies via isResult/isEffectResult; these make it public. */
   const Result: RuntimeType<Result<unknown, unknown>>;
 
   const VoidResult: RuntimeType<VoidResult<unknown>>;
-
-  /**
-   * Nominal family of effect Results: host writes whose success carries no
-   * value. Deliberately NOT assignable to `Result<T, Error>` — an effect
-   * outcome is consumed by `moot`, an eliminator, or `rollback.onFail`,
-   * never by a value verb.
-   */
-  interface __VoidResultOps<Error> {
-    readonly [__voidResultBrand]: Error;
-
-    /**
-     * Declare the failure of this effect Result moot: neither outcome bears
-     * on contract correctness. JavaScript exceptions and provider faults are
-     * not Result failures and are not suppressed.
-     */
-    moot(): void;
-
-    /** As on value Results; a successful effect yields `undefined`. */
-    okOr<Fallback>(fallback: Fallback): undefined | Fallback;
-    okOrHandle<Fallback>(handler: (error: Error) => Fallback): undefined | Fallback;
-    okMapOr<Value, Fallback>(
-      handler: (value: void) => Value,
-      fallback: Fallback,
-    ): Value | Fallback;
-  }
 
   type VoidResultSuccess<Error> = __VoidResultOps<Error> & {
     readonly ok: true;
