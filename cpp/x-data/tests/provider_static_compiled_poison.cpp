@@ -45,10 +45,11 @@ void *pre_main_allocation = std::malloc(1);
   std::string value(128, 'x');
   return value.size();
 #elif defined(JSHOOKZ_POISON_BAD_ALLOC)
-  // Keep the real route linked without invoking its terminating no-exception
-  // implementation when the poison executable is started.
-  auto *route = &std::__throw_bad_alloc;
-  return reinterpret_cast<std::uintptr_t>(route) != 0;
+  // Keep the standard failure type linked without invoking a throw.  The
+  // implementation helper is not part of C++ and is exposed differently by
+  // libc++ and libstdc++.
+  std::bad_alloc failure;
+  return failure.what()[0] != '\0';
 #elif defined(JSHOOKZ_POISON_MALLOC)
   auto const result = pre_main_allocation != nullptr;
   std::free(pre_main_allocation);
