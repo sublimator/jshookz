@@ -38,9 +38,9 @@ _COLD_INITIALIZATION = _InitializationFuel(
     envelope=5_000_000,
     instantiation_used=131_141,
     profile_configuration_used=16,
-    qjs_init_used=3_200_876,
-    total_used=3_332_033,
-    remaining=1_667_967,
+    qjs_init_used=3_239_601,
+    total_used=3_370_758,
+    remaining=1_629_242,
 )
 _SEALED_INITIALIZATION = _InitializationFuel(
     envelope=5_000_000,

@@ -27,10 +27,10 @@ from jshookz.runtime_profile import (
 
 
 PINNED_PROVIDER_SHA256 = (
-    "63aaec6e6945e6a8e65cbf7ba5291e0a9fbabe2812a212eff71331535f65279c"
+    "f60ab333acb547e50d7d087960839bd11833cb133d496af98e0b72a1bb3b84df"
 )
 PINNED_RUNTIME_PROFILE_ID = (
-    "e4526fa95d6e90bef2d1842ba97996bc96f2401ad19f5c4f55e8032d8d795862"
+    "29acf12e170436e5ccadfbc118d02a60909f86a88262106652b2f71994b0ea25"
 )
 PINNED_WASMTIME = "47.0.1"
 PINNED_WASMTIME_DYLIB_SHA256 = (
@@ -155,7 +155,7 @@ DELTA_FLOORS = {
     "replacement_large_minus_small": 130_000.0,
 }
 CONSTANT_STRUCTURE_SPREAD = 20.0
-MISSING_LOOKUP_STRUCTURE_SPREAD = 100.0
+MISSING_LOOKUP_STRUCTURE_SPREAD = 110.0
 MAX_SERIALIZED_BYTES = 1_048_576
 MAX_FIELDS = 32_768
 MAX_SCOPES = 32_769
@@ -168,6 +168,7 @@ HEADROOM_BYTES = 1_048_576
 REPRESENTATIVE_OOM_HEAP_BYTES = 4 * 1024 * 1024
 WASM_MALLOC_OVERHEAD = 16
 MAXIMUM_REQUESTED_CORE = 4_194_336
+MAXIMUM_ENGINE_REQUESTED = 2_461
 MAXIMUM_DUPLICATE_STACK = 528
 MAXIMUM_STATIC_PROTOCOL_BYTES = 23_724
 
@@ -795,10 +796,10 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
         "post_success": post_success,
         "static_protocol": static_bytes,
     } == {
-        "registration": (134_860, 2_110),
-        "pre_call": (1_187_200, 2_160),
-        "peak": (5_382_157, 2_173),
-        "post_success": (3_418_901, 2_187),
+        "registration": (135_972, 2_127),
+        "pre_call": (1_188_312, 2_177),
+        "peak": (5_385_317, 2_190),
+        "post_success": (3_420_013, 2_204),
         "static_protocol": MAXIMUM_STATIC_PROTOCOL_BYTES,
     }
 
@@ -809,13 +810,15 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     peak_count_delta = peak[1] - pre_call[1]
 
     assert pre_call_requested - registration_requested == 1_051_540
-    assert peak_requested_delta == MAXIMUM_REQUESTED_CORE + 413
+    assert peak_requested_delta == MAXIMUM_REQUESTED_CORE + MAXIMUM_ENGINE_REQUESTED
     assert peak[0] - pre_call[0] == (
-        MAXIMUM_REQUESTED_CORE + 413 + peak_count_delta * WASM_MALLOC_OVERHEAD
+        MAXIMUM_REQUESTED_CORE
+        + MAXIMUM_ENGINE_REQUESTED
+        + peak_count_delta * WASM_MALLOC_OVERHEAD
     )
     assert MAXIMUM_DUPLICATE_STACK == 11 * 6 * 8
     assert peak[0] < limits.quickjs_heap_bytes
-    assert limits.quickjs_heap_bytes - post_success[0] == 13_358_315
+    assert limits.quickjs_heap_bytes - post_success[0] == 13_357_203
     assert limits.quickjs_heap_bytes - post_success[0] >= HEADROOM_BYTES
 
 

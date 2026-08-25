@@ -4,7 +4,7 @@ from jshookz.host import WasmHost
 from jshookz.paths import XAHAU_HOOK_PROVIDER_WASM
 from jshookz.runtime_types import SCHEMA, observe_runtime_types
 
-_NOMINAL_MATRIX_GAS = 11_157_751
+_NOMINAL_MATRIX_GAS = 11_162_169
 
 
 class _EffectHost:
