@@ -1,0 +1,7 @@
+**
+!.github/
+!.github/docker/
+!.github/docker/linux-product.Dockerfile
+!scripts/
+!scripts/linux-product-gate.lock.env
+!scripts/linux-product-gate.sh
