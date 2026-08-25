@@ -43,7 +43,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "a6380886e540286ff310707415174f4f88c28d6ba8947c1c110a496bed5efb1e"
+    "sha256": "b615046894954b2afaa5f6437c6839b6a59b1e9db1309359b0458d6102876057"
   },
   "globals": {
     "AccountID": "object",
@@ -265,12 +265,16 @@
     },
     "Hash256": {
       "members": {
+        "byteLength": "value",
+        "compare": "function",
         "equals": "function",
         "isZero": "function",
         "toBytes": "function",
         "toHex": "function"
       },
       "own": [
+        "byteLength",
+        "compare",
         "equals",
         "isZero",
         "toBytes",

@@ -51,8 +51,8 @@ declare global {
   /**
    * Rich provider values (AccountID, Hash256, STBlob, the UInt family,
    * XFLDecimal, Amount, Currency…) are ordinary objects and therefore
-   * ALWAYS JS-truthy — including `UInt64.zero`, `XFLDecimal.zero`,
-   * `Hash256.zero`, `AccountID.zero`, and `Currency.native`. Their
+   * ALWAYS JS-truthy — including every zero and sentinel state, e.g.
+   * `UInt64.zero`, `Hash256.zero`, and `AccountID.zero`. Their
    * zero/native/sentinel STATES are domain facts, tested with
    * `isZero()`, `isNative`, `equals(...)` and friends — never with
    * truthiness. Presence is its own question: the Present verbs. These
@@ -70,9 +70,9 @@ declare global {
    * `okOr`, `okOrHandle`, `okMapOr`, exhaustive `.ok` narrowing, or a
    * terminal consumer (`rollback.*`, `accept.unlessPresent`,
    * `accept.unlessTruthy`). `moot` lives on the effect family
-   * (`VoidResultInstance`), which is nominally not a Result.
+   * (`__VoidResultOps`), which is nominally not a Result.
    */
-  interface ResultInstance<T, Error> {
+  interface __ResultOps<T, Error> {
     readonly [__resultBrand]: [T, Error];
 
     /**
@@ -121,7 +121,7 @@ declare global {
    * outcome is consumed by `moot`, an eliminator, or `rollback.onFail`,
    * never by a value verb.
    */
-  interface VoidResultInstance<Error> {
+  interface __VoidResultOps<Error> {
     readonly [__voidResultBrand]: Error;
 
     /**
@@ -140,11 +140,11 @@ declare global {
     ): Value | Fallback;
   }
 
-  type VoidResultSuccess<Error> = VoidResultInstance<Error> & {
+  type VoidResultSuccess<Error> = __VoidResultOps<Error> & {
     readonly ok: true;
   };
 
-  type VoidResultFailure<Error> = VoidResultInstance<Error> & {
+  type VoidResultFailure<Error> = __VoidResultOps<Error> & {
     readonly ok: false;
     readonly error: Error;
   };
@@ -154,12 +154,12 @@ declare global {
   type HostVoidResult = VoidResult<HostError>;
 
   /** Shared discriminated carrier; each domain owns its error payload. */
-  type ResultSuccess<T, Error> = ResultInstance<T, Error> & {
+  type ResultSuccess<T, Error> = __ResultOps<T, Error> & {
     readonly ok: true;
     readonly value: T;
   };
 
-  type ResultFailure<T, Error> = ResultInstance<T, Error> & {
+  type ResultFailure<T, Error> = __ResultOps<T, Error> & {
     readonly ok: false;
     readonly error: Error;
   };
@@ -780,6 +780,13 @@ declare global {
     has(field: string | SerializedField<unknown>): boolean;
     get<T>(field: SerializedField<T>): T | undefined;
     get(field: string): SerializedValue;
+    /**
+     * Canonical field VALUE payload as an STBlob: excludes the field
+     * header and any VL length prefix; includes a nested object/array
+     * close marker; `undefined` for absent or unknown fields. This is
+     * not a source-image or whole-field-framing API (0093 pinned
+     * contract; native fixtures are the arbiter at the F0 join).
+     */
     fieldBytes(field: string | number | SerializedField<unknown>): STBlob | undefined;
     withField<T>(field: SerializedField<T>, value: T | Uint8Array | ArrayBuffer): STObject;
     withField(field: string | number, value: Exclude<SerializedValue, undefined> | Uint8Array | ArrayBuffer): STObject;
