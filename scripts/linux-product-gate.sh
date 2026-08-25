@@ -41,13 +41,13 @@ source /opt/jshookz/linux-product-gate.lock.env
     exit 1
 }
 
-work_root="$(mktemp -d /work/jshookz-linux-gate.XXXXXX)"
+work_root="$(mktemp -d /tmp/jshookz-linux-gate.XXXXXX)"
 repo_root="$work_root/source"
 smoke_root="$work_root/smoke"
 hookz_root="$work_root/hookz"
 cleanup() {
     case "$work_root" in
-        /work/jshookz-linux-gate.*) rm -rf -- "$work_root" ;;
+        /tmp/jshookz-linux-gate.*) rm -rf -- "$work_root" ;;
         *) printf 'refusing unsafe cleanup path: %s\n' "$work_root" >&2 ;;
     esac
 }

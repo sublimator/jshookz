@@ -208,6 +208,12 @@ def validate(root: Path) -> list[str]:
         errors.append("Docker build and run are not both pinned to linux/amd64")
 
     gate = texts["scripts/linux-product-gate.sh"]
+    for token in (
+        'mktemp -d /tmp/jshookz-linux-gate.XXXXXX',
+        '/tmp/jshookz-linux-gate.*) rm -rf -- "$work_root"',
+    ):
+        if token not in gate:
+            errors.append(f"ephemeral build-root safety drifted: {token}")
     stages = dict(
         re.findall(r"(?m)^\s*run_stage ([a-z0-9-]+) ([a-z_][a-z0-9_]*)\s*$", gate)
     )
