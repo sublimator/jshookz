@@ -10,8 +10,8 @@ Run an exact committed source tree through the pinned Linux host-C++ gate.
   poison   Build and run only the issue-0096 bad-allocation poison probe.
   host-cpp Build every host-C++ target and run complete CTest.
 
-The checkout is never mounted into Docker. No workstation Conan profile, Python
-environment, package cache, or build output is used.
+The checkout is never mounted into Docker. No workstation package cache or
+build output is used.
 EOF
 }
 

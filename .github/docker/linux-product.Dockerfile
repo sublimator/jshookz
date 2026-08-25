@@ -17,19 +17,12 @@ RUN source /opt/jshookz/linux-product-gate.lock.env && \
       build-essential \
       ca-certificates \
       cmake \
-      git \
       libboost-dev \
-      ninja-build \
-      python3 \
-      python3-pip \
-      python3-venv && \
-    python3 -m venv /opt/conan && \
-    /opt/conan/bin/pip install --disable-pip-version-check --no-cache-dir \
-      "conan==${CONAN_VERSION}" && \
+      libgtest-dev \
+      ninja-build && \
     rm -rf /var/lib/apt/lists/*
 
-ENV PATH="/opt/conan/bin:${PATH}" \
-    CMAKE_BUILD_PARALLEL_LEVEL=2 \
+ENV CMAKE_BUILD_PARALLEL_LEVEL=2 \
     CMAKE_GENERATOR=Ninja \
     CC=gcc \
     CXX=g++ \

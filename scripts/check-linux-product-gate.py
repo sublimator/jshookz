@@ -21,7 +21,6 @@ FILES = (
 LOCK_KEYS = {
     "LINUX_GATE_SCHEMA",
     "LINUX_BASE_IMAGE",
-    "CONAN_VERSION",
 }
 WORKFLOW_PRODUCT_TOKENS = (
     "astral-sh/setup-uv@v6",
@@ -84,7 +83,7 @@ def validate(root: Path) -> list[str]:
         "# syntax=docker/dockerfile:1.7@sha256:",
         "ARG BASE_IMAGE",
         "FROM ${BASE_IMAGE}",
-        '"conan==${CONAN_VERSION}"',
+        "libgtest-dev",
         'ENTRYPOINT ["/opt/jshookz/linux-product-gate.sh"]',
     ):
         if token not in dockerfile:
@@ -103,8 +102,7 @@ def validate(root: Path) -> list[str]:
     gate = texts["scripts/linux-product-gate.sh"]
     for token in (
         "poison|host-cpp",
-        "conan profile detect --force",
-        "conan install cpp",
+        "cmake -S cpp -B build/cpp -G Ninja",
         "--target provider_static_poison_bad_alloc",
         "--tests-regex '^provider_static_compiled_poison_bad_alloc$'",
         "cmake --build build/cpp",

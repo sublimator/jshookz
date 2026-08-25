@@ -48,10 +48,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$repo_root" "$work_root/home" "$work_root/conan"
+mkdir -p "$repo_root" "$work_root/home"
 tar -xf - -C "$repo_root"
 export HOME="$work_root/home"
-export CONAN_HOME="$work_root/conan"
 cd "$repo_root"
 
 source /etc/os-release
@@ -64,14 +63,8 @@ gcc --version | head -1
 g++ --version | head -1
 cmake --version | head -1
 ninja --version
-python3 --version
-conan --version
 
-conan profile detect --force
-conan install cpp --output-folder=build/cpp --build=missing \
-    -s compiler.cppstd=23 -s build_type=Release
 cmake -S cpp -B build/cpp -G Ninja \
-    -DCMAKE_TOOLCHAIN_FILE="$repo_root/build/cpp/conan_toolchain.cmake" \
     -DCMAKE_BUILD_TYPE=Release
 
 if [[ "$mode" == poison ]]; then
