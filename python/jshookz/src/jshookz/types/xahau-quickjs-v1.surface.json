@@ -533,8 +533,12 @@
         "sign": "function"
       },
       "own": [
+        "compare",
+        "equals",
         "isNegative",
-        "isZero"
+        "isZero",
+        "negate",
+        "sign"
       ],
       "probe": "util.decodeObject(STBlob.fromHex('61D4838D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E8')).Amount.toXFL()"
     }
