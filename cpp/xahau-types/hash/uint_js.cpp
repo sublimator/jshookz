@@ -3,6 +3,7 @@
 
 #include "object/nominal_payload.hpp"
 #include "quickjs.hpp"
+#include "xfl/xfl.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -43,6 +44,178 @@ maximum(std::uint8_t bits) noexcept
     return bits == 64
         ? std::numeric_limits<std::uint64_t>::max()
         : (std::uint64_t{1} << bits) - 1;
+}
+
+constexpr std::uint64_t xflMinMantissa = 1000000000000000ULL;
+constexpr std::uint64_t xflMaxMantissa = 9999999999999999ULL;
+constexpr std::uint64_t xflResultCeiling = 10000000000000000ULL;
+constexpr std::int32_t xflMinExponent = -96;
+constexpr std::int32_t xflMaxExponent = 80;
+
+std::uint64_t
+decimalPower(std::uint32_t exponent) noexcept
+{
+    std::uint64_t value = 1;
+    while (exponent-- > 0)
+        value *= 10;
+    return value;
+}
+
+bool
+normalizeUnsignedXfl(
+    std::uint64_t& mantissa,
+    std::int32_t& exponent) noexcept
+{
+    if (mantissa == 0) {
+        exponent = 0;
+        return true;
+    }
+    while (mantissa < xflMinMantissa) {
+        // normalize_xfl corrects this exact boundary without rescaling.
+        if (mantissa == xflMinMantissa - 1) {
+            ++mantissa;
+            break;
+        }
+        mantissa *= 10;
+        --exponent;
+    }
+    while (mantissa > xflMaxMantissa) {
+        // normalize_xfl corrects this exact boundary without rescaling.
+        if (mantissa == xflMaxMantissa + 1) {
+            --mantissa;
+            break;
+        }
+        mantissa /= 10;
+        ++exponent;
+    }
+    if (exponent < xflMinExponent) {
+        mantissa = 0;
+        exponent = 0;
+        return true;
+    }
+    return exponent <= xflMaxExponent;
+}
+
+bool
+makeUnsignedXfl(std::uint64_t value, hook::XFL& output) noexcept
+{
+    std::int32_t exponent = 0;
+    if (!normalizeUnsignedXfl(value, exponent))
+        return false;
+    output = value == 0
+        ? hook::XFL{}
+        : hook::XFL::from_components(
+              false, exponent, static_cast<std::int64_t>(value));
+    return true;
+}
+
+bool
+multiplyUnsignedXfl(
+    hook::XFL const& left,
+    hook::XFL const& right,
+    hook::XFL& output) noexcept
+{
+    if (left.is_zero() || right.is_zero()) {
+        output = hook::XFL{};
+        return true;
+    }
+
+    using Wide = unsigned __int128;
+    Wide const scaled =
+        (static_cast<Wide>(left.mantissa()) * right.mantissa()) /
+        xflMinMantissa;
+    if (scaled > std::numeric_limits<std::uint64_t>::max())
+        return false;
+    std::uint64_t mantissa = static_cast<std::uint64_t>(scaled);
+    std::int32_t exponent = left.exponent() + right.exponent() + 15;
+    if (!normalizeUnsignedXfl(mantissa, exponent))
+        return false;
+    output = mantissa == 0
+        ? hook::XFL{}
+        : hook::XFL::from_components(
+              false, exponent, static_cast<std::int64_t>(mantissa));
+    return true;
+}
+
+bool
+divideUnsignedXfl(
+    hook::XFL const& numerator,
+    hook::XFL const& denominator,
+    hook::XFL& output) noexcept
+{
+    if (denominator.is_zero())
+        return false;
+    if (numerator.is_zero()) {
+        output = hook::XFL{};
+        return true;
+    }
+    if (denominator.mantissa() == xflMinMantissa &&
+        denominator.exponent() == -15) {
+        output = numerator;
+        return true;
+    }
+
+    std::uint64_t mantissa1 = numerator.mantissa();
+    std::int32_t exponent1 = numerator.exponent();
+    std::uint64_t mantissa2 = denominator.mantissa();
+    std::int32_t exponent2 = denominator.exponent();
+    if (!normalizeUnsignedXfl(mantissa1, exponent1) ||
+        !normalizeUnsignedXfl(mantissa2, exponent2))
+        return false;
+
+    while (mantissa2 > mantissa1) {
+        mantissa2 /= 10;
+        ++exponent2;
+    }
+    if (mantissa2 == 0)
+        return false;
+    while (mantissa2 < mantissa1) {
+        if (mantissa2 * 10 > mantissa1)
+            break;
+        mantissa2 *= 10;
+        --exponent2;
+    }
+
+    std::uint64_t quotientMantissa = 0;
+    std::int32_t quotientExponent = exponent1 - exponent2;
+    while (mantissa2 > 0) {
+        std::uint32_t digit = 0;
+        while (mantissa1 >= mantissa2) {
+            mantissa1 -= mantissa2;
+            ++digit;
+        }
+        quotientMantissa = quotientMantissa * 10 + digit;
+        mantissa2 /= 10;
+        if (mantissa2 == 0)
+            break;
+        --quotientExponent;
+    }
+
+    if (!normalizeUnsignedXfl(quotientMantissa, quotientExponent))
+        return false;
+    output = quotientMantissa == 0
+        ? hook::XFL{}
+        : hook::XFL::from_components(
+              false,
+              quotientExponent,
+              static_cast<std::int64_t>(quotientMantissa));
+    return true;
+}
+
+bool
+floorUnsignedXfl(hook::XFL const& value, std::uint64_t& output) noexcept
+{
+    output = 0;
+    if (value.is_zero())
+        return true;
+    std::int32_t const shift = -value.exponent();
+    if (shift > 15)
+        return true;
+    if (shift < 0)
+        return false;
+    output = value.mantissa() /
+        decimalPower(static_cast<std::uint32_t>(shift));
+    return output <= xflMaxMantissa;
 }
 
 JSValue
@@ -443,6 +616,60 @@ uintMulDiv(
 }
 
 JSValue
+// @binding provider:UInt64.mulDivXfl
+uint64MulDivXfl(
+    JSContext* ctx,
+    JSValueConst,
+    int argc,
+    JSValueConst* argv)
+{
+    constexpr std::uint8_t bits = 64;
+    if (argc < 3)
+        return JS_ThrowTypeError(
+            ctx,
+            "UInt64.mulDivXfl expects multiplicand, multiplier, and divisor");
+
+    std::uint64_t multiplicand = 0;
+    InputStatus status = readUInt(ctx, argv[0], bits, multiplicand);
+    if (status != InputStatus::valid)
+        return inputFailure(ctx, status, bits);
+
+    std::uint64_t multiplier = 0;
+    status = readUInt(ctx, argv[1], bits, multiplier);
+    if (status != InputStatus::valid)
+        return inputFailure(ctx, status, bits);
+
+    std::uint64_t divisor = 0;
+    status = readUInt(ctx, argv[2], bits, divisor);
+    if (status != InputStatus::valid)
+        return inputFailure(ctx, status, bits);
+    if (divisor == 0)
+        return uint_failure(ctx, "division-by-zero", bits);
+
+    using Wide = unsigned __int128;
+    // float_int(..., 0, 0) cannot represent this result domain even when
+    // an earlier XFL normalization rounds the boundary inward.
+    if (static_cast<Wide>(multiplicand) * multiplier >=
+        static_cast<Wide>(xflResultCeiling) * divisor)
+        return uint_failure(ctx, "overflow", bits);
+
+    hook::XFL xflMultiplicand;
+    hook::XFL xflMultiplier;
+    hook::XFL xflDivisor;
+    hook::XFL product;
+    hook::XFL quotient;
+    std::uint64_t result = 0;
+    if (!makeUnsignedXfl(multiplicand, xflMultiplicand) ||
+        !makeUnsignedXfl(multiplier, xflMultiplier) ||
+        !makeUnsignedXfl(divisor, xflDivisor) ||
+        !multiplyUnsignedXfl(xflMultiplicand, xflMultiplier, product) ||
+        !divideUnsignedXfl(product, xflDivisor, quotient) ||
+        !floorUnsignedXfl(quotient, result))
+        return uint_failure(ctx, "overflow", bits);
+    return result_success(ctx, newUInt(ctx, bits, result));
+}
+
+JSValue
 // @binding provider:UInt.from
 uintFrom(
     JSContext* ctx,
@@ -537,6 +764,14 @@ newFactory(JSContext* ctx, std::uint8_t bits)
                 JS_CFUNC_generic_magic,
                 bits),
             JS_PROP_ENUMERABLE) < 0 ||
+        (bits == 64 &&
+            JS_DefinePropertyValueStr(
+                ctx,
+                factory.get(),
+                "mulDivXfl",
+                JS_NewCFunction(
+                    ctx, uint64MulDivXfl, "mulDivXfl", 3),
+                JS_PROP_ENUMERABLE) < 0) ||
         !jshookz::provider::types::installRuntimeTypeClassifier(
             ctx,
             factory.get(),

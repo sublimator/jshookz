@@ -318,6 +318,78 @@ TEST_F(XahauTypes, UIntWrappingArithmetic)
     EXPECT_EQ(to_string(value.get()), "");
 }
 
+TEST_F(XahauTypes, UInt64MulDivXfl)
+{
+    auto value = eval(R"JS(
+        (() => {
+          if (typeof UInt64.mulDivXfl !== "function")
+            return "UInt64.mulDivXfl: missing";
+
+          const maximum = UInt64.mulDivXfl(
+            9_999_999_999_999_999n, 1n, 1n);
+          const ceiling = UInt64.mulDivXfl(
+            10_000_000_000_000_000n, 1n, 1n);
+          const floor = UInt64.mulDivXfl(10n, 1n, 3n);
+          const maxCorrection = UInt64.mulDivXfl(5n, 2n, 1n);
+          const divideEquality = UInt64.mulDivXfl(2n, 1n, 2n);
+          const minCorrection = UInt64.mulDivXfl(
+            9_999_999_999_999_999n, 2n, 2n);
+          const nominal = UInt64.mulDivXfl(
+            UInt64.from(21n).okOr(null), 2, 4n);
+          const zeroDividend = UInt64.mulDivXfl(0n, UInt64.max, 7n);
+          const tinyFloor = UInt64.mulDivXfl(1n, 1n, UInt64.max);
+          const zeroDivisor = UInt64.mulDivXfl(0n, UInt64.max, 0n);
+          const negative = UInt64.mulDivXfl(-1n, 1n, 1n);
+          const wrongWidth = UInt64.mulDivXfl(UInt32.max, 1n, 1n);
+          let stringRejected = false;
+          try { UInt64.mulDivXfl("10", 1n, 1n); }
+          catch (error) { stringRejected = error instanceof TypeError; }
+
+          const successShape = result => result instanceof Result &&
+            result.ok && result.value instanceof UInt &&
+            result.value instanceof UInt64 && !(result.value instanceof UInt32);
+          const failureShape = (result, issue) => result instanceof Result &&
+            !result.ok && result.error.domain === "uint" &&
+            result.error.issue === issue && result.error.bits === 64 &&
+            Object.getPrototypeOf(result.error) === null;
+
+          const failures = [];
+          if (!successShape(maximum) ||
+              maximum.value.toBigInt() !== 9_999_999_999_999_999n)
+            failures.push("maximum");
+          if (!failureShape(ceiling, "overflow"))
+            failures.push("ceiling");
+          if (!successShape(floor) || floor.value.toBigInt() !== 3n)
+            failures.push("floor");
+          if (!successShape(maxCorrection) ||
+              maxCorrection.value.toBigInt() !== 9n)
+            failures.push("max mantissa correction");
+          if (!successShape(divideEquality) ||
+              divideEquality.value.toBigInt() !== 1n)
+            failures.push("divide equality");
+          if (!failureShape(minCorrection, "overflow"))
+            failures.push("min mantissa correction");
+          if (!successShape(nominal) || nominal.value.toBigInt() !== 10n)
+            failures.push("operand admission");
+          if (!successShape(zeroDividend) || zeroDividend.value.toBigInt() !== 0n)
+            failures.push("zero dividend");
+          if (!successShape(tinyFloor) || tinyFloor.value.toBigInt() !== 0n)
+            failures.push("tiny floor");
+          if (!failureShape(zeroDivisor, "division-by-zero"))
+            failures.push("zero divisor");
+          if (!failureShape(negative, "out-of-range"))
+            failures.push("negative operand");
+          if (!failureShape(wrongWidth, "out-of-range"))
+            failures.push("wrong width");
+          if (!stringRejected)
+            failures.push("invalid type");
+          return failures.join("\n");
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException());
+    EXPECT_EQ(to_string(value.get()), "");
+}
+
 TEST_F(XahauTypes, CertifiedObjectIsLazyImmutableAndCanonical)
 {
     // Sequence is first on wire; canonical field-code order puts Flags first.
