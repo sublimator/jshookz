@@ -330,6 +330,7 @@ TEST_F(XahauTypes, UInt64MulDivXfl)
           const ceiling = UInt64.mulDivXfl(
             10_000_000_000_000_000n, 1n, 1n);
           const floor = UInt64.mulDivXfl(10n, 1n, 3n);
+          // @source xahaud-vectors:src/xrpld/app/hook/HookAPI.h:237
           const maxCorrection = UInt64.mulDivXfl(5n, 2n, 1n);
           const divideEquality = UInt64.mulDivXfl(2n, 1n, 2n);
           const minCorrection = UInt64.mulDivXfl(

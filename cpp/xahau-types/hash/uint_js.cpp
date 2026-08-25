@@ -70,6 +70,8 @@ normalizeUnsignedXfl(
         exponent = 0;
         return true;
     }
+    // @source xahaud-vectors:src/xrpld/app/hook/HookAPI.h:237
+    // Exact min/max off-by-one values correct inward without rescaling.
     while (mantissa < xflMinMantissa) {
         // normalize_xfl corrects this exact boundary without rescaling.
         if (mantissa == xflMinMantissa - 1) {
