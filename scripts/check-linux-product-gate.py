@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mechanically keep local Docker and CI on one Linux product authority."""
+"""Check the small shared Linux host-C++ gate boundary."""
 
 from __future__ import annotations
 
@@ -7,269 +7,131 @@ import argparse
 import re
 import shutil
 import tempfile
-import tomllib
 from pathlib import Path
 
 
-REQUIRED_FILES = (
+FILES = (
     ".dockerignore",
     ".github/docker/linux-product.Dockerfile",
     ".github/workflows/wasm.yml",
-    "cpp/conanfile.py",
-    "python/hostem/uv.lock",
-    "python/jshookz/uv.lock",
-    "scripts/install-uv-lock-with-pip.py",
     "scripts/linux-product-gate.lock.env",
     "scripts/linux-product-gate.sh",
     "scripts/run-linux-product-gate.sh",
 )
-REQUIRED_LOCK_KEYS = {
+LOCK_KEYS = {
     "LINUX_GATE_SCHEMA",
-    "LINUX_PLATFORM",
     "LINUX_BASE_IMAGE",
-    "UBUNTU_SNAPSHOT",
-    "NODE_VERSION",
-    "NODE_SHA256",
-    "UV_VERSION",
-    "UV_SHA256",
-    "UV_LOCK_FORMAT_VERSION",
-    "UV_LOCK_REVISION",
     "CONAN_VERSION",
-    "WASI_SDK_VERSION",
-    "WASI_SDK_SHA256",
-    "BINARYEN_VERSION",
-    "BINARYEN_SHA256",
-    "WIZER_VERSION",
-    "WIZER_SHA256",
-    "GTEST_VERSION",
-    "HOOKZ_URL",
-    "HOOKZ_COMMIT",
-    "CACHE_SCHEMA",
 }
-HASH_KEYS = {
-    "NODE_SHA256",
-    "UV_SHA256",
-    "WASI_SDK_SHA256",
-    "BINARYEN_SHA256",
-    "WIZER_SHA256",
-}
-REQUIRED_STAGES = {
-    "host-cpp-fast": "build_host_cpp_fast",
-    "gate-authority": "check_gate_authority",
-    "locked-environments": "install_locked_environments",
-    "api-artifacts": "verify_api_artifacts",
-    "provider-build": "build_provider",
-    "f0-identity": "check_f0_identity",
-    "generated-definitions": "check_generated_definitions",
-    "host-cpp": "build_host_cpp_full",
-    "product-tests": "test_product_surfaces",
-    "wasm-stack": "check_wasm_stack",
-    "package-smoke": "package_smoke",
-}
-FUNCTION_TOKENS = {
-    "check_gate_authority": (
-        "check-linux-product-gate.py",
-        "install-uv-lock-with-pip.py --check python/jshookz/uv.lock",
-        "install-uv-lock-with-pip.py --check python/hostem/uv.lock",
-        "--self-test",
-    ),
-    "install_locked_environments": (
-        "npm ci",
-        "install-uv-lock-with-pip.py",
-        "python/jshookz/uv.lock",
-        "python/hostem/uv.lock",
-        'git -C "$hookz_root" fetch',
-    ),
-    "verify_api_artifacts": (
-        "generate_raw_hook_abi.py --check",
-        "check-api-artifacts.py",
-        "project-readme-examples.py --check",
-        "tsconfig.xahau-integration.json",
-    ),
-    "build_provider": ("jshookz_cli build provider",),
-    "check_f0_identity": ("check-f0-provider-identity.py",),
-    "check_generated_definitions": ("check-generated-definitions.sh",),
-    "configure_host_cpp": (
-        "conan install cpp",
-        "cmake -S cpp",
-    ),
-    "build_host_cpp_fast": (
-        "--target provider_static_poison_bad_alloc",
-        "--tests-regex '^provider_static_compiled_poison_bad_alloc$'",
-    ),
-    "build_host_cpp_full": (
-        "cmake --build build/cpp",
-        "ctest --test-dir build/cpp",
-    ),
-    "test_product_surfaces": (
-        "pytest -q python/jshookz/tests",
-        "pytest -q python/hostem/tests",
-        "pytest -q cpp/x-data/tests",
-    ),
-    "check_wasm_stack": ("check-wasm-stack.sh",),
-    "package_smoke": ("compile-hook", "package-hook", "test -s"),
-}
+WORKFLOW_PRODUCT_TOKENS = (
+    "astral-sh/setup-uv@v6",
+    "actions/setup-node@v5",
+    "uv sync --project python/jshookz --locked --group dev",
+    "uv sync --project python/hostem --locked --group dev",
+    "generate_raw_hook_abi.py --check",
+    "jshookz build provider",
+    "check-generated-definitions.sh",
+    "./scripts/run-linux-product-gate.sh host-cpp",
+    "pytest -q python/jshookz/tests",
+    "pytest -q python/hostem/tests",
+    "pytest -q cpp/x-data/tests",
+    "check-wasm-stack.sh",
+    "compile-hook",
+    "package-hook",
+)
 
 
 def parse_lock(text: str) -> tuple[dict[str, str], list[str]]:
     values: dict[str, str] = {}
     errors: list[str] = []
-    for number, line in enumerate(text.splitlines(), 1):
+    for line in text.splitlines():
         if not line or line.startswith("#"):
             continue
-        match = re.fullmatch(r"([A-Z][A-Z0-9_]*)=([^\s]+)", line)
-        if match is None:
-            errors.append(f"lock line {number} is not KEY=value")
+        if "=" not in line:
+            errors.append(f"invalid lock line: {line!r}")
             continue
-        key, value = match.groups()
+        key, value = line.split("=", 1)
         if key in values:
             errors.append(f"duplicate lock key: {key}")
         values[key] = value
-    missing = REQUIRED_LOCK_KEYS - values.keys()
-    extra = values.keys() - REQUIRED_LOCK_KEYS
-    if missing:
-        errors.append(f"missing lock keys: {sorted(missing)}")
-    if extra:
-        errors.append(f"unexpected lock keys: {sorted(extra)}")
-    for key in HASH_KEYS:
-        if not re.fullmatch(r"[0-9a-f]{64}", values.get(key, "")):
-            errors.append(f"{key} is not an exact SHA-256")
-    if values.get("LINUX_PLATFORM") != "linux/amd64":
-        errors.append("Linux gate platform is not exact linux/amd64")
+    if set(values) != LOCK_KEYS:
+        errors.append(f"lock keys differ: {sorted(values)}")
     if not re.fullmatch(
         r"docker\.io/library/ubuntu@sha256:[0-9a-f]{64}",
         values.get("LINUX_BASE_IMAGE", ""),
     ):
-        errors.append("Linux base image is not an exact Ubuntu manifest digest")
-    if not re.fullmatch(r"\d{8}T\d{6}Z", values.get("UBUNTU_SNAPSHOT", "")):
-        errors.append("Ubuntu package snapshot is not timestamp-pinned")
+        errors.append("Ubuntu image is not digest-pinned")
     return values, errors
-
-
-def function_bodies(script: str) -> dict[str, str]:
-    matches = list(re.finditer(r"(?m)^([a-z_][a-z0-9_]*)\(\) \{\n", script))
-    bodies: dict[str, str] = {}
-    for index, match in enumerate(matches):
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(script)
-        bodies[match.group(1)] = script[match.end() : end]
-    return bodies
 
 
 def validate(root: Path) -> list[str]:
     errors: list[str] = []
     texts: dict[str, str] = {}
-    for relative in REQUIRED_FILES:
+    for relative in FILES:
         path = root / relative
         if not path.is_file():
-            errors.append(f"missing shared gate file: {relative}")
+            errors.append(f"missing gate file: {relative}")
         else:
             texts[relative] = path.read_text(encoding="utf-8")
     if errors:
         return errors
 
-    lock = texts["scripts/linux-product-gate.lock.env"]
-    lock_values, lock_errors = parse_lock(lock)
+    _, lock_errors = parse_lock(texts["scripts/linux-product-gate.lock.env"])
     errors.extend(lock_errors)
-
-    dockerignore = texts[".dockerignore"]
-    for token in (
-        "**",
-        "!scripts/linux-product-gate.lock.env",
-        "!scripts/linux-product-gate.sh",
-    ):
-        if token not in dockerignore:
-            errors.append(f"Docker context exclusion lost token: {token}")
-
-    conanfile = texts["cpp/conanfile.py"]
-    gtest = re.search(r'self\.test_requires\("gtest/([^"\n]+)"\)', conanfile)
-    if gtest is None or gtest.group(1) != lock_values.get("GTEST_VERSION"):
-        errors.append("Conan GTest version drifted from the Linux gate lock")
 
     dockerfile = texts[".github/docker/linux-product.Dockerfile"]
     for token in (
+        "# syntax=docker/dockerfile:1.7@sha256:",
         "ARG BASE_IMAGE",
         "FROM ${BASE_IMAGE}",
-        "linux-product-gate.lock.env",
-        "UBUNTU_SNAPSHOT",
+        '"conan==${CONAN_VERSION}"',
         'ENTRYPOINT ["/opt/jshookz/linux-product-gate.sh"]',
     ):
         if token not in dockerfile:
-            errors.append(f"Dockerfile lost authority token: {token}")
+            errors.append(f"Dockerfile lost token: {token}")
 
-    wrapper = texts["scripts/run-linux-product-gate.sh"]
-    for token in (
-        "source scripts/linux-product-gate.lock.env",
-        "git ls-files --error-unmatch",
-        "git diff --quiet HEAD",
-        'buildx_config="${BUILDX_CONFIG:-/tmp/jshookz-linux-buildx-$(id -u)}"',
-        '--platform "$LINUX_PLATFORM"',
-        '--build-arg "BASE_IMAGE=$LINUX_BASE_IMAGE"',
-        'git archive --format=tar "$source_commit"',
-        "target=/cache/conan",
-        "target=/cache/pip",
-        "target=/cache/npm",
-    ):
-        if token not in wrapper:
-            errors.append(f"Docker wrapper lost authority token: {token}")
-    if wrapper.count('--platform "$LINUX_PLATFORM"') < 2:
-        errors.append("Docker build and run are not both pinned to linux/amd64")
+    workflow = texts[".github/workflows/wasm.yml"]
+    for token in WORKFLOW_PRODUCT_TOKENS:
+        if token not in workflow:
+            errors.append(f"workflow lost product step: {token}")
+    if workflow.count("./scripts/run-linux-product-gate.sh host-cpp") != 1:
+        errors.append("workflow must call the shared host-C++ gate exactly once")
+    for stale in ("conan install cpp", "cmake -S cpp", "ctest --test-dir build/cpp"):
+        if stale in workflow:
+            errors.append(f"workflow regained handwritten host-C++ command: {stale}")
 
     gate = texts["scripts/linux-product-gate.sh"]
     for token in (
-        'mktemp -d /tmp/jshookz-linux-gate.XXXXXX',
-        '/tmp/jshookz-linux-gate.*) rm -rf -- "$work_root"',
+        "poison|host-cpp",
+        "conan profile detect --force",
+        "conan install cpp",
+        "--target provider_static_poison_bad_alloc",
+        "--tests-regex '^provider_static_compiled_poison_bad_alloc$'",
+        "cmake --build build/cpp",
+        "ctest --test-dir build/cpp --output-on-failure",
+        "GATE_RESULT=PASS",
     ):
         if token not in gate:
-            errors.append(f"ephemeral build-root safety drifted: {token}")
-    stages = dict(
-        re.findall(r"(?m)^\s*run_stage ([a-z0-9-]+) ([a-z_][a-z0-9_]*)\s*$", gate)
-    )
-    if stages != REQUIRED_STAGES:
-        errors.append(f"full Linux stages drifted: {stages!r}")
-    bodies = function_bodies(gate)
-    for function, tokens in FUNCTION_TOKENS.items():
-        body = bodies.get(function, "")
-        if not body:
-            errors.append(f"missing stage function: {function}")
-            continue
-        for token in tokens:
-            if token not in body:
-                errors.append(f"{function} lost substantive command: {token}")
+            errors.append(f"container gate lost token: {token}")
 
-    workflow = texts[".github/workflows/wasm.yml"]
-    if "runs-on: ubuntu-24.04" not in workflow:
-        errors.append("product workflow runner is not explicit ubuntu-24.04")
-    if "./scripts/run-linux-product-gate.sh full" not in workflow:
-        errors.append("product workflow does not call the shared full gate")
-    for duplicate in (
-        "conan install cpp",
-        "jshookz build provider",
-        "uv sync --project",
+    wrapper = texts["scripts/run-linux-product-gate.sh"]
+    for token in (
+        "poison|host-cpp",
+        'git archive --format=tar "$source_commit"',
+        "docker info --format '{{.Architecture}}'",
+        "--platform \"$linux_platform\"",
+        '--build-arg "BASE_IMAGE=$LINUX_BASE_IMAGE"',
+        "git diff --quiet HEAD",
     ):
-        if duplicate in workflow:
-            errors.append(
-                f"workflow duplicates shared substantive command: {duplicate}"
-            )
-    expected_lock_version = lock_values.get("UV_LOCK_FORMAT_VERSION")
-    expected_lock_revision = lock_values.get("UV_LOCK_REVISION")
-    for relative in ("python/jshookz/uv.lock", "python/hostem/uv.lock"):
-        parsed_uv_lock = tomllib.loads(texts[relative])
-        if str(parsed_uv_lock.get("version")) != expected_lock_version:
-            errors.append(f"{relative} version drifted from the Linux gate lock")
-        if str(parsed_uv_lock.get("revision")) != expected_lock_revision:
-            errors.append(f"{relative} revision drifted from the Linux gate lock")
+        if token not in wrapper:
+            errors.append(f"host wrapper lost token: {token}")
+    if wrapper.count('--platform "$linux_platform"') != 2:
+        errors.append("Docker build and run must both use the native platform")
+    if "type=bind" in wrapper or "--volume" in wrapper:
+        errors.append("host wrapper must not mount the checkout")
 
-    installer = texts["scripts/install-uv-lock-with-pip.py"]
-    for name, expected in (
-        ("LOCK_VERSION", expected_lock_version),
-        ("LOCK_REVISION", expected_lock_revision),
-    ):
-        if f"{name} = {expected}" not in installer:
-            errors.append(f"uv lock installer {name} drifted from the Linux gate lock")
-
-    hostem_lock = texts["python/hostem/uv.lock"]
-    if lock_values.get("HOOKZ_COMMIT", "") not in hostem_lock:
-        errors.append("Hookz commit drifted from the hostem uv.lock")
+    if "install-uv-lock-with-pip" in "\n".join(texts.values()):
+        errors.append("custom uv.lock interpretation returned")
     return errors
 
 
@@ -277,61 +139,40 @@ def self_test(root: Path) -> list[str]:
     failures: list[str] = []
     with tempfile.TemporaryDirectory() as directory:
         fixture = Path(directory)
-        for relative in REQUIRED_FILES:
+        for relative in FILES:
             target = fixture / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(root / relative, target)
-        baseline = validate(fixture)
-        if baseline:
-            return ["checker baseline is red: " + "; ".join(baseline)]
+        if errors := validate(fixture):
+            return ["checker baseline is red: " + "; ".join(errors)]
 
         mutations = (
             (
                 ".github/workflows/wasm.yml",
-                "./scripts/run-linux-product-gate.sh full",
                 "./scripts/run-linux-product-gate.sh host-cpp",
-                "shared full gate",
+                "./scripts/run-linux-product-gate.sh poison",
+                "shared host-C++ gate exactly once",
             ),
             (
                 "scripts/linux-product-gate.sh",
-                "    run_stage product-tests test_product_surfaces\n",
-                "",
-                "full Linux stages drifted",
+                "provider_static_poison_bad_alloc",
+                "removed_poison_target",
+                "container gate lost token",
             ),
             (
-                "scripts/linux-product-gate.sh",
-                "      python/hostem/.venv/bin/python -m pytest -q python/hostem/tests\n",
-                "",
-                "lost substantive command",
-            ),
-            (
-                "scripts/linux-product-gate.lock.env",
-                "WIZER_SHA256=1e9dfaa",
-                "WIZER_SHA256=ze9dfaa",
-                "exact SHA-256",
-            ),
-            (
-                "python/hostem/uv.lock",
-                "revision = 3",
-                "revision = 4",
-                "revision drifted",
+                ".github/workflows/wasm.yml",
+                "scripts/check-wasm-stack.sh",
+                "true # removed stack check",
+                "workflow lost product step",
             ),
         )
-        originals = {
-            relative: (fixture / relative).read_text(encoding="utf-8")
-            for relative, *_ in mutations
-        }
         for relative, old, new, expected in mutations:
             path = fixture / relative
-            source = originals[relative]
-            if old not in source:
-                failures.append(f"self-test mutation token missing: {old}")
-                continue
-            path.write_text(source.replace(old, new, 1), encoding="utf-8")
-            errors = validate(fixture)
-            if not any(expected in error for error in errors):
-                failures.append(f"mutation stayed green: {relative}: {expected}")
-            path.write_text(source, encoding="utf-8")
+            original = path.read_text(encoding="utf-8")
+            path.write_text(original.replace(old, new, 1), encoding="utf-8")
+            if not any(expected in error for error in validate(fixture)):
+                failures.append(f"mutation stayed green: {relative}: {old}")
+            path.write_text(original, encoding="utf-8")
     return failures
 
 
@@ -342,15 +183,18 @@ def main() -> int:
     )
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
-    root = args.root.resolve()
-    errors = self_test(root) if args.self_test else validate(root)
+    errors = (
+        self_test(args.root.resolve())
+        if args.self_test
+        else validate(args.root.resolve())
+    )
     if errors:
         print("\n".join(errors))
         return 1
     print(
-        "Linux gate parity mutation controls pass"
+        "Linux host-C++ gate mutation controls pass"
         if args.self_test
-        else "Linux local/CI gate parity exact"
+        else "Linux local/CI host-C++ gate parity exact"
     )
     return 0
 

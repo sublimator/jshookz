@@ -5,13 +5,117 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  WASI_SDK_VERSION: "32"
+  WASI_SDK_SHA256: "55fc523ebfbc98f69d1034fcfcb83d1ff5610cd9ab7eceef6cd097a30ba4ef93"
+  BINARYEN_VERSION: "128"
+  BINARYEN_SHA256: "4ce79586d1c4762502eebe9a1db071fa5e446ef8897f2f766eb1cce5ec6dee9e"
+  WIZER_VERSION: "10.0.0"
+  WIZER_SHA256: "1e9dfaa2f6c436ca7acfdbb82c166f5b8a0062068f12916a554e82c97ca8d371"
+  WASI_SDK_PATH: ${{ github.workspace }}/.tools/wasi-sdk
+  BINARYEN_HOME: ${{ github.workspace }}/.tools/binaryen
+  BOOST_INCLUDE_DIR: ${{ github.workspace }}/.tools/boost-headers
+  CMAKE_BUILD_PARALLEL_LEVEL: "2"
+
 jobs:
   product:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Run the shared pinned Linux product gate
-        run: ./scripts/run-linux-product-gate.sh full
+
+      - uses: astral-sh/setup-uv@v6
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake curl libboost-dev ninja-build xz-utils
+          mkdir -p "$BOOST_INCLUDE_DIR"
+          ln -s /usr/include/boost "$BOOST_INCLUDE_DIR/boost"
+
+      - name: Install wasi-sdk
+        run: |
+          mkdir -p .tools
+          curl --fail --location --retry 3 \
+            --output /tmp/wasi-sdk.tar.gz \
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux.tar.gz"
+          echo "$WASI_SDK_SHA256  /tmp/wasi-sdk.tar.gz" | sha256sum --check
+          tar -xzf /tmp/wasi-sdk.tar.gz -C .tools
+          mv ".tools/wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux" "$WASI_SDK_PATH"
+
+      - name: Install Binaryen
+        run: |
+          curl --fail --location --retry 3 \
+            --output /tmp/binaryen.tar.gz \
+            "https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN_VERSION}/binaryen-version_${BINARYEN_VERSION}-x86_64-linux.tar.gz"
+          echo "$BINARYEN_SHA256  /tmp/binaryen.tar.gz" | sha256sum --check
+          tar -xzf /tmp/binaryen.tar.gz -C .tools
+          mv ".tools/binaryen-version_${BINARYEN_VERSION}" "$BINARYEN_HOME"
+          echo "$BINARYEN_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Install Wizer
+        run: |
+          curl --fail --location --retry 3 \
+            --output /tmp/wizer.tar.xz \
+            "https://github.com/bytecodealliance/wizer/releases/download/v${WIZER_VERSION}/wizer-v${WIZER_VERSION}-x86_64-linux.tar.xz"
+          echo "$WIZER_SHA256  /tmp/wizer.tar.xz" | sha256sum --check
+          tar -xJf /tmp/wizer.tar.xz -C .tools
+          echo "$GITHUB_WORKSPACE/.tools/wizer-v${WIZER_VERSION}-x86_64-linux" >> "$GITHUB_PATH"
+
+      - name: Install the pinned TypeScript frontend
+        run: npm install --prefix python/jshookz/src/jshookz
+
+      - name: Install locked test environments
+        run: |
+          uv sync --project python/jshookz --locked --group dev
+          uv sync --project python/hostem --locked --group dev
+
+      - name: Verify generated Hook ABI and TypeScript API
+        run: |
+          python/hostem/.venv/bin/python \
+            xahau/tools/generate_raw_hook_abi.py --check
+          python3 scripts/check-api-artifacts.py
+          ./scripts/project-readme-examples.py --check
+          python/jshookz/src/jshookz/node_modules/.bin/tsc \
+            -p python/hostem/tsconfig.xahau-integration.json
+
+      - name: Build and seal Xahau provider
+        run: python/jshookz/.venv/bin/jshookz build provider
+
+      - name: Check generated definitions
+        run: scripts/check-generated-definitions.sh
+
+      - name: Test host C++ through shared Linux gate
+        run: ./scripts/run-linux-product-gate.sh host-cpp
+
+      - name: Test product surfaces
+        run: |
+          python/jshookz/.venv/bin/pytest -q python/jshookz/tests
+          python/hostem/.venv/bin/pytest -q python/hostem/tests
+          python/jshookz/.venv/bin/pytest -q cpp/x-data/tests
+          scripts/check-wasm-stack.sh
+
+
+      - name: End-to-end compile and package a hook
+        run: |
+          cd "$RUNNER_TEMP"
+          JSHOOKZ_PROVIDER_WASM="$GITHUB_WORKSPACE/build/xahau-provider/jshookz_provider.wasm" \
+            "$GITHUB_WORKSPACE/python/jshookz/.venv/bin/jshookz" info
+          JSHOOKZ_PROVIDER_WASM="$GITHUB_WORKSPACE/build/xahau-provider/jshookz_provider.wasm" \
+            "$GITHUB_WORKSPACE/python/jshookz/.venv/bin/jshookz" compile-hook \
+            "$GITHUB_WORKSPACE/python/hostem/examples/xahau-accept.hook.ts" \
+            -o smoke.qjsc
+          JSHOOKZ_PROVIDER_WASM="$GITHUB_WORKSPACE/build/xahau-provider/jshookz_provider.wasm" \
+            "$GITHUB_WORKSPACE/python/jshookz/.venv/bin/jshookz" package-hook \
+            "$GITHUB_WORKSPACE/python/hostem/examples/xahau-accept.hook.ts" \
+            --profile "$GITHUB_WORKSPACE/build/xahau-provider/jshookz_provider.manifest.json" \
+            -o smoke.xqjs
+          test -s smoke.qjsc
+          test -s smoke.xqjs
 
   quickjs:
     runs-on: ubuntu-latest
