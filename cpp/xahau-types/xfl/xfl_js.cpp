@@ -32,6 +32,40 @@ JSClassDef js_xfl_class = {
     .finalizer = js_xfl_finalizer,
 };
 
+XFL const*
+xflValueNoThrow(JSValueConst value) noexcept
+{
+    if (!JS_IsObject(value) || JS_GetClassID(value) != js_xfl_class_id)
+        return nullptr;
+    return static_cast<XFL const*>(JS_GetOpaque(value, js_xfl_class_id));
+}
+
+int
+xflSign(XFL const& value) noexcept
+{
+    if (value.is_zero())
+        return 0;
+    return value.is_negative() ? -1 : 1;
+}
+
+int
+compareXFL(XFL const& left, XFL const& right) noexcept
+{
+    int const leftSign = xflSign(left);
+    int const rightSign = xflSign(right);
+    if (leftSign != rightSign)
+        return leftSign < rightSign ? -1 : 1;
+    if (leftSign == 0)
+        return 0;
+
+    int order = 0;
+    if (left.exponent() != right.exponent())
+        order = left.exponent() < right.exponent() ? -1 : 1;
+    else if (left.mantissa() != right.mantissa())
+        order = left.mantissa() < right.mantissa() ? -1 : 1;
+    return leftSign < 0 ? -order : order;
+}
+
 // @binding provider:XFLDecimal.isNegative
 JSValue
 js_xfl_is_negative(JSContext* ctx, JSValueConst this_val, int, JSValueConst*)
@@ -52,10 +86,69 @@ js_xfl_is_zero(JSContext* ctx, JSValueConst this_val, int, JSValueConst*)
     return JS_NewBool(ctx, x->is_zero());
 }
 
+// @binding provider:XFLDecimal.sign
+JSValue
+js_xfl_sign(JSContext* ctx, JSValueConst this_val, int, JSValueConst*)
+{
+    auto const* x = qjs::opaque<XFL>(ctx, this_val, js_xfl_class_id);
+    if (!x)
+        return JS_EXCEPTION;
+    return JS_NewInt32(ctx, xflSign(*x));
+}
+
+// @binding provider:XFLDecimal.negate
+JSValue
+js_xfl_negate(JSContext* ctx, JSValueConst this_val, int, JSValueConst*)
+{
+    auto const* x = qjs::opaque<XFL>(ctx, this_val, js_xfl_class_id);
+    if (!x)
+        return JS_EXCEPTION;
+    if (x->is_zero())
+        return nativeNew<XFL>(ctx, js_xfl_class_id, XFL{});
+    return nativeNew<XFL>(
+        ctx,
+        js_xfl_class_id,
+        XFL::from_components(
+            !x->is_negative(),
+            x->exponent(),
+            static_cast<std::int64_t>(x->mantissa())));
+}
+
+// @binding provider:XFLDecimal.equals
+JSValue
+js_xfl_equals(
+    JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv)
+{
+    auto const* left = qjs::opaque<XFL>(ctx, this_val, js_xfl_class_id);
+    if (!left)
+        return JS_EXCEPTION;
+    auto const* right = argc > 0 ? xflValueNoThrow(argv[0]) : nullptr;
+    return JS_NewBool(ctx, right != nullptr && left->raw() == right->raw());
+}
+
+// @binding provider:XFLDecimal.compare
+JSValue
+js_xfl_compare(
+    JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv)
+{
+    auto const* left = qjs::opaque<XFL>(ctx, this_val, js_xfl_class_id);
+    if (!left)
+        return JS_EXCEPTION;
+    auto const* right = argc > 0 ? xflValueNoThrow(argv[0]) : nullptr;
+    if (!right)
+        return JS_ThrowTypeError(
+            ctx, "XFLDecimal.compare() expects XFLDecimal");
+    return JS_NewInt32(ctx, compareXFL(*left, *right));
+}
+
 //@@impl XFLDecimal
 JSCFunctionListEntry const proto[] = {
     JS_CFUNC_DEF("isNegative", 0, js_xfl_is_negative),
     JS_CFUNC_DEF("isZero", 0, js_xfl_is_zero),
+    JS_CFUNC_DEF("sign", 0, js_xfl_sign),
+    JS_CFUNC_DEF("negate", 0, js_xfl_negate),
+    JS_CFUNC_DEF("equals", 1, js_xfl_equals),
+    JS_CFUNC_DEF("compare", 1, js_xfl_compare),
 };
 
 }  // namespace
@@ -70,8 +163,7 @@ registerXFL(JSContext* ctx)
 bool
 isXFLDecimal(JSValueConst value) noexcept
 {
-    return JS_IsObject(value) && JS_GetClassID(value) == js_xfl_class_id &&
-        JS_GetOpaque(value, js_xfl_class_id) != nullptr;
+    return xflValueNoThrow(value) != nullptr;
 }
 
 JSValue

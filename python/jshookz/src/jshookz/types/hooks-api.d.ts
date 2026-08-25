@@ -1177,8 +1177,8 @@ declare global {
      */
     toInt(decimalPlaces?: number): XFLResult<bigint>;
     toString(): string;
-    equals(other: XFLDecimal): boolean;
-    compare(other: XFLDecimal): number;
+    equals(other: unknown): boolean;
+    compare(other: XFLDecimal): -1 | 0 | 1;
   }
 
   interface XFLDecimalFactory extends RuntimeType<XFLDecimal> {

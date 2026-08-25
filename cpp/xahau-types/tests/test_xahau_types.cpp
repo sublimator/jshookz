@@ -235,6 +235,83 @@ TEST_F(XahauTypes, AccountIDZero)
     EXPECT_TRUE(JS_ToBool(ctx, v.get()));
 }
 
+TEST_F(XahauTypes, XFLDecimalTotalValueKernel)
+{
+    namespace types = jshookz::provider::types;
+    auto installDecimal = [this](char const* name, bool negative,
+                              std::uint64_t magnitude,
+                              std::int32_t exponent) {
+        installValue(
+            name,
+            types::makeXFLDecimalParts(
+                ctx, negative, magnitude, exponent));
+    };
+
+    installDecimal("zero", false, 0, 0);
+    installDecimal("positiveOne", false, 1000000000000000ULL, -15);
+    installDecimal("negativeOne", true, 1000000000000000ULL, -15);
+    installDecimal("positiveTwo", false, 2000000000000000ULL, -15);
+    installDecimal("negativeTwo", true, 2000000000000000ULL, -15);
+    installDecimal("positiveTen", false, 1000000000000000ULL, -14);
+    installDecimal("negativeTen", true, 1000000000000000ULL, -14);
+
+    auto value = eval(R"JS(
+        (() => {
+          let callbacks = 0;
+          const proxy = new Proxy(positiveOne, {
+            get() { ++callbacks; throw new Error("get trap"); },
+            getPrototypeOf() {
+              ++callbacks;
+              throw new Error("getPrototypeOf trap");
+            },
+          });
+          let compareError = "";
+          try { positiveOne.compare({}); }
+          catch (error) {
+            compareError = `${error instanceof TypeError}:${error.message}`;
+          }
+          let proxyCompareError = "";
+          try { positiveOne.compare(proxy); }
+          catch (error) {
+            proxyCompareError = `${error instanceof TypeError}:${error.message}`;
+          }
+          const doubleNegated = positiveTwo.negate().negate();
+          return JSON.stringify({
+            signs: [negativeOne.sign(), zero.sign(), positiveOne.sign()],
+            zeroNegatesToZero: zero.negate().isZero(),
+            negatedPositive: positiveOne.negate().compare(negativeOne),
+            negatedNegative: negativeOne.negate().compare(positiveOne),
+            doubleNegation: doubleNegated.equals(positiveTwo),
+            sameExponent: [
+              positiveOne.compare(positiveTwo),
+              positiveTwo.compare(positiveOne),
+            ],
+            exponent: [
+              positiveOne.compare(positiveTen),
+              positiveTen.compare(positiveOne),
+            ],
+            negativeReversal: [
+              negativeTen.compare(negativeTwo),
+              negativeTwo.compare(negativeOne),
+            ],
+            equality: [
+              positiveOne.equals(positiveOne),
+              positiveOne.equals(positiveTwo),
+              positiveOne.equals({}),
+              positiveOne.equals(proxy),
+              positiveOne.equals(),
+            ],
+            callbacks,
+            compareError,
+            proxyCompareError,
+          });
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException());
+    EXPECT_EQ(to_string(value.get()),
+        R"({"signs":[-1,0,1],"zeroNegatesToZero":true,"negatedPositive":0,"negatedNegative":0,"doubleNegation":true,"sameExponent":[-1,1],"exponent":[-1,1],"negativeReversal":[-1,-1],"equality":[true,false,false,false,false],"callbacks":0,"compareError":"true:XFLDecimal.compare() expects XFLDecimal","proxyCompareError":"true:XFLDecimal.compare() expects XFLDecimal"})");
+}
+
 TEST_F(XahauTypes, STBlobFromBytes)
 {
     auto v = eval("STBlob.from(new Uint8Array([1, 2, 3])).byteLength");

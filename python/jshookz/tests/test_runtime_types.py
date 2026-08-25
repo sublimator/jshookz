@@ -4,7 +4,62 @@ from jshookz.host import WasmHost
 from jshookz.paths import XAHAU_HOOK_PROVIDER_WASM
 from jshookz.runtime_types import SCHEMA, observe_runtime_types
 
-_NOMINAL_MATRIX_GAS = 11_162_169
+_NOMINAL_MATRIX_GAS = 11_163_604
+
+_XFL_VALUE_KERNEL = r"""
+JSON.stringify((() => {
+  const amount = wire => util.decodeObject(STBlob.fromHex(`61${wire}`)).Amount;
+  const zero = amount(
+    "80000000000000000000000000000000000000005553440000000000" +
+    "B5F762798A53D543A014CAF8B297CFF8F2F937E8").toXFL();
+  const one = amount(
+    "D4838D7EA4C680000000000000000000000000005553440000000000" +
+    "B5F762798A53D543A014CAF8B297CFF8F2F937E8").toXFL();
+  const negativeOne = amount(
+    "94838D7EA4C680000000000000000000000000005553440000000000" +
+    "B5F762798A53D543A014CAF8B297CFF8F2F937E8").toXFL();
+  const two = amount(
+    "D4871AFD498D00000000000000000000000000005553440000000000" +
+    "B5F762798A53D543A014CAF8B297CFF8F2F937E8").toXFL();
+  const ten = amount(
+    "D4C38D7EA4C680000000000000000000000000005553440000000000" +
+    "B5F762798A53D543A014CAF8B297CFF8F2F937E8").toXFL();
+  const failures = [];
+  const check = (condition, label) => { if (!condition) failures.push(label); };
+
+  check(zero.sign() === 0 && one.sign() === 1 && negativeOne.sign() === -1,
+    "sign");
+  check(zero.negate().isZero() && zero.negate().sign() === 0, "zero-negate");
+  check(one.negate().equals(negativeOne), "negate-positive");
+  check(negativeOne.negate().equals(one), "negate-negative");
+  check(two.negate().negate().equals(two), "double-negate");
+  check(one.compare(two) === -1 && two.compare(one) === 1, "mantissa-order");
+  check(one.compare(ten) === -1 && ten.compare(one) === 1, "exponent-order");
+  check(ten.negate().compare(two.negate()) === -1, "negative-reversal");
+  check(one.equals(one) && !one.equals(two) && !one.equals({}) &&
+    !one.equals(null) && !one.equals(), "equals-total");
+
+  let callbacks = 0;
+  const proxy = new Proxy(one, {
+    get() { ++callbacks; throw new Error("get trap"); },
+    getPrototypeOf() { ++callbacks; throw new Error("prototype trap"); },
+  });
+  check(!one.equals(proxy), "proxy-equals");
+  let compareError = "";
+  try { one.compare(proxy); }
+  catch (error) {
+    compareError = `${error instanceof TypeError}:${error.message}`;
+  }
+  check(compareError ===
+    "true:XFLDecimal.compare() expects XFLDecimal", "compare-type-error");
+  check(callbacks === 0, "proxy-callback");
+  check(!one.equals(JSON.parse(JSON.stringify(one))), "clone-equals");
+  check(Object.isFrozen(Object.getPrototypeOf(one)) &&
+    Object.isFrozen(XFLDecimal) && one instanceof XFLDecimal,
+    "sealed-nominal-surface");
+  return failures;
+})())
+""".strip()
 
 
 class _EffectHost:
@@ -195,6 +250,23 @@ def test_sealed_provider_state_set_accepts_stobject_serialized_type() -> None:
     assert result.ok, result.error
     assert result.result_value == '{"ok":true,"bytes":5}'
     assert handler.state_set_calls == 1
+
+
+def test_sealed_provider_xfl_decimal_total_value_kernel_uses_no_host_work() -> None:
+    host = WasmHost(
+        handler=_EffectHost(),
+        wasm_path=XAHAU_HOOK_PROVIDER_WASM,
+        fuel=50_000_000,
+    )
+    host.init()
+    try:
+        result = host.eval(_XFL_VALUE_KERNEL)
+    finally:
+        host.destroy()
+
+    assert result.ok, result.error
+    assert result.result_value == "[]"
+    assert result.host_work_used == 0
 
 
 def _run_nominal_matrix():

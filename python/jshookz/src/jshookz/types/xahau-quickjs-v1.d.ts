@@ -642,6 +642,10 @@ declare global {
     readonly [__providerValueBrand]: "XFLDecimal";
     isNegative(): boolean;
     isZero(): boolean;
+    sign(): -1 | 0 | 1;
+    negate(): XFLDecimal;
+    equals(other: unknown): boolean;
+    compare(other: XFLDecimal): -1 | 0 | 1;
   }
 
   const XFLDecimal: RuntimeType<XFLDecimal>;
