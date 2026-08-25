@@ -42,6 +42,12 @@ pinned public Xahau `hook_api.macro`, parsed by hookz.
 `xahau-types` is host-blind: no `hook_*` / `host_*`. That is why it links
 on Mac. Host crossings stay in `cpp/provider/bindings/`.
 
+Generalize bindings only from repeated live consumers. Reuse the
+`jshookz::qjs` toolkit and named `BytePolicy` paths, but keep Result variants,
+UInt magic dispatch, simple leaves, owned slice views, and exotic aggregates
+as distinct registration and lifetime shapes. There is deliberately no
+universal native-class registrar.
+
 ```bash
 conan profile detect --exist-ok
 conan install cpp --output-folder=build/cpp --build=missing \
