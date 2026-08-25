@@ -186,6 +186,48 @@ TEST_F(XahauTypes, Hash256Roundtrip)
         "00000000000000000000000000000000000000000000000000000000000000FF");
 }
 
+TEST_F(XahauTypes, Hash256Heritage)
+{
+    namespace types = jshookz::provider::types;
+    std::array<std::uint8_t, 16> hash128Bytes{};
+    installValue("hash128Value",
+        types::makeHash128Bytes(
+            ctx, hash128Bytes.data(), hash128Bytes.size()));
+
+    auto value = eval(R"JS(
+        (() => {
+          const lowBytes = new Uint8Array(32);
+          lowBytes[0] = 1;
+          lowBytes[31] = 255;
+          const highBytes = new Uint8Array(32);
+          highBytes[0] = 2;
+          const low = Hash256.from(lowBytes);
+          const equal = Hash256.from(lowBytes);
+          const high = Hash256.from(highBytes);
+          let wrongBrandIsTypeError = false;
+          try { low.compare(hash128Value); }
+          catch (error) { wrongBrandIsTypeError = error instanceof TypeError; }
+          const lookalike = {byteLength: 32, compare() { return 0; }};
+          return JSON.stringify({
+            byteLength: low.byteLength,
+            equal: low.compare(equal),
+            less: low.compare(high),
+            greater: high.compare(low),
+            wrongBrandIsTypeError,
+            hashNominal: low instanceof Hash,
+            hash256Nominal: low instanceof Hash256,
+            hash128IsHash: hash128Value instanceof Hash,
+            hash128IsHash256: hash128Value instanceof Hash256,
+            lookalikeIsHash: lookalike instanceof Hash,
+            lookalikeIsHash256: lookalike instanceof Hash256,
+          });
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException());
+    EXPECT_EQ(to_string(value.get()),
+        R"({"byteLength":32,"equal":0,"less":-1,"greater":1,"wrongBrandIsTypeError":true,"hashNominal":true,"hash256Nominal":true,"hash128IsHash":true,"hash128IsHash256":false,"lookalikeIsHash":false,"lookalikeIsHash256":false})");
+}
+
 TEST_F(XahauTypes, AccountIDZero)
 {
     auto v = eval("AccountID.zero.isZero()");

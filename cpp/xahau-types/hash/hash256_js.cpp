@@ -138,6 +138,12 @@ JSValue js_hash256_from_hex(JSContext *ctx, JSValueConst, int argc,
   return newHash256(ctx, JS_UNDEFINED, bytes.data(), bytes.size());
 }
 
+// @binding provider:Hash256.byteLength
+JSValue js_hash256_byte_length(JSContext *ctx, JSValueConst this_val) {
+  return hashState(ctx, this_val) == nullptr ? JS_EXCEPTION
+                                             : JS_NewUint32(ctx, 32);
+}
+
 // @binding provider:Hash256.toHex
 JSValue js_hash256_to_hex(JSContext *ctx, JSValueConst this_val, int,
                           JSValueConst *) {
@@ -185,12 +191,25 @@ JSValue js_hash256_equals(JSContext *ctx, JSValueConst this_val, int argc,
   return JS_NewBool(ctx, std::memcmp(left->data, right->data, 32) == 0);
 }
 
+// @binding provider:Hash256.compare
+JSValue js_hash256_compare(JSContext *ctx, JSValueConst this_val, int argc,
+                           JSValueConst *argv) {
+  auto *left = hashState(ctx, this_val);
+  auto *right = hashState(ctx, argc > 0 ? argv[0] : JS_UNDEFINED);
+  if (!left || !right)
+    return JS_EXCEPTION;
+  int const order = std::memcmp(left->data, right->data, 32);
+  return JS_NewInt32(ctx, order < 0 ? -1 : order > 0 ? 1 : 0);
+}
+
 //@@impl STHash
 JSCFunctionListEntry const proto[] = {
+    JS_CGETSET_DEF("byteLength", js_hash256_byte_length, nullptr),
     JS_CFUNC_DEF("toHex", 0, js_hash256_to_hex),
     JS_CFUNC_DEF("toBytes", 0, js_hash256_to_bytes),
     JS_CFUNC_DEF("isZero", 0, js_hash256_is_zero),
     JS_CFUNC_DEF("equals", 1, js_hash256_equals),
+    JS_CFUNC_DEF("compare", 1, js_hash256_compare),
 };
 
 //@@impl STHash static
