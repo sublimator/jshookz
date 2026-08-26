@@ -152,6 +152,22 @@ def test_runtime_profile_namespace_and_config_are_frozen_and_literal_typed():
     )
 
 
+def test_xfl_profile_is_an_ordinary_namespace_not_a_runtime_classifier():
+    result = evaluate(
+        "JSON.stringify((()=>{"
+        "let ordinaryTypeError=false;"
+        "try{({}) instanceof XFLProfile}catch(error){"
+        "ordinaryTypeError=error instanceof TypeError;}"
+        "return [ordinaryTypeError,"
+        "Object.prototype.hasOwnProperty.call(XFLProfile,Symbol.hasInstance),"
+        "XFLProfile[Symbol.hasInstance]===undefined];"
+        "})())"
+    )
+
+    assert result.exit_code == 0
+    assert result.result_value == "[true,false,true]"
+
+
 def test_define_hook_config_rejects_traps_accessors_and_non_exact_shapes():
     result = evaluate(
         "JSON.stringify(["
