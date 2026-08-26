@@ -18,14 +18,11 @@ Fees have to price that in-guest work (fuel), not pretend every JS op is a
 C Hook host call.
 
 Wizer runs at **build** time, unmetered. It does not replay at runtime.
-Xahau AOT-compiles that wasm once per process. A session then:
-
-- **create** — instantiate the snapshotted module (43 / 36 µs)
-- **initialize** — leftover `_initialize` / `qjs_init` / limits (1 / 0 µs;
-  was ~145 µs). Fuel here is 5M − remaining after create+initialize:
-  **278k**, down from ~1.8M. That is wasm still executed, not the Wizer
-  cache. Clock is ~1 µs; the meter still sees those ops.
-- **validate** — admit bytecode, not `main()` (7 / 5 µs, ~49k fuel)
+Xahau AOT-compiles that wasm once per process. A session then creates an
+instance from the snapshot, runs the small remaining initialization path, and
+validates admitted bytecode without executing `main()`. Exact timing and fuel
+measurements are artifact-, engine-, and platform-specific, so they live in
+the pinned benchmark/acceptance records rather than this orientation page.
 
 `qjs_hook` (run the TypeScript hook) is later.
 
