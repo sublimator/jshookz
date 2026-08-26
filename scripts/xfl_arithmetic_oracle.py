@@ -15,7 +15,7 @@ SOURCE_SCHEMA = "xahau.xfl-arithmetic-oracle.v1"
 FIXTURE_SCHEMA = "jshookz.xahau-float-v1-add-subtract-oracle.v1"
 PROFILE = "xahauFloatV1"
 XAHAUD_SOURCE_COMMIT = "bb244ef7729503a0317bcff0f8fdaa93ca5cb7d2"
-XAHAUD_VECTORS_COMMIT = "c49c784213c83963c5c7b49f8589b9bf86bea58e"
+XAHAUD_VECTORS_COMMIT = "6569e562818013a94aaaf3de48b2df8ef438e28a"
 ORACLE_REPOSITORY = "https://github.com/Xahau/xahaud.git"
 ORACLE_SUITE = "ripple.app.HookzFloatVectors"
 BEGIN = "---HOOKZ_FLOAT_VECTORS_BEGIN---"
@@ -32,6 +32,8 @@ REQUIRED_CASE_IDS = frozenset(
         "add.same-exponent-negative",
         "add.exact-cancellation",
         "add.renormalizing-cancellation",
+        "add.legacy-clamp-positive-ten",
+        "add.legacy-clamp-negative-ten",
         "add.min-exponent-dust-zero",
         "add.align-delta-1",
         "add.align-delta-15",
@@ -51,6 +53,8 @@ REQUIRED_CASE_IDS = frozenset(
         "subtract.self",
         "subtract.same-exponent-positive",
         "subtract.same-exponent-negative",
+        "subtract.legacy-clamp-positive-ten",
+        "subtract.legacy-clamp-negative-ten",
         "subtract.align-delta-15",
         "subtract.align-delta-16-half-odd",
         "subtract.min-exponent-dust-zero",
@@ -62,6 +66,10 @@ REQUIRED_CASE_IDS = frozenset(
 
 _UNSIGNED = re.compile(r"(?:0|[1-9][0-9]*)\Z")
 _SIGNED = re.compile(r"(?:0|-?[1-9][0-9]*)\Z")
+_BUILD_COMMIT = re.compile(
+    r"^Git commit hash: (?P<commit>[0-9a-f]{40})(?P<dirty>-dirty)?$",
+    re.MULTILINE,
+)
 
 
 class OracleError(ValueError):
@@ -204,6 +212,16 @@ def load_fixture(path: Path) -> dict[str, Any]:
     return validate_fixture(value)
 
 
+def _validate_oracle_build_identity(version: str) -> None:
+    match = _BUILD_COMMIT.search(version)
+    if match is None:
+        raise OracleError("oracle executable does not report its git build identity")
+    if match.group("commit") != XAHAUD_VECTORS_COMMIT or match.group("dirty"):
+        raise OracleError(
+            "oracle executable was not built from the clean pinned checkout"
+        )
+
+
 def _capture(checkout: Path, rippled: Path) -> dict[str, Any]:
     checkout = checkout.resolve()
     rippled = rippled.resolve()
@@ -227,6 +245,17 @@ def _capture(checkout: Path, rippled: Path) -> dict[str, Any]:
         raise OracleError(
             f"xahaud-vectors checkout is {commit}, expected {XAHAUD_VECTORS_COMMIT}"
         )
+    version = subprocess.run(
+        [str(rippled), "--version"],
+        cwd=checkout,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if version.returncode != 0:
+        raise OracleError("oracle executable could not report its git build identity")
+    _validate_oracle_build_identity(version.stdout + version.stderr)
+
     completed = subprocess.run(
         [
             str(rippled),

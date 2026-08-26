@@ -77,6 +77,36 @@ class XFLArithmeticOracleReaderTest(unittest.TestCase):
             ):
                 oracle._capture(checkout, outside)
 
+    def test_oracle_executable_without_build_identity_is_rejected(self) -> None:
+        with self.assertRaisesRegex(
+            oracle.OracleError,
+            "does not report its git build identity",
+        ):
+            oracle._validate_oracle_build_identity("xahaud version CustomBuild\n")
+
+    def test_oracle_executable_from_wrong_commit_is_rejected(self) -> None:
+        with self.assertRaisesRegex(
+            oracle.OracleError,
+            "was not built from the clean pinned checkout",
+        ):
+            oracle._validate_oracle_build_identity(
+                "Git commit hash: " + "0" * 40 + "\n"
+            )
+
+    def test_oracle_executable_from_dirty_checkout_is_rejected(self) -> None:
+        with self.assertRaisesRegex(
+            oracle.OracleError,
+            "was not built from the clean pinned checkout",
+        ):
+            oracle._validate_oracle_build_identity(
+                f"Git commit hash: {oracle.XAHAUD_VECTORS_COMMIT}-dirty\n"
+            )
+
+    def test_oracle_executable_from_clean_pinned_checkout_is_accepted(self) -> None:
+        oracle._validate_oracle_build_identity(
+            f"Git commit hash: {oracle.XAHAUD_VECTORS_COMMIT}\n"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -32,6 +32,7 @@ _ISSUER = "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
 _SUCCESS_MESSAGE = "xfl oracle"
 _WASM_MALLOC_OVERHEAD = 16
 _TIGHT_MAX_ALIGNMENT_FUEL_CEILING = 228_900
+_PACKAGED_ORACLE_BATCH_SIZE = 16
 
 
 def _load_oracle_reader() -> ModuleType:
@@ -237,21 +238,30 @@ def _assert_fuel_ceiling(result: ContractResult, fuel_ceiling: int) -> None:
 
 
 def test_all_oracle_rows_execute_through_packaged_sealed_provider(tmp_path: Path):
-    source = _profiled_source(
-        _case_statements(ORACLE["cases"]) + f'return accept("{_SUCCESS_MESSAGE}",0);'
-    )
-    packaged = _package(tmp_path, source)
-    parsed = parse_hook_artifact(packaged.artifact)
+    cases = ORACLE["cases"]
+    covered_ids: list[str] = []
+    for batch_index, offset in enumerate(
+        range(0, len(cases), _PACKAGED_ORACLE_BATCH_SIZE)
+    ):
+        batch = cases[offset : offset + _PACKAGED_ORACLE_BATCH_SIZE]
+        covered_ids.extend(str(case["id"]) for case in batch)
+        source = _profiled_source(
+            _case_statements(batch) + f'return accept("{_SUCCESS_MESSAGE}",0);'
+        )
+        packaged = _package(tmp_path, source, f"oracle-{batch_index}.hook.ts")
+        parsed = parse_hook_artifact(packaged.artifact)
 
-    first, first_handler = _execute(parsed.payload)
-    second, second_handler = _execute(parsed.payload)
+        first, first_handler = _execute(parsed.payload)
+        second, second_handler = _execute(parsed.payload)
 
-    assert packaged.profile is XFLArithmeticProfile.XAHAU_FLOAT_V1
-    assert parsed.profile is XFLArithmeticProfile.XAHAU_FLOAT_V1
-    assert first == second
-    _assert_terminal_only(first, first_handler)
-    assert second_handler.calls == first_handler.calls
-    assert 0 < first.gas_used < 50_000_000
+        assert packaged.profile is XFLArithmeticProfile.XAHAU_FLOAT_V1
+        assert parsed.profile is XFLArithmeticProfile.XAHAU_FLOAT_V1
+        assert first == second
+        _assert_terminal_only(first, first_handler)
+        assert second_handler.calls == first_handler.calls
+        assert 0 < first.gas_used < 50_000_000
+
+    assert covered_ids == [str(case["id"]) for case in cases]
 
 
 def test_arithmetic_adds_no_host_call_or_host_work(tmp_path: Path):

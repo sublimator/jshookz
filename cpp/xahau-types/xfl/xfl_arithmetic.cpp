@@ -123,7 +123,8 @@ addXahauFloatV1(XFL const& left, XFL const& right) noexcept
     std::int64_t const sum = signedMagnitude(left, leftMagnitude) +
         signedMagnitude(right, rightMagnitude);
 
-    // This inclusive legacy clamp is observable at the minimum exponent.
+    // The legacy IOUAmount add path applies this inclusive clamp at every
+    // aligned exponent, even when the residual could otherwise normalize.
     if (sum >= -10 && sum <= 10)
         return {};
     return normalize(sum, exponent);

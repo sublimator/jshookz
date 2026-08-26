@@ -443,6 +443,46 @@
     {
       "a": {
         "type": "u64",
+        "val": "6360082673847140362"
+      },
+      "b": {
+        "type": "u64",
+        "val": "1748396655419752448"
+      },
+      "category": "legacy_clamp",
+      "id": "add.legacy-clamp-positive-ten",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "0"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "1748396655419752458"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6360082673847140352"
+      },
+      "category": "legacy_clamp",
+      "id": "add.legacy-clamp-negative-ten",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "0"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
         "val": "0"
       },
       "b": {
@@ -679,6 +719,46 @@
           "val": "4631700416936869888"
         }
       }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140362"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6360082673847140352"
+      },
+      "category": "legacy_clamp",
+      "id": "subtract.legacy-clamp-positive-ten",
+      "operation": "subtract",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "0"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140352"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6360082673847140362"
+      },
+      "category": "legacy_clamp",
+      "id": "subtract.legacy-clamp-negative-ten",
+      "operation": "subtract",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "0"
+        }
+      }
     }
   ],
   "fix_universal_number": false,
@@ -709,7 +789,7 @@
   },
   "number_so": false,
   "oracle": {
-    "commit": "c49c784213c83963c5c7b49f8589b9bf86bea58e",
+    "commit": "6569e562818013a94aaaf3de48b2df8ef438e28a",
     "repository": "https://github.com/Xahau/xahaud.git",
     "source_schema": "xahau.xfl-arithmetic-oracle.v1",
     "suite": "ripple.app.HookzFloatVectors"
