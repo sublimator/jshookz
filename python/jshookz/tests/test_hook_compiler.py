@@ -14,7 +14,7 @@ from jshookz.hook_compiler import (
     compile_hook,
     package_hook,
 )
-from jshookz.host import WasmHost
+from jshookz.host import HookModuleValidation, WasmHost
 from jshookz.paths import (
     CANONICAL_HOOKS_API_DECLARATIONS,
     XAHAU_HOOK_PROVIDER_WASM,
@@ -670,7 +670,9 @@ def test_typescript_hook_packages_payload_with_explicit_identities(tmp_path: Pat
     parsed = parse_hook_artifact(packaged.artifact)
 
     assert len(packaged.artifact) == HEADER_SIZE + len(packaged.bytecode)
+    assert parsed.envelope_version == 2
     assert parsed.hook_api_version == 1
+    assert parsed.profile is XFLArithmeticProfile.NONE
     assert parsed.bytecode_abi_id == abi_id
     assert parsed.runtime_profile_id == profile_id
     assert parsed.payload == packaged.bytecode
@@ -684,6 +686,57 @@ def test_typescript_hook_packages_payload_with_explicit_identities(tmp_path: Pat
     )
     assert evaluated.exit_code == -1
     assert evaluated.error == "Error: packaged:false:10"
+
+
+@pytest.mark.parametrize(
+    ("member", "expected", "wire"),
+    [
+        ("xahauFloatV1", XFLArithmeticProfile.XAHAU_FLOAT_V1, b"\x00\x01"),
+        ("nearestEvenV1", XFLArithmeticProfile.NEAREST_EVEN_V1, b"\x00\x02"),
+    ],
+)
+def test_packaging_joins_source_provider_and_v2_header_profile(
+    tmp_path: Path,
+    member: str,
+    expected: XFLArithmeticProfile,
+    wire: bytes,
+):
+    source = tmp_path / "profiled.hook.ts"
+    source.write_text(
+        "export const hookConfig=defineHookConfig({xflArithmetic:"
+        f"XFLProfile.{member}}});"
+        "export function main():never{return accept();}"
+    )
+
+    packaged = package_hook(
+        source,
+        hook_api_version=1,
+        bytecode_abi_id=bytes(range(32)),
+        runtime_profile_id=bytes(range(32, 64)),
+    )
+    parsed = parse_hook_artifact(packaged.artifact)
+
+    assert packaged.profile is expected
+    assert parsed.profile is expected
+    assert packaged.artifact[10:12] == wire
+
+
+def test_compiler_rejects_provider_profile_disagreement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    source = tmp_path / "none.hook.ts"
+    source.write_text("export function main():never{return accept();}")
+    monkeypatch.setattr(
+        WasmHost,
+        "validate_hook_bytecode",
+        lambda _self, _bytecode: HookModuleValidation(
+            valid=True,
+            profile=XFLArithmeticProfile.XAHAU_FLOAT_V1,
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="profile disagreement"):
+        compile_hook(source)
 
 
 def test_main_does_not_receive_the_raw_callback_word(tmp_path: Path):

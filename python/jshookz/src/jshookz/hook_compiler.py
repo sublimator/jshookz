@@ -385,6 +385,11 @@ def compile_hook(
             "QuickJS Hook is not deployable: "
             f"{validation.error or 'provider validation failed'}"
         )
+    if validation is not None and validation.profile is not profile:
+        raise RuntimeError(
+            "QuickJS Hook profile disagreement: compiler selected "
+            f"{profile.value}, provider observed {validation.profile.value}"
+        )
     return CompiledHook(
         bytecode=bytecode,
         javascript=javascript,
@@ -432,12 +437,18 @@ def package_hook(
             "QuickJS Hook is not deployable: "
             f"{validation.error or 'provider validation failed'}"
         )
+    if validation.profile is not compiled.profile:
+        raise RuntimeError(
+            "QuickJS Hook profile disagreement: compiler selected "
+            f"{compiled.profile.value}, provider observed {validation.profile.value}"
+        )
     return PackagedHook(
         artifact=build_hook_artifact(
             compiled.bytecode,
             hook_api_version=hook_api_version,
             bytecode_abi_id=bytecode_abi_id,
             runtime_profile_id=runtime_profile_id,
+            profile=compiled.profile,
         ),
         bytecode=compiled.bytecode,
         javascript=compiled.javascript,

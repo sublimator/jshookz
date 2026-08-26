@@ -80,9 +80,11 @@ def _validate_xfl_activation_contract(source: dict[str, Any]) -> None:
         "nearestEvenV1": generated.XFL_ARITHMETIC_PROFILE_NEAREST_EVEN_V1,
     }
     artifact = source.get("artifact")
-    if not isinstance(artifact, dict) or artifact.get(
-        "xfl_arithmetic_profile_codes"
-    ) != expected_codes:
+    if (
+        not isinstance(artifact, dict)
+        or artifact.get("envelope_version") != generated.XQJS_ENVELOPE_VERSION
+        or artifact.get("xfl_arithmetic_profile_codes") != expected_codes
+    ):
         raise ValueError("runtime-profile XFL arithmetic profile codes differ")
 
     expected_validation = {

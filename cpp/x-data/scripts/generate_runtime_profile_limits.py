@@ -56,13 +56,21 @@ def profile_constants(source: bytes) -> dict[str, int]:
     artifact = document.get("artifact")
     if not isinstance(artifact, dict):
         raise ValueError("runtime profile has no artifact object")
+    selected: dict[str, int] = {
+        "xqjs_envelope_version": _uint32(
+            artifact.get("envelope_version"),
+            "runtime profile XQJS envelope version",
+            positive=True,
+        )
+    }
+    if selected["xqjs_envelope_version"] != 2:
+        raise ValueError("runtime profile XQJS envelope version must be exactly 2")
     codes = artifact.get("xfl_arithmetic_profile_codes")
     if not isinstance(codes, dict):
         raise ValueError("runtime profile has no XFL arithmetic profile codes")
     if set(codes) != {source_name for source_name, _ in PROFILE_CODES}:
         raise ValueError("runtime profile XFL arithmetic profile code names differ")
 
-    selected: dict[str, int] = {}
     for source_name, constant_name in PROFILE_CODES:
         selected[constant_name] = _uint32(
             codes[source_name],
@@ -125,6 +133,10 @@ def render(source: bytes, source_name: str) -> str:
         f"inline constexpr std::uint32_t {name} = {values[name]}u;"
         for _, name in PROFILE_CODES
     )
+    rendered_profile_constants = (
+        "inline constexpr std::uint32_t xqjs_envelope_version = "
+        f"{values['xqjs_envelope_version']}u;\n" + rendered_profile_constants
+    )
     validation_constants = "\n".join(
         f"inline constexpr std::uint32_t module_validation_{name} = "
         f"{values[f'module_validation_{name}']}u;"
@@ -160,6 +172,7 @@ def render_python(source: bytes, source_name: str) -> str:
     values = profile_constants(source)
     digest = hashlib.sha256(source).hexdigest()
     assignments = [
+        f"XQJS_ENVELOPE_VERSION = {values['xqjs_envelope_version']}",
         f"XFL_ARITHMETIC_PROFILE_NONE = {values['xfl_arithmetic_profile_none']}",
         "XFL_ARITHMETIC_PROFILE_XAHAU_FLOAT_V1 = "
         f"{values['xfl_arithmetic_profile_xahau_float_v1']}",

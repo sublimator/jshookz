@@ -63,6 +63,7 @@ def cmd_compile_hook(args: argparse.Namespace) -> int:
     output.write_bytes(result.bytecode)
     if args.emit_js:
         Path(args.emit_js).write_text(result.javascript)
+    print(f"xfl-arithmetic-profile={result.profile.value}", file=sys.stderr)
     print(output)
     return 0
 
@@ -114,6 +115,7 @@ def cmd_package_hook(args: argparse.Namespace) -> int:
         Path(args.emit_bytecode).write_bytes(result.bytecode)
     if args.emit_js:
         Path(args.emit_js).write_text(result.javascript)
+    print(f"xfl-arithmetic-profile={result.profile.value}", file=sys.stderr)
     print(output)
     return 0
 
