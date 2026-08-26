@@ -12,6 +12,8 @@
     "compiler_driver.ts",
     "entry_policy.ts",
     "result_validator.ts",
+    "xfl_profile_ledger.ts",
+    "xfl_profile_policy.ts",
     "node-shim.d.ts"
   ]
 }

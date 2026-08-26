@@ -1,11 +1,19 @@
 import os
+import json
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from jshookz.hook_artifact import HEADER_SIZE, parse_hook_artifact
-from jshookz.hook_compiler import DEFAULT_DECLARATIONS, compile_hook, package_hook
+from jshookz.hook_compiler import (
+    DEFAULT_DECLARATIONS,
+    XFLArithmeticProfile,
+    _check_javascript,
+    _typescript_to_javascript,
+    compile_hook,
+    package_hook,
+)
 from jshookz.host import WasmHost
 from jshookz.paths import (
     CANONICAL_HOOKS_API_DECLARATIONS,
@@ -40,6 +48,269 @@ def test_default_v1_declarations_reject_unimplemented_rich_api(tmp_path: Path):
 
     with pytest.raises(RuntimeError, match="Cannot find name 'record'"):
         compile_hook(source)
+
+
+@pytest.mark.parametrize("suffix", [".ts", ".js"])
+@pytest.mark.parametrize(
+    "member,expected",
+    [
+        ("xahauFloatV1", XFLArithmeticProfile.XAHAU_FLOAT_V1),
+        ("nearestEvenV1", XFLArithmeticProfile.NEAREST_EVEN_V1),
+    ],
+)
+def test_xfl_policy_preserves_canonical_config_profile(
+    tmp_path: Path,
+    suffix: str,
+    member: str,
+    expected: XFLArithmeticProfile,
+):
+    source = tmp_path / f"config-only.hook{suffix}"
+    annotation = ": never" if suffix == ".ts" else ""
+    source.write_text(
+        "export const hookConfig = defineHookConfig({ "
+        f"xflArithmetic: XFLProfile.{member} }});\n"
+        f"export function main(){annotation} {{ return accept(); }}\n"
+    )
+
+    if suffix == ".ts":
+        _, _, profile = _typescript_to_javascript(
+            source,
+            declarations=CANONICAL_HOOKS_API_DECLARATIONS,
+        )
+    else:
+        _, _, profile = _check_javascript(
+            source,
+            declarations=CANONICAL_HOOKS_API_DECLARATIONS,
+        )
+
+    assert profile is expected
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "export const hookConfig = defineHookConfig({ xflArithmetic: 0 });",
+        (
+            "export const hookConfig: HookConfig = defineHookConfig({ "
+            "xflArithmetic: XFLProfile.xahauFloatV1 });"
+        ),
+        (
+            "export let hookConfig = defineHookConfig({ "
+            "xflArithmetic: XFLProfile.xahauFloatV1 });"
+        ),
+        (
+            "const hookConfig = defineHookConfig({ "
+            "xflArithmetic: XFLProfile.xahauFloatV1 });"
+        ),
+        (
+            "export const hookConfig = (defineHookConfig)({ "
+            "xflArithmetic: XFLProfile.xahauFloatV1 });"
+        ),
+        (
+            "export const hookConfig = defineHookConfig("
+            "{ xflArithmetic: XFLProfile.xahauFloatV1 } "
+            "satisfies HookConfig);"
+        ),
+        (
+            "export const hookConfig = defineHookConfig({ "
+            "xflArithmetic: XFLProfile.xahauFloatV1 }), extra = 1;"
+        ),
+        (
+            "const hookConfig = defineHookConfig({ "
+            "xflArithmetic: XFLProfile.xahauFloatV1 }); "
+            "export { hookConfig };"
+        ),
+        (
+            "export const hookConfig = defineHookConfig({ "
+            "['xflArithmetic']: XFLProfile.xahauFloatV1 });"
+        ),
+        (
+            "export const hookConfig = defineHookConfig({ "
+            "...{ xflArithmetic: XFLProfile.xahauFloatV1 } });"
+        ),
+        (
+            "export const hookConfig = defineHookConfig({ "
+            "get xflArithmetic() { return XFLProfile.xahauFloatV1; } });"
+        ),
+        (
+            "export default { "
+            "xflArithmetic: XFLProfile.xahauFloatV1 };"
+        ),
+        (
+            "export const renamed = defineHookConfig({ "
+            "xflArithmetic: XFLProfile.xahauFloatV1 });"
+        ),
+        (
+            "export const hookConfig = defineHookConfig({ "
+            "xflArithmetic: XFLProfile.xahauFloatV1 }); "
+            "hookConfig = defineHookConfig({ "
+            "xflArithmetic: XFLProfile.nearestEvenV1 });"
+        ),
+    ],
+)
+def test_xfl_policy_rejects_malformed_config_without_sensitive_use(
+    tmp_path: Path,
+    declaration: str,
+):
+    source = tmp_path / "malformed-config.hook.ts"
+    source.write_text(
+        f"{declaration}\nexport function main(): never {{ return accept(); }}\n"
+    )
+
+    with pytest.raises(RuntimeError, match="JSH-XFL001"):
+        _typescript_to_javascript(
+            source,
+            declarations=CANONICAL_HOOKS_API_DECLARATIONS,
+        )
+
+
+def test_checked_javascript_shadow_cannot_mint_hook_config(tmp_path: Path):
+    source = tmp_path / "shadowed-config.hook.js"
+    source.write_text(
+        "const defineHookConfig = value => value;\n"
+        "export const hookConfig = defineHookConfig({ xflArithmetic: 1 });\n"
+        "export function main() { return accept(); }\n"
+    )
+
+    with pytest.raises(RuntimeError, match="JSH-XFL001"):
+        _check_javascript(
+            source,
+            declarations=CANONICAL_HOOKS_API_DECLARATIONS,
+        )
+
+
+def test_xfl_policy_finds_sensitive_broad_member_by_declaration_identity(
+    tmp_path: Path,
+):
+    source = tmp_path / "missing-config.hook.ts"
+    source.write_text(
+        "declare const decimal: XFLDecimal;\n"
+        "export function main(): never { "
+        "decimal.add(decimal); return accept(); }\n"
+    )
+
+    with pytest.raises(RuntimeError, match="JSH-XFL001"):
+        _typescript_to_javascript(
+            source,
+            declarations=CANONICAL_HOOKS_API_DECLARATIONS,
+        )
+
+
+@pytest.mark.parametrize("suffix", [".ts", ".js"])
+@pytest.mark.parametrize(
+    "body",
+    [
+        "decimal.add(decimal);",
+        "(decimal.add)(decimal);",
+        "decimal.add?.(decimal);",
+        'decimal["add"](decimal);',
+        'const member = "add" as const; decimal[member](decimal);',
+        "const add = decimal.add; add(decimal);",
+        "const { add } = decimal; add(decimal);",
+        "(0, decimal.add)(decimal);",
+        "const add = decimal.add.bind(decimal); add(decimal);",
+    ],
+)
+def test_xfl_policy_covers_ratified_call_shapes(
+    tmp_path: Path,
+    suffix: str,
+    body: str,
+):
+    if suffix == ".js":
+        body = body.replace('const member = "add" as const;', 'const member = "add";')
+        declaration = "/** @type {XFLDecimal} */ const decimal = globalThis.decimal;"
+        signature = ""
+    else:
+        declaration = "declare const decimal: XFLDecimal;"
+        signature = ": never"
+    source = tmp_path / f"sensitive-shape.hook{suffix}"
+    source.write_text(
+        f"{declaration}\n"
+        f"export function main(){signature} {{ {body} return accept(); }}\n"
+    )
+
+    compiler = _check_javascript if suffix == ".js" else _typescript_to_javascript
+    with pytest.raises(RuntimeError, match="JSH-XFL001"):
+        compiler(source, declarations=CANONICAL_HOOKS_API_DECLARATIONS)
+
+
+def test_xfl_policy_accepts_sensitive_call_with_exact_config(tmp_path: Path):
+    source = tmp_path / "configured-sensitive.hook.ts"
+    source.write_text(
+        "declare const decimal: XFLDecimal;\n"
+        "export const hookConfig = defineHookConfig({ "
+        "xflArithmetic: XFLProfile.nearestEvenV1 });\n"
+        "export function main(): never { "
+        "const next = rollback.onFail(decimal.add(decimal), 'add failed'); "
+        "trace('next', next.toString()); return accept(); }\n"
+    )
+
+    _, _, profile = _typescript_to_javascript(
+        source,
+        declarations=CANONICAL_HOOKS_API_DECLARATIONS,
+    )
+
+    assert profile is XFLArithmeticProfile.NEAREST_EVEN_V1
+
+
+def test_xfl_policy_ignores_unrelated_add_spelling(tmp_path: Path):
+    source = tmp_path / "unrelated-add.hook.ts"
+    source.write_text(
+        "const value = { add(): number { return 1; } };\n"
+        "export function main(): never { "
+        "trace('value', value.add()); return accept(); }\n"
+    )
+
+    _, _, profile = _typescript_to_javascript(
+        source,
+        declarations=CANONICAL_HOOKS_API_DECLARATIONS,
+    )
+
+    assert profile is XFLArithmeticProfile.NONE
+
+
+@pytest.mark.parametrize(
+    "declarations,expression",
+    [
+        (
+            "declare const value: UInt8;",
+            "rollback.onFail(value.add(1), 'add failed');",
+        ),
+        ("declare const decimal: XFLDecimal;", "void decimal.sign();"),
+        (
+            "const value = { add(): number { return 1; } };",
+            "void value.add();",
+        ),
+    ],
+)
+def test_xfl_policy_negative_controls_do_not_require_config(
+    tmp_path: Path,
+    declarations: str,
+    expression: str,
+):
+    source = tmp_path / "profile-independent.hook.ts"
+    source.write_text(
+        f"{declarations}\n"
+        f"export function main(): never {{ {expression} return accept(); }}\n"
+    )
+
+    _, _, profile = _typescript_to_javascript(
+        source,
+        declarations=CANONICAL_HOOKS_API_DECLARATIONS,
+    )
+
+    assert profile is XFLArithmeticProfile.NONE
+
+
+def test_default_v1_arithmetic_attempt_remains_typescript_error(tmp_path: Path):
+    source = tmp_path / "unselected-add.hook.ts"
+    source.write_text(
+        "declare const decimal: XFLDecimal;\n"
+        "export function main(): never { decimal.add(decimal); return accept(); }\n"
+    )
+
+    with pytest.raises(RuntimeError, match="Property 'add' does not exist"):
+        _typescript_to_javascript(source, declarations=DEFAULT_DECLARATIONS)
 
 
 def test_result_moot_is_restricted_to_void_results(tmp_path: Path):
@@ -341,7 +612,9 @@ def test_v1_example_compiles_and_packages(tmp_path: Path):
     )
 
     assert compiled.bytecode
+    assert compiled.profile is XFLArithmeticProfile.NONE
     assert packaged.artifact
+    assert packaged.profile is XFLArithmeticProfile.NONE
 
 
 def test_typescript_hook_compiles_to_provider_bytecode(tmp_path: Path):
@@ -616,6 +889,7 @@ def test_compiler_driver_creates_one_program(tmp_path: Path):
             str(_typescript_library(None)),
             str(config),
             str(source),
+            str(DEFAULT_DECLARATIONS),
         ],
         capture_output=True,
         text=True,
@@ -625,6 +899,7 @@ def test_compiler_driver_creates_one_program(tmp_path: Path):
     assert completed.returncode == 0, completed.stderr
     assert "createProgram=1" in completed.stderr
     assert "kind=ok" in completed.stderr
+    assert "xflProfile=none" in completed.stderr
 
 
 def test_compiler_frontend_typechecks():
@@ -660,6 +935,81 @@ def test_frontend_emit_publishes_complete_entry_policy():
         check=False,
     )
     assert completed.returncode == 0
+
+
+def test_xfl_policy_walks_unimported_executable_helper_in_synthetic_program(
+    tmp_path: Path,
+):
+    from jshookz.hook_compiler import _frontend_driver_js, _typescript_library
+
+    entry = tmp_path / "entry.ts"
+    entry.write_text("export function main(): never { return accept(); }\n")
+    helper = tmp_path / "helper.ts"
+    helper.write_text(
+        "declare const decimal: XFLDecimal;\n"
+        "export function helper(): void { decimal.add(decimal); }\n"
+    )
+    config = tmp_path / "tsconfig.json"
+    config.write_text(
+        json.dumps(
+            {
+                "compilerOptions": {
+                    "lib": ["ES2023"],
+                    "module": "ESNext",
+                    "noEmit": True,
+                    "strict": True,
+                    "target": "ES2023",
+                },
+                "files": [
+                    str(CANONICAL_HOOKS_API_DECLARATIONS),
+                    str(entry),
+                    str(helper),
+                ],
+            }
+        )
+    )
+    driver = _frontend_driver_js(None)
+    policy = driver.parent / "xfl_profile_policy.js"
+    script = """
+const ts = require(process.argv[1]);
+const policy = require(process.argv[2]);
+const configPath = process.argv[3];
+const entryPath = process.argv[4];
+const declarationPath = process.argv[5];
+const config = ts.readConfigFile(configPath, ts.sys.readFile);
+const parsed = ts.parseJsonConfigFileContent(
+  config.config, ts.sys, require('path').dirname(configPath));
+const program = ts.createProgram(parsed.fileNames, parsed.options);
+const result = policy.checkXFLProfilePolicy(
+  ts,
+  program,
+  program.getSourceFile(entryPath),
+  program.getSourceFile(declarationPath),
+);
+process.stdout.write(JSON.stringify(result));
+"""
+    completed = subprocess.run(
+        [
+            "node",
+            "-e",
+            script,
+            str(_typescript_library(None)),
+            str(policy),
+            str(config),
+            str(entry),
+            str(CANONICAL_HOOKS_API_DECLARATIONS),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    result = json.loads(completed.stdout)
+    assert result["profile"] == "none"
+    assert len(result["diagnostics"]) == 1
+    assert str(helper) in result["diagnostics"][0]
+    assert "JSH-XFL001" in result["diagnostics"][0]
 
 
 def test_frontend_emit_survives_parallel_workers():

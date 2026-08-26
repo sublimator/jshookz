@@ -14,6 +14,7 @@ from pathlib import Path
 from . import paths
 from .hook_artifact import build_hook_artifact
 from .host import WasmHost
+from .xfl_profile import XFLArithmeticProfile
 
 
 CANONICAL_DECLARATIONS = paths.CANONICAL_HOOKS_API_DECLARATIONS
@@ -25,6 +26,8 @@ _FRONTEND_SOURCES = (
     _FRONTEND_DIR / "compiler_driver.ts",
     _FRONTEND_DIR / "entry_policy.ts",
     _FRONTEND_DIR / "result_validator.ts",
+    _FRONTEND_DIR / "xfl_profile_ledger.ts",
+    _FRONTEND_DIR / "xfl_profile_policy.ts",
     _FRONTEND_DIR / "node-shim.d.ts",
     _FRONTEND_TSCONFIG,
 )
@@ -34,6 +37,7 @@ _FRONTEND_SOURCES = (
 class CompiledHook:
     bytecode: bytes
     javascript: str
+    profile: XFLArithmeticProfile
 
 
 @dataclass(frozen=True)
@@ -41,6 +45,7 @@ class PackagedHook:
     artifact: bytes
     bytecode: bytes
     javascript: str
+    profile: XFLArithmeticProfile
 
 
 # The frontend declares its own TypeScript in package.json. Prefer that
@@ -107,7 +112,9 @@ def _frontend_driver_js(tsc: str | None) -> Path:
     outdir = cache_root / key
     driver = outdir / "compiler_driver.js"
     policy = outdir / "entry_policy.js"
-    if driver.is_file() and policy.is_file():
+    xfl_policy = outdir / "xfl_profile_policy.js"
+    xfl_ledger = outdir / "xfl_profile_ledger.js"
+    if all(path.is_file() for path in (driver, policy, xfl_policy, xfl_ledger)):
         return driver
 
     staging = Path(tempfile.mkdtemp(prefix=f"{key}-", dir=cache_root))
@@ -138,12 +145,19 @@ def _frontend_driver_js(tsc: str | None) -> Path:
             raise RuntimeError(f"compiler frontend failed to emit:\n{detail}")
         if not (staging / "entry_policy.js").is_file():
             raise RuntimeError("compiler frontend emit missed entry_policy.js")
+        if not (staging / "xfl_profile_policy.js").is_file():
+            raise RuntimeError("compiler frontend emit missed xfl_profile_policy.js")
+        if not (staging / "xfl_profile_ledger.js").is_file():
+            raise RuntimeError("compiler frontend emit missed xfl_profile_ledger.js")
         (staging / "stamp").write_text(stamp)
         try:
             staging.rename(outdir)
         except OSError:
             shutil.rmtree(staging, ignore_errors=True)
-            if not driver.is_file() or not policy.is_file():
+            if not all(
+                path.is_file()
+                for path in (driver, policy, xfl_policy, xfl_ledger)
+            ):
                 raise RuntimeError(
                     "compiler frontend cache vanished after a parallel emit"
                 )
@@ -153,24 +167,34 @@ def _frontend_driver_js(tsc: str | None) -> Path:
         raise
 
 
-def _parse_driver_meta(stderr: str) -> tuple[str, bool]:
+def _parse_driver_meta(stderr: str) -> tuple[str, bool, XFLArithmeticProfile]:
     kind = "typescript"
     allow_malformed = False
+    profile = XFLArithmeticProfile.NONE
     for line in stderr.splitlines():
         if line.startswith("kind="):
             kind = line.split("=", 1)[1].strip()
         elif line.startswith("allowMalformed="):
             allow_malformed = line.split("=", 1)[1].strip() == "1"
-    return kind, allow_malformed
+        elif line.startswith("xflProfile="):
+            raw_profile = line.split("=", 1)[1].strip()
+            try:
+                profile = XFLArithmeticProfile(raw_profile)
+            except ValueError as error:
+                raise RuntimeError(
+                    f"compiler driver returned unknown XFL profile: {raw_profile!r}"
+                ) from error
+    return kind, allow_malformed, profile
 
 
 def _run_compiler_driver(
     source: Path,
     config: Path,
+    declarations: Path,
     *,
     tsc: str | None,
     failure_label: str,
-) -> bool:
+) -> tuple[bool, XFLArithmeticProfile]:
     """One TypeScript Program: diagnostics, Result policy, entry types, emit."""
     node = shutil.which("node")
     if not node:
@@ -183,24 +207,29 @@ def _run_compiler_driver(
             str(_typescript_library(tsc)),
             str(config),
             str(source),
+            str(declarations),
         ],
         capture_output=True,
         check=False,
         text=True,
     )
-    kind, allow_malformed = _parse_driver_meta(completed.stderr)
+    kind, allow_malformed, profile = _parse_driver_meta(completed.stderr)
     if completed.returncode == 0:
-        return allow_malformed
+        return allow_malformed, profile
     body_lines = [
         line
         for line in completed.stderr.splitlines()
-        if not line.startswith(("kind=", "allowMalformed=", "createProgram="))
+        if not line.startswith(
+            ("kind=", "allowMalformed=", "xflProfile=", "createProgram=")
+        )
     ]
     detail = "\n".join(
         part
         for part in (*body_lines, completed.stdout.strip())
         if part.strip()
     ) or "compiler driver failed"
+    if kind == "xfl":
+        raise RuntimeError(f"Hook XFL profile policy failed:\n{detail}")
     if kind == "entry":
         raise RuntimeError(f"Hook entry signature is invalid:\n{detail}")
     if kind == "result":
@@ -215,7 +244,7 @@ def _typescript_to_javascript(
     *,
     declarations: Path,
     tsc: str | None = None,
-) -> tuple[str, bool]:
+) -> tuple[str, bool, XFLArithmeticProfile]:
     if not declarations.is_file():
         raise FileNotFoundError(f"Hook API declarations not found: {declarations}")
 
@@ -242,9 +271,10 @@ def _typescript_to_javascript(
                 indent=2,
             )
         )
-        source_allows = _run_compiler_driver(
+        source_allows, profile = _run_compiler_driver(
             source,
             config,
+            declarations,
             tsc=tsc,
             failure_label="TypeScript compilation failed",
         )
@@ -252,7 +282,7 @@ def _typescript_to_javascript(
         emitted = out_dir / source.with_suffix(".js").name
         if not emitted.is_file():
             raise RuntimeError(f"TypeScript emitted no JavaScript at {emitted}")
-        return emitted.read_text(), source_allows
+        return emitted.read_text(), source_allows, profile
 
 
 def _check_javascript(
@@ -260,7 +290,7 @@ def _check_javascript(
     *,
     declarations: Path,
     tsc: str | None = None,
-) -> tuple[str, bool]:
+) -> tuple[str, bool, XFLArithmeticProfile]:
     """Type-check raw JavaScript and apply the same Result ownership law."""
     declarations = declarations.resolve()
     if not declarations.is_file():
@@ -286,13 +316,14 @@ def _check_javascript(
                 indent=2,
             )
         )
-        source_allows = _run_compiler_driver(
+        source_allows, profile = _run_compiler_driver(
             source,
             config,
+            declarations,
             tsc=tsc,
             failure_label="JavaScript checking failed",
         )
-    return source.read_text(), source_allows
+    return source.read_text(), source_allows, profile
 
 
 def compile_hook(
@@ -307,14 +338,15 @@ def compile_hook(
     source_path = Path(source).resolve()
     suffix = source_path.suffix.lower()
     source_allows = False
+    profile = XFLArithmeticProfile.NONE
     if suffix == ".ts":
-        javascript, source_allows = _typescript_to_javascript(
+        javascript, source_allows, profile = _typescript_to_javascript(
             source_path,
             declarations=Path(declarations),
             tsc=tsc,
         )
     elif suffix in {".js", ".mjs"}:
-        javascript, source_allows = _check_javascript(
+        javascript, source_allows, profile = _check_javascript(
             source_path,
             declarations=Path(declarations),
             tsc=tsc,
@@ -353,7 +385,11 @@ def compile_hook(
             "QuickJS Hook is not deployable: "
             f"{validation.error or 'provider validation failed'}"
         )
-    return CompiledHook(bytecode=bytecode, javascript=javascript)
+    return CompiledHook(
+        bytecode=bytecode,
+        javascript=javascript,
+        profile=profile,
+    )
 
 
 def package_hook(
@@ -405,4 +441,5 @@ def package_hook(
         ),
         bytecode=compiled.bytecode,
         javascript=compiled.javascript,
+        profile=compiled.profile,
     )

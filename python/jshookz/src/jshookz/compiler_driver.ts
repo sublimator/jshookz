@@ -2,6 +2,10 @@
 
 import { checkResultOwnership } from "./result_validator";
 import { checkEntrySignatures, checkHookImports } from "./entry_policy";
+import {
+  checkXFLProfilePolicy,
+  SourceXFLProfile,
+} from "./xfl_profile_policy";
 
 const path = require("path") as {
   resolve(...parts: string[]): string;
@@ -9,7 +13,7 @@ const path = require("path") as {
 };
 
 type TS = any;
-type Kind = "typescript" | "result" | "entry" | "ok";
+type Kind = "typescript" | "result" | "entry" | "xfl" | "ok";
 
 interface DriverResult {
   ok: boolean;
@@ -17,6 +21,7 @@ interface DriverResult {
   diagnostics: string[];
   createCount: number;
   allowMalformed: boolean;
+  xflProfile: SourceXFLProfile;
 }
 
 function formatDiagnostic(ts: TS, diagnostic: TS): string {
@@ -47,7 +52,12 @@ function sourceAllowsMalformed(ts: TS, source: TS): boolean {
   return found;
 }
 
-export function compile(ts: TS, configPath: string, sourcePath: string): DriverResult {
+export function compile(
+  ts: TS,
+  configPath: string,
+  sourcePath: string,
+  declarationPath: string,
+): DriverResult {
   let createCount = 0;
   const createProgram = (...args: unknown[]) => {
     createCount += 1;
@@ -64,6 +74,7 @@ export function compile(ts: TS, configPath: string, sourcePath: string): DriverR
     diagnostics,
     createCount,
     allowMalformed: false,
+    xflProfile: "none",
     ...extra,
   });
 
@@ -90,6 +101,17 @@ export function compile(ts: TS, configPath: string, sourcePath: string): DriverR
     return fail("typescript", [
       `source file is absent from TypeScript program: ${sourcePath}`,
     ]);
+  }
+  const declaration = program.getSourceFile(declarationPath);
+  if (!declaration) {
+    return fail("typescript", [
+      `declaration file is absent from TypeScript program: ${declarationPath}`,
+    ]);
+  }
+
+  const xfl = checkXFLProfilePolicy(ts, program, source, declaration);
+  if (xfl.diagnostics.length) {
+    return fail("xfl", [...xfl.diagnostics], { xflProfile: xfl.profile });
   }
 
   const importDiagnostics = checkHookImports(ts, source);
@@ -129,6 +151,7 @@ export function compile(ts: TS, configPath: string, sourcePath: string): DriverR
     diagnostics: [],
     createCount,
     allowMalformed: sourceAllowsMalformed(ts, source),
+    xflProfile: xfl.profile,
   };
 }
 
@@ -136,9 +159,11 @@ function main() {
   const ts = require(process.argv[2]);
   const configPath = process.argv[3];
   const sourcePath = path.resolve(process.argv[4]);
-  const result = compile(ts, configPath, sourcePath);
+  const declarationPath = path.resolve(process.argv[5]);
+  const result = compile(ts, configPath, sourcePath, declarationPath);
   console.error(`kind=${result.kind}`);
   console.error(`allowMalformed=${result.allowMalformed ? "1" : "0"}`);
+  console.error(`xflProfile=${result.xflProfile}`);
   if (process.env.JSHOOKZ_COUNT_PROGRAM === "1") {
     console.error(`createProgram=${result.createCount}`);
   }
