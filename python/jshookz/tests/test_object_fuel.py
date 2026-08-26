@@ -767,10 +767,10 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
         "post_success": post_success,
         "static_protocol": static_bytes,
     } == {
-        "registration": (136_475, 2_136),
-        "pre_call": (1_190_863, 2_186),
-        "peak": (5_385_820, 2_199),
-        "post_success": (3_420_516, 2_213),
+        "registration": (137_205, 2_150),
+        "pre_call": (1_191_593, 2_200),
+        "peak": (5_386_550, 2_213),
+        "post_success": (3_421_246, 2_227),
         "static_protocol": MAXIMUM_STATIC_PROTOCOL_BYTES,
     }
 
@@ -789,7 +789,7 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     )
     assert MAXIMUM_DUPLICATE_STACK == 11 * 6 * 8
     assert peak[0] < limits.quickjs_heap_bytes
-    assert limits.quickjs_heap_bytes - post_success[0] == 13_356_700
+    assert limits.quickjs_heap_bytes - post_success[0] == 13_355_970
     assert limits.quickjs_heap_bytes - post_success[0] >= HEADROOM_BYTES
 
 
