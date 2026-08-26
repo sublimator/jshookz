@@ -1,5 +1,11 @@
+import pytest
+
 from jshookz.host import WasmHost
 from jshookz.paths import XAHAU_HOOK_PROVIDER_WASM
+from jshookz.xfl_profile import (
+    XFLArithmeticProfile,
+    decode_module_validation_result,
+)
 
 
 def evaluate(source: str):
@@ -50,6 +56,202 @@ def test_callable_callback_sets_callback_bit():
 
     assert result.valid
     assert result.has_callback
+
+
+@pytest.mark.parametrize(
+    ("word", "has_callback", "profile"),
+    [
+        (0x01000001, False, XFLArithmeticProfile.NONE),
+        (0x01000003, True, XFLArithmeticProfile.NONE),
+        (0x01000101, False, XFLArithmeticProfile.XAHAU_FLOAT_V1),
+        (0x01000103, True, XFLArithmeticProfile.XAHAU_FLOAT_V1),
+        (0x01000201, False, XFLArithmeticProfile.NEAREST_EVEN_V1),
+        (0x01000203, True, XFLArithmeticProfile.NEAREST_EVEN_V1),
+    ],
+)
+def test_module_validation_decoder_accepts_exact_legal_words(
+    word: int,
+    has_callback: bool,
+    profile: XFLArithmeticProfile,
+):
+    result = decode_module_validation_result(word)
+
+    assert result.has_callback is has_callback
+    assert result.profile is profile
+
+
+@pytest.mark.parametrize(
+    "word",
+    [
+        -2,
+        -1,
+        0,
+        1,
+        3,
+        0x00000001,
+        0x02000001,
+        0x01000000,
+        0x01000002,
+        0x01000005,
+        0x01000041,
+        0x01000301,
+        0x0100FF01,
+        0x01010001,
+        0x017FFF01,
+        0x81000001,
+    ],
+)
+def test_module_validation_decoder_rejects_every_normative_malformed_word(word: int):
+    with pytest.raises(ValueError):
+        decode_module_validation_result(word)
+
+
+@pytest.mark.parametrize(
+    ("profile_name", "expected"),
+    [
+        ("xahauFloatV1", XFLArithmeticProfile.XAHAU_FLOAT_V1),
+        ("nearestEvenV1", XFLArithmeticProfile.NEAREST_EVEN_V1),
+    ],
+)
+def test_provider_validation_reports_minted_module_profile(
+    profile_name: str,
+    expected: XFLArithmeticProfile,
+):
+    bytecode = compile_bytecode(
+        "export const hookConfig = defineHookConfig({"
+        f"xflArithmetic: XFLProfile.{profile_name}"
+        "}); export function main() {}"
+    )
+
+    result = validate(bytecode)
+
+    assert result.valid
+    assert result.profile is expected
+
+
+def test_runtime_profile_namespace_and_config_are_frozen_and_literal_typed():
+    result = evaluate(
+        "JSON.stringify((() => {"
+        "const one = defineHookConfig({xflArithmetic:XFLProfile.xahauFloatV1});"
+        "const two = defineHookConfig({xflArithmetic:XFLProfile.nearestEvenV1});"
+        "let constructed = false;"
+        "try { new defineHookConfig({xflArithmetic:1}); } catch (error) {"
+        "constructed = error instanceof TypeError; }"
+        "return [XFLProfile.xahauFloatV1,XFLProfile.nearestEvenV1,"
+        "Object.keys(XFLProfile),Object.isFrozen(XFLProfile),"
+        "Object.isFrozen(defineHookConfig),Object.isFrozen(one),Object.isFrozen(two),"
+        "Object.getPrototypeOf(one)===Object.prototype,"
+        "Object.keys(one),one.xflArithmetic,two.xflArithmetic,constructed];"
+        "})())"
+    )
+
+    assert result.exit_code == 0
+    assert result.result_value == (
+        '[1,2,["xahauFloatV1","nearestEvenV1"],true,true,true,true,true,'
+        '["xflArithmetic"],1,2,true]'
+    )
+
+
+def test_define_hook_config_rejects_traps_accessors_and_non_exact_shapes():
+    result = evaluate(
+        "JSON.stringify(["
+        "undefined,null,{},"
+        "{xflArithmetic:0},{xflArithmetic:1.5},{xflArithmetic:3},"
+        "{xflArithmetic:1,extra:true},"
+        "Object.create({xflArithmetic:1}),"
+        "Object.create(null,{xflArithmetic:{value:1,enumerable:true}}),"
+        "Object.defineProperty({},'xflArithmetic',{get(){return 1},enumerable:true}),"
+        "new Proxy({xflArithmetic:1},{}),"
+        "{xflArithmetic:1,[Symbol('extra')]:true}"
+        "].map(value=>{try{defineHookConfig(value);return false}"
+        "catch(error){return error instanceof TypeError}}));"
+    )
+
+    assert result.exit_code == 0
+    assert result.result_value == (
+        "[true,true,true,true,true,true,true,true,true,true,true,true]"
+    )
+
+
+@pytest.mark.parametrize(
+    "config_source",
+    [
+        "{xflArithmetic:XFLProfile.xahauFloatV1}",
+        "({...defineHookConfig({xflArithmetic:XFLProfile.xahauFloatV1})})",
+        "new Proxy(defineHookConfig({xflArithmetic:XFLProfile.xahauFloatV1}),{})",
+        "Object.create(defineHookConfig({xflArithmetic:XFLProfile.xahauFloatV1}))",
+    ],
+)
+def test_provider_validation_rejects_every_structural_hook_config_forge(
+    config_source: str,
+):
+    bytecode = compile_bytecode(
+        f"export const hookConfig={config_source}; export function main() {{}}"
+    )
+
+    result = validate(bytecode)
+
+    assert not result.valid
+    assert result.error == (
+        "TypeError: exported hookConfig was not minted by defineHookConfig"
+    )
+
+
+def test_post_definition_mutation_cannot_change_observed_profile():
+    bytecode = compile_bytecode(
+        "const minted=defineHookConfig({xflArithmetic:XFLProfile.xahauFloatV1});"
+        "try { minted.xflArithmetic=XFLProfile.nearestEvenV1; } catch {}"
+        "try { minted.extra=true; } catch {}"
+        "export const hookConfig=minted; export function main(){return "
+        "hookConfig.xflArithmetic}"
+    )
+
+    validation = validate(bytecode)
+
+    assert validation.valid
+    assert validation.profile is XFLArithmeticProfile.XAHAU_FLOAT_V1
+
+
+def test_one_host_keeps_sequential_main_callback_and_failure_profiles_isolated():
+    xahau_main = compile_bytecode(
+        "export const hookConfig=defineHookConfig({xflArithmetic:"
+        "XFLProfile.xahauFloatV1});export function main(){return "
+        "hookConfig.xflArithmetic}"
+    )
+    nearest_callback = compile_bytecode(
+        "export const hookConfig=defineHookConfig({xflArithmetic:"
+        "XFLProfile.nearestEvenV1});export function main(){return -1}"
+        "export function callback(){return hookConfig.xflArithmetic}"
+    )
+    throwing = compile_bytecode(
+        "export const hookConfig=defineHookConfig({xflArithmetic:"
+        "XFLProfile.xahauFloatV1});export function main(){throw new Error('A failed')}"
+    )
+    init_throwing = compile_bytecode(
+        "export const hookConfig=defineHookConfig({xflArithmetic:"
+        "XFLProfile.xahauFloatV1});export function main(){};throw new Error('init failed')"
+    )
+
+    host = WasmHost(wasm_path=XAHAU_HOOK_PROVIDER_WASM)
+    host.init()
+    try:
+        assert host.run_hook_bytecode(xahau_main).result_value == "1"
+        assert (
+            host.run_hook_bytecode(nearest_callback, export="cbak").result_value
+            == "2"
+        )
+        assert host.run_hook_bytecode(throwing).error == "Error: A failed"
+        assert host.run_hook_bytecode(nearest_callback).result_value == "-1"
+        assert host.run_hook_bytecode(init_throwing).error == "Error: init failed"
+        assert host.validate_hook_bytecode(xahau_main).profile is (
+            XFLArithmeticProfile.XAHAU_FLOAT_V1
+        )
+        assert (
+            host.run_hook_bytecode(nearest_callback, export="cbak").result_value
+            == "2"
+        )
+    finally:
+        host.destroy()
 
 
 def test_rejects_missing_main_export():

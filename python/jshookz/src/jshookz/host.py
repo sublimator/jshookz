@@ -22,6 +22,11 @@ from wasmtime import _ffi as wasmtime_ffi
 from . import paths
 from .runtime_profile import ProfileExecutionLimits
 from .schema import HOOK_API, HostAPI, HostFunction, WasmType
+from .xfl_profile import (
+    XFLArithmeticProfile,
+    decode_module_validation_result,
+)
+from . import _runtime_profile_constants as profile_constants
 
 
 _CLEANUP_FUEL = 5_000_000
@@ -58,6 +63,7 @@ class HookModuleValidation:
 
     valid: bool
     has_callback: bool = False
+    profile: XFLArithmeticProfile = XFLArithmeticProfile.NONE
     error: str | None = None
 
 
@@ -570,10 +576,15 @@ class WasmHost:
             self._validating_hook = False
             self._safe_wasm_free(ptr)
 
-        if flags in {1, 3}:
+        if flags != profile_constants.MODULE_VALIDATION_FAILURE_SENTINEL:
+            try:
+                metadata = decode_module_validation_result(flags)
+            except ValueError as error:
+                return HookModuleValidation(valid=False, error=str(error))
             return HookModuleValidation(
                 valid=True,
-                has_callback=bool(flags & 2),
+                has_callback=metadata.has_callback,
+                profile=metadata.profile,
             )
 
         get_ptr = self.instance.exports(self.store)["qjs_get_result_ptr"]

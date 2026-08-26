@@ -9,6 +9,9 @@ SCRIPT = Path(__file__).parents[1] / "scripts" / "generate_runtime_profile_limit
 REPOSITORY = Path(__file__).parents[3]
 PROFILE = REPOSITORY / "xahau/profiles/xahau-quickjs-v1.source.json"
 GENERATED = Path(__file__).parents[1] / "generated/runtime_profile_limits.h"
+GENERATED_PYTHON = (
+    REPOSITORY / "python/jshookz/src/jshookz/_runtime_profile_constants.py"
+)
 CONSUMER_EXPECTATIONS = {
     REPOSITORY / "cpp/x-data/includes/catl/xdata/recursive_index.h": (
         "serialized_object_max_bytes",
@@ -36,15 +39,47 @@ GEN = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(GEN)
 
 
-def source(**overrides: object) -> bytes:
+def source(
+    *,
+    limits_overrides: dict[str, object] | None = None,
+    profile_overrides: dict[str, object] | None = None,
+    validation_overrides: dict[str, object] | None = None,
+) -> bytes:
     limits = {
         "serialized_object_max_bytes": 1_048_576,
         "serialized_object_max_fields": 32_768,
         "serialized_object_max_scopes": 32_769,
         "serialized_object_max_depth": 10,
-        **overrides,
+        **(limits_overrides or {}),
     }
-    return json.dumps({"schema": GEN.SCHEMA, "limits": limits}, sort_keys=True).encode()
+    profiles = {
+        "none": 0,
+        "xahauFloatV1": 1,
+        "nearestEvenV1": 2,
+        **(profile_overrides or {}),
+    }
+    validation = {
+        "layout_version": 1,
+        "failure_sentinel": -1,
+        "main_bit": 1,
+        "callback_bit": 2,
+        "entry_mask": 3,
+        "reserved_mask": 0x800000FC,
+        "profile_mask": 0x00FFFF00,
+        "profile_shift": 8,
+        "version_mask": 0x7F000000,
+        "version_shift": 24,
+        **(validation_overrides or {}),
+    }
+    return json.dumps(
+        {
+            "schema": GEN.SCHEMA,
+            "artifact": {"xfl_arithmetic_profile_codes": profiles},
+            "provider": {"module_validation_result": validation},
+            "limits": limits,
+        },
+        sort_keys=True,
+    ).encode()
 
 
 def test_header_projects_all_four_limits_and_source_identity():
@@ -57,9 +92,34 @@ def test_header_projects_all_four_limits_and_source_identity():
     assert "SHA-256:" in rendered
 
 
+def test_header_projects_profile_codes_and_validation_layout():
+    rendered = GEN.render(source(), "profile.source.json")
+    assert "xfl_arithmetic_profile_none = 0u;" in rendered
+    assert "xfl_arithmetic_profile_xahau_float_v1 = 1u;" in rendered
+    assert "xfl_arithmetic_profile_nearest_even_v1 = 2u;" in rendered
+    assert "module_validation_failure_sentinel = -1;" in rendered
+    assert "module_validation_entry_mask = 3u;" in rendered
+    assert "module_validation_reserved_mask = 2147483900u;" in rendered
+    assert "module_validation_profile_mask = 16776960u;" in rendered
+    assert "module_validation_version_mask = 2130706432u;" in rendered
+
+
 def test_checked_in_header_matches_the_exact_runtime_profile_source():
     source_bytes = PROFILE.read_bytes()
     assert GENERATED.read_text() == GEN.render(source_bytes, PROFILE.name)
+    assert GENERATED_PYTHON.read_text() == GEN.render_python(
+        source_bytes, PROFILE.name
+    )
+
+
+def test_python_projection_carries_the_same_codes_and_layout():
+    rendered = GEN.render_python(source(), "profile.source.json")
+    assert "XFL_ARITHMETIC_PROFILE_NONE = 0" in rendered
+    assert "XFL_ARITHMETIC_PROFILE_XAHAU_FLOAT_V1 = 1" in rendered
+    assert "XFL_ARITHMETIC_PROFILE_NEAREST_EVEN_V1 = 2" in rendered
+    assert "MODULE_VALIDATION_FAILURE_SENTINEL = -1" in rendered
+    assert "MODULE_VALIDATION_LAYOUT_VERSION = 1" in rendered
+    assert "MODULE_VALIDATION_RESERVED_MASK = 2147483900" in rendered
 
 
 def test_every_runtime_limit_consumer_uses_the_generated_chain():
@@ -72,12 +132,47 @@ def test_every_runtime_limit_consumer_uses_the_generated_chain():
 @pytest.mark.parametrize("value", [True, 0, -1, 1 << 32, "1048576"])
 def test_header_rejects_non_positive_uint32_limits(value: object):
     with pytest.raises(ValueError, match="positive uint32"):
-        GEN.render(source(serialized_object_max_bytes=value), "profile.source.json")
+        GEN.render(
+            source(limits_overrides={"serialized_object_max_bytes": value}),
+            "profile.source.json",
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("layout_version", 2),
+        ("failure_sentinel", -2),
+        ("main_bit", 2),
+        ("callback_bit", 4),
+        ("entry_mask", 1),
+        ("reserved_mask", 0),
+        ("profile_mask", 0),
+        ("profile_shift", 9),
+        ("version_mask", 0),
+        ("version_shift", 23),
+    ],
+)
+def test_header_rejects_independent_validation_layout_drift(field: str, value: int):
+    with pytest.raises(ValueError, match="module-validation"):
+        GEN.render(
+            source(validation_overrides={field: value}), "profile.source.json"
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("none", 1), ("xahauFloatV1", 0), ("nearestEvenV1", 3)],
+)
+def test_header_rejects_independent_profile_code_drift(field: str, value: int):
+    with pytest.raises(ValueError, match="must be 0/1/2"):
+        GEN.render(source(profile_overrides={field: value}), "profile.source.json")
 
 
 def test_mutating_one_projection_changes_that_generated_constant():
     rendered = GEN.render(
-        source(serialized_object_max_fields=32_767), "profile.source.json"
+        source(limits_overrides={"serialized_object_max_fields": 32_767}),
+        "profile.source.json",
     )
     assert "serialized_object_max_fields = 32767u;" in rendered
     assert "serialized_object_max_scopes = 32769u;" in rendered

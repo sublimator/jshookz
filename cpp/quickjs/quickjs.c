@@ -3632,6 +3632,15 @@ JSClassID JS_GetClassID(JSValue v)
     return p->class_id;
 }
 
+JS_BOOL JS_IsProxy(JSValueConst v)
+{
+    JSObject *p;
+    if (JS_VALUE_GET_TAG(v) != JS_TAG_OBJECT)
+        return FALSE;
+    p = JS_VALUE_GET_OBJ(v);
+    return p->class_id == JS_CLASS_PROXY;
+}
+
 BOOL JS_IsRegisteredClass(JSRuntime *rt, JSClassID class_id)
 {
     return (class_id < rt->class_count &&

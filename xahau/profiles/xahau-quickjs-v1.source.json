@@ -4,7 +4,12 @@
   "artifact": {
     "envelope_version": 1,
     "hook_api_version": 1,
-    "kind": "quickjs-bytecode"
+    "kind": "quickjs-bytecode",
+    "xfl_arithmetic_profile_codes": {
+      "none": 0,
+      "xahauFloatV1": 1,
+      "nearestEvenV1": 2
+    }
   },
   "javascript_surface": {
     "schema": "jshookz.javascript-surface.v1",
@@ -23,6 +28,18 @@
     }
   },
   "provider": {
+    "module_validation_result": {
+      "layout_version": 1,
+      "failure_sentinel": -1,
+      "main_bit": 1,
+      "callback_bit": 2,
+      "entry_mask": 3,
+      "reserved_mask": 2147483900,
+      "profile_mask": 16776960,
+      "profile_shift": 8,
+      "version_mask": 2130706432,
+      "version_shift": 24
+    },
     "build": {
       "target": "wasm32-wasi",
       "wasi_sdk": "32",

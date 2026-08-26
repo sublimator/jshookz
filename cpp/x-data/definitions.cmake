@@ -88,15 +88,22 @@ set(_xdata_profile_limits_hdr
     ${_xdata_dir}/generated/runtime_profile_limits.h)
 set(_xdata_profile_limits_tmp
     ${CMAKE_CURRENT_BINARY_DIR}/runtime_profile_limits.h.tmp)
+set(_xdata_profile_python
+    ${_xdata_dir}/../../python/jshookz/src/jshookz/_runtime_profile_constants.py)
+set(_xdata_profile_python_tmp
+    ${CMAKE_CURRENT_BINARY_DIR}/runtime_profile_constants.py.tmp)
 add_custom_command(
-  OUTPUT ${_xdata_profile_limits_hdr}
+  OUTPUT ${_xdata_profile_limits_hdr} ${_xdata_profile_python}
   COMMAND ${Python3_EXECUTABLE} ${_xdata_profile_limits_gen}
           --input ${_xdata_profile_source}
           --output ${_xdata_profile_limits_tmp}
+          --python-output ${_xdata_profile_python_tmp}
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
           ${_xdata_profile_limits_tmp} ${_xdata_profile_limits_hdr}
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          ${_xdata_profile_python_tmp} ${_xdata_profile_python}
   DEPENDS ${_xdata_profile_source} ${_xdata_profile_limits_gen}
-  COMMENT "Generating provider-static serialized-object limits")
-list(APPEND _xdata_headers ${_xdata_profile_limits_hdr})
+  COMMENT "Generating runtime-profile provider and Python constants")
+list(APPEND _xdata_headers ${_xdata_profile_limits_hdr} ${_xdata_profile_python})
 
 add_custom_target(generate_xdata_definitions DEPENDS ${_xdata_headers})

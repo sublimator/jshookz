@@ -9,6 +9,7 @@
 #include "provider_internal.hpp"
 #include "bindings/hook_imports.hpp"
 #include "catl/xdata/static_protocol.h"
+#include "runtime_profile_limits.h"
 #include "quickjs.hpp"
 
 #include <cstdlib>
@@ -90,6 +91,7 @@ static void
 destroy_runtime(void)
 {
     if (ctx) {
+        jshookz::provider::destroyXFLProfile(ctx);
         JS_FreeContext(ctx);
         ctx = NULL;
     }
@@ -339,7 +341,8 @@ void qjs_init(void)
     bool initialized =
         jshookz::provider::registerBindings(ctx) &&
         register_cpp_types(ctx) &&
-        register_uint_types(ctx);
+        register_uint_types(ctx) &&
+        jshookz::provider::registerXFLProfile(ctx);
     if (initialized)
         initialized =
             jshookz::provider::installDeterministicSandbox(ctx);
@@ -629,6 +632,18 @@ static int32_t qjs_invoke_bytecode_export(
         store_exception();
         return -1;
     }
+    std::uint32_t profileCode = 0;
+    if (jshookz::provider::observeModuleXFLProfile(
+            ctx, moduleNamespace.get(), &profileCode) < 0) {
+        store_exception();
+        return -1;
+    }
+    jshookz::provider::InvocationXFLArithmeticProfile invocationProfile;
+    if (!invocationProfile.activate(ctx, profileCode)) {
+        store_static_result(
+            "Error: XFL arithmetic profile invocation state is unavailable");
+        return -1;
+    }
     OwnedValue entry(
         ctx, JS_GetPropertyStr(ctx, moduleNamespace.get(), export_name));
     if (entry.isException()) {
@@ -691,11 +706,15 @@ int32_t qjs_cbak(const uint8_t *buf, uint32_t buf_len, uint32_t reserved)
 }
 
 /* Evaluate module initialization in the caller's disposable validation
-   instance, but do not invoke either entry point. Result bits:
-   1 = callable main export, 2 = callable callback export. */
+   instance, but do not invoke either entry point. The positive result is the
+   runtime-profile-declared module-validation layout v1 word. */
 __attribute__((export_name("qjs_validate_hook_module")))
 int32_t qjs_validate_hook_module(const uint8_t *buf, uint32_t buf_len)
 {
+    namespace validation = catl::xdata::xahau_profile;
+    static_assert(validation::module_validation_failure_sentinel == -1);
+    constexpr std::int32_t failure =
+        validation::module_validation_failure_sentinel;
     clear_result();
 
     using jshookz::provider::qjs::OwnedValue;
@@ -703,28 +722,34 @@ int32_t qjs_validate_hook_module(const uint8_t *buf, uint32_t buf_len)
         ctx, JS_ReadObject(ctx, buf, buf_len, JS_READ_OBJ_BYTECODE));
     if (object.isException()) {
         store_exception();
-        return -1;
+        return failure;
     }
     if (JS_VALUE_GET_TAG(object.get()) != JS_TAG_MODULE) {
         store_static_result("TypeError: Hook bytecode must contain an ES module");
-        return -1;
+        return failure;
     }
 
     JSModuleDef *module =
         static_cast<JSModuleDef *>(JS_VALUE_GET_PTR(object.get()));
     if (JS_ResolveModule(ctx, object.get()) < 0) {
         store_exception();
-        return -1;
+        return failure;
     }
 
     OwnedValue evaluated(ctx, JS_EvalFunction(ctx, object.release()));
     if (finish_module_evaluation(std::move(evaluated)) < 0)
-        return -1;
+        return failure;
 
     OwnedValue moduleNamespace(ctx, JS_GetModuleNamespace(ctx, module));
     if (moduleNamespace.isException()) {
         store_exception();
-        return -1;
+        return failure;
+    }
+    std::uint32_t profileCode = 0;
+    if (jshookz::provider::observeModuleXFLProfile(
+            ctx, moduleNamespace.get(), &profileCode) < 0) {
+        store_exception();
+        return failure;
     }
     OwnedValue mainEntry(
         ctx, JS_GetPropertyStr(ctx, moduleNamespace.get(), "main"));
@@ -732,25 +757,42 @@ int32_t qjs_validate_hook_module(const uint8_t *buf, uint32_t buf_len)
         ctx, JS_GetPropertyStr(ctx, moduleNamespace.get(), "callback"));
     if (mainEntry.isException() || callback.isException()) {
         store_exception();
-        return -1;
+        return failure;
     }
     if (JS_IsUndefined(mainEntry.get())) {
         store_static_result(
             "TypeError: Hook module has no exported main entry point");
-        return -1;
+        return failure;
     }
     if (!JS_IsCallable(ctx, mainEntry.get())) {
         store_static_result(
             "TypeError: exported main entry point is not callable");
-        return -1;
+        return failure;
     }
     if (!JS_IsUndefined(callback.get()) &&
         !JS_IsCallable(ctx, callback.get())) {
         store_static_result(
             "TypeError: exported callback entry point is not callable");
-        return -1;
+        return failure;
     }
-    return 1 | (!JS_IsUndefined(callback.get()) ? 2 : 0);
+    static_assert(validation::module_validation_layout_version == 1);
+    static_assert(validation::module_validation_main_bit == 0x00000001u);
+    static_assert(validation::module_validation_callback_bit == 0x00000002u);
+    static_assert(validation::module_validation_entry_mask == 0x00000003u);
+    static_assert(validation::module_validation_reserved_mask == 0x800000fcu);
+    static_assert(validation::module_validation_profile_mask == 0x00ffff00u);
+    static_assert(validation::module_validation_profile_shift == 8u);
+    static_assert(validation::module_validation_version_mask == 0x7f000000u);
+    static_assert(validation::module_validation_version_shift == 24u);
+    std::uint32_t const word =
+        (validation::module_validation_layout_version
+         << validation::module_validation_version_shift) |
+        (profileCode << validation::module_validation_profile_shift) |
+        validation::module_validation_main_bit |
+        (!JS_IsUndefined(callback.get())
+             ? validation::module_validation_callback_bit
+             : 0u);
+    return static_cast<std::int32_t>(word);
 }
 
 __attribute__((export_name("qjs_get_result_ptr")))

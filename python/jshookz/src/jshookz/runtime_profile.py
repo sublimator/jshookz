@@ -10,6 +10,7 @@ from typing import Any
 
 from wasmtime import Engine, FuncType, MemoryType, Module
 
+from . import _runtime_profile_constants as generated
 from .paths import (
     SOURCE_CHECKOUT,
     XAHAU_V1_HOOKS_API_DECLARATIONS,
@@ -69,6 +70,38 @@ def _validated_object_limits(source: dict[str, Any]) -> dict[str, int]:
             )
         values[name] = value
     return values
+
+
+def _validate_xfl_activation_contract(source: dict[str, Any]) -> None:
+    """Join source, generated Python constants, and provider validation ABI."""
+    expected_codes = {
+        "none": generated.XFL_ARITHMETIC_PROFILE_NONE,
+        "xahauFloatV1": generated.XFL_ARITHMETIC_PROFILE_XAHAU_FLOAT_V1,
+        "nearestEvenV1": generated.XFL_ARITHMETIC_PROFILE_NEAREST_EVEN_V1,
+    }
+    artifact = source.get("artifact")
+    if not isinstance(artifact, dict) or artifact.get(
+        "xfl_arithmetic_profile_codes"
+    ) != expected_codes:
+        raise ValueError("runtime-profile XFL arithmetic profile codes differ")
+
+    expected_validation = {
+        "layout_version": generated.MODULE_VALIDATION_LAYOUT_VERSION,
+        "failure_sentinel": generated.MODULE_VALIDATION_FAILURE_SENTINEL,
+        "main_bit": generated.MODULE_VALIDATION_MAIN_BIT,
+        "callback_bit": generated.MODULE_VALIDATION_CALLBACK_BIT,
+        "entry_mask": generated.MODULE_VALIDATION_ENTRY_MASK,
+        "reserved_mask": generated.MODULE_VALIDATION_RESERVED_MASK,
+        "profile_mask": generated.MODULE_VALIDATION_PROFILE_MASK,
+        "profile_shift": generated.MODULE_VALIDATION_PROFILE_SHIFT,
+        "version_mask": generated.MODULE_VALIDATION_VERSION_MASK,
+        "version_shift": generated.MODULE_VALIDATION_VERSION_SHIFT,
+    }
+    provider = source.get("provider")
+    if not isinstance(provider, dict) or provider.get(
+        "module_validation_result"
+    ) != expected_validation:
+        raise ValueError("runtime-profile module-validation result layout differs")
 
 
 def _read_leb128(data: bytes, position: int, *, signed: bool) -> tuple[int, int]:
@@ -426,6 +459,7 @@ def build_runtime_profile_lock(
             f"unsupported runtime-profile source schema: {source.get('schema')!r}"
         )
     _validated_object_limits(source)
+    _validate_xfl_activation_contract(source)
 
     provider = _wasm_surface(wasm_path)
     _validate_provider_policy(source, provider)
@@ -616,6 +650,7 @@ def verify_runtime_profile_lock(
             )
 
     _validated_object_limits(source)
+    _validate_xfl_activation_contract(source)
 
     # Rebuild without relying on an ambient source path.
     provider = _wasm_surface(wasm_path)

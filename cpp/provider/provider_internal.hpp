@@ -12,6 +12,28 @@ void unregister_cpp_types(JSRuntime* runtime);
 
 namespace jshookz::provider {
 
+struct ActiveXFLArithmeticProfile
+{
+    bool active;
+    std::uint32_t code;
+};
+
+class InvocationXFLArithmeticProfile
+{
+    JSContext* context_ = nullptr;
+
+public:
+    InvocationXFLArithmeticProfile() = default;
+    ~InvocationXFLArithmeticProfile();
+
+    InvocationXFLArithmeticProfile(
+        InvocationXFLArithmeticProfile const&) = delete;
+    InvocationXFLArithmeticProfile& operator=(
+        InvocationXFLArithmeticProfile const&) = delete;
+
+    [[nodiscard]] bool activate(JSContext* context, std::uint32_t code) noexcept;
+};
+
 [[nodiscard]] JSValue makeSTBlob(
     JSContext* ctx,
     std::uint8_t const* bytes,
@@ -27,6 +49,14 @@ namespace jshookz::provider {
 
 [[nodiscard]] bool registerBindings(JSContext* ctx);
 [[nodiscard]] bool installDeterministicSandbox(JSContext* ctx);
+[[nodiscard]] bool registerXFLProfile(JSContext* ctx);
+void destroyXFLProfile(JSContext* ctx) noexcept;
+[[nodiscard]] int observeModuleXFLProfile(
+    JSContext* ctx,
+    JSValueConst moduleNamespace,
+    std::uint32_t* code);
+[[nodiscard]] ActiveXFLArithmeticProfile
+activeXFLArithmeticProfile(JSContext* ctx) noexcept;
 void setRandomSeed(std::uint32_t seed) noexcept;
 void setCoverageEnabled(JSRuntime* runtime, JSContext* context, bool enabled);
 
