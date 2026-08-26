@@ -2,7 +2,7 @@
   "schema": "xahau.quickjs.runtime-profile-source.v1",
   "name": "xahau-quickjs-v1",
   "artifact": {
-    "envelope_version": 2,
+    "envelope_version": 1,
     "hook_api_version": 1,
     "kind": "quickjs-bytecode",
     "xfl_arithmetic_profile_codes": {

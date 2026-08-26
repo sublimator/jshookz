@@ -75,7 +75,7 @@ def source(
         {
             "schema": GEN.SCHEMA,
             "artifact": {
-                "envelope_version": 2,
+                "envelope_version": 1,
                 "xfl_arithmetic_profile_codes": profiles,
             },
             "provider": {"module_validation_result": validation},
@@ -97,7 +97,7 @@ def test_header_projects_all_four_limits_and_source_identity():
 
 def test_header_projects_profile_codes_and_validation_layout():
     rendered = GEN.render(source(), "profile.source.json")
-    assert "xqjs_envelope_version = 2u;" in rendered
+    assert "xqjs_envelope_version = 1u;" in rendered
     assert "xfl_arithmetic_profile_none = 0u;" in rendered
     assert "xfl_arithmetic_profile_xahau_float_v1 = 1u;" in rendered
     assert "xfl_arithmetic_profile_nearest_even_v1 = 2u;" in rendered
@@ -118,7 +118,7 @@ def test_checked_in_header_matches_the_exact_runtime_profile_source():
 
 def test_python_projection_carries_the_same_codes_and_layout():
     rendered = GEN.render_python(source(), "profile.source.json")
-    assert "XQJS_ENVELOPE_VERSION = 2" in rendered
+    assert "XQJS_ENVELOPE_VERSION = 1" in rendered
     assert "XFL_ARITHMETIC_PROFILE_NONE = 0" in rendered
     assert "XFL_ARITHMETIC_PROFILE_XAHAU_FLOAT_V1 = 1" in rendered
     assert "XFL_ARITHMETIC_PROFILE_NEAREST_EVEN_V1 = 2" in rendered
@@ -176,8 +176,8 @@ def test_header_rejects_independent_profile_code_drift(field: str, value: int):
 
 def test_header_rejects_current_envelope_version_drift():
     document = json.loads(source())
-    document["artifact"]["envelope_version"] = 1
-    with pytest.raises(ValueError, match="envelope version must be exactly 2"):
+    document["artifact"]["envelope_version"] = 2
+    with pytest.raises(ValueError, match="envelope version must be exactly 1"):
         GEN.render(json.dumps(document).encode(), "profile.source.json")
 
 

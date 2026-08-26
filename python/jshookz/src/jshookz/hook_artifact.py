@@ -4,9 +4,14 @@ The bytecode emitted by QuickJS is an internal compiler artifact.  Xahau stores
 this envelope in ``sfCreateCode`` so artifact dispatch, decoder compatibility,
 and runtime policy do not depend on ``HookApiVersion`` or filename conventions.
 
-Versions 1 and 2 are deliberately fixed-width, big-endian wire formats.  Do
-not serialize a native-language structure for consensus data.  New builders
-emit only v2; v1 remains an exact parser compatibility surface.
+Version 1 is a deliberately fixed-width, big-endian wire format.  Do not
+serialize a native-language structure for consensus data.  Builders emit only
+the current version and parsers accept only that version.
+
+After real network activation, a future format bump may read the current
+version plus its immediate predecessor while builders emit only current.  The
+next bump must delete predecessor-minus-one in the same change.  Do not grow
+an N-version registry or migration framework here.
 """
 
 from __future__ import annotations
@@ -23,11 +28,7 @@ from .xfl_profile import (
 
 
 MAGIC = b"XQJS"
-LEGACY_ENVELOPE_VERSION = 1
 ENVELOPE_VERSION = generated.XQJS_ENVELOPE_VERSION
-SUPPORTED_ENVELOPE_VERSIONS = frozenset(
-    {LEGACY_ENVELOPE_VERSION, ENVELOPE_VERSION}
-)
 QUICKJS_BYTECODE_KIND = 1
 HEADER_SIZE = 80
 MAX_CREATE_CODE_SIZE = 65_535
@@ -43,7 +44,6 @@ class HookArtifactError(ValueError):
 
 @dataclass(frozen=True)
 class HookArtifact:
-    envelope_version: int
     artifact_kind: int
     hook_api_version: int
     profile: XFLArithmeticProfile
@@ -71,7 +71,7 @@ def build_hook_artifact(
     runtime_profile_id: bytes,
     profile: XFLArithmeticProfile,
 ) -> bytes:
-    """Package provider bytecode into the canonical v2 deployment envelope."""
+    """Package provider bytecode into the canonical v1 deployment envelope."""
     payload = bytes(payload)
     if not payload:
         raise HookArtifactError("QuickJS Hook payload must not be empty")
@@ -103,7 +103,7 @@ def build_hook_artifact(
 
 
 def parse_hook_artifact(data: bytes) -> HookArtifact:
-    """Parse and canonically validate a v1 or v2 QuickJS Hook artifact."""
+    """Parse and canonically validate a v1 QuickJS Hook artifact."""
     data = bytes(data)
     if len(data) > MAX_CREATE_CODE_SIZE:
         raise HookArtifactError(
@@ -129,7 +129,7 @@ def parse_hook_artifact(data: bytes) -> HookArtifact:
 
     if magic != MAGIC:
         raise HookArtifactError("not a QuickJS Hook artifact (XQJS magic missing)")
-    if envelope_version not in SUPPORTED_ENVELOPE_VERSIONS:
+    if envelope_version != ENVELOPE_VERSION:
         raise HookArtifactError(
             f"unsupported QuickJS Hook envelope version {envelope_version}"
         )
@@ -142,17 +142,12 @@ def parse_hook_artifact(data: bytes) -> HookArtifact:
             f"non-canonical v{envelope_version} header size {header_size}; "
             f"expected {HEADER_SIZE}"
         )
-    if envelope_version == LEGACY_ENVELOPE_VERSION:
-        if profile_field != 0:
-            raise HookArtifactError("QuickJS Hook v1 reserved flags must be zero")
-        profile = XFLArithmeticProfile.NONE
-    else:
-        try:
-            profile = xfl_profile_from_code(profile_field)
-        except ValueError as error:
-            raise HookArtifactError(
-                f"unknown QuickJS Hook v2 XFL arithmetic profile code {profile_field}"
-            ) from error
+    try:
+        profile = xfl_profile_from_code(profile_field)
+    except ValueError as error:
+        raise HookArtifactError(
+            f"unknown QuickJS Hook v1 XFL arithmetic profile code {profile_field}"
+        ) from error
     if payload_size == 0:
         raise HookArtifactError("QuickJS Hook payload must not be empty")
 
@@ -165,7 +160,6 @@ def parse_hook_artifact(data: bytes) -> HookArtifact:
         )
 
     return HookArtifact(
-        envelope_version=envelope_version,
         artifact_kind=artifact_kind,
         hook_api_version=hook_api_version,
         profile=profile,

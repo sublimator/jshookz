@@ -3,9 +3,7 @@ import struct
 import pytest
 
 from jshookz.hook_artifact import (
-    ENVELOPE_VERSION,
     HEADER_SIZE,
-    LEGACY_ENVELOPE_VERSION,
     MAGIC,
     MAX_PAYLOAD_SIZE,
     HookArtifactError,
@@ -33,12 +31,12 @@ def artifact(
     )
 
 
-def test_v2_wire_layout_is_exact_and_big_endian():
+def test_v1_wire_layout_is_exact_and_big_endian():
     encoded = artifact(b"abc")
 
     assert len(encoded) == HEADER_SIZE + 3
     assert encoded[:4] == MAGIC
-    assert encoded[4:8] == bytes([2, 1, 0, HEADER_SIZE])
+    assert encoded[4:8] == bytes([1, 1, 0, HEADER_SIZE])
     assert encoded[8:12] == b"\x00\x01\x00\x00"
     assert encoded[12:16] == b"\x00\x00\x00\x03"
     assert encoded[16:48] == ABI_ID
@@ -46,7 +44,6 @@ def test_v2_wire_layout_is_exact_and_big_endian():
     assert encoded[80:] == b"abc"
 
     decoded = parse_hook_artifact(encoded)
-    assert decoded.envelope_version == ENVELOPE_VERSION
     assert decoded.artifact_kind == 1
     assert decoded.hook_api_version == 1
     assert decoded.profile is XFLArithmeticProfile.NONE
@@ -63,7 +60,7 @@ def test_v2_wire_layout_is_exact_and_big_endian():
         (XFLArithmeticProfile.NEAREST_EVEN_V1, b"\x00\x02"),
     ],
 )
-def test_v2_profile_code_is_canonical_big_endian(
+def test_v1_profile_code_is_canonical_big_endian(
     profile: XFLArithmeticProfile, wire: bytes
 ):
     encoded = artifact(profile=profile)
@@ -72,30 +69,17 @@ def test_v2_profile_code_is_canonical_big_endian(
     assert parse_hook_artifact(encoded).profile is profile
 
 
-def test_frozen_literal_v1_remains_readable_as_profile_none():
-    frozen_v1 = bytes.fromhex(
-        "58514a53010100500001000000000003"
-        "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
-        "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
-        "616263"
-    )
-
-    decoded = parse_hook_artifact(frozen_v1)
-
-    assert decoded.envelope_version == LEGACY_ENVELOPE_VERSION
-    assert decoded.profile is XFLArithmeticProfile.NONE
-    assert decoded.payload == b"abc"
-
-
 @pytest.mark.parametrize(
     ("offset", "replacement", "match"),
     [
         (0, b"Q", "magic"),
-        (4, b"\x03", "envelope version 3"),
+        (4, b"\x00", "envelope version 0"),
+        (4, b"\x02", "envelope version 2"),
         (5, b"\x02", "artifact kind 2"),
         (7, b"\x51", "header size 81"),
         (10, b"\x01", "profile code 256"),
         (11, b"\x03", "profile code 3"),
+        (10, b"\xff\xff", "profile code 65535"),
     ],
 )
 def test_parser_rejects_noncanonical_header_fields(offset, replacement, match):
@@ -117,30 +101,6 @@ def test_parser_rejects_truncation_trailing_bytes_and_empty_payload():
     empty[12:16] = struct.pack(">I", 0)
     with pytest.raises(HookArtifactError, match="must not be empty"):
         parse_hook_artifact(empty)
-
-
-def test_v1_still_requires_both_reserved_profile_bytes_zero():
-    encoded = bytearray(artifact())
-    encoded[4] = LEGACY_ENVELOPE_VERSION
-    for offset in (10, 11):
-        mutated = bytearray(encoded)
-        mutated[offset] = 1
-        with pytest.raises(HookArtifactError, match="v1 reserved flags"):
-            parse_hook_artifact(mutated)
-
-
-def test_explicit_downgrade_rewrite_parses_as_v1_none_without_changing_payload():
-    encoded = bytearray(
-        artifact(b"profiled module", XFLArithmeticProfile.XAHAU_FLOAT_V1)
-    )
-    encoded[4] = LEGACY_ENVELOPE_VERSION
-    encoded[10:12] = b"\x00\x00"
-
-    decoded = parse_hook_artifact(encoded)
-
-    assert decoded.envelope_version == LEGACY_ENVELOPE_VERSION
-    assert decoded.profile is XFLArithmeticProfile.NONE
-    assert decoded.payload == b"profiled module"
 
 
 def test_parser_rejects_raw_bytecode_and_zero_identities():

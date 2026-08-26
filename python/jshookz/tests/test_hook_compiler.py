@@ -708,7 +708,6 @@ def test_typescript_hook_packages_payload_with_explicit_identities(tmp_path: Pat
     parsed = parse_hook_artifact(packaged.artifact)
 
     assert len(packaged.artifact) == HEADER_SIZE + len(packaged.bytecode)
-    assert parsed.envelope_version == 2
     assert parsed.hook_api_version == 1
     assert parsed.profile is XFLArithmeticProfile.NONE
     assert parsed.bytecode_abi_id == abi_id
@@ -733,7 +732,7 @@ def test_typescript_hook_packages_payload_with_explicit_identities(tmp_path: Pat
         ("nearestEvenV1", XFLArithmeticProfile.NEAREST_EVEN_V1, b"\x00\x02"),
     ],
 )
-def test_packaging_joins_source_provider_and_v2_header_profile(
+def test_packaging_joins_source_provider_and_v1_header_profile(
     tmp_path: Path,
     member: str,
     expected: XFLArithmeticProfile,

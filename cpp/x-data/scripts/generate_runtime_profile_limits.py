@@ -63,8 +63,8 @@ def profile_constants(source: bytes) -> dict[str, int]:
             positive=True,
         )
     }
-    if selected["xqjs_envelope_version"] != 2:
-        raise ValueError("runtime profile XQJS envelope version must be exactly 2")
+    if selected["xqjs_envelope_version"] != 1:
+        raise ValueError("runtime profile XQJS envelope version must be exactly 1")
     codes = artifact.get("xfl_arithmetic_profile_codes")
     if not isinstance(codes, dict):
         raise ValueError("runtime profile has no XFL arithmetic profile codes")
