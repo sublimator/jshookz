@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 
 
@@ -34,6 +35,7 @@ VALIDATION_UINT32_FIELDS = (
     "version_shift",
 )
 VALIDATION_FAILURE_SENTINEL = -1
+MEMBER_PATH = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*")
 
 
 def _uint32(value: object, description: str, *, positive: bool = False) -> int:
@@ -49,13 +51,57 @@ def _uint32(value: object, description: str, *, positive: bool = False) -> int:
     return value
 
 
-def profile_constants(source: bytes) -> dict[str, int]:
+def _cpp_identifier(member: str) -> str:
+    separated = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", member.replace(".", "_"))
+    return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", separated).lower()
+
+
+def _profile_document(source: bytes) -> tuple[dict[str, object], dict[str, object]]:
     document = json.loads(source)
     if not isinstance(document, dict) or document.get("schema") != SCHEMA:
         raise ValueError(f"runtime profile must use schema {SCHEMA!r}")
     artifact = document.get("artifact")
     if not isinstance(artifact, dict):
         raise ValueError("runtime profile has no artifact object")
+    return document, artifact
+
+
+def profile_implementations(source: bytes) -> dict[str, tuple[str, ...]]:
+    """Return the one checked profile-to-operation capability table."""
+    _, artifact = _profile_document(source)
+    implementations = artifact.get("xfl_arithmetic_profile_implementations")
+    expected_profiles = [source_name for source_name, _ in PROFILE_CODES]
+    if not isinstance(implementations, dict):
+        raise ValueError("runtime profile has no XFL arithmetic implementation set")
+    if set(implementations) != set(expected_profiles):
+        raise ValueError(
+            "runtime profile XFL arithmetic implementation profiles differ"
+        )
+
+    selected: dict[str, tuple[str, ...]] = {}
+    for profile_name in expected_profiles:
+        members = implementations[profile_name]
+        if not isinstance(members, list) or any(
+            not isinstance(member, str) or MEMBER_PATH.fullmatch(member) is None
+            for member in members
+        ):
+            raise ValueError(
+                f"runtime profile XFL arithmetic implementations for {profile_name!r} "
+                "must be member paths"
+            )
+        if members != sorted(set(members)):
+            raise ValueError(
+                f"runtime profile XFL arithmetic implementations for {profile_name!r} "
+                "must be unique and sorted"
+            )
+        selected[profile_name] = tuple(members)
+    if selected["none"]:
+        raise ValueError("runtime profile 'none' cannot implement XFL arithmetic")
+    return selected
+
+
+def profile_constants(source: bytes) -> dict[str, int]:
+    document, artifact = _profile_document(source)
     selected: dict[str, int] = {
         "xqjs_envelope_version": _uint32(
             artifact.get("envelope_version"),
@@ -78,6 +124,7 @@ def profile_constants(source: bytes) -> dict[str, int]:
         )
     if [selected[name] for _, name in PROFILE_CODES] != [0, 1, 2]:
         raise ValueError("runtime profile XFL arithmetic profile codes must be 0/1/2")
+    profile_implementations(source)
 
     provider = document.get("provider")
     if not isinstance(provider, dict):
@@ -111,7 +158,9 @@ def profile_constants(source: bytes) -> dict[str, int]:
         "module_validation_version_shift": 24,
     }
     if any(selected[name] != value for name, value in expected_validation.items()):
-        raise ValueError("runtime profile module-validation result layout differs from v1")
+        raise ValueError(
+            "runtime profile module-validation result layout differs from v1"
+        )
 
     limits = document.get("limits")
     if not isinstance(limits, dict):
@@ -125,6 +174,7 @@ def profile_constants(source: bytes) -> dict[str, int]:
 
 def render(source: bytes, source_name: str) -> str:
     values = profile_constants(source)
+    implementations = profile_implementations(source)
     digest = hashlib.sha256(source).hexdigest()
     limit_constants = "\n".join(
         f"inline constexpr std::uint32_t {name} = {values[name]}u;" for name in LIMITS
@@ -142,6 +192,32 @@ def render(source: bytes, source_name: str) -> str:
         f"{values[f'module_validation_{name}']}u;"
         for name in VALIDATION_UINT32_FIELDS
     )
+    operations = sorted(
+        {member for members in implementations.values() for member in members}
+    )
+    cpp_names: dict[str, str] = {}
+    for member in operations:
+        identifier = _cpp_identifier(member)
+        if identifier in cpp_names.values():
+            raise ValueError("XFL arithmetic member paths collide as C++ identifiers")
+        cpp_names[member] = identifier
+    operation_entries = "\n".join(
+        f"    {cpp_names[member]} = {index}u,"
+        for index, member in enumerate(operations)
+    )
+    implementation_rows: list[str] = []
+    for profile_name, constant_name in PROFILE_CODES:
+        members = implementations[profile_name]
+        if not members:
+            continue
+        predicates = " ||\n            ".join(
+            "operation == xfl_arithmetic_operation::" + cpp_names[member]
+            for member in members
+        )
+        implementation_rows.append(
+            f"    if (profile_code == {constant_name})\n        return {predicates};"
+        )
+    implementation_body = "\n".join(implementation_rows)
     return f"""// Auto-generated file. DO NOT EDIT.
 // Generated by scripts/generate_runtime_profile_limits.py.
 // Source: {source_name}
@@ -161,6 +237,19 @@ namespace catl::xdata::xahau_profile {{
 
 {rendered_profile_constants}
 
+enum class xfl_arithmetic_operation : std::uint8_t {{
+{operation_entries}
+}};
+
+[[nodiscard]] inline constexpr bool
+xfl_arithmetic_profile_implements(
+    std::uint32_t profile_code,
+    xfl_arithmetic_operation operation) noexcept
+{{
+{implementation_body}
+    return false;
+}}
+
 inline constexpr std::int32_t module_validation_failure_sentinel = -1;
 {validation_constants}
 
@@ -170,6 +259,7 @@ inline constexpr std::int32_t module_validation_failure_sentinel = -1;
 
 def render_python(source: bytes, source_name: str) -> str:
     values = profile_constants(source)
+    implementations = profile_implementations(source)
     digest = hashlib.sha256(source).hexdigest()
     assignments = [
         f"XQJS_ENVELOPE_VERSION = {values['xqjs_envelope_version']}",
@@ -178,21 +268,21 @@ def render_python(source: bytes, source_name: str) -> str:
         f"{values['xfl_arithmetic_profile_xahau_float_v1']}",
         "XFL_ARITHMETIC_PROFILE_NEAREST_EVEN_V1 = "
         f"{values['xfl_arithmetic_profile_nearest_even_v1']}",
+        "XFL_ARITHMETIC_PROFILE_IMPLEMENTATIONS = " + repr(implementations),
         "MODULE_VALIDATION_FAILURE_SENTINEL = -1",
     ]
     assignments.extend(
-        f"MODULE_VALIDATION_{name.upper()} = "
-        f"{values[f'module_validation_{name}']}"
+        f"MODULE_VALIDATION_{name.upper()} = {values[f'module_validation_{name}']}"
         for name in VALIDATION_UINT32_FIELDS
     )
     body = "\n".join(assignments)
-    return f'''# Auto-generated file. DO NOT EDIT.
+    return f"""# Auto-generated file. DO NOT EDIT.
 # Generated by cpp/x-data/scripts/generate_runtime_profile_limits.py.
 # Source: {source_name}
 # SHA-256: {digest}
 
 {body}
-'''
+"""
 
 
 def main() -> int:

@@ -1,6 +1,7 @@
 /* XFL artifact-profile policy over the compiler's one TypeScript Program. */
 
 import {
+  XFL_PROFILE_IMPLEMENTATIONS,
   XFL_PROFILE_LEDGER_SCHEMA,
   XFL_PROFILE_SENSITIVE_MEMBERS,
 } from "./xfl_profile_ledger";
@@ -13,7 +14,7 @@ export type SourceXFLProfile =
   | "nearestEvenV1";
 
 interface PolicyDiagnostic {
-  readonly code: "JSH-XFL001";
+  readonly code: "JSH-XFL001" | "JSH-XFL002";
   readonly node: TS;
   readonly detail: string;
 }
@@ -29,20 +30,20 @@ interface CanonicalSymbols {
   readonly xahauFloatV1: TS;
   readonly nearestEvenV1: TS;
   readonly defineHookConfig: TS;
-  readonly sensitive: ReadonlySet<TS>;
+  readonly sensitive: ReadonlyMap<TS, string>;
 }
 
 function symbolAt(checker: TS, node: TS): TS {
   return node ? checker.getSymbolAtLocation(node) : undefined;
 }
 
-function formatAt(node: TS, detail: string): string {
+function formatAt(node: TS, code: PolicyDiagnostic["code"], detail: string): string {
   const file = node.getSourceFile ? node.getSourceFile() : undefined;
-  if (!file) return `JSH-XFL001: ${detail}`;
+  if (!file) return `${code}: ${detail}`;
   const { line, character } = file.getLineAndCharacterOfPosition(
     node.getStart(file),
   );
-  return `${file.fileName}(${line + 1},${character + 1}): JSH-XFL001: ${detail}`;
+  return `${file.fileName}(${line + 1},${character + 1}): ${code}: ${detail}`;
 }
 
 function globalStatements(ts: TS, declaration: TS): readonly TS[] {
@@ -190,7 +191,7 @@ function canonicalSymbols(
     }
   }
 
-  const sensitive = new Set<TS>();
+  const sensitive = new Map<TS, string>();
   for (const path of XFL_PROFILE_SENSITIVE_MEMBERS) {
     const [typeName, memberName, ...extra] = path.split(".");
     if (extra.length || !typeName || !memberName) {
@@ -224,8 +225,8 @@ function canonicalSymbols(
         `XFL declaration integrity: ledger member ${path} is not canonical`,
       );
     }
-    sensitive.add(member);
-    sensitive.add(memberDeclaration);
+    sensitive.set(member, path);
+    sensitive.set(memberDeclaration, path);
   }
 
   return {
@@ -403,19 +404,21 @@ function sensitiveCalls(
   checker: TS,
   files: readonly TS[],
   canonical: CanonicalSymbols,
-): TS[] {
-  const calls: TS[] = [];
+): { call: TS; member: string; moduleEvaluation: boolean }[] {
+  const calls: { call: TS; member: string; moduleEvaluation: boolean }[] = [];
   for (const source of files) {
     const visit = (node: TS) => {
       if (ts.isCallExpression(node)) {
         const signature = checker.getResolvedSignature(node);
         const declaration = signature && signature.getDeclaration();
         const symbol = resolvedDeclarationSymbol(checker, node);
-        if (
-          (declaration && canonical.sensitive.has(declaration)) ||
-          (symbol && canonical.sensitive.has(symbol))
-        ) {
-          calls.push(node);
+        const member =
+          (declaration && canonical.sensitive.get(declaration)) ||
+          (symbol && canonical.sensitive.get(symbol));
+        if (member) {
+          let parent = node.parent;
+          while (parent && !ts.isFunctionLike(parent)) parent = parent.parent;
+          calls.push({ call: node, member, moduleEvaluation: !parent });
         }
       }
       ts.forEachChild(node, visit);
@@ -470,13 +473,24 @@ export function checkXFLProfilePolicy(
   }
 
   if (!attempted || exactAttempt) {
-    for (const call of sensitiveCalls(ts, checker, files, canonical)) {
-      if (profile !== "none") continue;
+    const implemented = new Set<string>(XFL_PROFILE_IMPLEMENTATIONS[profile]);
+    for (const sensitive of sensitiveCalls(ts, checker, files, canonical)) {
+      if (sensitive.moduleEvaluation) {
+        diagnostics.push({
+          code: "JSH-XFL002",
+          node: sensitive.call,
+          detail: `${sensitive.member} cannot execute during module evaluation under profile ${profile}`,
+        });
+        continue;
+      }
+      if (profile !== "none" && implemented.has(sensitive.member)) continue;
       diagnostics.push({
-        code: "JSH-XFL001",
-        node: call,
+        code: profile === "none" ? "JSH-XFL001" : "JSH-XFL002",
+        node: sensitive.call,
         detail:
-          "profile-sensitive XFLDecimal arithmetic requires one canonical hookConfig declaration",
+          profile === "none"
+            ? `${sensitive.member} requires one canonical hookConfig declaration`
+            : `${sensitive.member} is not implemented for profile ${profile}`,
       });
     }
   }
@@ -487,6 +501,8 @@ export function checkXFLProfilePolicy(
       const rightFile = right.node.getSourceFile().fileName;
       return leftFile.localeCompare(rightFile) || left.node.pos - right.node.pos;
     })
-    .map((diagnostic) => formatAt(diagnostic.node, diagnostic.detail));
+    .map((diagnostic) =>
+      formatAt(diagnostic.node, diagnostic.code, diagnostic.detail),
+    );
   return { profile, diagnostics: formatted };
 }

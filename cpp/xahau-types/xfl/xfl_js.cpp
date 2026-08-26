@@ -1,9 +1,14 @@
 #include "js.hpp"
+#include "result.hpp"
+#include "runtime_profile_limits.h"
+#include "xfl/xfl_arithmetic.hpp"
 #include "xfl/xfl.hpp"
+#include "xfl/xfl_profile_context.hpp"
 
 namespace jshookz::provider::types {
 namespace qjs = jshookz::provider::qjs;
 using hook::XFL;
+namespace profile = catl::xdata::xahau_profile;
 
 namespace {
 
@@ -64,6 +69,73 @@ compareXFL(XFL const& left, XFL const& right) noexcept
     else if (left.mantissa() != right.mantissa())
         order = left.mantissa() < right.mantissa() ? -1 : 1;
     return leftSign < 0 ? -order : order;
+}
+
+JSValue
+xflArithmetic(
+    JSContext* ctx,
+    JSValueConst thisValue,
+    int argc,
+    JSValueConst* argv,
+    char const* method,
+    profile::xfl_arithmetic_operation operation,
+    bool subtract)
+{
+    auto const* left = xflValueNoThrow(thisValue);
+    if (left == nullptr)
+        return JS_ThrowTypeError(ctx, "XFLDecimal.%s: invalid receiver", method);
+    auto const* right = argc > 0 ? xflValueNoThrow(argv[0]) : nullptr;
+    if (right == nullptr)
+        return JS_ThrowTypeError(
+            ctx, "XFLDecimal.%s: expected XFLDecimal operand", method);
+
+    ActiveXFLArithmeticProfile const active = activeXFLArithmeticProfile(ctx);
+    if (!active.active)
+        return JS_ThrowTypeError(
+            ctx, "XFLDecimal.%s: arithmetic profile is inactive", method);
+    if (!profile::xfl_arithmetic_profile_implements(active.code, operation))
+        return JS_ThrowTypeError(
+            ctx,
+            "XFLDecimal.%s: arithmetic profile does not implement operation",
+            method);
+
+    hook::XFLArithmeticResult const result = subtract
+        ? hook::subtractXahauFloatV1(*left, *right)
+        : hook::addXahauFloatV1(*left, *right);
+    if (!result.ok())
+        return bindings::xfl_failure(ctx, "overflow");
+    return bindings::result_success(
+        ctx, nativeNew<XFL>(ctx, js_xfl_class_id, result.value));
+}
+
+// @binding provider:XFLDecimal.add
+JSValue
+js_xfl_add(
+    JSContext* ctx, JSValueConst thisValue, int argc, JSValueConst* argv)
+{
+    return xflArithmetic(
+        ctx,
+        thisValue,
+        argc,
+        argv,
+        "add",
+        profile::xfl_arithmetic_operation::xfl_decimal_add,
+        false);
+}
+
+// @binding provider:XFLDecimal.subtract
+JSValue
+js_xfl_subtract(
+    JSContext* ctx, JSValueConst thisValue, int argc, JSValueConst* argv)
+{
+    return xflArithmetic(
+        ctx,
+        thisValue,
+        argc,
+        argv,
+        "subtract",
+        profile::xfl_arithmetic_operation::xfl_decimal_subtract,
+        true);
 }
 
 // @binding provider:XFLDecimal.isNegative
@@ -146,6 +218,8 @@ JSCFunctionListEntry const proto[] = {
     JS_CFUNC_DEF("isNegative", 0, js_xfl_is_negative),
     JS_CFUNC_DEF("isZero", 0, js_xfl_is_zero),
     JS_CFUNC_DEF("sign", 0, js_xfl_sign),
+    JS_CFUNC_DEF("add", 1, js_xfl_add),
+    JS_CFUNC_DEF("subtract", 1, js_xfl_subtract),
     JS_CFUNC_DEF("negate", 0, js_xfl_negate),
     JS_CFUNC_DEF("equals", 1, js_xfl_equals),
     JS_CFUNC_DEF("compare", 1, js_xfl_compare),

@@ -5,8 +5,10 @@
 #include "object/object.hpp"
 #include "pathset/pathset_js.hpp"
 #include "result.hpp"
+#include "xfl/xfl_profile_context.hpp"
 
 #include "catl/xdata/static_protocol.h"
+#include "runtime_profile_limits.h"
 
 #include <jshookz/qjs.hpp>
 
@@ -310,6 +312,98 @@ TEST_F(XahauTypes, XFLDecimalTotalValueKernel)
     ASSERT_FALSE(value.isException());
     EXPECT_EQ(to_string(value.get()),
         R"({"signs":[-1,0,1],"zeroNegatesToZero":true,"negatedPositive":0,"negatedNegative":0,"doubleNegation":true,"sameExponent":[-1,1],"exponent":[-1,1],"negativeReversal":[-1,-1],"equality":[true,false,false,false,false],"callbacks":0,"compareError":"true:XFLDecimal.compare() expects XFLDecimal","proxyCompareError":"true:XFLDecimal.compare() expects XFLDecimal"})");
+}
+
+TEST_F(XahauTypes, XFLDecimalArithmeticNominalityAndProfileBackstop)
+{
+    namespace profile = catl::xdata::xahau_profile;
+    namespace types = jshookz::provider::types;
+    auto installDecimal = [this](char const* name, bool negative,
+                              std::uint64_t magnitude,
+                              std::int32_t exponent) {
+        installValue(
+            name,
+            types::makeXFLDecimalParts(
+                ctx, negative, magnitude, exponent));
+    };
+    installDecimal("one", false, 1000000000000000ULL, -15);
+    installDecimal("two", false, 2000000000000000ULL, -15);
+    installDecimal("maximum", false, 9999999999999999ULL, 80);
+
+    types::XFLProfileContext state{
+        true,
+        profile::xfl_arithmetic_profile_xahau_float_v1,
+    };
+    JS_SetContextOpaque(ctx, &state);
+    auto value = eval(R"JS(
+        (() => {
+          let traps = 0;
+          const proxy = new Proxy({}, {
+            get() { ++traps; throw new Error("get trap"); },
+            getPrototypeOf() { ++traps; throw new Error("prototype trap"); },
+          });
+          const add = one.add(one);
+          const subtract = two.subtract(one);
+          const overflow = maximum.add(maximum);
+          let operandError = "";
+          try { one.add(proxy); }
+          catch (error) {
+            operandError = `${error instanceof TypeError}:${error.message}`;
+          }
+          let receiverError = "";
+          try { Object.getPrototypeOf(one).add.call({}, one); }
+          catch (error) {
+            receiverError = `${error instanceof TypeError}:${error.message}`;
+          }
+          return JSON.stringify({
+            add: add.ok && add.value.equals(two),
+            subtract: subtract.ok && subtract.value.equals(one),
+            successNominal: add instanceof Result && add.value instanceof XFLDecimal,
+            successClosed: !Object.isExtensible(add),
+            valueFrozen: Object.isFrozen(add.value),
+            overflow: !overflow.ok && overflow.error.domain === "xfl" &&
+              overflow.error.issue === "overflow",
+            failureNominal: overflow instanceof Result,
+            errorNullPrototype: Object.getPrototypeOf(overflow.error) === null,
+            errorClosed: !Object.isExtensible(overflow.error),
+            operandError,
+            receiverError,
+            traps,
+          });
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException());
+    EXPECT_EQ(to_string(value.get()),
+        R"({"add":true,"subtract":true,"successNominal":true,"successClosed":true,"valueFrozen":true,"overflow":true,"failureNominal":true,"errorNullPrototype":true,"errorClosed":true,"operandError":"true:XFLDecimal.add: expected XFLDecimal operand","receiverError":"true:XFLDecimal.add: invalid receiver","traps":0})");
+
+    state.active = false;
+    auto inactive = eval(R"JS(
+        (() => { try { one.add(one); } catch (error) {
+          return `${error instanceof TypeError}:${error.message}`; } })()
+    )JS");
+    ASSERT_FALSE(inactive.isException());
+    EXPECT_EQ(to_string(inactive.get()),
+        "true:XFLDecimal.add: arithmetic profile is inactive");
+
+    state.active = true;
+    state.code = profile::xfl_arithmetic_profile_nearest_even_v1;
+    auto unimplemented = eval(R"JS(
+        (() => { try { one.subtract(one); } catch (error) {
+          return `${error instanceof TypeError}:${error.message}`; } })()
+    )JS");
+    ASSERT_FALSE(unimplemented.isException());
+    EXPECT_EQ(to_string(unimplemented.get()),
+        "true:XFLDecimal.subtract: arithmetic profile does not implement operation");
+
+    state.code = profile::xfl_arithmetic_profile_none;
+    auto absent = eval(R"JS(
+        (() => { try { one.add(one); } catch (error) {
+          return `${error instanceof TypeError}:${error.message}`; } })()
+    )JS");
+    ASSERT_FALSE(absent.isException());
+    EXPECT_EQ(to_string(absent.get()),
+        "true:XFLDecimal.add: arithmetic profile does not implement operation");
+    JS_SetContextOpaque(ctx, nullptr);
 }
 
 TEST_F(XahauTypes, STBlobFromBytes)
@@ -1530,7 +1624,7 @@ TEST_F(XahauTypes, ObjectMaterializesAmountPathSetAndBridgeWithExactIdentity)
             !converted.isZero() &&
             Object.getPrototypeOf(converted) === decimalPrototype &&
             Reflect.ownKeys(decimalPrototype).join(",") ===
-              "isNegative,isZero,sign,negate,equals,compare" &&
+              "isNegative,isZero,sign,add,subtract,negate,equals,compare" &&
             Object.isFrozen(decimalPrototype) &&
             !("raw" in decimal) && !("mantissa" in decimal) &&
             !("exponent" in decimal) &&

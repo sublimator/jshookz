@@ -426,6 +426,55 @@ def test_native_projection_rejects_duplicate_provider_import():
         _validate_native_abi([*imports, imports[0]])
 
 
+def test_profile_source_rejects_fourteenth_float_sum_import(tmp_path: Path):
+    source = copy.deepcopy(json.loads(SOURCE.read_text()))
+    source["provider"]["imports"].append(
+        {
+            "module": "env",
+            "name": "float_sum",
+            "params": ["i64", "i64"],
+            "results": ["i64"],
+        }
+    )
+    source_path = tmp_path / "float-sum.source.json"
+    _write_json(source_path, source)
+
+    with pytest.raises(ValueError, match="provider import surface differs"):
+        build_runtime_profile_lock(source_path, XAHAU_HOOK_PROVIDER_WASM)
+
+
+def test_profile_source_rejects_existing_import_name_swap(tmp_path: Path):
+    source = copy.deepcopy(json.loads(SOURCE.read_text()))
+    source["provider"]["imports"][0]["name"] = "float_sum"
+    source_path = tmp_path / "swapped-import.source.json"
+    _write_json(source_path, source)
+
+    with pytest.raises(ValueError, match="provider import surface differs"):
+        build_runtime_profile_lock(source_path, XAHAU_HOOK_PROVIDER_WASM)
+
+
+@pytest.mark.parametrize("mutation", ["append", "swap"])
+def test_native_projection_rejects_float_sum_import_mutations(mutation: str):
+    imports = copy.deepcopy(
+        build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)["provider"][
+            "imports"
+        ]
+    )
+    float_sum = {
+        "module": "env",
+        "name": "float_sum",
+        "params": ["i64", "i64"],
+        "results": ["i64"],
+    }
+    if mutation == "append":
+        imports.append(float_sum)
+    else:
+        imports[0] = float_sum
+
+    with pytest.raises(ValueError, match="pinned raw Hook ABI"):
+        _validate_native_abi(imports)
+
+
 class _LedgerClockHost:
     def ledger_last_time(self) -> int:
         return 123

@@ -37,6 +37,18 @@ if(BUILD_TESTING)
             ${CMAKE_CURRENT_LIST_DIR}/tests/test_xfl_arithmetic_oracle.py
     )
 
+    add_executable(xfl_arithmetic_probe
+        tests/xfl_arithmetic_probe.cpp
+    )
+    target_link_libraries(xfl_arithmetic_probe PRIVATE jshookz_xahau_types)
+    add_test(
+        NAME XFLArithmeticNativeQuickJSOracle
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_LIST_DIR}/tests/run_xfl_arithmetic_oracle.py
+            ${CMAKE_CURRENT_LIST_DIR}/tests/xahau_float_v1_add_subtract_oracle.json
+            $<TARGET_FILE:xfl_arithmetic_probe>
+    )
+
     add_executable(test_object_replacement_oom
         tests/test_object_replacement_oom.cpp
     )

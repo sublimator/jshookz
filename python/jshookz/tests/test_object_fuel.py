@@ -5,20 +5,13 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import json
-import shutil
-import subprocess
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
 import pytest
 from jshookz.host import WasmHost
-from jshookz.paths import (
-    REPO_ROOT,
-    WASI_TOOLCHAIN,
-    XAHAU_HOOK_PROVIDER_WASM,
-    XAHAU_RUNTIME_PROFILE_LOCK,
-)
+from jshookz.paths import XAHAU_HOOK_PROVIDER_WASM, XAHAU_RUNTIME_PROFILE_LOCK
 from jshookz.runtime_profile import (
     profile_execution_limits,
     verify_runtime_profile_lock,
@@ -160,52 +153,6 @@ MAXIMUM_REQUESTED_CORE = 4_194_336
 MAXIMUM_ENGINE_REQUESTED = 413
 MAXIMUM_DUPLICATE_STACK = 528
 MAXIMUM_STATIC_PROTOCOL_BYTES = 23_724
-
-
-@pytest.fixture(scope="session")
-def resource_probe_wasm(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Build the non-product heap-ledger variant from the candidate sources."""
-    build = tmp_path_factory.mktemp("xahau-provider-resource-probe")
-    unwizered = build / "jshookz_provider.unwizered.wasm"
-    sealed = build / "jshookz_provider.resource-probe.wasm"
-    wizer = shutil.which("wizer")
-    assert wizer is not None, "wizer is required for the resource acceptance gate"
-
-    commands = (
-        (
-            "cmake",
-            "-B",
-            str(build),
-            "-S",
-            str(REPO_ROOT / "cpp/provider"),
-            f"-DCMAKE_TOOLCHAIN_FILE={WASI_TOOLCHAIN}",
-            "-DCMAKE_BUILD_TYPE=Release",
-            "-DXAHAU_HOOK_PROVIDER=ON",
-            "-DJSHOOKZ_RESOURCE_PROBE=ON",
-        ),
-        ("cmake", "--build", str(build), "--parallel", "4"),
-        (
-            wizer,
-            "--keep-init-func",
-            "true",
-            "--rename-func",
-            "_initialize=wizer.initialize",
-            "-o",
-            str(sealed),
-            str(unwizered),
-        ),
-    )
-    for command in commands:
-        completed = subprocess.run(
-            command,
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert sealed.is_file()
-    return sealed
 
 
 COMMON_SETUP = r"""
@@ -767,10 +714,13 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
         "post_success": post_success,
         "static_protocol": static_bytes,
     } == {
-        "registration": (137_205, 2_150),
-        "pre_call": (1_191_593, 2_200),
-        "peak": (5_386_550, 2_213),
-        "post_success": (3_421_246, 2_227),
+        # XFLDecimal.add/subtract register four additional function/name
+        # atoms. Their fixed +272-byte/+4-allocation cost persists equally
+        # through every checkpoint; the topology's transient delta is stable.
+        "registration": (137_477, 2_154),
+        "pre_call": (1_191_865, 2_204),
+        "peak": (5_386_822, 2_217),
+        "post_success": (3_421_518, 2_231),
         "static_protocol": MAXIMUM_STATIC_PROTOCOL_BYTES,
     }
 
@@ -789,7 +739,7 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     )
     assert MAXIMUM_DUPLICATE_STACK == 11 * 6 * 8
     assert peak[0] < limits.quickjs_heap_bytes
-    assert limits.quickjs_heap_bytes - post_success[0] == 13_355_970
+    assert limits.quickjs_heap_bytes - post_success[0] == 13_355_698
     assert limits.quickjs_heap_bytes - post_success[0] >= HEADROOM_BYTES
 
 

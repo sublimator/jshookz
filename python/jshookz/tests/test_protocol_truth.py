@@ -153,15 +153,17 @@ def test_xfl_decimal_scalar_predicates_use_provider_minted_iou_amounts():
         "positive": [False, False],
         "negative": [True, False],
         "zero": [False, True],
-        "samePrototype": True,
-        "prototypeOwn": [
-            "compare",
-            "equals",
-            "isNegative",
-            "isZero",
-            "negate",
-            "sign",
-        ],
+            "samePrototype": True,
+            "prototypeOwn": [
+                "add",
+                "compare",
+                "equals",
+                "isNegative",
+                "isZero",
+                "negate",
+                "sign",
+                "subtract",
+            ],
         "noRawWordMembers": True,
     }
 

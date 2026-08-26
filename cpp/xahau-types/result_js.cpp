@@ -277,6 +277,23 @@ uint_failure(
 }
 
 JSValue
+xfl_failure(JSContext* ctx, char const* issue)
+{
+    qjs::OwnedValue error(ctx, result_error(ctx, "xfl"));
+    if (error.isException())
+        return error.release();
+    if (JS_DefinePropertyValueStr(
+            ctx,
+            error.get(),
+            "issue",
+            JS_NewString(ctx, issue),
+            JS_PROP_ENUMERABLE) < 0 ||
+        !result_finish(ctx, error.get()))
+        return JS_EXCEPTION;
+    return result_failure(ctx, error.release());
+}
+
+JSValue
 effect_success(JSContext* ctx)
 {
     qjs::OwnedValue result(ctx, newResult(ctx, true));

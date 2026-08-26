@@ -24,6 +24,10 @@ nativeNew(JSContext* ctx, JSClassID class_id, Args&&... args)
         return object;
     }
     JS_SetOpaque(object, value);
+    if (JS_PreventExtensions(ctx, object) < 0) {
+        JS_FreeValue(ctx, object);
+        return JS_EXCEPTION;
+    }
     return object;
 }
 

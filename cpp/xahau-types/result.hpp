@@ -14,6 +14,7 @@ JSValue uint_failure(
     JSContext* ctx,
     char const* issue,
     std::uint32_t bits);
+JSValue xfl_failure(JSContext* ctx, char const* issue);
 JSValue effect_success(JSContext* ctx);
 JSValue result_error(JSContext* ctx, char const* domain);
 JSValue result_failure(JSContext* ctx, JSValue error, bool effect = false);

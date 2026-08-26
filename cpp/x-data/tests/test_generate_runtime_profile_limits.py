@@ -44,6 +44,7 @@ def source(
     limits_overrides: dict[str, object] | None = None,
     profile_overrides: dict[str, object] | None = None,
     validation_overrides: dict[str, object] | None = None,
+    implementation_overrides: dict[str, object] | None = None,
 ) -> bytes:
     limits = {
         "serialized_object_max_bytes": 1_048_576,
@@ -71,12 +72,19 @@ def source(
         "version_shift": 24,
         **(validation_overrides or {}),
     }
+    implementations = {
+        "none": [],
+        "xahauFloatV1": ["XFLDecimal.add", "XFLDecimal.subtract"],
+        "nearestEvenV1": [],
+        **(implementation_overrides or {}),
+    }
     return json.dumps(
         {
             "schema": GEN.SCHEMA,
             "artifact": {
                 "envelope_version": 1,
                 "xfl_arithmetic_profile_codes": profiles,
+                "xfl_arithmetic_profile_implementations": implementations,
             },
             "provider": {"module_validation_result": validation},
             "limits": limits,
@@ -101,6 +109,9 @@ def test_header_projects_profile_codes_and_validation_layout():
     assert "xfl_arithmetic_profile_none = 0u;" in rendered
     assert "xfl_arithmetic_profile_xahau_float_v1 = 1u;" in rendered
     assert "xfl_arithmetic_profile_nearest_even_v1 = 2u;" in rendered
+    assert "xfl_decimal_add = 0u," in rendered
+    assert "xfl_decimal_subtract = 1u," in rendered
+    assert "profile_code == xfl_arithmetic_profile_xahau_float_v1" in rendered
     assert "module_validation_failure_sentinel = -1;" in rendered
     assert "module_validation_entry_mask = 3u;" in rendered
     assert "module_validation_reserved_mask = 2147483900u;" in rendered
@@ -111,9 +122,7 @@ def test_header_projects_profile_codes_and_validation_layout():
 def test_checked_in_header_matches_the_exact_runtime_profile_source():
     source_bytes = PROFILE.read_bytes()
     assert GENERATED.read_text() == GEN.render(source_bytes, PROFILE.name)
-    assert GENERATED_PYTHON.read_text() == GEN.render_python(
-        source_bytes, PROFILE.name
-    )
+    assert GENERATED_PYTHON.read_text() == GEN.render_python(source_bytes, PROFILE.name)
 
 
 def test_python_projection_carries_the_same_codes_and_layout():
@@ -122,6 +131,7 @@ def test_python_projection_carries_the_same_codes_and_layout():
     assert "XFL_ARITHMETIC_PROFILE_NONE = 0" in rendered
     assert "XFL_ARITHMETIC_PROFILE_XAHAU_FLOAT_V1 = 1" in rendered
     assert "XFL_ARITHMETIC_PROFILE_NEAREST_EVEN_V1 = 2" in rendered
+    assert "'xahauFloatV1': ('XFLDecimal.add', 'XFLDecimal.subtract')" in rendered
     assert "MODULE_VALIDATION_FAILURE_SENTINEL = -1" in rendered
     assert "MODULE_VALIDATION_LAYOUT_VERSION = 1" in rendered
     assert "MODULE_VALIDATION_RESERVED_MASK = 2147483900" in rendered
@@ -160,9 +170,7 @@ def test_header_rejects_non_positive_uint32_limits(value: object):
 )
 def test_header_rejects_independent_validation_layout_drift(field: str, value: int):
     with pytest.raises(ValueError, match="module-validation"):
-        GEN.render(
-            source(validation_overrides={field: value}), "profile.source.json"
-        )
+        GEN.render(source(validation_overrides={field: value}), "profile.source.json")
 
 
 @pytest.mark.parametrize(
@@ -188,3 +196,35 @@ def test_mutating_one_projection_changes_that_generated_constant():
     )
     assert "serialized_object_max_fields = 32767u;" in rendered
     assert "serialized_object_max_scopes = 32769u;" in rendered
+
+
+def test_profile_implementation_set_is_one_source_for_both_projections():
+    mutated = source(
+        implementation_overrides={
+            "xahauFloatV1": ["XFLDecimal.add"],
+            "nearestEvenV1": ["XFLDecimal.subtract"],
+        }
+    )
+    header = GEN.render(mutated, "profile.source.json")
+    python = GEN.render_python(mutated, "profile.source.json")
+    assert "xfl_decimal_subtract = 1u," in header
+    assert "profile_code == xfl_arithmetic_profile_nearest_even_v1" in header
+    assert "'xahauFloatV1': ('XFLDecimal.add',)" in python
+    assert "'nearestEvenV1': ('XFLDecimal.subtract',)" in python
+
+
+@pytest.mark.parametrize(
+    "implementations",
+    [
+        {"none": ["XFLDecimal.add"]},
+        {"xahauFloatV1": ["XFLDecimal.subtract", "XFLDecimal.add"]},
+        {"xahauFloatV1": ["XFLDecimal.add", "XFLDecimal.add"]},
+        {"xahauFloatV1": ["not-a-member"]},
+    ],
+)
+def test_profile_implementation_set_fails_closed(implementations: dict[str, object]):
+    with pytest.raises(ValueError, match="XFL arithmetic"):
+        GEN.render(
+            source(implementation_overrides=implementations),
+            "profile.source.json",
+        )

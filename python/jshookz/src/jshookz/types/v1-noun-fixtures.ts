@@ -195,10 +195,9 @@ type ActivationLeak = XFLProfileEnum;
 // @ts-expect-error XFLMath is not selected into v1
 void XFLMath;
 declare const activationDecimal: XFLDecimal;
-// @ts-expect-error profile-sensitive arithmetic is not selected into v1
-activationDecimal.add(activationDecimal);
-// @ts-expect-error profile-sensitive arithmetic is not selected into v1
-activationDecimal.subtract(activationDecimal);
+const activationAdd: XFLResult<XFLDecimal> = activationDecimal.add(activationDecimal);
+const activationSubtract: XFLResult<XFLDecimal> = activationDecimal.subtract(activationDecimal);
+void activationAdd; void activationSubtract;
 // @ts-expect-error profile-sensitive arithmetic is not selected into v1
 activationDecimal.multiply(activationDecimal);
 // @ts-expect-error profile-sensitive arithmetic is not selected into v1

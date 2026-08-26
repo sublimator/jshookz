@@ -2,6 +2,7 @@
 
 #include "runtime_profile_limits.h"
 #include "quickjs.hpp"
+#include "xfl/xfl_profile_context.hpp"
 
 #include <cstdint>
 
@@ -10,12 +11,6 @@ namespace {
 
 using qjs::OwnedValue;
 namespace profile = catl::xdata::xahau_profile;
-
-struct XFLProfileContext
-{
-    bool active = false;
-    std::uint32_t code = profile::xfl_arithmetic_profile_none;
-};
 
 struct HookConfigState
 {
@@ -31,12 +26,6 @@ JSClassID hookConfigClassId = 0;
 JSClassDef const hookConfigClass{
     .class_name = "HookConfig",
 };
-
-XFLProfileContext*
-contextState(JSContext* context) noexcept
-{
-    return static_cast<XFLProfileContext*>(JS_GetContextOpaque(context));
-}
 
 bool
 sameObject(JSValueConst left, JSValueConst right) noexcept
@@ -251,8 +240,8 @@ registerXFLProfile(JSContext* context)
         return false;
     JS_SetClassProto(context, hookConfigClassId, prototype.release());
 
-    auto* state = static_cast<XFLProfileContext*>(
-        js_mallocz(context, sizeof(XFLProfileContext)));
+    auto* state = static_cast<types::XFLProfileContext*>(
+        js_mallocz(context, sizeof(types::XFLProfileContext)));
     if (state == nullptr)
         return false;
     state->active = false;
@@ -272,7 +261,7 @@ destroyXFLProfile(JSContext* context) noexcept
 {
     if (context == nullptr)
         return;
-    auto* state = contextState(context);
+    auto* state = types::xflProfileContext(context);
     JS_SetContextOpaque(context, nullptr);
     if (state != nullptr)
         js_free(context, state);
@@ -311,7 +300,7 @@ InvocationXFLArithmeticProfile::activate(
     JSContext* context,
     std::uint32_t code) noexcept
 {
-    XFLProfileContext* state = contextState(context);
+    types::XFLProfileContext* state = types::xflProfileContext(context);
     if (context_ != nullptr || state == nullptr || state->active ||
         (code != profile::xfl_arithmetic_profile_none &&
          !supportedProfile(code)))
@@ -326,7 +315,7 @@ InvocationXFLArithmeticProfile::~InvocationXFLArithmeticProfile()
 {
     if (context_ == nullptr)
         return;
-    XFLProfileContext* state = contextState(context_);
+    types::XFLProfileContext* state = types::xflProfileContext(context_);
     if (state != nullptr) {
         state->active = false;
         state->code = profile::xfl_arithmetic_profile_none;
@@ -336,10 +325,7 @@ InvocationXFLArithmeticProfile::~InvocationXFLArithmeticProfile()
 ActiveXFLArithmeticProfile
 activeXFLArithmeticProfile(JSContext* context) noexcept
 {
-    XFLProfileContext const* state = contextState(context);
-    if (state == nullptr)
-        return {false, profile::xfl_arithmetic_profile_none};
-    return {state->active, state->code};
+    return types::activeXFLArithmeticProfile(context);
 }
 
 } // namespace jshookz::provider

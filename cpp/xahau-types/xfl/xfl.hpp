@@ -57,13 +57,7 @@ public:
         return XFL(static_cast<std::int64_t>(v));
     }
 
-    XFL operator+(const XFL& o) const;
-    XFL operator-(const XFL& o) const;
-    XFL operator*(const XFL& o) const;
-    XFL operator/(const XFL& o) const;
-
     bool operator==(const XFL& o) const { return val_ == o.val_; }
-    bool operator<(const XFL& o) const;
 };
 
 }  // namespace hook

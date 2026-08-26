@@ -9,6 +9,14 @@
       "none": 0,
       "xahauFloatV1": 1,
       "nearestEvenV1": 2
+    },
+    "xfl_arithmetic_profile_implementations": {
+      "none": [],
+      "xahauFloatV1": [
+        "XFLDecimal.add",
+        "XFLDecimal.subtract"
+      ],
+      "nearestEvenV1": []
     }
   },
   "javascript_surface": {

@@ -4,6 +4,8 @@
 
 #include <quickjs.h>
 
+#include "xfl/xfl_profile_context.hpp"
+
 extern "C" {
 [[nodiscard]] bool register_cpp_types(JSContext* ctx);
 void unregister_cpp_types(JSRuntime* runtime);
@@ -12,11 +14,7 @@ void unregister_cpp_types(JSRuntime* runtime);
 
 namespace jshookz::provider {
 
-struct ActiveXFLArithmeticProfile
-{
-    bool active;
-    std::uint32_t code;
-};
+using ActiveXFLArithmeticProfile = types::ActiveXFLArithmeticProfile;
 
 class InvocationXFLArithmeticProfile
 {

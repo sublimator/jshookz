@@ -128,10 +128,7 @@ def test_xfl_policy_preserves_canonical_config_profile(
             "export const hookConfig = defineHookConfig({ "
             "get xflArithmetic() { return XFLProfile.xahauFloatV1; } });"
         ),
-        (
-            "export default { "
-            "xflArithmetic: XFLProfile.xahauFloatV1 };"
-        ),
+        ("export default { xflArithmetic: XFLProfile.xahauFloatV1 };"),
         (
             "export const renamed = defineHookConfig({ "
             "xflArithmetic: XFLProfile.xahauFloatV1 });"
@@ -169,9 +166,7 @@ def test_xfl_policy_rejects_multi_declarator_export_const(tmp_path: Path):
     )
 
     with pytest.raises(RuntimeError, match="JSH-XFL001"):
-        _typescript_to_javascript(
-            source, declarations=CANONICAL_HOOKS_API_DECLARATIONS
-        )
+        _typescript_to_javascript(source, declarations=CANONICAL_HOOKS_API_DECLARATIONS)
 
 
 def test_xfl_policy_diagnostic_precedes_unrelated_typescript_error(tmp_path: Path):
@@ -183,9 +178,7 @@ def test_xfl_policy_diagnostic_precedes_unrelated_typescript_error(tmp_path: Pat
     )
 
     with pytest.raises(RuntimeError, match="JSH-XFL001") as raised:
-        _typescript_to_javascript(
-            source, declarations=CANONICAL_HOOKS_API_DECLARATIONS
-        )
+        _typescript_to_javascript(source, declarations=CANONICAL_HOOKS_API_DECLARATIONS)
     assert "not assignable to type 'string'" not in str(raised.value)
 
 
@@ -193,9 +186,9 @@ def test_hook_source_cannot_augment_xfl_decimal_to_evade_exact_v1(tmp_path: Path
     source = tmp_path / "augmentation.hook.ts"
     source.write_text(
         "export {};declare global{interface XFLDecimal{"
-        "add(other:XFLDecimal):XFLDecimal;}}"
+        "multiply(other:XFLDecimal):XFLDecimal;}}"
         "declare const decimal:XFLDecimal;"
-        "export function main():never{decimal.add(decimal);return accept();}"
+        "export function main():never{decimal.multiply(decimal);return accept();}"
     )
 
     with pytest.raises(RuntimeError, match="must not augment ambient globals"):
@@ -272,7 +265,7 @@ def test_xfl_policy_covers_ratified_call_shapes(
         compiler(source, declarations=CANONICAL_HOOKS_API_DECLARATIONS)
 
 
-def test_xfl_policy_accepts_sensitive_call_with_exact_config(tmp_path: Path):
+def test_xfl_policy_rejects_unimplemented_profile_with_exact_config(tmp_path: Path):
     source = tmp_path / "configured-sensitive.hook.ts"
     source.write_text(
         "declare const decimal: XFLDecimal;\n"
@@ -283,12 +276,52 @@ def test_xfl_policy_accepts_sensitive_call_with_exact_config(tmp_path: Path):
         "trace('next', next.toString()); return accept(); }\n"
     )
 
+    with pytest.raises(RuntimeError, match="JSH-XFL002") as raised:
+        _typescript_to_javascript(
+            source,
+            declarations=CANONICAL_HOOKS_API_DECLARATIONS,
+        )
+    assert "XFLDecimal.add" in str(raised.value)
+    assert "nearestEvenV1" in str(raised.value)
+
+
+def test_xfl_policy_accepts_implemented_profile_with_exact_config(tmp_path: Path):
+    source = tmp_path / "configured-sensitive.hook.ts"
+    source.write_text(
+        "declare const decimal: XFLDecimal;\n"
+        "export const hookConfig = defineHookConfig({ "
+        "xflArithmetic: XFLProfile.xahauFloatV1 });\n"
+        "export function main(): never { "
+        "const next = rollback.onFail(decimal.add(decimal), 'add failed'); "
+        "trace('next', next.toString()); return accept(); }\n"
+    )
+
     _, _, profile = _typescript_to_javascript(
         source,
         declarations=CANONICAL_HOOKS_API_DECLARATIONS,
     )
 
-    assert profile is XFLArithmeticProfile.NEAREST_EVEN_V1
+    assert profile is XFLArithmeticProfile.XAHAU_FLOAT_V1
+
+
+@pytest.mark.parametrize("profile", ["xahauFloatV1", "nearestEvenV1"])
+def test_xfl_policy_rejects_module_evaluation_call(tmp_path: Path, profile: str):
+    source = tmp_path / "module-sensitive.hook.ts"
+    source.write_text(
+        "declare const decimal: XFLDecimal;\n"
+        "export const hookConfig = defineHookConfig({ "
+        f"xflArithmetic: XFLProfile.{profile} }});\n"
+        "const result = decimal.add(decimal);\n"
+        "export function main(): never { return accept(); }\n"
+    )
+
+    with pytest.raises(RuntimeError, match="JSH-XFL002") as raised:
+        _typescript_to_javascript(
+            source,
+            declarations=CANONICAL_HOOKS_API_DECLARATIONS,
+        )
+    assert "XFLDecimal.add" in str(raised.value)
+    assert "module evaluation" in str(raised.value)
 
 
 def test_xfl_policy_ignores_unrelated_add_spelling(tmp_path: Path):
@@ -340,14 +373,14 @@ def test_xfl_policy_negative_controls_do_not_require_config(
     assert profile is XFLArithmeticProfile.NONE
 
 
-def test_default_v1_arithmetic_attempt_remains_typescript_error(tmp_path: Path):
-    source = tmp_path / "unselected-add.hook.ts"
+def test_default_v1_arithmetic_attempt_requires_profile(tmp_path: Path):
+    source = tmp_path / "undeclared-add.hook.ts"
     source.write_text(
         "declare const decimal: XFLDecimal;\n"
         "export function main(): never { decimal.add(decimal); return accept(); }\n"
     )
 
-    with pytest.raises(RuntimeError, match="Property 'add' does not exist"):
+    with pytest.raises(RuntimeError, match="JSH-XFL001"):
         _typescript_to_javascript(source, declarations=DEFAULT_DECLARATIONS)
 
 
@@ -1054,6 +1087,93 @@ def test_xfl_policy_rejects_unsupported_generated_ledger_schema(tmp_path: Path):
 
     assert completed.returncode == 0
     assert "unsupported profile ledger schema" in completed.stderr
+
+
+def test_xfl_policy_turns_red_when_generated_implementation_is_removed(
+    tmp_path: Path,
+):
+    from jshookz.hook_compiler import _frontend_driver_js, _typescript_library
+
+    emitted = _frontend_driver_js(None).parent
+    policy = tmp_path / "xfl_profile_policy.js"
+    ledger = tmp_path / "xfl_profile_ledger.js"
+    policy.write_text((emitted / policy.name).read_text())
+    original_ledger = (emitted / ledger.name).read_text()
+    mutated_ledger = original_ledger.replace(
+        '"xahauFloatV1": ["XFLDecimal.add", "XFLDecimal.subtract"],',
+        '"xahauFloatV1": [],',
+    )
+    assert mutated_ledger != original_ledger
+    ledger.write_text(mutated_ledger)
+
+    source = tmp_path / "profiled.ts"
+    source.write_text(
+        "declare const decimal:XFLDecimal;"
+        "export const hookConfig=defineHookConfig({xflArithmetic:"
+        "XFLProfile.xahauFloatV1});"
+        "export function main():never{"
+        "rollback.onFail(decimal.add(decimal),'add failed');"
+        "return accept();}"
+    )
+    config = tmp_path / "tsconfig.json"
+    config.write_text(
+        json.dumps(
+            {
+                "compilerOptions": {
+                    "lib": ["ES2023"],
+                    "module": "ESNext",
+                    "noEmit": True,
+                    "strict": True,
+                    "target": "ES2023",
+                },
+                "files": [
+                    str(CANONICAL_HOOKS_API_DECLARATIONS),
+                    str(source),
+                ],
+            }
+        )
+    )
+    script = """
+const ts = require(process.argv[1]);
+const policy = require(process.argv[2]);
+const configPath = process.argv[3];
+const sourcePath = process.argv[4];
+const declarationPath = process.argv[5];
+const config = ts.readConfigFile(configPath, ts.sys.readFile);
+const parsed = ts.parseJsonConfigFileContent(
+  config.config, ts.sys, require('path').dirname(configPath));
+const program = ts.createProgram(parsed.fileNames, parsed.options);
+const result = policy.checkXFLProfilePolicy(
+  ts,
+  program,
+  program.getSourceFile(sourcePath),
+  program.getSourceFile(declarationPath),
+);
+process.stdout.write(JSON.stringify(result));
+"""
+    completed = subprocess.run(
+        [
+            "node",
+            "-e",
+            script,
+            str(_typescript_library(None)),
+            str(policy),
+            str(config),
+            str(source),
+            str(CANONICAL_HOOKS_API_DECLARATIONS),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    result = json.loads(completed.stdout)
+    assert result["profile"] == "xahauFloatV1"
+    assert len(result["diagnostics"]) == 1
+    assert "JSH-XFL002" in result["diagnostics"][0]
+    assert "XFLDecimal.add" in result["diagnostics"][0]
+    assert "xahauFloatV1" in result["diagnostics"][0]
 
 
 def test_xfl_policy_walks_unimported_executable_helper_in_synthetic_program(
