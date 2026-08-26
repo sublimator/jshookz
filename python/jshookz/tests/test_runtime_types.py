@@ -4,7 +4,7 @@ from jshookz.host import WasmHost
 from jshookz.paths import XAHAU_HOOK_PROVIDER_WASM
 from jshookz.runtime_types import SCHEMA, observe_runtime_types
 
-_NOMINAL_MATRIX_GAS = 11_163_604
+_NOMINAL_MATRIX_GAS = 11_158_530
 
 _XFL_VALUE_KERNEL = r"""
 JSON.stringify((() => {
