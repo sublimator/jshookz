@@ -36,11 +36,21 @@ static_assert(2 * maxMagnitude < std::numeric_limits<std::int64_t>::max());
 [[nodiscard]] std::uint64_t
 alignedMagnitude(std::uint64_t magnitude, std::int32_t delta) noexcept
 {
+#if defined(CONFIG_TEST_XFL_GAP_LOOP_MUTANT)
+    // Deliberate non-product mutation: prove the packaged maximum-alignment
+    // fuel lane rejects a tempting allocation-free O(exponent-gap) kernel.
+    while (delta > 0) {
+        magnitude /= 10;
+        --delta;
+    }
+    return magnitude;
+#else
     // A canonical mantissa has at most 16 digits. Delta 16 can retain one
     // last digit; every larger gap is exact decimal dust under legacy XFL.
     if (delta > 16)
         return 0;
     return magnitude / powersOfTen[static_cast<std::size_t>(delta)];
+#endif
 }
 
 [[nodiscard]] std::int64_t

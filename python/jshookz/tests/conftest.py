@@ -11,12 +11,13 @@ import pytest
 from jshookz.paths import REPO_ROOT, WASI_TOOLCHAIN
 
 
-@pytest.fixture(scope="session")
-def resource_probe_wasm(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Build the non-product heap-ledger variant from candidate sources."""
-    build = tmp_path_factory.mktemp("xahau-provider-resource-probe")
+def _build_sealed_provider(
+    build: Path,
+    sealed_name: str,
+    *cmake_options: str,
+) -> Path:
     unwizered = build / "jshookz_provider.unwizered.wasm"
-    sealed = build / "jshookz_provider.resource-probe.wasm"
+    sealed = build / sealed_name
     wizer = shutil.which("wizer")
     assert wizer is not None, "wizer is required for the resource acceptance gate"
 
@@ -30,7 +31,7 @@ def resource_probe_wasm(tmp_path_factory: pytest.TempPathFactory) -> Path:
             f"-DCMAKE_TOOLCHAIN_FILE={WASI_TOOLCHAIN}",
             "-DCMAKE_BUILD_TYPE=Release",
             "-DXAHAU_HOOK_PROVIDER=ON",
-            "-DJSHOOKZ_RESOURCE_PROBE=ON",
+            *cmake_options,
         ),
         ("cmake", "--build", str(build), "--parallel", "4"),
         (
@@ -55,3 +56,23 @@ def resource_probe_wasm(tmp_path_factory: pytest.TempPathFactory) -> Path:
         assert completed.returncode == 0, completed.stdout + completed.stderr
     assert sealed.is_file()
     return sealed
+
+
+@pytest.fixture(scope="session")
+def resource_probe_wasm(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Build the non-product heap-ledger variant from candidate sources."""
+    return _build_sealed_provider(
+        tmp_path_factory.mktemp("xahau-provider-resource-probe"),
+        "jshookz_provider.resource-probe.wasm",
+        "-DJSHOOKZ_RESOURCE_PROBE=ON",
+    )
+
+
+@pytest.fixture(scope="session")
+def xfl_gap_loop_mutant_wasm(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Build and seal the source-level O(exponent-gap) arithmetic mutant."""
+    return _build_sealed_provider(
+        tmp_path_factory.mktemp("xahau-provider-xfl-gap-loop-mutant"),
+        "jshookz_provider.xfl-gap-loop-mutant.wasm",
+        "-DJSHOOKZ_TEST_XFL_GAP_LOOP_MUTANT=ON",
+    )

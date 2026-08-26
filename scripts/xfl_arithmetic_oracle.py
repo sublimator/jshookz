@@ -205,6 +205,17 @@ def load_fixture(path: Path) -> dict[str, Any]:
 
 
 def _capture(checkout: Path, rippled: Path) -> dict[str, Any]:
+    checkout = checkout.resolve()
+    rippled = rippled.resolve()
+    try:
+        rippled.relative_to(checkout)
+    except ValueError as error:
+        raise OracleError(
+            "oracle executable must be inside the pinned checkout"
+        ) from error
+    if not rippled.is_file():
+        raise OracleError("oracle executable does not exist inside the pinned checkout")
+
     commit = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=checkout,
@@ -218,7 +229,7 @@ def _capture(checkout: Path, rippled: Path) -> dict[str, Any]:
         )
     completed = subprocess.run(
         [
-            str(rippled.resolve()),
+            str(rippled),
             f"--unittest={ORACLE_SUITE}",
             "--unittest-log",
             "--quiet",

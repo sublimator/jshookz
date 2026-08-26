@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -61,6 +62,20 @@ class XFLArithmeticOracleReaderTest(unittest.TestCase):
         value = copy.deepcopy(self.fixture)
         value["xahaud_source_commit"] = "0" * 40
         self.assert_rejected(value, "stale xahaud source identity")
+
+    def test_oracle_executable_outside_pinned_checkout_is_rejected(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as checkout_text,
+            tempfile.TemporaryDirectory() as outside_text,
+        ):
+            checkout = Path(checkout_text)
+            outside = Path(outside_text) / "unrelated-rippled"
+            outside.touch()
+            with self.assertRaisesRegex(
+                oracle.OracleError,
+                "oracle executable must be inside the pinned checkout",
+            ):
+                oracle._capture(checkout, outside)
 
 
 if __name__ == "__main__":

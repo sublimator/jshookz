@@ -36,6 +36,11 @@ option(
     "Expose non-product QuickJS heap accounting diagnostics"
     OFF
 )
+option(
+    JSHOOKZ_TEST_XFL_GAP_LOOP_MUTANT
+    "Build the non-product repeated-division XFL fuel mutant"
+    OFF
+)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 23)
@@ -97,6 +102,12 @@ if(JSHOOKZ_RESOURCE_PROBE)
         -Wl,--export=qjs_resource_peak_size
         -Wl,--export=qjs_resource_peak_count
         -Wl,--export=qjs_resource_static_protocol_bytes
+    )
+endif()
+
+if(JSHOOKZ_TEST_XFL_GAP_LOOP_MUTANT)
+    target_compile_definitions(jshookz_provider PRIVATE
+        CONFIG_TEST_XFL_GAP_LOOP_MUTANT
     )
 endif()
 

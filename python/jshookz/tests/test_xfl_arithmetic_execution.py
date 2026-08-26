@@ -31,6 +31,7 @@ _CURRENCY = "0000000000000000000000005553440000000000"
 _ISSUER = "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
 _SUCCESS_MESSAGE = "xfl oracle"
 _WASM_MALLOC_OVERHEAD = 16
+_TIGHT_MAX_ALIGNMENT_FUEL_CEILING = 228_900
 
 
 def _load_oracle_reader() -> ModuleType:
@@ -193,10 +194,46 @@ def _execute(bytecode: bytes, *, export: str = "hook", reserved: int = 0):
     return result, handler
 
 
+def _execute_on_wasm(
+    bytecode: bytes,
+    wasm_path: Path,
+    *,
+    export: str = "hook",
+    reserved: int = 0,
+):
+    limits = profile_execution_limits(
+        verify_runtime_profile_lock(
+            XAHAU_RUNTIME_PROFILE_LOCK,
+            XAHAU_HOOK_PROVIDER_WASM,
+        )
+    )
+    handler = _RecordingHost()
+    host = WasmHost(
+        handler=handler,
+        wasm_path=wasm_path,
+        execution_limits=limits,
+    )
+    handler.host = host
+    host.init()
+    try:
+        result = host.run_hook_bytecode(
+            bytecode,
+            export=export,
+            reserved=reserved,
+        )
+    finally:
+        host.destroy()
+    return result, handler
+
+
 def _assert_terminal_only(result: ContractResult, handler: _RecordingHost) -> None:
     assert result.ok, result.error
     assert handler.calls == [("accept", _SUCCESS_MESSAGE, 0)]
     assert result.host_work_used == 1 + len(_SUCCESS_MESSAGE)
+
+
+def _assert_fuel_ceiling(result: ContractResult, fuel_ceiling: int) -> None:
+    assert 10_000 <= fuel_ceiling - result.gas_used
 
 
 def test_all_oracle_rows_execute_through_packaged_sealed_provider(tmp_path: Path):
@@ -322,42 +359,36 @@ def test_packaged_operation_lanes_have_deterministic_bounded_fuel(
     _assert_terminal_only(first, first_handler)
     _assert_terminal_only(second, second_handler)
     assert first.gas_used == second.gas_used
-    assert 10_000 <= fuel_ceiling - first.gas_used
+    _assert_fuel_ceiling(first, fuel_ceiling)
 
 
-def test_maximum_alignment_ceiling_rejects_allocation_free_o_gap_division(
+def test_maximum_alignment_ceiling_rejects_kernel_o_gap_division(
     tmp_path: Path,
+    xfl_gap_loop_mutant_wasm: Path,
 ):
     case = next(case for case in ORACLE["cases"] if case["id"] == "add.align-delta-176")
-    green = _package(
+    packaged = _package(
         tmp_path,
         _profiled_source(
             _case_statements([case]) + f'return accept("{_SUCCESS_MESSAGE}",0);'
         ),
-        "maximum-alignment-green.hook.ts",
-    )
-    # Deliberate allocation-free O(exponent-gap) mutant. A tempting repeated
-    # divide implementation performs one loop iteration for every gap step;
-    # the permanent 250k maximum-alignment ceiling must reject that route.
-    mutant = _package(
-        tmp_path,
-        _profiled_source(
-            "let shifted=123456789;"
-            "for(let gap=0;gap<176;gap++){shifted=(shifted/10)|0;}"
-            'if(shifted!==0)rollback("divide-loop-control");'
-            + _case_statements([case])
-            + f'return accept("{_SUCCESS_MESSAGE}",0);'
-        ),
-        "maximum-alignment-o-gap-mutant.hook.ts",
+        "maximum-alignment-kernel-mutant-control.hook.ts",
     )
 
-    green_result, green_handler = _execute(green.bytecode)
-    mutant_result, mutant_handler = _execute(mutant.bytecode)
+    green_result, green_handler = _execute(packaged.bytecode)
+    mutant_result, mutant_handler = _execute_on_wasm(
+        packaged.bytecode,
+        xfl_gap_loop_mutant_wasm,
+    )
 
     _assert_terminal_only(green_result, green_handler)
     _assert_terminal_only(mutant_result, mutant_handler)
-    assert green_result.gas_used <= 240_000
-    assert mutant_result.gas_used > 250_000
+    # Wasmtime fuel charges the 176-step compiled i64 division loop only 409
+    # more units than the O(1) kernel. Keep the ordinary 250k lane's 10k
+    # operational headroom, and use this exact-identity tight ceiling solely
+    # as the permanent complexity red.
+    assert 100 <= _TIGHT_MAX_ALIGNMENT_FUEL_CEILING - green_result.gas_used
+    assert mutant_result.gas_used > _TIGHT_MAX_ALIGNMENT_FUEL_CEILING
 
 
 def test_wrong_route_control_turns_host_call_work_and_fuel_gates_red(
@@ -395,6 +426,9 @@ def test_wrong_route_control_turns_host_call_work_and_fuel_gates_red(
     ]
     assert wrong_result.host_work_used > green_result.host_work_used
     assert wrong_result.gas_used > green_result.gas_used
+    _assert_fuel_ceiling(green_result, 255_000)
+    with pytest.raises(AssertionError):
+        _assert_fuel_ceiling(wrong_result, 255_000)
 
 
 def _resource_measurement(
