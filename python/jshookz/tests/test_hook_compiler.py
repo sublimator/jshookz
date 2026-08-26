@@ -112,10 +112,6 @@ def test_xfl_policy_preserves_canonical_config_profile(
             "satisfies HookConfig);"
         ),
         (
-            "export const hookConfig = defineHookConfig({ "
-            "xflArithmetic: XFLProfile.xahauFloatV1 }), extra = 1;"
-        ),
-        (
             "const hookConfig = defineHookConfig({ "
             "xflArithmetic: XFLProfile.xahauFloatV1 }); "
             "export { hookConfig };"
@@ -162,6 +158,48 @@ def test_xfl_policy_rejects_malformed_config_without_sensitive_use(
             source,
             declarations=CANONICAL_HOOKS_API_DECLARATIONS,
         )
+
+
+def test_xfl_policy_rejects_multi_declarator_export_const(tmp_path: Path):
+    source = tmp_path / "multi-config.hook.ts"
+    source.write_text(
+        "export const hookConfig=defineHookConfig({xflArithmetic:"
+        "XFLProfile.xahauFloatV1}),extra=1;"
+        "export function main():never{return accept();}"
+    )
+
+    with pytest.raises(RuntimeError, match="JSH-XFL001"):
+        _typescript_to_javascript(
+            source, declarations=CANONICAL_HOOKS_API_DECLARATIONS
+        )
+
+
+def test_xfl_policy_diagnostic_precedes_unrelated_typescript_error(tmp_path: Path):
+    source = tmp_path / "precedence.hook.ts"
+    source.write_text(
+        "export const hookConfig=defineHookConfig({xflArithmetic:1});"
+        "const unrelated:string=123;"
+        "export function main():never{return accept();}"
+    )
+
+    with pytest.raises(RuntimeError, match="JSH-XFL001") as raised:
+        _typescript_to_javascript(
+            source, declarations=CANONICAL_HOOKS_API_DECLARATIONS
+        )
+    assert "not assignable to type 'string'" not in str(raised.value)
+
+
+def test_hook_source_cannot_augment_xfl_decimal_to_evade_exact_v1(tmp_path: Path):
+    source = tmp_path / "augmentation.hook.ts"
+    source.write_text(
+        "export {};declare global{interface XFLDecimal{"
+        "add(other:XFLDecimal):XFLDecimal;}}"
+        "declare const decimal:XFLDecimal;"
+        "export function main():never{decimal.add(decimal);return accept();}"
+    )
+
+    with pytest.raises(RuntimeError, match="must not augment ambient globals"):
+        _typescript_to_javascript(source, declarations=DEFAULT_DECLARATIONS)
 
 
 def test_checked_javascript_shadow_cannot_mint_hook_config(tmp_path: Path):
@@ -988,6 +1026,35 @@ def test_frontend_emit_publishes_complete_entry_policy():
         check=False,
     )
     assert completed.returncode == 0
+
+
+def test_xfl_policy_rejects_unsupported_generated_ledger_schema(tmp_path: Path):
+    from jshookz.hook_compiler import _frontend_driver_js
+
+    emitted = _frontend_driver_js(None).parent
+    policy = tmp_path / "xfl_profile_policy.js"
+    ledger = tmp_path / "xfl_profile_ledger.js"
+    policy.write_text((emitted / policy.name).read_text())
+    ledger.write_text(
+        (emitted / ledger.name)
+        .read_text()
+        .replace("jshookz.xfl-profile-ledger.v1", "jshookz.xfl-profile-ledger.v0")
+    )
+    script = (
+        "const p=require(process.argv[1]);"
+        "try{p.checkXFLProfilePolicy({},{},{},{});process.exit(2)}"
+        "catch(error){process.stderr.write(String(error));}"
+    )
+
+    completed = subprocess.run(
+        ["node", "-e", script, str(policy)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    assert "unsupported profile ledger schema" in completed.stderr
 
 
 def test_xfl_policy_walks_unimported_executable_helper_in_synthetic_program(

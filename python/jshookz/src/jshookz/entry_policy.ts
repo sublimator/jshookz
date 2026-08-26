@@ -188,6 +188,17 @@ export function checkHookImports(ts: TS, source: TS): string[] {
           "Hook source must not import helpers; export main and optional callback from this file",
         ),
       );
+    } else if (
+      ts.isModuleDeclaration(node) &&
+      (node.flags & ts.NodeFlags.GlobalAugmentation) !== 0
+    ) {
+      diagnostics.push(
+        formatAt(
+          ts,
+          node,
+          "Hook source must not augment ambient globals or Hook API declarations",
+        ),
+      );
     }
     ts.forEachChild(node, visit);
   };
