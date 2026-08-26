@@ -31,6 +31,12 @@ if(BUILD_TESTING)
     target_link_libraries(test_xahau_types PRIVATE jshookz_xahau_types GTest::gtest_main)
     gtest_discover_tests(test_xahau_types)
 
+    add_test(
+        NAME XFLArithmeticOracleReader
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_LIST_DIR}/tests/test_xfl_arithmetic_oracle.py
+    )
+
     add_executable(test_object_replacement_oom
         tests/test_object_replacement_oom.cpp
     )

@@ -1,0 +1,720 @@
+{
+  "cases": [
+    {
+      "a": {
+        "type": "u64",
+        "val": "0"
+      },
+      "b": {
+        "type": "u64",
+        "val": "0"
+      },
+      "category": "zero_identity",
+      "id": "add.zero-zero",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "0"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "0"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6360082673847140352"
+      },
+      "category": "zero_identity",
+      "id": "add.zero-positive",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6360082673847140352"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6369082673847140351"
+      },
+      "b": {
+        "type": "u64",
+        "val": "0"
+      },
+      "category": "zero_identity",
+      "id": "add.positive-zero",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6369082673847140351"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "0"
+      },
+      "b": {
+        "type": "u64",
+        "val": "1748396655419752448"
+      },
+      "category": "zero_identity",
+      "id": "add.zero-negative",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "1748396655419752448"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "1757396655419752447"
+      },
+      "b": {
+        "type": "u64",
+        "val": "0"
+      },
+      "category": "zero_identity",
+      "id": "add.negative-zero",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "1757396655419752447"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140352"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6360082673847140353"
+      },
+      "category": "same_exponent",
+      "id": "add.same-exponent-positive",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6361082673847140353"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "1748396655419752448"
+      },
+      "b": {
+        "type": "u64",
+        "val": "1748396655419752449"
+      },
+      "category": "same_exponent",
+      "id": "add.same-exponent-negative",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "1749396655419752449"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140353"
+      },
+      "b": {
+        "type": "u64",
+        "val": "1748396655419752449"
+      },
+      "category": "cancellation",
+      "id": "add.exact-cancellation",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "0"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140452"
+      },
+      "b": {
+        "type": "u64",
+        "val": "1748396655419752448"
+      },
+      "category": "borrow",
+      "id": "add.renormalizing-cancellation",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6125895493223874560"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "4630700416936869899"
+      },
+      "b": {
+        "type": "u64",
+        "val": "19014398509481985"
+      },
+      "category": "underflow_to_zero",
+      "id": "add.min-exponent-dust-zero",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "0"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140353"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6346068275337658368"
+      },
+      "category": "alignment",
+      "id": "add.align-delta-1",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6360582673847140353"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140353"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6093866696204910592"
+      },
+      "category": "alignment",
+      "id": "add.align-delta-15",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6360082673847140358"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140353"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6075852297695428608"
+      },
+      "category": "last_digit_guard",
+      "id": "add.align-delta-16-half-odd",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6360082673847140353"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140352"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6076852297695428608"
+      },
+      "category": "last_digit_guard",
+      "id": "add.align-delta-16-six-tenths",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6360082673847140352"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140353"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6057837899185946624"
+      },
+      "category": "alignment_dust",
+      "id": "add.align-delta-17",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6360082673847140353"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "7810234554605699071"
+      },
+      "b": {
+        "type": "u64",
+        "val": "4634700416936869888"
+      },
+      "category": "maximum_alignment",
+      "id": "add.align-delta-176",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "7810234554605699071"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6369082673847140351"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6360082673847140352"
+      },
+      "category": "carry",
+      "id": "add.carry-positive",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6378197072356622335"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "1757396655419752447"
+      },
+      "b": {
+        "type": "u64",
+        "val": "1748396655419752448"
+      },
+      "category": "carry",
+      "id": "add.carry-negative",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "1766511053929234431"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "7810234554605699071"
+      },
+      "b": {
+        "type": "u64",
+        "val": "7801234554605699072"
+      },
+      "category": "overflow",
+      "id": "add.overflow-positive",
+      "operation": "add",
+      "result": {
+        "error": {
+          "type": "error",
+          "val": "-30"
+        },
+        "ok": false
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "3198548536178311167"
+      },
+      "b": {
+        "type": "u64",
+        "val": "3189548536178311168"
+      },
+      "category": "overflow",
+      "id": "add.overflow-negative",
+      "operation": "add",
+      "result": {
+        "error": {
+          "type": "error",
+          "val": "-30"
+        },
+        "ok": false
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "7810234554605699071"
+      },
+      "b": {
+        "type": "u64",
+        "val": "0"
+      },
+      "category": "zero_precedes_overflow",
+      "id": "add.max-exponent-zero",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "7810234554605699071"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "1748396655419752449"
+      },
+      "b": {
+        "type": "u64",
+        "val": "1464166279268040704"
+      },
+      "category": "last_digit_guard",
+      "id": "add.last-digit-negative",
+      "operation": "add",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "1748396655419752449"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "0"
+      },
+      "b": {
+        "type": "u64",
+        "val": "0"
+      },
+      "category": "zero_identity",
+      "id": "subtract.zero-zero",
+      "operation": "subtract",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "0"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "0"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6360082673847140352"
+      },
+      "category": "zero_identity",
+      "id": "subtract.zero-positive",
+      "operation": "subtract",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "1748396655419752448"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6369082673847140351"
+      },
+      "b": {
+        "type": "u64",
+        "val": "0"
+      },
+      "category": "zero_identity",
+      "id": "subtract.positive-zero",
+      "operation": "subtract",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6369082673847140351"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140353"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6360082673847140353"
+      },
+      "category": "cancellation",
+      "id": "subtract.self",
+      "operation": "subtract",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "0"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140452"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6360082673847140352"
+      },
+      "category": "same_exponent",
+      "id": "subtract.same-exponent-positive",
+      "operation": "subtract",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6125895493223874560"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "1748396655419752548"
+      },
+      "b": {
+        "type": "u64",
+        "val": "1748396655419752448"
+      },
+      "category": "same_exponent",
+      "id": "subtract.same-exponent-negative",
+      "operation": "subtract",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "1514209474796486656"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140353"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6093866696204910592"
+      },
+      "category": "alignment",
+      "id": "subtract.align-delta-15",
+      "operation": "subtract",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6351068275337658328"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140353"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6075852297695428608"
+      },
+      "category": "last_digit_guard",
+      "id": "subtract.align-delta-16-half-odd",
+      "operation": "subtract",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6360082673847140353"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "4630700416936869899"
+      },
+      "b": {
+        "type": "u64",
+        "val": "4630700416936869889"
+      },
+      "category": "underflow_to_zero",
+      "id": "subtract.min-exponent-dust-zero",
+      "operation": "subtract",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "0"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "7810234554605699071"
+      },
+      "b": {
+        "type": "u64",
+        "val": "3198548536178311167"
+      },
+      "category": "overflow",
+      "id": "subtract.overflow-positive",
+      "operation": "subtract",
+      "result": {
+        "error": {
+          "type": "error",
+          "val": "-30"
+        },
+        "ok": false
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "3198548536178311167"
+      },
+      "b": {
+        "type": "u64",
+        "val": "7810234554605699071"
+      },
+      "category": "overflow",
+      "id": "subtract.overflow-negative",
+      "operation": "subtract",
+      "result": {
+        "error": {
+          "type": "error",
+          "val": "-30"
+        },
+        "ok": false
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "4630700416936869888"
+      },
+      "b": {
+        "type": "u64",
+        "val": "19014398509481984"
+      },
+      "category": "minimum_exponent",
+      "id": "subtract.min-exponent-sign",
+      "operation": "subtract",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "4631700416936869888"
+        }
+      }
+    }
+  ],
+  "fix_universal_number": false,
+  "guard_drop_control": {
+    "a": {
+      "type": "u64",
+      "val": "6360082673847140353"
+    },
+    "b": {
+      "type": "u64",
+      "val": "6075852297695428608"
+    },
+    "id": "guard.number-so-odd-half-ulp",
+    "number_so_false": {
+      "ok": true,
+      "value": {
+        "type": "u64",
+        "val": "6360082673847140353"
+      }
+    },
+    "number_so_true": {
+      "ok": true,
+      "value": {
+        "type": "u64",
+        "val": "6360082673847140354"
+      }
+    }
+  },
+  "number_so": false,
+  "oracle": {
+    "commit": "c49c784213c83963c5c7b49f8589b9bf86bea58e",
+    "repository": "https://github.com/Xahau/xahaud.git",
+    "source_schema": "xahau.xfl-arithmetic-oracle.v1",
+    "suite": "ripple.app.HookzFloatVectors"
+  },
+  "profile": "xahauFloatV1",
+  "schema": "jshookz.xahau-float-v1-add-subtract-oracle.v1",
+  "xahaud_source_commit": "bb244ef7729503a0317bcff0f8fdaa93ca5cb7d2"
+}
