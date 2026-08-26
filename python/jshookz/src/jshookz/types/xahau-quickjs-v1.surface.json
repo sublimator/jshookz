@@ -43,7 +43,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "f2fa7d784ad78c532a74c2619f60dd22d9e6197aa7d3b063b3c4e6999ea214c6"
+    "sha256": "f69fabc3912ced6e1f6f2cdf3bc9fa8882302fc28079f6019d1c05715341211e"
   },
   "globals": {
     "AccountID": "object",
@@ -76,7 +76,9 @@
     "VoidResult": "object",
     "XChainBridge": "object",
     "XFLDecimal": "object",
+    "XFLProfile": "object",
     "accept": "function",
+    "defineHookConfig": "function",
     "emit": "object",
     "hook": "object",
     "ledger": "object",
@@ -584,6 +586,10 @@
       "max": "value",
       "mulDiv": "function",
       "zero": "value"
+    },
+    "XFLProfile": {
+      "nearestEvenV1": "value",
+      "xahauFloatV1": "value"
     }
   }
 }

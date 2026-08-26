@@ -17,6 +17,10 @@ REQUIRED_ARTIFACTS = frozenset(
         "python/jshookz/src/jshookz/types/hooks-api.d.ts",
         "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
         "python/jshookz/src/jshookz/types/xahau-quickjs-v1.surface.json",
+        # 0060 activation: the generated profile-sensitive member ledger
+        # the JSH-XFL001 compiler policy consumes (schema
+        # jshookz.xfl-profile-ledger.v1).
+        "python/jshookz/src/jshookz/xfl_profile_ledger.ts",
     }
 )
 V1_DECLARATION = "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts"

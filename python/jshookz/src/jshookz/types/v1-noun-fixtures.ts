@@ -166,3 +166,40 @@ const p27 = Vector256.prototype; void p27;
 const p28 = XChainBridge.prototype; void p28;
 // @ts-expect-error no prototype is promised
 const p29 = XFLDecimal.prototype; void p29;
+
+// ── 0060 activation: profile-configuration vocabulary ────────────────
+
+type ActivationEqual<X, Y> =
+  (<T>() => T extends X ? 1 : 2) extends (<T>() => T extends Y ? 1 : 2)
+    ? true
+    : false;
+declare function activationExpectTrue<T extends true>(): void;
+
+activationExpectTrue<ActivationEqual<typeof XFLProfile.xahauFloatV1, 1>>();
+activationExpectTrue<ActivationEqual<typeof XFLProfile.nearestEvenV1, 2>>();
+activationExpectTrue<ActivationEqual<XFLProfile, 1 | 2>>();
+
+const activationConfig = defineHookConfig({
+  xflArithmetic: XFLProfile.xahauFloatV1,
+});
+activationExpectTrue<ActivationEqual<typeof activationConfig.xflArithmetic, 1>>();
+const activationHookConfig: HookConfig = activationConfig;
+void activationHookConfig;
+
+// @ts-expect-error 0 means absence and is never a declarable profile
+defineHookConfig({ xflArithmetic: 0 });
+// @ts-expect-error the enum namespace is not constructible
+new XFLProfile();
+// @ts-expect-error the member inventory interface is module-scope and un-nameable
+type ActivationLeak = XFLProfileEnum;
+// @ts-expect-error XFLMath is not selected into v1
+void XFLMath;
+declare const activationDecimal: XFLDecimal;
+// @ts-expect-error profile-sensitive arithmetic is not selected into v1
+activationDecimal.add(activationDecimal);
+// @ts-expect-error profile-sensitive arithmetic is not selected into v1
+activationDecimal.subtract(activationDecimal);
+// @ts-expect-error profile-sensitive arithmetic is not selected into v1
+activationDecimal.multiply(activationDecimal);
+// @ts-expect-error profile-sensitive arithmetic is not selected into v1
+activationDecimal.divide(activationDecimal);
