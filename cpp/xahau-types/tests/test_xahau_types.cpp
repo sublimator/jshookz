@@ -1635,7 +1635,7 @@ TEST_F(XahauTypes, ObjectMaterializesAmountPathSetAndBridgeWithExactIdentity)
             !converted.isZero() &&
             Object.getPrototypeOf(converted) === decimalPrototype &&
             Reflect.ownKeys(decimalPrototype).join(",") ===
-              "isNegative,isZero,sign,add,subtract,negate,equals,compare" &&
+              "isNegative,isZero,sign,add,subtract,multiply,divide,negate,equals,compare" &&
             Object.isFrozen(decimalPrototype) &&
             !("raw" in decimal) && !("mantissa" in decimal) &&
             !("exponent" in decimal) &&
