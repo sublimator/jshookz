@@ -1,0 +1,1267 @@
+{
+  "build": {
+    "branch": "hookz-test-vectors",
+    "commit": "b865c6fc554e3a06bbbf4926fbc5e8fb50d2f351",
+    "commit_hash": "b865c6fc554e3a06bbbf4926fbc5e8fb50d2f351",
+    "dirty": false
+  },
+  "divide_cases": [
+    {
+      "a": {
+        "type": "u64",
+        "val": "0"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6090866696204910592"
+      },
+      "category": "zero_order",
+      "id": "divide.zero-numerator",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "0"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6090866696204910592"
+      },
+      "b": {
+        "type": "u64",
+        "val": "0"
+      },
+      "category": "division_by_zero",
+      "id": "divide.denominator-zero",
+      "operation": "divide",
+      "result": {
+        "error": {
+          "type": "error",
+          "val": "-25"
+        },
+        "ok": false
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "0"
+      },
+      "b": {
+        "type": "u64",
+        "val": "0"
+      },
+      "category": "precedence",
+      "id": "divide.zero-zero",
+      "operation": "divide",
+      "result": {
+        "error": {
+          "type": "error",
+          "val": "-25"
+        },
+        "ok": false
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6107881094714392576"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6090866696204910592"
+      },
+      "category": "sign",
+      "id": "divide.positive-positive",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6093866696204910592"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "1496195076287004672"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6090866696204910592"
+      },
+      "category": "sign",
+      "id": "divide.negative-positive",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "1482180677777522688"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6107881094714392576"
+      },
+      "b": {
+        "type": "u64",
+        "val": "1479180677777522688"
+      },
+      "category": "sign",
+      "id": "divide.positive-negative",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "1482180677777522688"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "1496195076287004672"
+      },
+      "b": {
+        "type": "u64",
+        "val": "1479180677777522688"
+      },
+      "category": "sign",
+      "id": "divide.negative-negative",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6093866696204910592"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140352"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6089866696204910592"
+      },
+      "category": "mantissa_extrema",
+      "id": "divide.min-mantissa-by-one",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6360082673847140352"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6369082673847140351"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6089866696204910592"
+      },
+      "category": "mantissa_extrema",
+      "id": "divide.max-mantissa-by-one",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6369082673847140351"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140352"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6361082673847140352"
+      },
+      "category": "mantissa_extrema_generic",
+      "id": "divide.min-mantissa-numerator-generic",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6075852297695428608"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6369082673847140351"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6361082673847140352"
+      },
+      "category": "mantissa_extrema_generic",
+      "id": "divide.max-mantissa-numerator-generic",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6093866696204910592"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6361082673847140352"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6360082673847140352"
+      },
+      "category": "mantissa_extrema_generic",
+      "id": "divide.min-mantissa-denominator-generic",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6090866696204910592"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6361082673847140352"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6369082673847140351"
+      },
+      "category": "mantissa_extrema_generic",
+      "id": "divide.max-mantissa-denominator-generic",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6072852297695428608"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "4630700416936869888"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6089866696204910592"
+      },
+      "category": "exponent_extrema",
+      "id": "divide.min-exponent-by-one",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "4630700416936869888"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "7810234554605699071"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6089866696204910592"
+      },
+      "category": "exponent_extrema",
+      "id": "divide.max-exponent-by-one",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "7810234554605699071"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "7810234554605699071"
+      },
+      "b": {
+        "type": "u64",
+        "val": "0"
+      },
+      "category": "input_normalization_precedence",
+      "id": "divide.max-exponent-numerator-zero",
+      "operation": "divide",
+      "result": {
+        "error": {
+          "type": "error",
+          "val": "-25"
+        },
+        "ok": false
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "0"
+      },
+      "b": {
+        "type": "u64",
+        "val": "7810234554605699071"
+      },
+      "category": "input_normalization_precedence",
+      "id": "divide.zero-max-exponent-denominator",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "0"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "7810234554605699071"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6361082673847140352"
+      },
+      "category": "input_normalization",
+      "id": "divide.max-exponent-numerator-generic",
+      "operation": "divide",
+      "result": {
+        "error": {
+          "type": "error",
+          "val": "-10024"
+        },
+        "ok": false
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6361082673847140352"
+      },
+      "b": {
+        "type": "u64",
+        "val": "7810234554605699071"
+      },
+      "category": "input_normalization",
+      "id": "divide.max-exponent-denominator-generic",
+      "operation": "divide",
+      "result": {
+        "error": {
+          "type": "error",
+          "val": "-10024"
+        },
+        "ok": false
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6361082673847140347"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6361082673847140352"
+      },
+      "category": "decimal_order_transition",
+      "id": "divide.order-15-below",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6080852297695428578"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6361082673847140348"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6361082673847140352"
+      },
+      "category": "decimal_order_transition",
+      "id": "divide.order-15-above",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6080852297695428588"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140361"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6360082673847140362"
+      },
+      "category": "decimal_order_transition",
+      "id": "divide.order-15-inward-correction",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6089866696204910592"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6361082673847140361"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6360082673847140361"
+      },
+      "category": "restoring_loop",
+      "id": "divide.restoring-digit-10",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6090866696204910592"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140362"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6360982673847140352"
+      },
+      "category": "restoring_loop",
+      "id": "divide.restoring-coefficient-18",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6076115455590165588"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "4630700416936869888"
+      },
+      "b": {
+        "type": "u64",
+        "val": "4630700416936869889"
+      },
+      "category": "exponent_extrema_generic",
+      "id": "divide.min-exponent-numerator-generic",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6089866696204910592"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "4630700416936869889"
+      },
+      "b": {
+        "type": "u64",
+        "val": "4630700416936869888"
+      },
+      "category": "exponent_extrema_generic",
+      "id": "divide.min-exponent-denominator-generic",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6089866696204910593"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6107881094714392576"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6090866696204910592"
+      },
+      "category": "normalization",
+      "id": "divide.smaller-denominator",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6093866696204910592"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6090866696204910592"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6107881094714392576"
+      },
+      "category": "normalization",
+      "id": "divide.larger-denominator",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6072852297695428608"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6362050232330524179"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6361337141472634998"
+      },
+      "category": "fixed_divide",
+      "id": "divide.fixed-last-digit",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6090182997423799358"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6089866696204910592"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6091866696204910592"
+      },
+      "category": "last_digit",
+      "id": "divide.repeating-one-third",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6074185631028761938"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140353"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6360082673847140352"
+      },
+      "category": "last_digit",
+      "id": "divide.last-digit-neighbor",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6089866696204910593"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "4630700416936869888"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6107881094714392576"
+      },
+      "category": "underflow_to_zero",
+      "id": "divide.underflow-to-zero",
+      "operation": "divide",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "0"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "7801234554605699072"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6071852297695428608"
+      },
+      "category": "overflow",
+      "id": "divide.overflow",
+      "operation": "divide",
+      "result": {
+        "error": {
+          "type": "error",
+          "val": "-30"
+        },
+        "ok": false
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "18446744073709551615"
+      },
+      "b": {
+        "type": "u64",
+        "val": "0"
+      },
+      "category": "precedence",
+      "id": "divide.invalid-numerator-zero",
+      "operation": "divide",
+      "result": {
+        "error": {
+          "type": "error",
+          "val": "-10024"
+        },
+        "ok": false
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "0"
+      },
+      "b": {
+        "type": "u64",
+        "val": "18446744073709551615"
+      },
+      "category": "precedence",
+      "id": "divide.zero-invalid-denominator",
+      "operation": "divide",
+      "result": {
+        "error": {
+          "type": "error",
+          "val": "-10024"
+        },
+        "ok": false
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6089866696204910592"
+      },
+      "b": {
+        "type": "u64",
+        "val": "18446744073709551615"
+      },
+      "category": "precedence",
+      "id": "divide.valid-invalid-denominator",
+      "operation": "divide",
+      "result": {
+        "error": {
+          "type": "error",
+          "val": "-10024"
+        },
+        "ok": false
+      }
+    }
+  ],
+  "fix_float_divide": true,
+  "guard_fix_float_divide": {
+    "a": {
+      "type": "u64",
+      "val": "6362050232330524179"
+    },
+    "b": {
+      "type": "u64",
+      "val": "6361337141472634998"
+    },
+    "fix_false": {
+      "ok": true,
+      "value": {
+        "type": "u64",
+        "val": "6090182997423799357"
+      }
+    },
+    "fix_true": {
+      "ok": true,
+      "value": {
+        "type": "u64",
+        "val": "6090182997423799358"
+      }
+    },
+    "id": "guard.fix-float-divide-last-digit"
+  },
+  "multiply_cases": [
+    {
+      "a": {
+        "type": "u64",
+        "val": "0"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6090866696204910592"
+      },
+      "category": "zero_order",
+      "id": "multiply.zero-left",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "0"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6090866696204910592"
+      },
+      "b": {
+        "type": "u64",
+        "val": "0"
+      },
+      "category": "zero_order",
+      "id": "multiply.zero-right",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "0"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "0"
+      },
+      "b": {
+        "type": "u64",
+        "val": "0"
+      },
+      "category": "zero_order",
+      "id": "multiply.zero-zero",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "0"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6090866696204910592"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6091866696204910592"
+      },
+      "category": "sign",
+      "id": "multiply.positive-positive",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6094866696204910592"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "1479180677777522688"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6091866696204910592"
+      },
+      "category": "sign",
+      "id": "multiply.negative-positive",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "1483180677777522688"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6090866696204910592"
+      },
+      "b": {
+        "type": "u64",
+        "val": "1480180677777522688"
+      },
+      "category": "sign",
+      "id": "multiply.positive-negative",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "1483180677777522688"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "1479180677777522688"
+      },
+      "b": {
+        "type": "u64",
+        "val": "1480180677777522688"
+      },
+      "category": "sign",
+      "id": "multiply.negative-negative",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6094866696204910592"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140352"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6089866696204910592"
+      },
+      "category": "mantissa_extrema",
+      "id": "multiply.min-mantissa-by-one",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6360082673847140352"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6369082673847140351"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6089866696204910592"
+      },
+      "category": "mantissa_extrema",
+      "id": "multiply.max-mantissa-by-one",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6378097072356622336"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "4630700416936869888"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6089866696204910592"
+      },
+      "category": "exponent_extrema",
+      "id": "multiply.min-exponent-by-one",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "4630700416936869888"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "7801234554605699072"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6089866696204910592"
+      },
+      "category": "exponent_extrema",
+      "id": "multiply.max-exponent-by-one",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "7801234554605699072"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6369082673847140351"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6090866696204910592"
+      },
+      "category": "normalization",
+      "id": "multiply.normalization-carry",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6379097072356622335"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6360082673847140353"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6360082673847140353"
+      },
+      "category": "last_digit",
+      "id": "multiply.truncation-tail",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6630298651489370114"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "1748396655419752449"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6360082673847140353"
+      },
+      "category": "last_digit",
+      "id": "multiply.negative-truncation-tail",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "2018612633061982210"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6369082673847140330"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6089866696204910592"
+      },
+      "category": "decimal_order_transition",
+      "id": "multiply.order-16-below",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6369082673847140330"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6369082673847140331"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6089866696204910592"
+      },
+      "category": "decimal_order_transition",
+      "id": "multiply.order-16-above",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6369082673847140322"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6369082673847140351"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6369082673847140312"
+      },
+      "category": "decimal_order_transition",
+      "id": "multiply.order-17-below",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6657313049998852055"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6369082673847140351"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6369082673847140313"
+      },
+      "category": "decimal_order_transition",
+      "id": "multiply.order-17-above",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6657313049998852056"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6369082673847140351"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6369082673847140314"
+      },
+      "category": "decimal_order_transition",
+      "id": "multiply.order-17-retained-digit",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6657313049998852056"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "6369082673847140351"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6369082673847140351"
+      },
+      "category": "mantissa_extrema",
+      "id": "multiply.max-by-max",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "6666327448508334080"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "4630700416936869888"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6071852297695428608"
+      },
+      "category": "underflow_to_zero",
+      "id": "multiply.underflow-to-zero",
+      "operation": "multiply",
+      "result": {
+        "ok": true,
+        "value": {
+          "type": "u64",
+          "val": "0"
+        }
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "7801234554605699072"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6107881094714392576"
+      },
+      "category": "overflow",
+      "id": "multiply.overflow",
+      "operation": "multiply",
+      "result": {
+        "error": {
+          "type": "error",
+          "val": "-30"
+        },
+        "ok": false
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "18446744073709551615"
+      },
+      "b": {
+        "type": "u64",
+        "val": "0"
+      },
+      "category": "precedence",
+      "id": "multiply.invalid-left-zero",
+      "operation": "multiply",
+      "result": {
+        "error": {
+          "type": "error",
+          "val": "-10024"
+        },
+        "ok": false
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "0"
+      },
+      "b": {
+        "type": "u64",
+        "val": "18446744073709551615"
+      },
+      "category": "precedence",
+      "id": "multiply.zero-invalid-right",
+      "operation": "multiply",
+      "result": {
+        "error": {
+          "type": "error",
+          "val": "-10024"
+        },
+        "ok": false
+      }
+    },
+    {
+      "a": {
+        "type": "u64",
+        "val": "18446744073709551615"
+      },
+      "b": {
+        "type": "u64",
+        "val": "6089866696204910592"
+      },
+      "category": "precedence",
+      "id": "multiply.invalid-left-valid",
+      "operation": "multiply",
+      "result": {
+        "error": {
+          "type": "error",
+          "val": "-10024"
+        },
+        "ok": false
+      }
+    }
+  ],
+  "oracle": {
+    "commit": "b865c6fc554e3a06bbbf4926fbc5e8fb50d2f351",
+    "repository": "https://github.com/Xahau/xahaud.git",
+    "source_schema": "xahau.xfl-multiply-divide-oracle.v1",
+    "suite": "ripple.app.HookzFloatVectors"
+  },
+  "profile": "xahauFloatV1",
+  "schema": "jshookz.xahau-float-v1-multiply-divide-oracle.v1",
+  "xahaud_source_commit": "bb244ef7729503a0317bcff0f8fdaa93ca5cb7d2"
+}

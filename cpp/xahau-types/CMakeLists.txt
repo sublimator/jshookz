@@ -49,6 +49,13 @@ if(BUILD_TESTING)
             ${CMAKE_CURRENT_LIST_DIR}/tests/xahau_float_v1_add_subtract_oracle.json
             $<TARGET_FILE:xfl_arithmetic_probe>
     )
+    add_test(
+        NAME XFLMultiplyDivideNativeQuickJSOracle
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_LIST_DIR}/tests/run_xfl_arithmetic_oracle.py
+            ${CMAKE_CURRENT_LIST_DIR}/tests/xahau_float_v1_multiply_divide_oracle.json
+            $<TARGET_FILE:xfl_arithmetic_probe>
+    )
 
     add_executable(test_object_replacement_oom
         tests/test_object_replacement_oom.cpp

@@ -327,7 +327,9 @@ TEST_F(XahauTypes, XFLDecimalArithmeticNominalityAndProfileBackstop)
                 ctx, negative, magnitude, exponent));
     };
     installDecimal("one", false, 1000000000000000ULL, -15);
+    installDecimal("zero", false, 0, 0);
     installDecimal("two", false, 2000000000000000ULL, -15);
+    installDecimal("four", false, 4000000000000000ULL, -15);
     installDecimal("maximum", false, 9999999999999999ULL, 80);
 
     types::XFLProfileContext state{
@@ -344,7 +346,11 @@ TEST_F(XahauTypes, XFLDecimalArithmeticNominalityAndProfileBackstop)
           });
           const add = one.add(one);
           const subtract = two.subtract(one);
+          const multiply = two.multiply(two);
+          const divide = two.divide(one);
           const overflow = maximum.add(maximum);
+          const divisionByZero = one.divide(zero);
+          const invalid = maximum.divide(two);
           let operandError = "";
           try { one.add(proxy); }
           catch (error) {
@@ -358,12 +364,17 @@ TEST_F(XahauTypes, XFLDecimalArithmeticNominalityAndProfileBackstop)
           return JSON.stringify({
             add: add.ok && add.value.equals(two),
             subtract: subtract.ok && subtract.value.equals(one),
+            multiply: multiply.ok && multiply.value.equals(four),
+            divide: divide.ok && divide.value.equals(two),
             successNominal: add instanceof Result && add.value instanceof XFLDecimal,
             successClosed: !Object.isExtensible(add),
             valueFrozen: Object.isFrozen(add.value),
             overflow: !overflow.ok && overflow.error.domain === "xfl" &&
               overflow.error.issue === "overflow",
             failureNominal: overflow instanceof Result,
+            divisionByZero: !divisionByZero.ok &&
+              divisionByZero.error.issue === "division-by-zero",
+            invalid: !invalid.ok && invalid.error.issue === "invalid",
             errorNullPrototype: Object.getPrototypeOf(overflow.error) === null,
             errorClosed: !Object.isExtensible(overflow.error),
             operandError,
@@ -374,7 +385,7 @@ TEST_F(XahauTypes, XFLDecimalArithmeticNominalityAndProfileBackstop)
     )JS");
     ASSERT_FALSE(value.isException());
     EXPECT_EQ(to_string(value.get()),
-        R"({"add":true,"subtract":true,"successNominal":true,"successClosed":true,"valueFrozen":true,"overflow":true,"failureNominal":true,"errorNullPrototype":true,"errorClosed":true,"operandError":"true:XFLDecimal.add: expected XFLDecimal operand","receiverError":"true:XFLDecimal.add: invalid receiver","traps":0})");
+        R"({"add":true,"subtract":true,"multiply":true,"divide":true,"successNominal":true,"successClosed":true,"valueFrozen":true,"overflow":true,"failureNominal":true,"divisionByZero":true,"invalid":true,"errorNullPrototype":true,"errorClosed":true,"operandError":"true:XFLDecimal.add: expected XFLDecimal operand","receiverError":"true:XFLDecimal.add: invalid receiver","traps":0})");
 
     state.active = false;
     auto inactive = eval(R"JS(
@@ -388,21 +399,21 @@ TEST_F(XahauTypes, XFLDecimalArithmeticNominalityAndProfileBackstop)
     state.active = true;
     state.code = profile::xfl_arithmetic_profile_nearest_even_v1;
     auto unimplemented = eval(R"JS(
-        (() => { try { one.subtract(one); } catch (error) {
+        (() => { try { one.multiply(one); } catch (error) {
           return `${error instanceof TypeError}:${error.message}`; } })()
     )JS");
     ASSERT_FALSE(unimplemented.isException());
     EXPECT_EQ(to_string(unimplemented.get()),
-        "true:XFLDecimal.subtract: arithmetic profile does not implement operation");
+        "true:XFLDecimal.multiply: arithmetic profile does not implement operation");
 
     state.code = profile::xfl_arithmetic_profile_none;
     auto absent = eval(R"JS(
-        (() => { try { one.add(one); } catch (error) {
+        (() => { try { one.divide(one); } catch (error) {
           return `${error instanceof TypeError}:${error.message}`; } })()
     )JS");
     ASSERT_FALSE(absent.isException());
     EXPECT_EQ(to_string(absent.get()),
-        "true:XFLDecimal.add: arithmetic profile does not implement operation");
+        "true:XFLDecimal.divide: arithmetic profile does not implement operation");
     JS_SetContextOpaque(ctx, nullptr);
 }
 

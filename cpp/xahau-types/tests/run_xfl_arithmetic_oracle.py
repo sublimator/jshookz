@@ -16,6 +16,17 @@ assert SPEC is not None and SPEC.loader is not None
 oracle = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(oracle)
 
+_ABI_ONLY_CASE_IDS = frozenset(
+    {
+        "multiply.invalid-left-zero",
+        "multiply.zero-invalid-right",
+        "multiply.invalid-left-valid",
+        "divide.invalid-numerator-zero",
+        "divide.zero-invalid-denominator",
+        "divide.valid-invalid-denominator",
+    }
+)
+
 
 def expected(case: dict[str, object]) -> str:
     result = case["result"]
@@ -24,7 +35,7 @@ def expected(case: dict[str, object]) -> str:
         value = result["value"]
         assert isinstance(value, dict)
         return str(value["val"])
-    return "error:overflow"
+    return "error:" + oracle.public_error(case)
 
 
 def main() -> int:
@@ -35,8 +46,11 @@ def main() -> int:
     fixture = oracle.load_fixture(args.fixture)
 
     failures: list[str] = []
+    cases = oracle.fixture_cases(fixture)
+    runtime_cases = [case for case in cases if case["id"] not in _ABI_ONLY_CASE_IDS]
+    abi_only_cases = [case for case in cases if case["id"] in _ABI_ONLY_CASE_IDS]
     for mode in ("native", "quickjs"):
-        for case in fixture["cases"]:
+        for case in runtime_cases:
             completed = subprocess.run(
                 [
                     str(args.probe),
@@ -58,7 +72,10 @@ def main() -> int:
                 )
     if failures:
         raise AssertionError("\n".join(failures))
-    print(f"XFL oracle: {len(fixture['cases'])} rows x native/QuickJS passed")
+    print(
+        f"XFL oracle: {len(runtime_cases)} rows x native/QuickJS passed; "
+        f"{len(abi_only_cases)} ABI-only wrapper controls retained"
+    )
     return 0
 
 

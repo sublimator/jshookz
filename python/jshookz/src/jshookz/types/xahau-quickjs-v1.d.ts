@@ -1048,6 +1048,8 @@ declare global {
     sign(): -1 | 0 | 1;
     add(other: XFLDecimal): XFLResult<XFLDecimal>;
     subtract(other: XFLDecimal): XFLResult<XFLDecimal>;
+    multiply(other: XFLDecimal): XFLResult<XFLDecimal>;
+    divide(other: XFLDecimal): XFLResult<XFLDecimal>;
     negate(): XFLDecimal;
     equals(other: unknown): boolean;
     compare(other: XFLDecimal): -1 | 0 | 1;

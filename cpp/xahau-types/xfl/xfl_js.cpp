@@ -5,6 +5,8 @@
 #include "xfl/xfl.hpp"
 #include "xfl/xfl_profile_context.hpp"
 
+#include <array>
+
 namespace jshookz::provider::types {
 namespace qjs = jshookz::provider::qjs;
 using hook::XFL;
@@ -79,7 +81,7 @@ xflArithmetic(
     JSValueConst* argv,
     char const* method,
     profile::xfl_arithmetic_operation operation,
-    bool subtract)
+    hook::XFLArithmeticResult (*kernel)(XFL const&, XFL const&) noexcept)
 {
     auto const* left = xflValueNoThrow(thisValue);
     if (left == nullptr)
@@ -99,11 +101,23 @@ xflArithmetic(
             "XFLDecimal.%s: arithmetic profile does not implement operation",
             method);
 
-    hook::XFLArithmeticResult const result = subtract
-        ? hook::subtractXahauFloatV1(*left, *right)
-        : hook::addXahauFloatV1(*left, *right);
-    if (!result.ok())
-        return bindings::xfl_failure(ctx, "overflow");
+    hook::XFLArithmeticResult const result = kernel(*left, *right);
+    constexpr std::array<char const*, 4> issueNames{
+        nullptr,
+        "overflow",
+        "division-by-zero",
+        "invalid",
+    };
+    static_assert(
+        issueNames.size() ==
+        static_cast<std::size_t>(hook::XFLArithmeticIssue::count));
+    if (!result.ok()) {
+        std::size_t const issue = static_cast<std::size_t>(result.issue);
+        if (issue == 0 || issue >= issueNames.size())
+            return JS_ThrowInternalError(
+                ctx, "XFLDecimal.%s: unmapped arithmetic issue", method);
+        return bindings::xfl_failure(ctx, issueNames[issue]);
+    }
     return bindings::result_success(
         ctx, nativeNew<XFL>(ctx, js_xfl_class_id, result.value));
 }
@@ -120,7 +134,7 @@ js_xfl_add(
         argv,
         "add",
         profile::xfl_arithmetic_operation::xfl_decimal_add,
-        false);
+        hook::addXahauFloatV1);
 }
 
 // @binding provider:XFLDecimal.subtract
@@ -135,7 +149,37 @@ js_xfl_subtract(
         argv,
         "subtract",
         profile::xfl_arithmetic_operation::xfl_decimal_subtract,
-        true);
+        hook::subtractXahauFloatV1);
+}
+
+// @binding provider:XFLDecimal.multiply
+JSValue
+js_xfl_multiply(
+    JSContext* ctx, JSValueConst thisValue, int argc, JSValueConst* argv)
+{
+    return xflArithmetic(
+        ctx,
+        thisValue,
+        argc,
+        argv,
+        "multiply",
+        profile::xfl_arithmetic_operation::xfl_decimal_multiply,
+        hook::multiplyXahauFloatV1);
+}
+
+// @binding provider:XFLDecimal.divide
+JSValue
+js_xfl_divide(
+    JSContext* ctx, JSValueConst thisValue, int argc, JSValueConst* argv)
+{
+    return xflArithmetic(
+        ctx,
+        thisValue,
+        argc,
+        argv,
+        "divide",
+        profile::xfl_arithmetic_operation::xfl_decimal_divide,
+        hook::divideXahauFloatV1);
 }
 
 // @binding provider:XFLDecimal.isNegative
@@ -220,6 +264,8 @@ JSCFunctionListEntry const proto[] = {
     JS_CFUNC_DEF("sign", 0, js_xfl_sign),
     JS_CFUNC_DEF("add", 1, js_xfl_add),
     JS_CFUNC_DEF("subtract", 1, js_xfl_subtract),
+    JS_CFUNC_DEF("multiply", 1, js_xfl_multiply),
+    JS_CFUNC_DEF("divide", 1, js_xfl_divide),
     JS_CFUNC_DEF("negate", 0, js_xfl_negate),
     JS_CFUNC_DEF("equals", 1, js_xfl_equals),
     JS_CFUNC_DEF("compare", 1, js_xfl_compare),

@@ -76,3 +76,17 @@ def xfl_gap_loop_mutant_wasm(tmp_path_factory: pytest.TempPathFactory) -> Path:
         "jshookz_provider.xfl-gap-loop-mutant.wasm",
         "-DJSHOOKZ_TEST_XFL_GAP_LOOP_MUTANT=ON",
     )
+
+
+@pytest.fixture(scope="session")
+def xfl_semantic_mutant_wasm(
+    request: pytest.FixtureRequest,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Path:
+    """Build and seal one named non-product XFL arithmetic mutant."""
+    mutant = str(request.param)
+    return _build_sealed_provider(
+        tmp_path_factory.mktemp(f"xahau-provider-xfl-{mutant}-mutant"),
+        f"jshookz_provider.xfl-{mutant}-mutant.wasm",
+        f"-DJSHOOKZ_TEST_XFL_SEMANTIC_MUTANT={mutant}",
+    )

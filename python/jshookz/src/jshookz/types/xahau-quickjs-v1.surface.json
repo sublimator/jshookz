@@ -43,7 +43,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "3afe11d9dfbbe9ebf55febaa180a511f6b7d13d34cd55b6418af8c506e681f9f"
+    "sha256": "24c9f5ef6b4f54746755f428db526cd2cd15c65417c94e7bb87bb341f4afce05"
   },
   "globals": {
     "AccountID": "object",
@@ -532,9 +532,11 @@
       "members": {
         "add": "function",
         "compare": "function",
+        "divide": "function",
         "equals": "function",
         "isNegative": "function",
         "isZero": "function",
+        "multiply": "function",
         "negate": "function",
         "sign": "function",
         "subtract": "function"
@@ -542,9 +544,11 @@
       "own": [
         "add",
         "compare",
+        "divide",
         "equals",
         "isNegative",
         "isZero",
+        "multiply",
         "negate",
         "sign",
         "subtract"

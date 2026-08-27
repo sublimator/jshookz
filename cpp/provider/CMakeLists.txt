@@ -41,6 +41,23 @@ option(
     "Build the non-product repeated-division XFL fuel mutant"
     OFF
 )
+set(
+    JSHOOKZ_TEST_XFL_SEMANTIC_MUTANT
+    ""
+    CACHE STRING
+    "Build one non-product XFL arithmetic semantic mutant"
+)
+set_property(
+    CACHE JSHOOKZ_TEST_XFL_SEMANTIC_MUTANT
+    PROPERTY STRINGS
+        ""
+        digit-count
+        exact-divide
+        historical-divide
+        narrow-product
+        nearest
+        numerator-zero-first
+)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 23)
@@ -108,6 +125,34 @@ endif()
 if(JSHOOKZ_TEST_XFL_GAP_LOOP_MUTANT)
     target_compile_definitions(jshookz_provider PRIVATE
         CONFIG_TEST_XFL_GAP_LOOP_MUTANT
+    )
+endif()
+
+if(JSHOOKZ_TEST_XFL_SEMANTIC_MUTANT)
+    set(JSHOOKZ_XFL_SEMANTIC_MUTANTS
+        digit-count
+        exact-divide
+        historical-divide
+        narrow-product
+        nearest
+        numerator-zero-first
+    )
+    if(NOT JSHOOKZ_TEST_XFL_SEMANTIC_MUTANT IN_LIST JSHOOKZ_XFL_SEMANTIC_MUTANTS)
+        message(FATAL_ERROR
+            "unknown JSHOOKZ_TEST_XFL_SEMANTIC_MUTANT: "
+            "${JSHOOKZ_TEST_XFL_SEMANTIC_MUTANT}")
+    endif()
+    string(
+        REPLACE "-" "_"
+        JSHOOKZ_XFL_SEMANTIC_MUTANT_DEFINE
+        "${JSHOOKZ_TEST_XFL_SEMANTIC_MUTANT}"
+    )
+    string(TOUPPER
+        "${JSHOOKZ_XFL_SEMANTIC_MUTANT_DEFINE}"
+        JSHOOKZ_XFL_SEMANTIC_MUTANT_DEFINE
+    )
+    target_compile_definitions(jshookz_provider PRIVATE
+        "CONFIG_TEST_XFL_${JSHOOKZ_XFL_SEMANTIC_MUTANT_DEFINE}_MUTANT"
     )
 endif()
 

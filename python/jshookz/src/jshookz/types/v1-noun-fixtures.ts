@@ -197,11 +197,9 @@ void XFLMath;
 declare const activationDecimal: XFLDecimal;
 const activationAdd: XFLResult<XFLDecimal> = activationDecimal.add(activationDecimal);
 const activationSubtract: XFLResult<XFLDecimal> = activationDecimal.subtract(activationDecimal);
-void activationAdd; void activationSubtract;
-// @ts-expect-error profile-sensitive arithmetic is not selected into v1
-activationDecimal.multiply(activationDecimal);
-// @ts-expect-error profile-sensitive arithmetic is not selected into v1
-activationDecimal.divide(activationDecimal);
+const activationMultiply: XFLResult<XFLDecimal> = activationDecimal.multiply(activationDecimal);
+const activationDivide: XFLResult<XFLDecimal> = activationDecimal.divide(activationDecimal);
+void activationAdd; void activationSubtract; void activationMultiply; void activationDivide;
 
 // ── 0102: runtime enum namespaces, literal unions, hidden helpers ─────
 

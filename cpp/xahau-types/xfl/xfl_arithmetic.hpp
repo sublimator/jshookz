@@ -10,6 +10,9 @@ enum class XFLArithmeticIssue : std::uint8_t
 {
     none,
     overflow,
+    division_by_zero,
+    invalid,
+    count,
 };
 
 struct XFLArithmeticResult
@@ -28,5 +31,11 @@ addXahauFloatV1(XFL const& left, XFL const& right) noexcept;
 
 [[nodiscard]] XFLArithmeticResult
 subtractXahauFloatV1(XFL const& left, XFL const& right) noexcept;
+
+[[nodiscard]] XFLArithmeticResult
+multiplyXahauFloatV1(XFL const& left, XFL const& right) noexcept;
+
+[[nodiscard]] XFLArithmeticResult
+divideXahauFloatV1(XFL const& left, XFL const& right) noexcept;
 
 }  // namespace hook

@@ -8,6 +8,7 @@
 
 #include <jshookz/qjs.hpp>
 
+#include <array>
 #include <bit>
 #include <charconv>
 #include <cstdint>
@@ -33,7 +34,20 @@ void
 printResult(hook::XFLArithmeticResult const& result)
 {
     if (!result.ok()) {
-        std::cout << "error:overflow\n";
+        constexpr std::array<char const*, 4> issues{
+            nullptr,
+            "overflow",
+            "division-by-zero",
+            "invalid",
+        };
+        static_assert(
+            issues.size() ==
+            static_cast<std::size_t>(hook::XFLArithmeticIssue::count));
+        std::size_t const issue = static_cast<std::size_t>(result.issue);
+        if (issue == 0 || issue >= issues.size())
+            std::cout << "error:unmapped\n";
+        else
+            std::cout << "error:" << issues[issue] << '\n';
         return;
     }
     std::cout << static_cast<std::uint64_t>(result.value.raw()) << '\n';
@@ -48,6 +62,10 @@ runNative(std::string_view operation, std::uint64_t left, std::uint64_t right)
         printResult(hook::addXahauFloatV1(a, b));
     else if (operation == "subtract")
         printResult(hook::subtractXahauFloatV1(a, b));
+    else if (operation == "multiply")
+        printResult(hook::multiplyXahauFloatV1(a, b));
+    else if (operation == "divide")
+        printResult(hook::divideXahauFloatV1(a, b));
     else
         return 2;
     return 0;
@@ -104,7 +122,11 @@ runQuickJS(std::string_view operation, std::uint64_t left, std::uint64_t right)
 
         char const* expression = operation == "add"
             ? "left.add(right)"
-            : operation == "subtract" ? "left.subtract(right)" : nullptr;
+            : operation == "subtract"
+            ? "left.subtract(right)"
+            : operation == "multiply"
+            ? "left.multiply(right)"
+            : operation == "divide" ? "left.divide(right)" : nullptr;
         if (expression == nullptr) {
             JS_SetContextOpaque(context, nullptr);
             status = 2;
