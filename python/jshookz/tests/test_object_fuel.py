@@ -667,13 +667,17 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
         wasm_path=resource_probe_wasm,
         execution_limits=limits,
     )
-    host.init()
     exports = host.instance.exports(host.store)
 
     def resource(name: str) -> int:
         return exports[name](host.store)
 
     try:
+        restored_snapshot = (
+            resource("qjs_resource_current_size"),
+            resource("qjs_resource_current_count"),
+        )
+        host.init()
         registration = (
             resource("qjs_resource_current_size"),
             resource("qjs_resource_current_count"),
@@ -714,15 +718,15 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
         "post_success": post_success,
         "static_protocol": static_bytes,
     } == {
-        # XFLDecimal.add/subtract register four additional function/name
-        # atoms. Their fixed +272-byte/+4-allocation cost persists equally
-        # through every checkpoint; the topology's transient delta is stable.
-        "registration": (137_477, 2_154),
-        "pre_call": (1_191_865, 2_204),
-        "peak": (5_386_822, 2_217),
-        "post_success": (3_421_518, 2_231),
+        # Wizer restores the accepted 322-member ordinary namespaces, whose
+        # +28,191-byte/+332-allocation baseline persists in every instance.
+        "registration": (165_668, 2_486),
+        "pre_call": (1_218_008, 2_536),
+        "peak": (5_412_965, 2_549),
+        "post_success": (3_447_661, 2_563),
         "static_protocol": MAXIMUM_STATIC_PROTOCOL_BYTES,
     }
+    assert restored_snapshot == registration
 
     registration_requested = registration[0] - registration[1] * WASM_MALLOC_OVERHEAD
     pre_call_requested = pre_call[0] - pre_call[1] * WASM_MALLOC_OVERHEAD
@@ -730,7 +734,7 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     peak_requested_delta = peak_requested - pre_call_requested
     peak_count_delta = peak[1] - pre_call[1]
 
-    assert pre_call_requested - registration_requested == 1_053_588
+    assert pre_call_requested - registration_requested == 1_051_540
     assert peak_requested_delta == MAXIMUM_REQUESTED_CORE + MAXIMUM_ENGINE_REQUESTED
     assert peak[0] - pre_call[0] == (
         MAXIMUM_REQUESTED_CORE
@@ -739,7 +743,7 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     )
     assert MAXIMUM_DUPLICATE_STACK == 11 * 6 * 8
     assert peak[0] < limits.quickjs_heap_bytes
-    assert limits.quickjs_heap_bytes - post_success[0] == 13_355_698
+    assert limits.quickjs_heap_bytes - post_success[0] == 13_329_555
     assert limits.quickjs_heap_bytes - post_success[0] >= HEADROOM_BYTES
 
 

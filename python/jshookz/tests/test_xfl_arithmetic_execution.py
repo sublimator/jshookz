@@ -31,7 +31,8 @@ _CURRENCY = "0000000000000000000000005553440000000000"
 _ISSUER = "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
 _SUCCESS_MESSAGE = "xfl oracle"
 _WASM_MALLOC_OVERHEAD = 16
-_TIGHT_MAX_ALIGNMENT_FUEL_CEILING = 228_900
+_MIN_ALIGNMENT_MUTANT_FUEL_DELTA = 400
+_MIN_WRONG_ROUTE_FUEL_DELTA = 10_000
 _PACKAGED_ORACLE_BATCH_SIZE = 16
 
 
@@ -237,6 +238,14 @@ def _assert_fuel_ceiling(result: ContractResult, fuel_ceiling: int) -> None:
     assert 10_000 <= fuel_ceiling - result.gas_used
 
 
+def _assert_minimum_extra_fuel(
+    result: ContractResult,
+    baseline: ContractResult,
+    minimum_delta: int,
+) -> None:
+    assert result.gas_used - baseline.gas_used >= minimum_delta
+
+
 def test_all_oracle_rows_execute_through_packaged_sealed_provider(tmp_path: Path):
     cases = ORACLE["cases"]
     covered_ids: list[str] = []
@@ -372,7 +381,7 @@ def test_packaged_operation_lanes_have_deterministic_bounded_fuel(
     _assert_fuel_ceiling(first, fuel_ceiling)
 
 
-def test_maximum_alignment_ceiling_rejects_kernel_o_gap_division(
+def test_maximum_alignment_relational_gate_rejects_kernel_o_gap_division(
     tmp_path: Path,
     xfl_gap_loop_mutant_wasm: Path,
 ):
@@ -393,12 +402,19 @@ def test_maximum_alignment_ceiling_rejects_kernel_o_gap_division(
 
     _assert_terminal_only(green_result, green_handler)
     _assert_terminal_only(mutant_result, mutant_handler)
-    # Wasmtime fuel charges the 176-step compiled i64 division loop only 409
-    # more units than the O(1) kernel. Keep the ordinary 250k lane's 10k
-    # operational headroom, and use this exact-identity tight ceiling solely
-    # as the permanent complexity red.
-    assert 100 <= _TIGHT_MAX_ALIGNMENT_FUEL_CEILING - green_result.gas_used
-    assert mutant_result.gas_used > _TIGHT_MAX_ALIGNMENT_FUEL_CEILING
+    _assert_fuel_ceiling(green_result, 250_000)
+    # Applying the mutation gate to the loop-compiled-out provider must fail.
+    with pytest.raises(AssertionError):
+        _assert_minimum_extra_fuel(
+            green_result,
+            green_result,
+            _MIN_ALIGNMENT_MUTANT_FUEL_DELTA,
+        )
+    _assert_minimum_extra_fuel(
+        mutant_result,
+        green_result,
+        _MIN_ALIGNMENT_MUTANT_FUEL_DELTA,
+    )
 
 
 def test_wrong_route_control_turns_host_call_work_and_fuel_gates_red(
@@ -437,8 +453,18 @@ def test_wrong_route_control_turns_host_call_work_and_fuel_gates_red(
     assert wrong_result.host_work_used > green_result.host_work_used
     assert wrong_result.gas_used > green_result.gas_used
     _assert_fuel_ceiling(green_result, 255_000)
+    # Applying the wrong-route gate to the right route must fail.
     with pytest.raises(AssertionError):
-        _assert_fuel_ceiling(wrong_result, 255_000)
+        _assert_minimum_extra_fuel(
+            green_result,
+            green_result,
+            _MIN_WRONG_ROUTE_FUEL_DELTA,
+        )
+    _assert_minimum_extra_fuel(
+        wrong_result,
+        green_result,
+        _MIN_WRONG_ROUTE_FUEL_DELTA,
+    )
 
 
 def _resource_measurement(

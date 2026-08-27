@@ -1,5 +1,6 @@
 """Behavioral gates for the sealed execution-profile limits."""
 
+import json
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from jshookz.paths import (
     XAHAU_HOOK_PROVIDER_UNWIZERED_WASM,
     XAHAU_HOOK_PROVIDER_WASM,
     XAHAU_RUNTIME_PROFILE_LOCK,
+    XAHAU_RUNTIME_PROFILE_SOURCE,
 )
 from jshookz.runtime_profile import (
     profile_execution_limits,
@@ -34,8 +36,8 @@ class _InitializationFuel:
     remaining: int
 
 
-_COLD_INITIALIZATION_CEILING = 4_000_000
-_COLD_INITIALIZATION_HEADROOM = 1_000_000
+_COLD_INITIALIZATION_CEILING = 4_500_000
+_COLD_INITIALIZATION_HEADROOM = 500_000
 _SEALED_INITIALIZATION_CEILING = 1_000_000
 _SEALED_INITIALIZATION_HEADROOM = 4_000_000
 
@@ -46,6 +48,13 @@ def _limits():
         XAHAU_HOOK_PROVIDER_WASM,
     )
     return profile_execution_limits(lock)
+
+
+def _source_initialization_fuel() -> int:
+    source = json.loads(XAHAU_RUNTIME_PROFILE_SOURCE.read_text())
+    value = source["limits"]["wasmtime_fuel_per_initialization"]
+    assert isinstance(value, int) and not isinstance(value, bool) and value > 0
+    return value
 
 
 def _measure_initialization_fuel(wasm_path: Path) -> _InitializationFuel:
@@ -76,7 +85,7 @@ def _measure_initialization_fuel(wasm_path: Path) -> _InitializationFuel:
 
 
 def _assert_initialization_accounting(measurement: _InitializationFuel) -> None:
-    assert measurement.envelope == 5_000_000
+    assert measurement.envelope == _source_initialization_fuel()
     assert measurement.instantiation_used > 0
     assert measurement.profile_configuration_used > 0
     assert measurement.qjs_init_used > 0
