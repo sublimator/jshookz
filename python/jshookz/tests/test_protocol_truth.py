@@ -157,9 +157,11 @@ def test_xfl_decimal_scalar_predicates_use_provider_minted_iou_amounts():
             "prototypeOwn": [
                 "add",
                 "compare",
+                "divide",
                 "equals",
                 "isNegative",
                 "isZero",
+                "multiply",
                 "negate",
                 "sign",
                 "subtract",
