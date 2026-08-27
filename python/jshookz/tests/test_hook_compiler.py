@@ -21,6 +21,19 @@ from jshookz.paths import (
 )
 
 
+_XFL_IMPLEMENTED_METHODS = ("add", "divide", "multiply", "subtract")
+
+
+def _xfl_test_declaration(suffix: str) -> tuple[str, str]:
+    if suffix == ".ts":
+        return "declare const decimal: XFLDecimal;\n", ": never"
+    return (
+        "/** @type {XFLDecimal} */ const decimal = "
+        "/** @type {*} */ (globalThis).decimal;\n",
+        "",
+    )
+
+
 def test_public_declarations_are_package_data_and_v1_is_default():
     assert CANONICAL_HOOKS_API_DECLARATIONS.is_file()
     assert XAHAU_V1_HOOKS_API_DECLARATIONS.is_file()
@@ -215,9 +228,9 @@ def test_hook_source_cannot_augment_xfl_decimal_to_evade_exact_v1(tmp_path: Path
     source = tmp_path / "augmentation.hook.ts"
     source.write_text(
         "export {};declare global{interface XFLDecimal{"
-        "multiply(other:XFLDecimal):XFLDecimal;}}"
+        "invert():XFLDecimal;}}"
         "declare const decimal:XFLDecimal;"
-        "export function main():never{decimal.multiply(decimal);return accept();}"
+        "export function main():never{decimal.invert();return accept();}"
     )
 
     with pytest.raises(RuntimeError, match="must not augment ambient globals"):
@@ -239,14 +252,16 @@ def test_checked_javascript_shadow_cannot_mint_hook_config(tmp_path: Path):
         )
 
 
+@pytest.mark.parametrize("method", _XFL_IMPLEMENTED_METHODS)
 def test_xfl_policy_finds_sensitive_broad_member_by_declaration_identity(
     tmp_path: Path,
+    method: str,
 ):
     source = tmp_path / "missing-config.hook.ts"
     source.write_text(
         "declare const decimal: XFLDecimal;\n"
         "export function main(): never { "
-        "decimal.add(decimal); return accept(); }\n"
+        f"decimal.{method}(decimal); return accept(); }}\n"
     )
 
     with pytest.raises(RuntimeError, match="JSH-XFL001"):
@@ -258,31 +273,30 @@ def test_xfl_policy_finds_sensitive_broad_member_by_declaration_identity(
 
 @pytest.mark.parametrize("suffix", [".ts", ".js"])
 @pytest.mark.parametrize(
-    "body",
+    "body_template",
     [
-        "decimal.add(decimal);",
-        "(decimal.add)(decimal);",
-        "decimal.add?.(decimal);",
-        'decimal["add"](decimal);',
-        'const member = "add" as const; decimal[member](decimal);',
-        "const add = decimal.add; add(decimal);",
-        "const { add } = decimal; add(decimal);",
-        "(0, decimal.add)(decimal);",
-        "const add = decimal.add.bind(decimal); add(decimal);",
+        "decimal.{method}(decimal);",
+        "(decimal.{method})(decimal);",
+        "decimal.{method}?.(decimal);",
+        'decimal["{method}"](decimal);',
+        'const member = "{method}" as const; decimal[member](decimal);',
+        "const operation = decimal.{method}; operation(decimal);",
+        "const {{ {method}: operation }} = decimal; operation(decimal);",
+        "(0, decimal.{method})(decimal);",
+        "const operation = decimal.{method}.bind(decimal); operation(decimal);",
     ],
 )
+@pytest.mark.parametrize("method", _XFL_IMPLEMENTED_METHODS)
 def test_xfl_policy_covers_ratified_call_shapes(
     tmp_path: Path,
     suffix: str,
-    body: str,
+    body_template: str,
+    method: str,
 ):
+    body = body_template.format(method=method)
+    declaration, signature = _xfl_test_declaration(suffix)
     if suffix == ".js":
-        body = body.replace('const member = "add" as const;', 'const member = "add";')
-        declaration = "/** @type {XFLDecimal} */ const decimal = globalThis.decimal;"
-        signature = ""
-    else:
-        declaration = "declare const decimal: XFLDecimal;"
-        signature = ": never"
+        body = body.replace(" as const;", ";")
     source = tmp_path / f"sensitive-shape.hook{suffix}"
     source.write_text(
         f"{declaration}\n"
@@ -294,38 +308,52 @@ def test_xfl_policy_covers_ratified_call_shapes(
         compiler(source, declarations=CANONICAL_HOOKS_API_DECLARATIONS)
 
 
-def test_xfl_policy_rejects_unimplemented_profile_with_exact_config(tmp_path: Path):
-    source = tmp_path / "configured-sensitive.hook.ts"
+@pytest.mark.parametrize("suffix", [".ts", ".js"])
+@pytest.mark.parametrize("method", _XFL_IMPLEMENTED_METHODS)
+def test_xfl_policy_rejects_unimplemented_profile_with_exact_config(
+    tmp_path: Path,
+    suffix: str,
+    method: str,
+):
+    source = tmp_path / f"configured-sensitive.hook{suffix}"
+    declaration, signature = _xfl_test_declaration(suffix)
     source.write_text(
-        "declare const decimal: XFLDecimal;\n"
-        "export const hookConfig = defineHookConfig({ "
+        declaration + "export const hookConfig = defineHookConfig({ "
         "xflArithmetic: XFLProfile.nearestEvenV1 });\n"
-        "export function main(): never { "
-        "const next = rollback.onFail(decimal.add(decimal), 'add failed'); "
+        f"export function main(){signature} {{ "
+        f"const next = rollback.onFail(decimal.{method}(decimal), 'operation failed'); "
         "trace('next', next.toString()); return accept(); }\n"
     )
 
     with pytest.raises(RuntimeError, match="JSH-XFL002") as raised:
-        _typescript_to_javascript(
+        compiler = _check_javascript if suffix == ".js" else _typescript_to_javascript
+        compiler(
             source,
             declarations=CANONICAL_HOOKS_API_DECLARATIONS,
         )
-    assert "XFLDecimal.add" in str(raised.value)
+    assert f"XFLDecimal.{method}" in str(raised.value)
     assert "nearestEvenV1" in str(raised.value)
 
 
-def test_xfl_policy_accepts_implemented_profile_with_exact_config(tmp_path: Path):
-    source = tmp_path / "configured-sensitive.hook.ts"
+@pytest.mark.parametrize("suffix", [".ts", ".js"])
+@pytest.mark.parametrize("method", _XFL_IMPLEMENTED_METHODS)
+def test_xfl_policy_accepts_implemented_profile_with_exact_config(
+    tmp_path: Path,
+    suffix: str,
+    method: str,
+):
+    source = tmp_path / f"configured-sensitive.hook{suffix}"
+    declaration, signature = _xfl_test_declaration(suffix)
     source.write_text(
-        "declare const decimal: XFLDecimal;\n"
-        "export const hookConfig = defineHookConfig({ "
+        declaration + "export const hookConfig = defineHookConfig({ "
         "xflArithmetic: XFLProfile.xahauFloatV1 });\n"
-        "export function main(): never { "
-        "const next = rollback.onFail(decimal.add(decimal), 'add failed'); "
+        f"export function main(){signature} {{ "
+        f"const next = rollback.onFail(decimal.{method}(decimal), 'operation failed'); "
         "trace('next', next.toString()); return accept(); }\n"
     )
 
-    _, _, profile = _typescript_to_javascript(
+    compiler = _check_javascript if suffix == ".js" else _typescript_to_javascript
+    _, _, profile = compiler(
         source,
         declarations=CANONICAL_HOOKS_API_DECLARATIONS,
     )
@@ -333,23 +361,31 @@ def test_xfl_policy_accepts_implemented_profile_with_exact_config(tmp_path: Path
     assert profile is XFLArithmeticProfile.XAHAU_FLOAT_V1
 
 
+@pytest.mark.parametrize("suffix", [".ts", ".js"])
 @pytest.mark.parametrize("profile", ["xahauFloatV1", "nearestEvenV1"])
-def test_xfl_policy_rejects_module_evaluation_call(tmp_path: Path, profile: str):
-    source = tmp_path / "module-sensitive.hook.ts"
+@pytest.mark.parametrize("method", _XFL_IMPLEMENTED_METHODS)
+def test_xfl_policy_rejects_module_evaluation_call(
+    tmp_path: Path,
+    suffix: str,
+    profile: str,
+    method: str,
+):
+    source = tmp_path / f"module-sensitive.hook{suffix}"
+    declaration, signature = _xfl_test_declaration(suffix)
     source.write_text(
-        "declare const decimal: XFLDecimal;\n"
-        "export const hookConfig = defineHookConfig({ "
+        declaration + "export const hookConfig = defineHookConfig({ "
         f"xflArithmetic: XFLProfile.{profile} }});\n"
-        "const result = decimal.add(decimal);\n"
-        "export function main(): never { return accept(); }\n"
+        f"const result = decimal.{method}(decimal);\n"
+        f"export function main(){signature} {{ return accept(); }}\n"
     )
 
     with pytest.raises(RuntimeError, match="JSH-XFL002") as raised:
-        _typescript_to_javascript(
+        compiler = _check_javascript if suffix == ".js" else _typescript_to_javascript
+        compiler(
             source,
             declarations=CANONICAL_HOOKS_API_DECLARATIONS,
         )
-    assert "XFLDecimal.add" in str(raised.value)
+    assert f"XFLDecimal.{method}" in str(raised.value)
     assert "module evaluation" in str(raised.value)
 
 
@@ -402,15 +438,23 @@ def test_xfl_policy_negative_controls_do_not_require_config(
     assert profile is XFLArithmeticProfile.NONE
 
 
-def test_default_v1_arithmetic_attempt_requires_profile(tmp_path: Path):
-    source = tmp_path / "undeclared-add.hook.ts"
+@pytest.mark.parametrize("suffix", [".ts", ".js"])
+@pytest.mark.parametrize("method", _XFL_IMPLEMENTED_METHODS)
+def test_default_v1_arithmetic_attempt_requires_profile(
+    tmp_path: Path,
+    suffix: str,
+    method: str,
+):
+    source = tmp_path / f"undeclared-{method}.hook{suffix}"
+    declaration, signature = _xfl_test_declaration(suffix)
     source.write_text(
-        "declare const decimal: XFLDecimal;\n"
-        "export function main(): never { decimal.add(decimal); return accept(); }\n"
+        declaration + f"export function main(){signature} {{ "
+        f"decimal.{method}(decimal); return accept(); }}\n"
     )
 
+    compiler = _check_javascript if suffix == ".js" else _typescript_to_javascript
     with pytest.raises(RuntimeError, match="JSH-XFL001"):
-        _typescript_to_javascript(source, declarations=DEFAULT_DECLARATIONS)
+        compiler(source, declarations=DEFAULT_DECLARATIONS)
 
 
 def test_result_moot_is_restricted_to_void_results(tmp_path: Path):
@@ -1118,8 +1162,10 @@ def test_xfl_policy_rejects_unsupported_generated_ledger_schema(tmp_path: Path):
     assert "unsupported profile ledger schema" in completed.stderr
 
 
+@pytest.mark.parametrize("method", _XFL_IMPLEMENTED_METHODS)
 def test_xfl_policy_turns_red_when_generated_implementation_is_removed(
     tmp_path: Path,
+    method: str,
 ):
     from jshookz.hook_compiler import _frontend_driver_js, _typescript_library
 
@@ -1128,9 +1174,17 @@ def test_xfl_policy_turns_red_when_generated_implementation_is_removed(
     ledger = tmp_path / "xfl_profile_ledger.js"
     policy.write_text((emitted / policy.name).read_text())
     original_ledger = (emitted / ledger.name).read_text()
+    implementation_members = [
+        f"XFLDecimal.{implemented}" for implemented in _XFL_IMPLEMENTED_METHODS
+    ]
+    original_line = f'  "xahauFloatV1": {json.dumps(implementation_members)},'
+    remaining_members = [
+        member for member in implementation_members if member != f"XFLDecimal.{method}"
+    ]
+    mutated_line = f'  "xahauFloatV1": {json.dumps(remaining_members)},'
     mutated_ledger = original_ledger.replace(
-        '"xahauFloatV1": ["XFLDecimal.add", "XFLDecimal.subtract"],',
-        '"xahauFloatV1": [],',
+        original_line,
+        mutated_line,
     )
     assert mutated_ledger != original_ledger
     ledger.write_text(mutated_ledger)
@@ -1141,7 +1195,7 @@ def test_xfl_policy_turns_red_when_generated_implementation_is_removed(
         "export const hookConfig=defineHookConfig({xflArithmetic:"
         "XFLProfile.xahauFloatV1});"
         "export function main():never{"
-        "rollback.onFail(decimal.add(decimal),'add failed');"
+        f"rollback.onFail(decimal.{method}(decimal),'operation failed');"
         "return accept();}"
     )
     config = tmp_path / "tsconfig.json"
@@ -1201,7 +1255,7 @@ process.stdout.write(JSON.stringify(result));
     assert result["profile"] == "xahauFloatV1"
     assert len(result["diagnostics"]) == 1
     assert "JSH-XFL002" in result["diagnostics"][0]
-    assert "XFLDecimal.add" in result["diagnostics"][0]
+    assert f"XFLDecimal.{method}" in result["diagnostics"][0]
     assert "xahauFloatV1" in result["diagnostics"][0]
 
 

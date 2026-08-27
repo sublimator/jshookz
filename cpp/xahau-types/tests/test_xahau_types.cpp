@@ -332,6 +332,17 @@ TEST_F(XahauTypes, XFLDecimalArithmeticNominalityAndProfileBackstop)
     installDecimal("four", false, 4000000000000000ULL, -15);
     installDecimal("maximum", false, 9999999999999999ULL, 80);
 
+    JSContext* foreignContext = JS_NewContext(rt);
+    ASSERT_NE(foreignContext, nullptr);
+    JSValue foreign = JS_Eval(
+        foreignContext,
+        "Object.create(null)",
+        std::strlen("Object.create(null)"),
+        "<foreign-realm>",
+        JS_EVAL_TYPE_GLOBAL);
+    ASSERT_FALSE(JS_IsException(foreign));
+    installValue("foreign", foreign);
+
     types::XFLProfileContext state{
         true,
         profile::xfl_arithmetic_profile_xahau_float_v1,
@@ -361,6 +372,16 @@ TEST_F(XahauTypes, XFLDecimalArithmeticNominalityAndProfileBackstop)
           catch (error) {
             receiverError = `${error instanceof TypeError}:${error.message}`;
           }
+          let foreignOperandError = "";
+          try { one.multiply(foreign); }
+          catch (error) {
+            foreignOperandError = `${error instanceof TypeError}:${error.message}`;
+          }
+          let foreignReceiverError = "";
+          try { Object.getPrototypeOf(one).divide.call(foreign, one); }
+          catch (error) {
+            foreignReceiverError = `${error instanceof TypeError}:${error.message}`;
+          }
           return JSON.stringify({
             add: add.ok && add.value.equals(two),
             subtract: subtract.ok && subtract.value.equals(one),
@@ -379,13 +400,15 @@ TEST_F(XahauTypes, XFLDecimalArithmeticNominalityAndProfileBackstop)
             errorClosed: !Object.isExtensible(overflow.error),
             operandError,
             receiverError,
+            foreignOperandError,
+            foreignReceiverError,
             traps,
           });
         })()
     )JS");
     ASSERT_FALSE(value.isException());
     EXPECT_EQ(to_string(value.get()),
-        R"({"add":true,"subtract":true,"multiply":true,"divide":true,"successNominal":true,"successClosed":true,"valueFrozen":true,"overflow":true,"failureNominal":true,"divisionByZero":true,"invalid":true,"errorNullPrototype":true,"errorClosed":true,"operandError":"true:XFLDecimal.add: expected XFLDecimal operand","receiverError":"true:XFLDecimal.add: invalid receiver","traps":0})");
+        R"({"add":true,"subtract":true,"multiply":true,"divide":true,"successNominal":true,"successClosed":true,"valueFrozen":true,"overflow":true,"failureNominal":true,"divisionByZero":true,"invalid":true,"errorNullPrototype":true,"errorClosed":true,"operandError":"true:XFLDecimal.add: expected XFLDecimal operand","receiverError":"true:XFLDecimal.add: invalid receiver","foreignOperandError":"true:XFLDecimal.multiply: expected XFLDecimal operand","foreignReceiverError":"true:XFLDecimal.divide: invalid receiver","traps":0})");
 
     state.active = false;
     auto inactive = eval(R"JS(
@@ -415,6 +438,10 @@ TEST_F(XahauTypes, XFLDecimalArithmeticNominalityAndProfileBackstop)
     EXPECT_EQ(to_string(absent.get()),
         "true:XFLDecimal.divide: arithmetic profile does not implement operation");
     JS_SetContextOpaque(ctx, nullptr);
+    auto released = eval("delete globalThis.foreign");
+    ASSERT_FALSE(released.isException());
+    ASSERT_TRUE(JS_ToBool(ctx, released.get()));
+    JS_FreeContext(foreignContext);
 }
 
 TEST_F(XahauTypes, STBlobFromBytes)

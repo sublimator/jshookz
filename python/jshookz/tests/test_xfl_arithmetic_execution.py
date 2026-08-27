@@ -1,4 +1,4 @@
-"""Sealed-provider and packaged-Hook gates for xahauFloatV1 add/subtract."""
+"""Sealed-provider and packaged-Hook gates for xahauFloatV1 arithmetic."""
 
 from __future__ import annotations
 
@@ -25,15 +25,38 @@ from jshookz.xfl_profile import XFLArithmeticProfile
 
 
 ROOT = Path(__file__).resolve().parents[3]
-ORACLE_PATH = ROOT / "cpp/xahau-types/tests/xahau_float_v1_add_subtract_oracle.json"
 ORACLE_READER_PATH = ROOT / "scripts/xfl_arithmetic_oracle.py"
+ORACLE_PATHS = {
+    "add-subtract": (
+        ROOT / "cpp/xahau-types/tests/xahau_float_v1_add_subtract_oracle.json"
+    ),
+    "multiply-divide": (
+        ROOT / "cpp/xahau-types/tests/xahau_float_v1_multiply_divide_oracle.json"
+    ),
+}
 _CURRENCY = "0000000000000000000000005553440000000000"
 _ISSUER = "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
 _SUCCESS_MESSAGE = "xfl oracle"
+_INVALID_ABI_WORD = (1 << 64) - 1
+# These rows prove the raw C-wrapper precedence around an invalid carrier.
+# The nominal guest API deliberately has no constructor for that carrier, so
+# native/QuickJS ABI probes own their execution while this file joins them
+# explicitly against complete public packaged-Hook coverage.
+_ABI_ONLY_CASE_IDS = frozenset(
+    {
+        "multiply.invalid-left-zero",
+        "multiply.zero-invalid-right",
+        "multiply.invalid-left-valid",
+        "divide.invalid-numerator-zero",
+        "divide.zero-invalid-denominator",
+        "divide.valid-invalid-denominator",
+    }
+)
 _WASM_MALLOC_OVERHEAD = 16
 _MIN_ALIGNMENT_MUTANT_FUEL_DELTA = 400
 _MIN_WRONG_ROUTE_FUEL_DELTA = 10_000
 _PACKAGED_ORACLE_BATCH_SIZE = 16
+_XFL_METHODS = ("add", "divide", "multiply", "subtract")
 
 
 def _load_oracle_reader() -> ModuleType:
@@ -46,7 +69,13 @@ def _load_oracle_reader() -> ModuleType:
     return module
 
 
-ORACLE = _load_oracle_reader().load_fixture(ORACLE_PATH)
+_ORACLE_READER = _load_oracle_reader()
+ORACLES = {
+    family: _ORACLE_READER.load_fixture(path) for family, path in ORACLE_PATHS.items()
+}
+ORACLE_CASES = {
+    family: _ORACLE_READER.fixture_cases(oracle) for family, oracle in ORACLES.items()
+}
 
 
 def _typed_integer(leaf: dict[str, str]) -> int:
@@ -68,9 +97,24 @@ def _decimal_expression(raw: int) -> str:
     )
 
 
+def _case_by_id(case_id: str) -> dict[str, object]:
+    matches = [
+        case
+        for cases in ORACLE_CASES.values()
+        for case in cases
+        if case["id"] == case_id
+    ]
+    assert len(matches) == 1, case_id
+    return matches[0]
+
+
+def _is_public_case(case: dict[str, object]) -> bool:
+    return str(case["id"]) not in _ABI_ONLY_CASE_IDS
+
+
 def _case_statements(cases: list[dict[str, object]]) -> str:
     statements: list[str] = []
-    for index, case in enumerate(cases):
+    for case in cases:
         case_id = str(case["id"])
         operation = str(case["operation"])
         left = _typed_integer(case["a"])  # type: ignore[arg-type]
@@ -94,10 +138,11 @@ def _case_statements(cases: list[dict[str, object]]) -> str:
                 f'rollback("{case_id}:wrong-word");'
             )
         else:
+            expected_issue = _ORACLE_READER.public_error(case)
             statements.append(
                 f'if(result.ok){{rollback("{case_id}:unexpected-success");}}else{{'
                 'if(result.error.domain!=="xfl"||'
-                'result.error.issue!=="overflow")'
+                f'result.error.issue!=="{expected_issue}")'
                 f'rollback("{case_id}:wrong-error");'
                 "if(Object.getPrototypeOf(result.error)!==null||"
                 "Object.isExtensible(result.error))"
@@ -246,18 +291,28 @@ def _assert_minimum_extra_fuel(
     assert result.gas_used - baseline.gas_used >= minimum_delta
 
 
-def test_all_oracle_rows_execute_through_packaged_sealed_provider(tmp_path: Path):
-    cases = ORACLE["cases"]
+@pytest.mark.parametrize("family", tuple(ORACLE_PATHS))
+def test_all_public_oracle_rows_execute_through_packaged_sealed_provider(
+    tmp_path: Path,
+    family: str,
+):
+    cases = ORACLE_CASES[family]
+    public_cases = [case for case in cases if _is_public_case(case)]
+    abi_only_ids = [str(case["id"]) for case in cases if not _is_public_case(case)]
     covered_ids: list[str] = []
     for batch_index, offset in enumerate(
-        range(0, len(cases), _PACKAGED_ORACLE_BATCH_SIZE)
+        range(0, len(public_cases), _PACKAGED_ORACLE_BATCH_SIZE)
     ):
-        batch = cases[offset : offset + _PACKAGED_ORACLE_BATCH_SIZE]
+        batch = public_cases[offset : offset + _PACKAGED_ORACLE_BATCH_SIZE]
         covered_ids.extend(str(case["id"]) for case in batch)
         source = _profiled_source(
             _case_statements(batch) + f'return accept("{_SUCCESS_MESSAGE}",0);'
         )
-        packaged = _package(tmp_path, source, f"oracle-{batch_index}.hook.ts")
+        packaged = _package(
+            tmp_path,
+            source,
+            f"{family}-oracle-{batch_index}.hook.ts",
+        )
         parsed = parse_hook_artifact(packaged.artifact)
 
         first, first_handler = _execute(parsed.payload)
@@ -270,23 +325,102 @@ def test_all_oracle_rows_execute_through_packaged_sealed_provider(tmp_path: Path
         assert second_handler.calls == first_handler.calls
         assert 0 < first.gas_used < 50_000_000
 
-    assert covered_ids == [str(case["id"]) for case in cases]
+    public_ids = [str(case["id"]) for case in public_cases]
+    all_ids = [str(case["id"]) for case in cases]
+    expected_abi_only_ids = _ABI_ONLY_CASE_IDS.intersection(all_ids)
+    assert len(all_ids) == len(set(all_ids))
+    assert covered_ids == public_ids
+    assert set(covered_ids).isdisjoint(abi_only_ids)
+    assert set(covered_ids) | set(abi_only_ids) == set(all_ids)
+    assert set(abi_only_ids) == expected_abi_only_ids
+    assert all(
+        _INVALID_ABI_WORD
+        in {
+            _typed_integer(case["a"]),  # type: ignore[arg-type]
+            _typed_integer(case["b"]),  # type: ignore[arg-type]
+        }
+        for case in cases
+        if str(case["id"]) in expected_abi_only_ids
+    )
+
+
+@pytest.mark.parametrize(
+    ("xfl_semantic_mutant_wasm", "case_ids"),
+    [
+        (
+            "digit-count",
+            (
+                "multiply.order-16-above",
+                "multiply.order-17-retained-digit",
+                "multiply.max-by-max",
+            ),
+        ),
+        ("exact-divide", ("divide.fixed-last-digit",)),
+        ("historical-divide", ("divide.fixed-last-digit",)),
+        (
+            "narrow-product",
+            (
+                "multiply.max-by-max",
+                "multiply.order-17-above",
+            ),
+        ),
+        (
+            "nearest",
+            (
+                "multiply.truncation-tail",
+                "multiply.negative-truncation-tail",
+                "divide.fixed-last-digit",
+            ),
+        ),
+        ("numerator-zero-first", ("divide.zero-zero",)),
+    ],
+    indirect=["xfl_semantic_mutant_wasm"],
+    ids=(
+        "digit-count",
+        "exact-divide",
+        "historical-divide",
+        "narrow-product",
+        "nearest",
+        "numerator-zero-first",
+    ),
+)
+def test_packaged_semantic_mutants_are_killed_by_named_oracle_rows(
+    tmp_path: Path,
+    xfl_semantic_mutant_wasm: Path,
+    case_ids: tuple[str, ...],
+):
+    cases = [_case_by_id(case_id) for case_id in case_ids]
+    packaged = _package(
+        tmp_path,
+        _profiled_source(
+            _case_statements(cases) + f'return accept("{_SUCCESS_MESSAGE}",0);'
+        ),
+        f"semantic-mutant-{'-'.join(case_id.rsplit('.', 1)[-1] for case_id in case_ids)}.hook.ts",
+    )
+
+    green_result, green_handler = _execute(packaged.bytecode)
+    mutant_result, mutant_handler = _execute_on_wasm(
+        packaged.bytecode,
+        xfl_semantic_mutant_wasm,
+    )
+
+    _assert_terminal_only(green_result, green_handler)
+    with pytest.raises(AssertionError):
+        _assert_terminal_only(mutant_result, mutant_handler)
 
 
 def test_arithmetic_adds_no_host_call_or_host_work(tmp_path: Path):
     representative = [
-        case
-        for case in ORACLE["cases"]
-        if case["id"]
-        in {
-            "add.zero-positive",
+        _case_by_id(case_id)
+        for case_id in (
             "add.same-exponent-positive",
-            "add.align-delta-16-six-tenths",
-            "add.align-delta-176",
-            "add.carry-positive",
-            "add.overflow-positive",
             "subtract.self",
-        }
+            "multiply.max-by-max",
+            "multiply.overflow",
+            "divide.fixed-last-digit",
+            "divide.max-exponent-numerator-generic",
+            "divide.denominator-zero",
+        )
     ]
     arithmetic = _package(
         tmp_path,
@@ -313,11 +447,7 @@ def test_arithmetic_adds_no_host_call_or_host_work(tmp_path: Path):
 
 
 def test_packaged_metamorphic_laws_supplement_the_oracle(tmp_path: Path):
-    case = next(
-        case
-        for case in ORACLE["cases"]
-        if case["id"] == "add.align-delta-16-six-tenths"
-    )
+    case = _case_by_id("add.align-delta-16-six-tenths")
     left = _decimal_expression(_typed_integer(case["a"]))  # type: ignore[arg-type]
     right = _decimal_expression(_typed_integer(case["b"]))  # type: ignore[arg-type]
     zero = _decimal_expression(0)
@@ -356,6 +486,34 @@ def test_packaged_metamorphic_laws_supplement_the_oracle(tmp_path: Path):
         ("add.carry-positive", 255_000),
         ("add.overflow-positive", 235_000),
         ("subtract.self", 255_000),
+        ("multiply.zero-left", 205_000),
+        ("multiply.positive-positive", 205_000),
+        ("multiply.normalization-carry", 205_000),
+        ("multiply.truncation-tail", 205_000),
+        ("multiply.negative-truncation-tail", 205_000),
+        ("multiply.order-16-below", 205_000),
+        ("multiply.order-16-above", 205_000),
+        ("multiply.order-17-below", 205_000),
+        ("multiply.order-17-above", 205_000),
+        ("multiply.order-17-retained-digit", 205_000),
+        ("multiply.max-by-max", 205_000),
+        ("multiply.underflow-to-zero", 205_000),
+        ("multiply.overflow", 205_000),
+        ("divide.zero-numerator", 210_000),
+        ("divide.min-mantissa-by-one", 210_000),
+        ("divide.repeating-one-third", 210_000),
+        ("divide.fixed-last-digit", 210_000),
+        ("divide.larger-denominator", 210_000),
+        ("divide.order-15-inward-correction", 210_000),
+        ("divide.restoring-digit-10", 210_000),
+        ("divide.restoring-coefficient-18", 210_000),
+        ("divide.min-exponent-numerator-generic", 210_000),
+        ("divide.min-exponent-denominator-generic", 210_000),
+        ("divide.underflow-to-zero", 210_000),
+        ("divide.overflow", 210_000),
+        ("divide.denominator-zero", 210_000),
+        ("divide.max-exponent-numerator-generic", 210_000),
+        ("divide.max-exponent-denominator-generic", 210_000),
     ],
 )
 def test_packaged_operation_lanes_have_deterministic_bounded_fuel(
@@ -363,7 +521,7 @@ def test_packaged_operation_lanes_have_deterministic_bounded_fuel(
     case_id: str,
     fuel_ceiling: int,
 ):
-    case = next(case for case in ORACLE["cases"] if case["id"] == case_id)
+    case = _case_by_id(case_id)
     packaged = _package(
         tmp_path,
         _profiled_source(
@@ -385,7 +543,7 @@ def test_maximum_alignment_relational_gate_rejects_kernel_o_gap_division(
     tmp_path: Path,
     xfl_gap_loop_mutant_wasm: Path,
 ):
-    case = next(case for case in ORACLE["cases"] if case["id"] == "add.align-delta-176")
+    case = _case_by_id("add.align-delta-176")
     packaged = _package(
         tmp_path,
         _profiled_source(
@@ -417,18 +575,57 @@ def test_maximum_alignment_relational_gate_rejects_kernel_o_gap_division(
     )
 
 
+@pytest.mark.parametrize(
+    "case_id",
+    [
+        "multiply.min-exponent-by-one",
+        "divide.min-exponent-numerator-generic",
+    ],
+)
+def test_normalize_live_relational_gate_rejects_exponent_dependent_cost(
+    tmp_path: Path,
+    xfl_gap_loop_mutant_wasm: Path,
+    case_id: str,
+):
+    case = _case_by_id(case_id)
+    packaged = _package(
+        tmp_path,
+        _profiled_source(
+            _case_statements([case]) + f'return accept("{_SUCCESS_MESSAGE}",0);'
+        ),
+        f"{case_id.replace('.', '-')}-gap-cost-mutant-control.hook.ts",
+    )
+
+    green_result, green_handler = _execute(packaged.bytecode)
+    mutant_result, mutant_handler = _execute_on_wasm(
+        packaged.bytecode,
+        xfl_gap_loop_mutant_wasm,
+    )
+
+    _assert_terminal_only(green_result, green_handler)
+    _assert_terminal_only(mutant_result, mutant_handler)
+    _assert_minimum_extra_fuel(
+        mutant_result,
+        green_result,
+        _MIN_ALIGNMENT_MUTANT_FUEL_DELTA,
+    )
+
+
+@pytest.mark.parametrize(
+    "case_id",
+    ["multiply.positive-positive", "divide.fixed-last-digit"],
+)
 def test_wrong_route_control_turns_host_call_work_and_fuel_gates_red(
     tmp_path: Path,
+    case_id: str,
 ):
-    case = next(
-        case for case in ORACLE["cases"] if case["id"] == "add.same-exponent-positive"
-    )
+    case = _case_by_id(case_id)
     green = _package(
         tmp_path,
         _profiled_source(
             _case_statements([case]) + f'return accept("{_SUCCESS_MESSAGE}",0);'
         ),
-        "green-route.hook.ts",
+        f"{case_id.replace('.', '-')}-green-route.hook.ts",
     )
     wrong = _package(
         tmp_path,
@@ -437,7 +634,7 @@ def test_wrong_route_control_turns_host_call_work_and_fuel_gates_red(
             + 'trace("wrong-route","after arithmetic");'
             + f'return accept("{_SUCCESS_MESSAGE}",0);'
         ),
-        "wrong-route.hook.ts",
+        f"{case_id.replace('.', '-')}-wrong-route.hook.ts",
     )
 
     green_result, green_handler = _execute(green.bytecode)
@@ -452,7 +649,10 @@ def test_wrong_route_control_turns_host_call_work_and_fuel_gates_red(
     ]
     assert wrong_result.host_work_used > green_result.host_work_used
     assert wrong_result.gas_used > green_result.gas_used
-    _assert_fuel_ceiling(green_result, 255_000)
+    _assert_fuel_ceiling(
+        green_result,
+        205_000 if case_id.startswith("multiply.") else 210_000,
+    )
     # Applying the wrong-route gate to the right route must fail.
     with pytest.raises(AssertionError):
         _assert_minimum_extra_fuel(
@@ -515,16 +715,42 @@ def _assert_constant_resources(measurements: list[tuple[int, int]]) -> None:
     assert len(set(measurements)) == 1
 
 
-def test_arithmetic_resource_peak_is_constant_across_exponent_gaps(
+@pytest.mark.parametrize(
+    ("family", "lane_ids"),
+    [
+        (
+            "add-subtract",
+            (
+                "add.same-exponent-positive",
+                "add.align-delta-16-six-tenths",
+                "add.align-delta-176",
+            ),
+        ),
+        (
+            "multiply",
+            (
+                "multiply.positive-positive",
+                "multiply.min-exponent-by-one",
+                "multiply.max-by-max",
+            ),
+        ),
+        (
+            "divide",
+            (
+                "divide.positive-positive",
+                "divide.min-exponent-numerator-generic",
+                "divide.max-mantissa-denominator-generic",
+            ),
+        ),
+    ],
+)
+def test_arithmetic_resource_peak_is_constant_across_operation_extremes(
     tmp_path: Path,
     resource_probe_wasm: Path,
+    family: str,
+    lane_ids: tuple[str, str, str],
 ):
-    lane_ids = (
-        "add.same-exponent-positive",
-        "add.align-delta-16-six-tenths",
-        "add.align-delta-176",
-    )
-    cases = {case["id"]: case for case in ORACLE["cases"] if case["id"] in lane_ids}
+    cases = {case_id: _case_by_id(case_id) for case_id in lane_ids}
     branches = "".join(
         (f"if(info.rawFlags==={selector}){{{_case_statements([cases[case_id]])}}}else ")
         for selector, case_id in enumerate(lane_ids, start=1)
@@ -535,7 +761,7 @@ def test_arithmetic_resource_peak_is_constant_across_exponent_gaps(
         + f'return accept("{_SUCCESS_MESSAGE}",0);',
         callback=True,
     )
-    packaged = _package(tmp_path, source, "resource-lanes.hook.ts")
+    packaged = _package(tmp_path, source, f"{family}-resource-lanes.hook.ts")
 
     measurements = [
         _resource_measurement(resource_probe_wasm, packaged.bytecode, selector)
@@ -568,7 +794,7 @@ def test_arithmetic_resource_peak_is_constant_across_exponent_gaps(
             + f'return accept("{_SUCCESS_MESSAGE}",0);',
             callback=True,
         ),
-        "resource-allocation-mutant.hook.ts",
+        f"{family}-resource-allocation-mutant.hook.ts",
     )
     mutant_measurements = [
         _resource_measurement(resource_probe_wasm, mutant.bytecode, selector)
@@ -576,6 +802,62 @@ def test_arithmetic_resource_peak_is_constant_across_exponent_gaps(
     ]
     with pytest.raises(AssertionError):
         _assert_constant_resources(mutant_measurements)
+
+
+@pytest.mark.parametrize("method", _XFL_METHODS)
+def test_packaged_brand_proxy_and_profile_mutation_backstops(
+    tmp_path: Path,
+    method: str,
+):
+    value = _decimal_expression(
+        _typed_integer(_case_by_id("multiply.positive-positive")["a"])  # type: ignore[arg-type]
+    )
+    expected_operand = f"XFLDecimal.{method}: expected XFLDecimal operand"
+    expected_receiver = f"XFLDecimal.{method}: invalid receiver"
+    body = (
+        f"const value={value};"
+        "let traps=0;"
+        "const proxy=new Proxy({}, {"
+        'get(){traps++;throw new Error("get trap");},'
+        'getPrototypeOf(){traps++;throw new Error("prototype trap");}});'
+        "const errorMessage=(error:unknown):string=>"
+        "error instanceof Error?error.message:String(error);"
+        f"const operation=Object.getPrototypeOf(value).{method};"
+        "let operandError='';"
+        "try{Reflect.apply(operation,value,[proxy]);}"
+        "catch(error){operandError=errorMessage(error);}"
+        "let missingError='';"
+        "try{Reflect.apply(operation,value,[]);}"
+        "catch(error){missingError=errorMessage(error);}"
+        "let receiverError='';"
+        "try{Reflect.apply(operation,proxy,[value]);}"
+        "catch(error){receiverError=errorMessage(error);}"
+        f'if(operandError!=="{expected_operand}")rollback("operand-order");'
+        f'if(missingError!=="{expected_operand}")rollback("missing-order");'
+        f'if(receiverError!=="{expected_receiver}")rollback("receiver-order");'
+        'if(traps!==0)rollback("proxy-trap");'
+        "const observedProfile=hookConfig.xflArithmetic;"
+        "if(Reflect.set(hookConfig,'xflArithmetic',XFLProfile.nearestEvenV1))"
+        "rollback('profile-set');"
+        "if(Reflect.defineProperty(hookConfig,'xflArithmetic',"
+        "{value:XFLProfile.nearestEvenV1}))rollback('profile-define');"
+        "if(hookConfig.xflArithmetic!==observedProfile)rollback('profile-mutation');"
+        f"const result=value.{method}(value);"
+        "if(!result.ok)rollback('post-mutation-operation');"
+        f'return accept("{_SUCCESS_MESSAGE}",0);'
+    )
+    packaged = _package(
+        tmp_path,
+        _profiled_source(body),
+        f"{method}-brand-profile-backstops.hook.ts",
+    )
+
+    first, first_handler = _execute(packaged.bytecode)
+    second, second_handler = _execute(packaged.bytecode)
+
+    assert first.gas_used == second.gas_used
+    _assert_terminal_only(first, first_handler)
+    _assert_terminal_only(second, second_handler)
 
 
 def _compile_unchecked(source: str) -> bytes:
@@ -588,31 +870,33 @@ def _compile_unchecked(source: str) -> bytes:
 
 
 @pytest.mark.parametrize(
-    ("config", "expected"),
+    "config",
     [
-        (
-            "",
-            "TypeError: XFLDecimal.add: arithmetic profile does not implement "
-            "operation",
-        ),
+        "",
         (
             "export const hookConfig=defineHookConfig({xflArithmetic:"
-            "XFLProfile.nearestEvenV1});",
-            "TypeError: XFLDecimal.add: arithmetic profile does not implement "
-            "operation",
+            "XFLProfile.nearestEvenV1});"
         ),
     ],
 )
+@pytest.mark.parametrize("method", _XFL_METHODS)
 def test_unchecked_profile_bypass_fails_closed_before_arithmetic(
-    config: str, expected: str
+    config: str,
+    method: str,
 ):
-    value = _decimal_expression(_typed_integer(ORACLE["guard_drop_control"]["a"]))
+    value = _decimal_expression(
+        _typed_integer(_case_by_id("multiply.positive-positive")["a"])  # type: ignore[arg-type]
+    )
     bytecode = _compile_unchecked(
         f"{config}export function main(){{const value={value};"
-        "return value.add(value);}"
+        f"return value.{method}(value);}}"
     )
 
     result, handler = _execute(bytecode)
+    expected = (
+        f"TypeError: XFLDecimal.{method}: arithmetic profile does not implement "
+        "operation"
+    )
 
     assert result == ContractResult(
         exit_code=-1,
@@ -624,11 +908,15 @@ def test_unchecked_profile_bypass_fails_closed_before_arithmetic(
     assert handler.calls == []
 
 
-def test_unchecked_module_scope_arithmetic_fails_in_inactive_context():
-    value = _decimal_expression(_typed_integer(ORACLE["guard_drop_control"]["a"]))
+@pytest.mark.parametrize("method", _XFL_METHODS)
+def test_unchecked_module_scope_arithmetic_fails_in_inactive_context(method: str):
+    value = _decimal_expression(
+        _typed_integer(_case_by_id("multiply.positive-positive")["a"])  # type: ignore[arg-type]
+    )
     bytecode = _compile_unchecked(
         "export const hookConfig=defineHookConfig({xflArithmetic:"
-        f"XFLProfile.xahauFloatV1}});const value={value};value.add(value);"
+        f"XFLProfile.xahauFloatV1}});const value={value};"
+        f"value.{method}(value);"
         "export function main(){return accept();}"
     )
     host = WasmHost.profiled()
@@ -640,5 +928,5 @@ def test_unchecked_module_scope_arithmetic_fails_in_inactive_context():
 
     assert not validation.valid
     assert validation.error == (
-        "TypeError: XFLDecimal.add: arithmetic profile is inactive"
+        f"TypeError: XFLDecimal.{method}: arithmetic profile is inactive"
     )
