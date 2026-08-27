@@ -4,7 +4,7 @@ from jshookz.host import WasmHost
 from jshookz.paths import XAHAU_HOOK_PROVIDER_WASM
 from jshookz.runtime_types import SCHEMA, observe_runtime_types
 
-_NOMINAL_MATRIX_GAS = 11_160_093
+_NOMINAL_MATRIX_GAS = 11_097_276
 
 _XFL_VALUE_KERNEL = r"""
 JSON.stringify((() => {
@@ -227,6 +227,33 @@ def test_sealed_provider_runtime_type_observation_is_actual_global_state() -> No
         assert row["has_instance_configurable"] is False
         assert not row["own_prototype"]
         assert not row["constructible"]
+
+    enum_rows = {row["name"]: row for row in observation["enum_namespaces"]}
+    assert set(enum_rows) == {
+        "TransactionType",
+        "TransactionResult",
+        "HookReturnCode",
+    }
+    expected = {
+        "TransactionType": (77, "Invoke", 99),
+        "TransactionResult": (199, "telLOCAL_ERROR", -399),
+        "HookReturnCode": (46, "INVALID_FLOAT", -10024),
+    }
+    for name, (count, member, literal) in expected.items():
+        row = enum_rows[name]
+        assert row["kind"] == "object"
+        assert row["ordinary_object"]
+        assert row["frozen"]
+        assert not row["extensible"]
+        assert not row["own_has_instance"]
+        assert not row["inherited_has_instance"]
+        assert not row["own_prototype"]
+        assert not row["constructible"]
+        assert row["descriptors_exact"]
+        assert len(row["own_keys"]) == count
+        assert len(row["values"]) == count
+        assert row["values"][member] == literal
+    assert "Invalid" not in enum_rows["TransactionType"]["own_keys"]
 
 
 def test_sealed_provider_state_set_accepts_stobject_serialized_type() -> None:

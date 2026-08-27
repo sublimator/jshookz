@@ -202,3 +202,35 @@ void activationAdd; void activationSubtract;
 activationDecimal.multiply(activationDecimal);
 // @ts-expect-error profile-sensitive arithmetic is not selected into v1
 activationDecimal.divide(activationDecimal);
+
+// ── 0102: runtime enum namespaces, literal unions, hidden helpers ─────
+
+activationExpectTrue<ActivationEqual<typeof TransactionType.Payment, 0>>();
+activationExpectTrue<ActivationEqual<typeof TransactionResult.tesSUCCESS, 0>>();
+activationExpectTrue<ActivationEqual<typeof HookReturnCode.TOO_BIG, -3>>();
+
+const transactionTypeValue: TransactionType = TransactionType.Invoke;
+const transactionResultValue: TransactionResult = TransactionResult.tecNO_ENTRY;
+const hookReturnCodeValue: HookReturnCode = HookReturnCode.INVALID_FLOAT;
+void transactionTypeValue; void transactionResultValue; void hookReturnCodeValue;
+
+// @ts-expect-error 123456 is not a declared transaction type
+const badTransactionType: TransactionType = 123456; void badTransactionType;
+// @ts-expect-error 123456 is not a declared transaction result
+const badTransactionResult: TransactionResult = 123456; void badTransactionResult;
+// @ts-expect-error -24 is the intentionally unused Hook return-code gap
+const badHookReturnCode: HookReturnCode = -24; void badHookReturnCode;
+
+// @ts-expect-error enum namespace objects are not constructible
+new TransactionType();
+// @ts-expect-error enum namespace objects are not constructible
+new TransactionResult();
+// @ts-expect-error enum namespace objects are not constructible
+new HookReturnCode();
+
+// @ts-expect-error module-scope helper must not leak
+type TransactionTypeEnumLeak = TransactionTypeEnum;
+// @ts-expect-error module-scope helper must not leak
+type TransactionResultEnumLeak = TransactionResultEnum;
+// @ts-expect-error module-scope helper must not leak
+type HookReturnCodeEnumLeak = HookReturnCodeEnum;

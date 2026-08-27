@@ -342,6 +342,7 @@ void qjs_init(void)
         jshookz::provider::registerBindings(ctx) &&
         register_cpp_types(ctx) &&
         register_uint_types(ctx) &&
+        jshookz::provider::registerEnumNamespaces(ctx) &&
         jshookz::provider::registerXFLProfile(ctx);
     if (initialized)
         initialized =

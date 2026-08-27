@@ -47,6 +47,7 @@ public:
 
 [[nodiscard]] bool registerBindings(JSContext* ctx);
 [[nodiscard]] bool installDeterministicSandbox(JSContext* ctx);
+[[nodiscard]] bool registerEnumNamespaces(JSContext* ctx);
 [[nodiscard]] bool registerXFLProfile(JSContext* ctx);
 void destroyXFLProfile(JSContext* ctx) noexcept;
 [[nodiscard]] int observeModuleXFLProfile(

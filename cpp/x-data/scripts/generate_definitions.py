@@ -33,6 +33,11 @@ CONSUMED_NAME_CODE_KEYS = (
     "PERMISSIONS",
 )
 
+RESERVED_SURPLUS_TYPES = {
+    "Hash384": 22,
+    "Hash512": 23,
+}
+
 PROVIDER_WIRE_WIDTHS = {
     "UInt8": 1,
     "UInt16": 2,
@@ -172,11 +177,10 @@ def load_materializer_policy(
             "provider wire-type materializer closure must contain exactly "
             "the nineteen admitted wire types"
         )
-    if (
-        set(type_materializers.values())
-        != EXPECTED_MATERIALIZER_KINDS
-        - {"transaction_type", "transaction_result"}
-    ):
+    if set(type_materializers.values()) != EXPECTED_MATERIALIZER_KINDS - {
+        "transaction_type",
+        "transaction_result",
+    }:
         # The exact name-to-kind law is checked below. Keep this set check so a
         # duplicated valid kind cannot hide a missing kind.
         raise ValueError("provider wire-type materializer kinds are not exact")
@@ -221,6 +225,8 @@ def tables_from_defs(defs: dict) -> dict[str, list[dict[str, Any]]]:
     if "FIELDS" not in defs:
         raise ValueError("Protocol JSON must contain FIELDS array")
 
+    validate_reserved_surplus_types(defs)
+
     fields: list[dict[str, Any]] = []
     for entry in defs["FIELDS"]:
         if not isinstance(entry, list) or len(entry) != 2:
@@ -249,6 +255,36 @@ def tables_from_defs(defs: dict) -> dict[str, list[dict[str, Any]]]:
     return tables
 
 
+def validate_reserved_surplus_types(defs: dict) -> None:
+    """Keep the dual-chain Hash384/512 surplus claim mechanically honest."""
+    types = defs.get("TYPES")
+    if not isinstance(types, dict):
+        return
+    present = set(types) & set(RESERVED_SURPLUS_TYPES)
+    if not present:
+        return
+    if present != set(RESERVED_SURPLUS_TYPES):
+        raise ValueError("reserved-surplus Hash384/Hash512 type map is incomplete")
+    actual = {name: types[name] for name in RESERVED_SURPLUS_TYPES}
+    if actual != RESERVED_SURPLUS_TYPES:
+        raise ValueError(
+            "reserved-surplus type map must be exactly Hash384=22, Hash512=23"
+        )
+    uses = sorted(
+        str(entry[0])
+        for entry in defs.get("FIELDS", [])
+        if isinstance(entry, list)
+        and len(entry) == 2
+        and isinstance(entry[1], dict)
+        and entry[1].get("type") in RESERVED_SURPLUS_TYPES
+    )
+    if uses:
+        raise ValueError(
+            "reserved-surplus Hash384/Hash512 types must have zero field uses: "
+            + ", ".join(uses)
+        )
+
+
 def emit_array(type_name: str, name: str, rows: list[str]) -> str:
     n = len(rows)
     if n == 0:
@@ -265,8 +301,11 @@ def field_row(row: dict[str, Any]) -> str:
     )
 
 
-def name_code_row(row: dict[str, Any]) -> str:
-    return f"{{{cpp_string(row['name'])}, {row['code']}}}"
+def name_code_row(row: dict[str, Any], *, mark_reserved: bool = False) -> str:
+    rendered = f"{{{cpp_string(row['name'])}, {row['code']}}}"
+    if mark_reserved and row["name"] in RESERVED_SURPLUS_TYPES:
+        rendered += "  /* Protocol-reserved surplus: zero serialized fields. */"
+    return rendered
 
 
 def generate_header(
@@ -285,7 +324,7 @@ def generate_header(
         emit_array(
             "catl::xdata::ProtocolTableNameCode",
             "TYPES",
-            [name_code_row(r) for r in tables["TYPES"]],
+            [name_code_row(r, mark_reserved=True) for r in tables["TYPES"]],
         ),
         emit_array(
             "catl::xdata::ProtocolTableNameCode",

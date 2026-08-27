@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import importlib.util
 import json
@@ -196,6 +197,50 @@ def test_real_xahau_tables_match_cleaned_json() -> None:
     assert unknown["code"] == -2
     invalid = next(row for row in tables["FIELDS"] if row["name"] == "Invalid")
     assert invalid["nth"] == -1
+
+
+@pytest.mark.parametrize("network", ["xahau", "xrpl"])
+def test_reserved_hash_surplus_is_validated_and_rendered(network: str) -> None:
+    src = XDATA / f"definitions/{network}_definitions.json"
+    defs = gen.unwrap_definitions(json.loads(src.read_text()))
+    tables = gen.tables_from_defs(defs)
+    header = gen.generate_header(tables, f"catl::xdata::{network}")
+    for name, code in gen.RESERVED_SURPLUS_TYPES.items():
+        assert (
+            f'{{"{name}", {code}}}  /* Protocol-reserved surplus: '
+            "zero serialized fields. */"
+        ) in header
+
+
+@pytest.mark.parametrize("network", ["xahau", "xrpl"])
+@pytest.mark.parametrize("name", ["Hash384", "Hash512"])
+def test_reserved_hash_wrong_code_turns_generation_red(network: str, name: str) -> None:
+    src = XDATA / f"definitions/{network}_definitions.json"
+    defs = copy.deepcopy(gen.unwrap_definitions(json.loads(src.read_text())))
+    defs["TYPES"][name] += 1
+    with pytest.raises(ValueError, match="must be exactly"):
+        gen.tables_from_defs(defs)
+
+
+@pytest.mark.parametrize("network", ["xahau", "xrpl"])
+@pytest.mark.parametrize("name", ["Hash384", "Hash512"])
+def test_reserved_hash_field_use_turns_generation_red(network: str, name: str) -> None:
+    src = XDATA / f"definitions/{network}_definitions.json"
+    defs = copy.deepcopy(gen.unwrap_definitions(json.loads(src.read_text())))
+    defs["FIELDS"].append(
+        [
+            f"Reserved{name}Probe",
+            {
+                "type": name,
+                "nth": 1,
+                "isSerialized": True,
+                "isSigningField": True,
+                "isVLEncoded": False,
+            },
+        ]
+    )
+    with pytest.raises(ValueError, match="zero field uses"):
+        gen.tables_from_defs(defs)
 
 
 def test_real_xahau_provider_closure_is_exact_and_total() -> None:

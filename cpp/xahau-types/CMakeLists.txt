@@ -23,6 +23,7 @@ if(BUILD_TESTING)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     include(GoogleTest)
     add_executable(test_xahau_types
+        ../provider/enum_namespaces.cpp
         tests/test_xahau_types.cpp
         tests/test_account_json.cpp
         tests/test_canonical_json.cpp

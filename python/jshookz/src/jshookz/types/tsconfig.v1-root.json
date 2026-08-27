@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "strict": true,
+    "isolatedModules": true,
     "noEmit": true,
     "skipLibCheck": false,
     "lib": ["ES2023"],

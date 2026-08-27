@@ -168,6 +168,43 @@ def test_xfl_profile_is_an_ordinary_namespace_not_a_runtime_classifier():
     assert result.result_value == "[true,false,true]"
 
 
+def test_enum_namespaces_are_frozen_ordinary_non_classifier_values():
+    result = evaluate(
+        "JSON.stringify((()=>{'use strict';"
+        "const specs=[[TransactionType,'Payment',0,77],"
+        "[TransactionResult,'telLOCAL_ERROR',-399,199],"
+        "[HookReturnCode,'INVALID_FLOAT',-10024,46]];"
+        "const failures=[];"
+        "const fails=(label,operation)=>{try{operation();failures.push(label)}"
+        "catch(error){if(!(error instanceof TypeError))failures.push(label+':type')}};"
+        "for(const [value,member,literal,count] of specs){"
+        "const keys=Reflect.ownKeys(value);"
+        "if(typeof value!=='object'||Object.getPrototypeOf(value)!==Object.prototype)"
+        "failures.push(member+':ordinary');"
+        "if(!Object.isFrozen(value)||Object.isExtensible(value))"
+        "failures.push(member+':frozen');"
+        "if(keys.length!==count||value[member]!==literal)"
+        "failures.push(member+':inventory');"
+        "if(Object.hasOwn(value,'prototype')||"
+        "Object.hasOwn(value,Symbol.hasInstance)||"
+        "value[Symbol.hasInstance]!==undefined)failures.push(member+':classifier');"
+        "fails(member+':assign',()=>{value[member]=123});"
+        "fails(member+':define',()=>Object.defineProperty(value,member,{value:123}));"
+        "fails(member+':delete',()=>{delete value[member]});"
+        "fails(member+':prototype',()=>Object.setPrototypeOf(value,null));"
+        "fails(member+':call',()=>Reflect.apply(value,null,[]));"
+        "fails(member+':construct',()=>Reflect.construct(Object,[],value));"
+        "fails(member+':instanceof',()=>void({} instanceof value));"
+        "if(value[member]!==literal)failures.push(member+':mutated');"
+        "}"
+        "if(Object.hasOwn(TransactionType,'Invalid'))failures.push('Invalid');"
+        "return failures})())"
+    )
+
+    assert result.exit_code == 0
+    assert result.result_value == "[]"
+
+
 def test_define_hook_config_rejects_traps_accessors_and_non_exact_shapes():
     result = evaluate(
         "JSON.stringify(["

@@ -26,9 +26,25 @@ class RuntimeGlobal(TypedDict):
     constructible: bool
 
 
+class RuntimeEnumNamespace(TypedDict):
+    name: str
+    kind: str
+    frozen: bool
+    extensible: bool
+    ordinary_object: bool
+    own_has_instance: bool
+    inherited_has_instance: bool
+    own_prototype: bool
+    constructible: bool
+    descriptors_exact: bool
+    own_keys: list[str]
+    values: dict[str, int]
+
+
 class RuntimeTypeObservation(TypedDict):
     schema: str
     globals: list[RuntimeGlobal]
+    enum_namespaces: list[RuntimeEnumNamespace]
 
 
 _OBSERVE_GLOBALS = r"""
@@ -67,6 +83,36 @@ JSON.stringify({
       constructible,
     };
   }),
+  enum_namespaces: ["TransactionType", "TransactionResult", "HookReturnCode"].map(name => {
+    const value = globalThis[name];
+    const kind = value === null ? "null" : typeof value;
+    const objectLike = (kind === "object" || kind === "function");
+    const ownKeys = objectLike ? Object.getOwnPropertyNames(value) : [];
+    const descriptors = objectLike ? Object.getOwnPropertyDescriptors(value) : {};
+    let constructible = false;
+    if (objectLike) {
+      try { Reflect.construct(Object, [], value); constructible = true; } catch (_) {}
+    }
+    return {
+      name,
+      kind,
+      frozen: objectLike && Object.isFrozen(value),
+      extensible: objectLike && Object.isExtensible(value),
+      ordinary_object: kind === "object" &&
+        Object.getPrototypeOf(value) === Object.prototype,
+      own_has_instance: objectLike && Object.hasOwn(value, Symbol.hasInstance),
+      inherited_has_instance: objectLike && value[Symbol.hasInstance] !== undefined,
+      own_prototype: objectLike && Object.hasOwn(value, "prototype"),
+      constructible,
+      descriptors_exact: ownKeys.every(key => {
+        const descriptor = descriptors[key];
+        return descriptor.enumerable && !descriptor.writable &&
+          !descriptor.configurable && Object.hasOwn(descriptor, "value");
+      }),
+      own_keys: ownKeys,
+      values: Object.fromEntries(ownKeys.map(key => [key, value[key]])),
+    };
+  }),
 })
 """.strip()
 
@@ -87,4 +133,9 @@ def observe_runtime_types(wasm_path: str | Path) -> RuntimeTypeObservation:
     rows = value.get("globals")
     if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
         raise ValueError("provider returned invalid runtime global rows")
+    enum_rows = value.get("enum_namespaces")
+    if not isinstance(enum_rows, list) or any(
+        not isinstance(row, dict) for row in enum_rows
+    ):
+        raise ValueError("provider returned invalid runtime enum-namespace rows")
     return value

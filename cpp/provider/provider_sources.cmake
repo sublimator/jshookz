@@ -10,6 +10,7 @@ set(JSHOOKZ_PROVIDER_CPP_SOURCES
     ${JSHOOKZ_XDATA_PROVIDER_STATIC_SOURCES}
     ${JSHOOKZ_XAHAU_TYPES_SOURCES}
     ${CMAKE_CURRENT_LIST_DIR}/provider.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/enum_namespaces.cpp
     ${CMAKE_CURRENT_LIST_DIR}/sandbox.cpp
     ${CMAKE_CURRENT_LIST_DIR}/xfl_profile.cpp
     ${CMAKE_CURRENT_LIST_DIR}/bindings/common.cpp

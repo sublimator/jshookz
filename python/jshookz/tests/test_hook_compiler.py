@@ -1,10 +1,9 @@
-import os
 import json
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
-
 from jshookz.hook_artifact import HEADER_SIZE, parse_hook_artifact
 from jshookz.hook_compiler import (
     DEFAULT_DECLARATIONS,
@@ -36,6 +35,36 @@ def test_public_declarations_are_package_data_and_v1_is_default():
     assert "interface Hash256" in v1
     assert "const Hash256: Hash256Factory" in v1
     assert "declare function record" not in v1
+
+
+@pytest.mark.parametrize("suffix", [".ts", ".js"])
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("TransactionType.Invoke", "99"),
+        ("TransactionResult.telLOCAL_ERROR", "-399"),
+        ("HookReturnCode.INVALID_FLOAT", "-10024"),
+    ],
+)
+def test_checked_hook_languages_share_runtime_enum_namespace_values(
+    tmp_path: Path, suffix: str, expression: str, expected: str
+):
+    source = tmp_path / f"runtime-enum.hook{suffix}"
+    annotation = ": never" if suffix == ".ts" else ""
+    source.write_text(
+        f"export function main(){annotation} {{ "
+        f"throw new Error(`enum:${{{expression}}}`); }}"
+    )
+    compiled = compile_hook(source)
+
+    host = WasmHost(wasm_path=XAHAU_HOOK_PROVIDER_WASM)
+    host.init()
+    try:
+        evaluated = host.run_hook_bytecode(compiled.bytecode)
+    finally:
+        host.destroy()
+
+    assert evaluated.error == f"Error: enum:{expected}"
 
 
 def test_default_v1_declarations_reject_unimplemented_rich_api(tmp_path: Path):
