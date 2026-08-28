@@ -20,6 +20,11 @@ export function main(): never {
   );
 
   const transaction = otxn.object();
+  rollback.when(
+    transaction !== otxn.object(),
+    "originating transaction cache identity changed",
+    2,
+  );
   const source = rollback.requirePresent(
     transaction.get(Field.Account),
     "Payment has no Account",
