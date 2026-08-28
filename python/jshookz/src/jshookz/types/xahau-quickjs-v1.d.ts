@@ -1452,8 +1452,8 @@ declare global {
    * TypeScript should normally use the direct call.
    *
    * A supplied `code` becomes the integer HookReturnCode recorded on-ledger.
-   * Omit it to let the compiler/provider record source location. Do not copy
-   * C `__LINE__`. Explicitly meaningful codes remain caller-owned.
+   * Omitted codes default to zero. Do not copy C `__LINE__`; explicitly
+   * meaningful codes remain caller-owned.
    */
   function accept(message?: string | BytesLike | STBlob, code?: number): never;
 
