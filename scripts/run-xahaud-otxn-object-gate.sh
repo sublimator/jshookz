@@ -117,17 +117,20 @@ ln -sfn "$types_dir/xahau-quickjs-v1.surface.json" \
 ln -sfn "$repo_root/python/jshookz/src/jshookz/xfl_profile_ledger.ts" \
     "$live_bundle/xfl-profile-ledger.ts"
 
+# HOOKS_TEST_DIR participates in xahaud's configure-time test discovery, so the
+# complete external-test environment must precede both CMake and x-run-tests.
+export PATH="$repo_root/python/jshookz/.venv/bin:$PATH"
+export HOOKS_TEST_DIR="$repo_root/xahau/env-tests"
+export XAHAU_QJS_PROVIDER_WASM="$provider_dir/jshookz_provider.wasm"
+export XAHAU_QJS_OTXN_OBJECT_XQJS="$hook_artifact"
+export XAHAU_QJS_OTXN_OBJECT_QJSC="$hook_bytecode"
+export XAHAU_REQUIRE_QJS_PROVIDER_TESTS=1
+export CCACHE_DISABLE=1
+
 cmake -S "$xahaud_root" -B "$xahaud_root/build" \
     -DXAHAU_QUICKJS_PROVIDER_BUNDLE_DIR="$live_bundle"
 
 cd "$xahaud_root"
-PATH="$repo_root/python/jshookz/.venv/bin:$PATH" \
-HOOKS_TEST_DIR="$repo_root/xahau/env-tests" \
-XAHAU_QJS_PROVIDER_WASM="$provider_dir/jshookz_provider.wasm" \
-XAHAU_QJS_OTXN_OBJECT_XQJS="$hook_artifact" \
-XAHAU_QJS_OTXN_OBJECT_QJSC="$hook_bytecode" \
-XAHAU_REQUIRE_QJS_PROVIDER_TESTS=1 \
-CCACHE_DISABLE=1 \
 x-run-tests \
     --no-conan \
     --no-ccache \
