@@ -16,7 +16,6 @@ from .hook_artifact import build_hook_artifact
 from .host import WasmHost
 from .xfl_profile import XFLArithmeticProfile
 
-
 CANONICAL_DECLARATIONS = paths.CANONICAL_HOOKS_API_DECLARATIONS
 DEFAULT_DECLARATIONS = paths.XAHAU_V1_HOOKS_API_DECLARATIONS
 
@@ -38,6 +37,7 @@ class CompiledHook:
     bytecode: bytes
     javascript: str
     profile: XFLArithmeticProfile
+    source_map: str | None = None
 
 
 @dataclass(frozen=True)
@@ -45,6 +45,15 @@ class PackagedHook:
     artifact: bytes
     bytecode: bytes
     javascript: str
+    profile: XFLArithmeticProfile
+    source_map: str | None = None
+
+
+@dataclass(frozen=True)
+class _TypeScriptOutput:
+    javascript: str
+    source_map: str | None
+    allow_malformed: bool
     profile: XFLArithmeticProfile
 
 
@@ -54,6 +63,8 @@ class PackagedHook:
 # to be on PATH. A global tsc of a different major silently changes what
 # type-checks, and nothing would notice.
 _FRONTEND_NODE_MODULES = _FRONTEND_DIR / "node_modules"
+_PINNED_ESBUILD_VERSION = "0.28.2"
+_ESBUILD_VERSION_CACHE: dict[tuple[str, int, int], str] = {}
 
 
 def _typescript_executable(tsc: str | None) -> str:
@@ -91,6 +102,42 @@ def _typescript_library(tsc: str | None) -> Path:
             "pinned frontend TypeScript instead."
         )
     return typescript
+
+
+def _esbuild_executable(esbuild: str | None) -> Path:
+    selected = esbuild or os.environ.get("ESBUILD")
+    executable = (
+        Path(selected).resolve()
+        if selected
+        else (_FRONTEND_NODE_MODULES / ".bin" / "esbuild").resolve()
+    )
+    if not executable.is_file():
+        raise RuntimeError(
+            "Pinned esbuild not found. Run `npm ci` in "
+            f"{_FRONTEND_DIR}, or set ESBUILD to exact esbuild "
+            f"{_PINNED_ESBUILD_VERSION}."
+        )
+    stat = executable.stat()
+    key = (str(executable), stat.st_mtime_ns, stat.st_size)
+    version = _ESBUILD_VERSION_CACHE.get(key)
+    if version is None:
+        completed = subprocess.run(
+            [str(executable), "--version"],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        version = completed.stdout.strip()
+        if completed.returncode != 0:
+            detail = completed.stderr.strip() or "version probe failed"
+            raise RuntimeError(f"Cannot execute pinned esbuild: {detail}")
+        _ESBUILD_VERSION_CACHE[key] = version
+    if version != _PINNED_ESBUILD_VERSION:
+        raise RuntimeError(
+            "Hook bundler version mismatch: expected esbuild "
+            f"{_PINNED_ESBUILD_VERSION}, found {version or '<unknown>'}"
+        )
+    return executable
 
 
 def _frontend_driver_js(tsc: str | None) -> Path:
@@ -137,11 +184,14 @@ def _frontend_driver_js(tsc: str | None) -> Path:
         )
         emitted = staging / "compiler_driver.js"
         if compiled.returncode != 0 or not emitted.is_file():
-            detail = "\n".join(
-                part.strip()
-                for part in (compiled.stdout, compiled.stderr)
-                if part.strip()
-            ) or "frontend tsc failed"
+            detail = (
+                "\n".join(
+                    part.strip()
+                    for part in (compiled.stdout, compiled.stderr)
+                    if part.strip()
+                )
+                or "frontend tsc failed"
+            )
             raise RuntimeError(f"compiler frontend failed to emit:\n{detail}")
         if not (staging / "entry_policy.js").is_file():
             raise RuntimeError("compiler frontend emit missed entry_policy.js")
@@ -155,8 +205,7 @@ def _frontend_driver_js(tsc: str | None) -> Path:
         except OSError:
             shutil.rmtree(staging, ignore_errors=True)
             if not all(
-                path.is_file()
-                for path in (driver, policy, xfl_policy, xfl_ledger)
+                path.is_file() for path in (driver, policy, xfl_policy, xfl_ledger)
             ):
                 raise RuntimeError(
                     "compiler frontend cache vanished after a parallel emit"
@@ -223,28 +272,185 @@ def _run_compiler_driver(
             ("kind=", "allowMalformed=", "xflProfile=", "createProgram=")
         )
     ]
-    detail = "\n".join(
-        part
-        for part in (*body_lines, completed.stdout.strip())
-        if part.strip()
-    ) or "compiler driver failed"
+    detail = (
+        "\n".join(
+            part for part in (*body_lines, completed.stdout.strip()) if part.strip()
+        )
+        or "compiler driver failed"
+    )
     if kind == "xfl":
         raise RuntimeError(f"Hook XFL profile policy failed:\n{detail}")
     if kind == "entry":
         raise RuntimeError(f"Hook entry signature is invalid:\n{detail}")
     if kind == "result":
         raise RuntimeError(
-            "Hook Result must use one of its six legal exits:\n" f"{detail}"
+            f"Hook Result must use one of its six legal exits:\n{detail}"
         )
     raise RuntimeError(f"{failure_label}:\n{detail}")
 
 
-def _typescript_to_javascript(
+def _normalize_source_map(map_path: Path, source_root: Path) -> str:
+    """Make an off-ledger source map stable and prove its sources are honest."""
+    try:
+        document = json.loads(map_path.read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError(
+            f"Hook bundler emitted an invalid source map: {error}"
+        ) from error
+
+    if document.get("version") != 3:
+        raise RuntimeError("Hook bundler source map is not version 3")
+    sources = document.get("sources")
+    sources_content = document.get("sourcesContent")
+    if not isinstance(sources, list) or not isinstance(sources_content, list):
+        raise TypeError("Hook bundler source map must embed every source")
+    if not sources or len(sources) != len(sources_content):
+        raise RuntimeError("Hook bundler source map sources/content disagree")
+    if not isinstance(document.get("mappings"), str) or not document["mappings"]:
+        raise RuntimeError("Hook bundler source map has no decoded mappings")
+
+    root = source_root.resolve()
+    normalized: list[str] = []
+    for raw_source, embedded_content in zip(sources, sources_content, strict=True):
+        if not isinstance(raw_source, str) or not isinstance(embedded_content, str):
+            raise TypeError("Hook bundler source map contains a malformed source")
+        resolved = (map_path.parent / raw_source).resolve()
+        try:
+            relative = resolved.relative_to(root)
+        except ValueError:
+            # On macOS, TypeScript can realpath /var to /private/var while
+            # retaining /Users for authoring sources. Its relative map path
+            # then contains a synthetic /private/Users segment. Reconstruct
+            # only suffixes beneath the already-authorized source root and
+            # select the most-specific existing match.
+            parts = tuple(
+                part
+                for part in raw_source.replace("\\", "/").split("/")
+                if part not in {"", ".", ".."}
+            )
+            candidates: list[tuple[int, Path, Path]] = []
+            for index in range(len(parts)):
+                candidate = root.joinpath(*parts[index:]).resolve()
+                try:
+                    candidate_relative = candidate.relative_to(root)
+                except ValueError:
+                    continue
+                if candidate.is_file() and candidate.read_text() == embedded_content:
+                    candidates.append(
+                        (len(parts) - index, candidate, candidate_relative)
+                    )
+            if not candidates:
+                raise RuntimeError(
+                    "Hook bundler source map escaped the Hook source root: "
+                    f"{raw_source}"
+                )
+            _, resolved, relative = max(candidates, key=lambda row: row[0])
+        if not resolved.is_file() or resolved.read_text() != embedded_content:
+            raise RuntimeError(
+                f"Hook bundler source map content disagrees with {relative.as_posix()}"
+            )
+        normalized.append(relative.as_posix())
+
+    if len(set(normalized)) != len(normalized):
+        raise RuntimeError("Hook bundler source map contains duplicate source paths")
+    document["sources"] = normalized
+    document.pop("sourceRoot", None)
+    return json.dumps(document, indent=2, sort_keys=True) + "\n"
+
+
+def _bundle_emitted_javascript(
+    emitted: Path,
+    *,
+    output_dir: Path,
+    source_root: Path,
+    esbuild: str | None,
+    source_map: bool,
+) -> tuple[str, str | None]:
+    """Bundle checked TS output into exactly one import-free ESM module."""
+    bundle_dir = output_dir.parent / "bundle"
+    bundle_dir.mkdir()
+    bundled = bundle_dir / "hook.js"
+    metafile = bundle_dir / "meta.json"
+    command = [
+        str(_esbuild_executable(esbuild)),
+        str(emitted.relative_to(output_dir)),
+        "--bundle",
+        "--format=esm",
+        "--platform=neutral",
+        "--target=es2023",
+        "--legal-comments=none",
+        "--log-level=warning",
+        f"--metafile={metafile}",
+        f"--outfile={bundled}",
+    ]
+    if source_map:
+        command.extend(("--sourcemap=external", "--sources-content=true"))
+    completed = subprocess.run(
+        command,
+        cwd=output_dir,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if completed.returncode != 0:
+        detail = (
+            "\n".join(
+                part.strip()
+                for part in (completed.stdout, completed.stderr)
+                if part.strip()
+            )
+            or "esbuild failed"
+        )
+        raise RuntimeError(f"Hook bundling failed:\n{detail}")
+    if not bundled.is_file() or not metafile.is_file():
+        raise RuntimeError("Hook bundler did not emit its declared module and metadata")
+
+    try:
+        metadata = json.loads(metafile.read_text())
+    except json.JSONDecodeError as error:
+        raise RuntimeError("Hook bundler emitted malformed metadata") from error
+    outputs = metadata.get("outputs")
+    if not isinstance(outputs, dict):
+        raise TypeError("Hook bundler metadata has no outputs")
+    javascript_outputs = [
+        value
+        for name, value in outputs.items()
+        if Path(name).resolve() == bundled.resolve()
+    ]
+    if len(javascript_outputs) != 1:
+        raise RuntimeError(
+            "Hook bundler did not describe exactly one JavaScript output"
+        )
+    imports = javascript_outputs[0].get("imports")
+    if imports != []:
+        raise RuntimeError(
+            "Hook bundler left a runtime import in deployable JavaScript"
+        )
+
+    expected_files = {"hook.js", "meta.json"}
+    map_path = bundled.with_suffix(".js.map")
+    if source_map:
+        expected_files.add(map_path.name)
+    actual_files = {path.name for path in bundle_dir.iterdir() if path.is_file()}
+    if actual_files != expected_files:
+        raise RuntimeError(
+            "Hook bundler output set disagrees with the single-module contract: "
+            f"{sorted(actual_files)}"
+        )
+    normalized_map = (
+        _normalize_source_map(map_path, source_root) if source_map else None
+    )
+    return bundled.read_text(), normalized_map
+
+
+def _compile_typescript_graph(
     source: Path,
     *,
     declarations: Path,
     tsc: str | None = None,
-) -> tuple[str, bool, XFLArithmeticProfile]:
+    esbuild: str | None = None,
+    source_map: bool = False,
+) -> _TypeScriptOutput:
     if not declarations.is_file():
         raise FileNotFoundError(f"Hook API declarations not found: {declarations}")
 
@@ -260,9 +466,12 @@ def _typescript_to_javascript(
                     "compilerOptions": {
                         "lib": ["ES2023"],
                         "module": "ESNext",
+                        "moduleResolution": "Bundler",
                         "outDir": str(out_dir),
                         "rootDir": str(source.parent),
                         "skipLibCheck": False,
+                        "sourceMap": source_map,
+                        "inlineSources": source_map,
                         "strict": True,
                         "target": "ES2023",
                     },
@@ -282,7 +491,36 @@ def _typescript_to_javascript(
         emitted = out_dir / source.with_suffix(".js").name
         if not emitted.is_file():
             raise RuntimeError(f"TypeScript emitted no JavaScript at {emitted}")
-        return emitted.read_text(), source_allows, profile
+        javascript, composed_map = _bundle_emitted_javascript(
+            emitted,
+            output_dir=out_dir,
+            source_root=source.parent,
+            esbuild=esbuild,
+            source_map=source_map,
+        )
+        return _TypeScriptOutput(
+            javascript=javascript,
+            source_map=composed_map,
+            allow_malformed=source_allows,
+            profile=profile,
+        )
+
+
+def _typescript_to_javascript(
+    source: Path,
+    *,
+    declarations: Path,
+    tsc: str | None = None,
+    esbuild: str | None = None,
+) -> tuple[str, bool, XFLArithmeticProfile]:
+    """Compatibility wrapper for callers that do not request source maps."""
+    output = _compile_typescript_graph(
+        source,
+        declarations=declarations,
+        tsc=tsc,
+        esbuild=esbuild,
+    )
+    return output.javascript, output.allow_malformed, output.profile
 
 
 def _check_javascript(
@@ -326,26 +564,65 @@ def _check_javascript(
     return source.read_text(), source_allows, profile
 
 
+def _compile_already_checked_javascript(
+    javascript: str,
+    *,
+    provider: Path,
+    profile: XFLArithmeticProfile,
+    emit_malformed: bool,
+) -> bytes:
+    """Narrow TS-bundle/checked-JS seam into the unchanged qjsc compiler."""
+    host = WasmHost(wasm_path=provider)
+    host.init()
+    try:
+        bytecode = host.compile_source(javascript, module=True)
+        validation = None if emit_malformed else host.validate_hook_bytecode(bytecode)
+    finally:
+        host.destroy()
+    if validation is not None and not validation.valid:
+        raise RuntimeError(
+            "QuickJS Hook is not deployable: "
+            f"{validation.error or 'provider validation failed'}"
+        )
+    if validation is not None and validation.profile is not profile:
+        raise RuntimeError(
+            "QuickJS Hook profile disagreement: compiler selected "
+            f"{profile.value}, provider observed {validation.profile.value}"
+        )
+    return bytecode
+
+
 def compile_hook(
     source: str | Path,
     *,
     wasm_path: str | Path | None = None,
     declarations: str | Path = DEFAULT_DECLARATIONS,
     tsc: str | None = None,
+    esbuild: str | None = None,
+    source_map: bool = False,
     allow_malformed: bool = False,
 ) -> CompiledHook:
     """Compile a .ts/.js Hook to provider-compatible QuickJS bytecode."""
     source_path = Path(source).resolve()
     suffix = source_path.suffix.lower()
     source_allows = False
+    composed_map: str | None = None
     profile = XFLArithmeticProfile.NONE
     if suffix == ".ts":
-        javascript, source_allows, profile = _typescript_to_javascript(
+        output = _compile_typescript_graph(
             source_path,
             declarations=Path(declarations),
             tsc=tsc,
+            esbuild=esbuild,
+            source_map=source_map,
         )
+        javascript = output.javascript
+        composed_map = output.source_map
+        source_allows = output.allow_malformed
+        profile = output.profile
     elif suffix in {".js", ".mjs"}:
+        if source_map:
+            raise ValueError("source maps are available only for TypeScript Hooks")
         javascript, source_allows, profile = _check_javascript(
             source_path,
             declarations=Path(declarations),
@@ -364,35 +641,20 @@ def compile_hook(
             else "Set JSHOOKZ_PROVIDER_WASM or pass --wasm."
         )
         raise FileNotFoundError(
-            f"Xahau QuickJS provider not found: {provider}\n"
-            f"{guidance}"
+            f"Xahau QuickJS provider not found: {provider}\n{guidance}"
         )
 
     emit_malformed = allow_malformed or source_allows
-    host = WasmHost(wasm_path=provider)
-    host.init()
-    try:
-        bytecode = host.compile_source(javascript, module=True)
-        validation = (
-            None
-            if emit_malformed
-            else host.validate_hook_bytecode(bytecode)
-        )
-    finally:
-        host.destroy()
-    if validation is not None and not validation.valid:
-        raise RuntimeError(
-            "QuickJS Hook is not deployable: "
-            f"{validation.error or 'provider validation failed'}"
-        )
-    if validation is not None and validation.profile is not profile:
-        raise RuntimeError(
-            "QuickJS Hook profile disagreement: compiler selected "
-            f"{profile.value}, provider observed {validation.profile.value}"
-        )
+    bytecode = _compile_already_checked_javascript(
+        javascript,
+        provider=provider,
+        profile=profile,
+        emit_malformed=emit_malformed,
+    )
     return CompiledHook(
         bytecode=bytecode,
         javascript=javascript,
+        source_map=composed_map,
         profile=profile,
     )
 
@@ -407,6 +669,8 @@ def package_hook(
     wasm_path: str | Path | None = None,
     declarations: str | Path = DEFAULT_DECLARATIONS,
     tsc: str | None = None,
+    esbuild: str | None = None,
+    source_map: bool = False,
 ) -> PackagedHook:
     """Compile source and bind its bytecode to an explicit deployment profile.
 
@@ -420,6 +684,8 @@ def package_hook(
         wasm_path=wasm_path,
         declarations=declarations,
         tsc=tsc,
+        esbuild=esbuild,
+        source_map=source_map,
     )
     provider = Path(wasm_path or paths.XAHAU_HOOK_PROVIDER_WASM).resolve()
     validator = (
@@ -452,5 +718,6 @@ def package_hook(
         ),
         bytecode=compiled.bytecode,
         javascript=compiled.javascript,
+        source_map=compiled.source_map,
         profile=compiled.profile,
     )

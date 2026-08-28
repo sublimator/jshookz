@@ -15,10 +15,7 @@ def cmd_build(args: argparse.Namespace) -> int:
 def cmd_info(args: argparse.Namespace) -> int:
     """Print project paths and build status."""
     print(f"Repo root:     {paths.SOURCE_CHECKOUT or '<not a source checkout>'}")
-    if (
-        paths.SOURCE_CHECKOUT is None
-        and "JSHOOKZ_PROVIDER_WASM" not in os.environ
-    ):
+    if paths.SOURCE_CHECKOUT is None and "JSHOOKZ_PROVIDER_WASM" not in os.environ:
         print("Hook provider: <set JSHOOKZ_PROVIDER_WASM>")
     else:
         print(
@@ -41,7 +38,9 @@ def cmd_info(args: argparse.Namespace) -> int:
         f"API artifacts:   {paths.API_ARTIFACT_MANIFEST} "
         f"{'✓' if paths.API_ARTIFACT_MANIFEST.exists() else '✗'}"
     )
-    print(f"wasi-sdk:      {paths.WASI_SDK_PATH} {'✓' if paths.WASI_SDK_PATH.exists() else '✗'}")
+    print(
+        f"wasi-sdk:      {paths.WASI_SDK_PATH} {'✓' if paths.WASI_SDK_PATH.exists() else '✗'}"
+    )
     return 0
 
 
@@ -58,11 +57,17 @@ def cmd_compile_hook(args: argparse.Namespace) -> int:
         wasm_path=args.wasm,
         declarations=args.declarations or DEFAULT_DECLARATIONS,
         tsc=args.tsc,
+        esbuild=args.esbuild,
+        source_map=bool(args.emit_source_map),
         allow_malformed=args.allow_malformed,
     )
     output.write_bytes(result.bytecode)
     if args.emit_js:
         Path(args.emit_js).write_text(result.javascript)
+    if args.emit_source_map:
+        if result.source_map is None:
+            raise RuntimeError("compiler did not return the requested source map")
+        Path(args.emit_source_map).write_text(result.source_map)
     print(f"xfl-arithmetic-profile={result.profile.value}", file=sys.stderr)
     print(output)
     return 0
@@ -91,8 +96,7 @@ def cmd_package_hook(args: argparse.Namespace) -> int:
     else:
         if not args.bytecode_abi_id or not args.runtime_profile_id:
             raise ValueError(
-                "supply --profile, or both --bytecode-abi-id and "
-                "--runtime-profile-id"
+                "supply --profile, or both --bytecode-abi-id and --runtime-profile-id"
             )
         bytecode_abi_id = identity_from_hex(
             args.bytecode_abi_id, "bytecode ABI identity"
@@ -109,12 +113,18 @@ def cmd_package_hook(args: argparse.Namespace) -> int:
         wasm_path=provider,
         declarations=args.declarations or DEFAULT_DECLARATIONS,
         tsc=args.tsc,
+        esbuild=args.esbuild,
+        source_map=bool(args.emit_source_map),
     )
     output.write_bytes(result.artifact)
     if args.emit_bytecode:
         Path(args.emit_bytecode).write_bytes(result.bytecode)
     if args.emit_js:
         Path(args.emit_js).write_text(result.javascript)
+    if args.emit_source_map:
+        if result.source_map is None:
+            raise RuntimeError("compiler did not return the requested source map")
+        Path(args.emit_source_map).write_text(result.source_map)
     print(f"xfl-arithmetic-profile={result.profile.value}", file=sys.stderr)
     print(output)
     return 0
@@ -196,7 +206,14 @@ def main() -> None:
     )
     p_compile_hook.add_argument("--tsc", help="TypeScript compiler executable")
     p_compile_hook.add_argument(
+        "--esbuild", help="Exact esbuild 0.28.2 executable (TypeScript only)"
+    )
+    p_compile_hook.add_argument(
         "--emit-js", help="Also write the intermediate JavaScript to this path"
+    )
+    p_compile_hook.add_argument(
+        "--emit-source-map",
+        help="Write an off-ledger composed TypeScript source map to this path",
     )
     p_compile_hook.add_argument(
         "--allow-malformed",
@@ -243,10 +260,17 @@ def main() -> None:
     )
     p_package_hook.add_argument("--tsc", help="TypeScript compiler executable")
     p_package_hook.add_argument(
+        "--esbuild", help="Exact esbuild 0.28.2 executable (TypeScript only)"
+    )
+    p_package_hook.add_argument(
         "--emit-bytecode", help="Also write the internal raw .qjsc payload"
     )
     p_package_hook.add_argument(
         "--emit-js", help="Also write the intermediate JavaScript"
+    )
+    p_package_hook.add_argument(
+        "--emit-source-map",
+        help="Write an off-ledger composed TypeScript source map",
     )
     p_package_hook.set_defaults(func=cmd_package_hook)
 
@@ -257,7 +281,9 @@ def main() -> None:
     )
     p_lock_profile.add_argument("source", help="Reviewed profile source JSON")
     p_lock_profile.add_argument("--wasm", required=True, help="Exact provider WASM")
-    p_lock_profile.add_argument("-o", "--output", required=True, help="Output lock JSON")
+    p_lock_profile.add_argument(
+        "-o", "--output", required=True, help="Output lock JSON"
+    )
     p_lock_profile.set_defaults(func=cmd_lock_profile)
 
     # verify-profile

@@ -5,6 +5,7 @@
   "description": "TypeScript frontend for the jshookz hook compiler: entry policy, result validation, and the driver that type-checks a hook against the declared Xahau API.",
   "license": "SEE LICENSE IN ../../LICENSE",
   "devDependencies": {
+    "esbuild": "0.28.2",
     "typescript": "6.0.3"
   },
   "scripts": {

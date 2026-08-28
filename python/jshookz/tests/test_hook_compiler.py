@@ -1391,7 +1391,7 @@ def test_frontend_emit_survives_parallel_workers():
     assert len(set(paths)) == 1
 
 
-def test_compiler_rejects_helper_import(tmp_path: Path):
+def test_compiler_bundles_static_relative_helper_import(tmp_path: Path):
     helper = tmp_path / "helper.ts"
     helper.write_text("export function helper(): number { return 1; }\n")
     source = tmp_path / "imports.hook.ts"
@@ -1399,12 +1399,20 @@ def test_compiler_rejects_helper_import(tmp_path: Path):
         """
         import { helper } from "./helper";
         export function main(): never {
-          accept(String(helper()));
+          throw new Error(String(helper()));
         }
         """
     )
-    with pytest.raises(RuntimeError, match="must not import helpers"):
-        compile_hook(source)
+    compiled = compile_hook(source)
+
+    assert "from \"./helper\"" not in compiled.javascript
+    host = WasmHost(wasm_path=XAHAU_HOOK_PROVIDER_WASM)
+    host.init()
+    try:
+        evaluated = host.run_hook_bytecode(compiled.bytecode)
+    finally:
+        host.destroy()
+    assert evaluated.error == "Error: 1"
 
 
 def test_compiler_rejects_rest_number_callback(tmp_path: Path):

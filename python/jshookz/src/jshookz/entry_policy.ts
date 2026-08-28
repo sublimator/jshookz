@@ -146,23 +146,43 @@ export function checkEntrySignatures(ts: TS, program: TS, source: TS): string[] 
   return diagnostics;
 }
 
-export function checkHookImports(ts: TS, source: TS): string[] {
+export function checkHookImports(
+  ts: TS,
+  source: TS,
+  allowStaticRelativeImports = false,
+): string[] {
   const diagnostics: string[] = [];
+  const relativeSpecifier = (node: TS): boolean => {
+    if (!node || !ts.isStringLiteralLike(node)) return false;
+    return node.text.startsWith("./") || node.text.startsWith("../");
+  };
   const visit = (node: TS) => {
-    if (ts.isImportDeclaration(node) && node.moduleSpecifier) {
+    if (
+      ts.isImportDeclaration(node) &&
+      node.moduleSpecifier &&
+      (!allowStaticRelativeImports || !relativeSpecifier(node.moduleSpecifier))
+    ) {
       diagnostics.push(
         formatAt(
           ts,
           node,
-          "Hook source must not import helpers; export main and optional callback from this file",
+          allowStaticRelativeImports
+            ? "Hook modules may use only static relative imports; bare module specifiers are forbidden"
+            : "JavaScript Hooks must not import modules; use TypeScript for compile-time bundling",
         ),
       );
-    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
+    } else if (
+      ts.isExportDeclaration(node) &&
+      node.moduleSpecifier &&
+      (!allowStaticRelativeImports || !relativeSpecifier(node.moduleSpecifier))
+    ) {
       diagnostics.push(
         formatAt(
           ts,
           node,
-          "Hook source must not import helpers; export main and optional callback from this file",
+          allowStaticRelativeImports
+            ? "Hook modules may use only static relative exports; bare module specifiers are forbidden"
+            : "JavaScript Hooks must not re-export modules; use TypeScript for compile-time bundling",
         ),
       );
     } else if (
@@ -174,7 +194,7 @@ export function checkHookImports(ts: TS, source: TS): string[] {
         formatAt(
           ts,
           node,
-          "Hook source must not import helpers; export main and optional callback from this file",
+          "Hook modules must use ESM static relative imports; import-equals is forbidden",
         ),
       );
     } else if (
@@ -185,8 +205,16 @@ export function checkHookImports(ts: TS, source: TS): string[] {
         formatAt(
           ts,
           node,
-          "Hook source must not import helpers; export main and optional callback from this file",
+          "Hook modules must not use dynamic import()",
         ),
+      );
+    } else if (
+      typeof ts.isMetaProperty === "function" &&
+      ts.isMetaProperty(node) &&
+      node.keywordToken === ts.SyntaxKind.ImportKeyword
+    ) {
+      diagnostics.push(
+        formatAt(ts, node, "Hook modules must not use import.meta"),
       );
     } else if (
       ts.isModuleDeclaration(node) &&

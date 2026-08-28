@@ -23,10 +23,23 @@ not a claim that the two engine patch releases are byte-identical.
 The project is pre-release and the v1 profile is not activated on a production
 network.
 
-The production compiler accepts TypeScript and JavaScript files. JavaScript is
-not an unchecked escape: it runs through TypeScript `checkJs` and the same
-typed Result ownership/dataflow gate as TypeScript. Every emitted module is
-then initialized and its live `main`/optional `callback` exports validated by
-the provider before `compile_hook` returns; host operations are unavailable
+The production compiler accepts TypeScript and JavaScript files. A TypeScript
+entry may use static relative imports for local helpers, constants, and types.
+The complete graph is checked with pinned TypeScript 6.0.3, emitted, and bundled
+with pinned esbuild 0.28.2 into one import-free ESM before qjsc compilation.
+Bare packages, dynamic `import()`, and `import.meta` are rejected; there is no
+runtime module loader. Run `npm ci` beside this package to install both exact
+frontend tools.
+
+JavaScript is not an unchecked escape and remains deliberately single-file:
+module imports are rejected, then the source runs through TypeScript `checkJs`
+and the same typed Result ownership/dataflow gate as TypeScript. Every emitted
+module is initialized and its live `main`/optional `callback` exports validated
+by the provider before `compile_hook` returns; host operations are unavailable
 during that initialization. Low-level `WasmHost.compile_source` remains a
 diagnostic primitive, not a deployability check.
+
+`compile-hook` and `package-hook` accept `--emit-js` for the final bundle and
+`--emit-source-map` for an optional composed map back to the authoring
+TypeScript. The map is diagnostic only: it is never included in qjsc bytecode
+or the single-payload XQJS artifact.

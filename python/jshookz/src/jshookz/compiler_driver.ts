@@ -1,4 +1,4 @@
-/* One Program: diagnostics, import ban, Result, callback type, emit. */
+/* One Program: graph diagnostics/policy, Result, callback type, emit. */
 
 import { checkResultOwnership } from "./result_validator";
 import { checkEntrySignatures, checkHookImports } from "./entry_policy";
@@ -114,7 +114,14 @@ export function compile(
     return fail("xfl", [...xfl.diagnostics], { xflProfile: xfl.profile });
   }
 
-  const importDiagnostics = checkHookImports(ts, source);
+  const authoringSources = program
+    .getSourceFiles()
+    .filter((candidate: TS) => !candidate.isDeclarationFile)
+    .sort((left: TS, right: TS) => left.fileName.localeCompare(right.fileName));
+  const allowStaticRelativeImports = sourcePath.endsWith(".ts");
+  const importDiagnostics = authoringSources.flatMap((candidate: TS) =>
+    checkHookImports(ts, candidate, allowStaticRelativeImports),
+  );
   if (importDiagnostics.length) {
     return fail("typescript", importDiagnostics);
   }
@@ -127,7 +134,9 @@ export function compile(
     );
   }
 
-  const resultDiagnostics = checkResultOwnership(ts, program, source);
+  const resultDiagnostics = authoringSources.flatMap((candidate: TS) =>
+    checkResultOwnership(ts, program, candidate),
+  );
   if (resultDiagnostics.length) {
     return fail("result", resultDiagnostics);
   }
