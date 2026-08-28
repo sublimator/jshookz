@@ -43,7 +43,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "e4df494125d6e2ad7c556f3966d12477f67dd8fa9cd5ab1cf1ea0558a3c498ce"
+    "sha256": "3106c40503708f5a54f9fecb6b2c7b0c594fa5eeb02df9c1d4e12c7fc1837da2"
   },
   "globals": {
     "AccountID": "object",
@@ -98,6 +98,7 @@
   },
   "namespaces": {
     "accept": {
+      "require": "function",
       "unlessPresent": "function",
       "unlessTruthy": "function",
       "when": "function"

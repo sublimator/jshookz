@@ -488,6 +488,40 @@ def test_rollback_require_present_strips_nullish_result_values(tmp_path: Path):
     assert compile_hook(source).bytecode
 
 
+def test_accept_require_assertion_narrows_instanceof_condition(tmp_path: Path):
+    source = tmp_path / "accept-require-narrowing.hook.ts"
+    source.write_text(
+        """
+        export function main(): never {
+          const transaction = otxn.object();
+          accept.require(
+            transaction instanceof Payment,
+            "not an incoming Payment",
+          );
+          const payment: Payment = transaction;
+          const amount: Amount = transaction.Amount;
+          void payment.Destination;
+          void amount;
+          return accept();
+        }
+        """
+    )
+
+    # Red control: this exact Hook does not type-check if require merely
+    # returns void. The assertion signature, not instanceof syntax alone,
+    # carries the narrowing beyond the helper call.
+    declarations = tmp_path / "without-accept-require-assertion.d.ts"
+    projected = XAHAU_V1_HOOKS_API_DECLARATIONS.read_text()
+    assert "): asserts condition;" in projected
+    declarations.write_text(projected.replace(
+        "): asserts condition;", "): void;", 1
+    ))
+    with pytest.raises(RuntimeError, match="Type 'Transaction' is missing"):
+        _typescript_to_javascript(source, declarations=declarations)
+
+    assert compile_hook(source).bytecode
+
+
 def test_legacy_rich_roots_are_not_public_constructors(tmp_path: Path):
     source = tmp_path / "factory-roots.hook.ts"
     source.write_text(

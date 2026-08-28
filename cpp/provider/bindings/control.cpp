@@ -349,6 +349,23 @@ js_accept_unless_truthy(JSContext *ctx, JSValueConst this_val,
 }
 
 JSValue
+// @binding provider:accept.require
+js_accept_require(JSContext *ctx, JSValueConst this_val,
+                  int argc, JSValueConst *argv)
+{
+    if (argc < 1)
+        return JS_ThrowTypeError(
+            ctx, "accept.require: expected condition");
+    int const truthy = JS_ToBool(ctx, argv[0]);
+    if (truthy < 0)
+        return JS_EXCEPTION;
+    if (truthy)
+        return JS_UNDEFINED;
+    return call_lifecycle(
+        ctx, this_val, argc, argv, 1, js_hook_accept);
+}
+
+JSValue
 // @binding provider:accept.when
 js_accept_when(JSContext *ctx, JSValueConst this_val,
                int argc, JSValueConst *argv)
@@ -477,6 +494,8 @@ registerControl(JSContext *ctx, JSValue global)
         JS_SetPropertyStr(ctx, accept.get(), "unlessTruthy",
             JS_NewCFunction(
                 ctx, js_accept_unless_truthy, "unlessTruthy", 3)) < 0 ||
+        JS_SetPropertyStr(ctx, accept.get(), "require",
+            JS_NewCFunction(ctx, js_accept_require, "require", 3)) < 0 ||
         JS_SetPropertyStr(ctx, accept.get(), "when",
             JS_NewCFunction(ctx, js_accept_when, "when", 3)) < 0)
         return false;

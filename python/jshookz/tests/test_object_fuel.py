@@ -722,10 +722,11 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
         # serialized-object constructors/prototypes.  The class hierarchy adds
         # 3,179 requested persistent bytes and 58 persistent allocations; the
         # generated complete-format tables add 7,757 static protocol bytes.
-        "registration": (170_207, 2_552),
-        "pre_call": (1_222_547, 2_602),
-        "peak": (5_417_504, 2_615),
-        "post_success": (3_452_208, 2_629),
+        # Publishing accept.require adds 136 charged bytes and 3 allocations.
+        "registration": (170_343, 2_555),
+        "pre_call": (1_222_683, 2_605),
+        "peak": (5_417_640, 2_618),
+        "post_success": (3_452_344, 2_632),
         "static_protocol": MAXIMUM_STATIC_PROTOCOL_BYTES,
     }
     assert restored_snapshot == registration
@@ -745,7 +746,7 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     )
     assert MAXIMUM_DUPLICATE_STACK == 11 * 6 * 8
     assert peak[0] < limits.quickjs_heap_bytes
-    assert limits.quickjs_heap_bytes - post_success[0] == 13_325_008
+    assert limits.quickjs_heap_bytes - post_success[0] == 13_324_872
     assert limits.quickjs_heap_bytes - post_success[0] >= HEADROOM_BYTES
 
 

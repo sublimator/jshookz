@@ -118,8 +118,8 @@ def test_otxn_object_is_one_certified_cached_local_view() -> None:
 @pytest.mark.parametrize(
     ("transaction", "code"),
     [
-        (IOU_PAYMENT, 22),
-        (MPT_PAYMENT, 22),
+        (IOU_PAYMENT, 3),
+        (MPT_PAYMENT, 3),
     ],
 )
 def test_payment_policy_rejects_missing_or_non_native_amounts(
@@ -130,13 +130,13 @@ def test_payment_policy_rejects_missing_or_non_native_amounts(
     assert result.rejected, result.error
     assert result.return_code == code
     assert _call_names(result)[:7] == [
-        "otxn_type",
         "otxn_slot",
         "slot_size",
         "slot_clear",
         "otxn_slot",
         "slot",
         "slot_clear",
+        "hook_account",
     ]
 
 
@@ -148,7 +148,6 @@ def test_incomplete_payment_shaped_origin_is_internal_invariant_failure() -> Non
     assert result.error is not None
     assert "not a complete Transaction" in str(result.error)
     assert _call_names(result) == [
-        "otxn_type",
         "otxn_slot",
         "slot_size",
         "slot_clear",
@@ -165,7 +164,6 @@ def test_payment_policy_accepts_matching_native_payment() -> None:
     assert result.return_code == 0
     assert result.return_msg == b"incoming native XAH accepted"
     assert _call_names(result) == [
-        "otxn_type",
         "otxn_slot",
         "slot_size",
         "slot_clear",
@@ -177,7 +175,7 @@ def test_payment_policy_accepts_matching_native_payment() -> None:
     ]
 
 
-def test_payment_policy_skips_non_payment_without_materializing() -> None:
+def test_payment_policy_accepts_non_payment_after_local_classification() -> None:
     runner = _runner(ACCOUNT_SET)
     runner.runtime.otxn_type = 3
 
@@ -185,14 +183,22 @@ def test_payment_policy_skips_non_payment_without_materializing() -> None:
 
     assert result.accepted, result.error
     assert result.return_msg == b"not an incoming Payment"
-    assert _call_names(result) == ["otxn_type", "accept"]
+    assert _call_names(result) == [
+        "otxn_slot",
+        "slot_size",
+        "slot_clear",
+        "otxn_slot",
+        "slot",
+        "slot_clear",
+        "accept",
+    ]
 
 
 def test_payment_policy_rejects_wrong_destination_and_self_payment() -> None:
     wrong_destination = _runner(PAYMENT, hook_account=bytes.fromhex("CC" * 20))
     wrong = wrong_destination.run_file(HOOK)
     assert wrong.rejected, wrong.error
-    assert wrong.return_code == 20
+    assert wrong.return_code == 1
 
     self_payment = (
         bytes.fromhex("120000")
@@ -206,7 +212,7 @@ def test_payment_policy_rejects_wrong_destination_and_self_payment() -> None:
     )
     self_result = _runner(self_payment, hook_account=SOURCE).run_file(HOOK)
     assert self_result.rejected, self_result.error
-    assert self_result.return_code == 21
+    assert self_result.return_code == 2
 
 
 def test_malformed_trusted_transaction_is_internal_failure_after_cleanup() -> None:

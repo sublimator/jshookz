@@ -312,6 +312,45 @@ def test_accept_when_accepts_on_truthy_and_continues_on_falsy():
     assert [call.name for call in continued.call_log] == ["accept"]
 
 
+def test_accept_require_continues_on_truthy_and_accepts_on_falsy():
+    continued = HookRunner().run(
+        '''
+        export function main() {
+          accept.require(true, "not required", 85);
+          accept("kept going", 86);
+        }
+        '''
+    )
+    assert continued.accepted, continued.error
+    assert continued.return_code == 86
+    assert continued.return_msg == b"kept going"
+    assert [call.name for call in continued.call_log] == ["accept"]
+
+    accepted = HookRunner().run(
+        '''
+        export function main() {
+          accept.require(0, "requirement absent", 87);
+          rollback("unexpected", 1);
+        }
+        '''
+    )
+    assert accepted.accepted, accepted.error
+    assert accepted.return_code == 87
+    assert accepted.return_msg == b"requirement absent"
+    assert [call.name for call in accepted.call_log] == ["accept"]
+
+    missing = HookRunner().run(
+        '''
+        export function main() {
+          accept.require();
+        }
+        '''
+    )
+    assert missing.error is not None
+    assert "accept.require: expected condition" in str(missing.error)
+    assert missing.call_log == []
+
+
 def test_accept_unless_present_accepts_on_absence_and_unwraps_presence():
     missing = HookRunner().run(
         '''
