@@ -156,6 +156,31 @@ export function checkHookImports(
     if (!node || !ts.isStringLiteralLike(node)) return false;
     return node.text.startsWith("./") || node.text.startsWith("../");
   };
+  const unwrapTransparentExpression = (original: TS): TS => {
+    let node = original;
+    while (
+      ts.isParenthesizedExpression(node) ||
+      ts.isAsExpression(node) ||
+      ts.isTypeAssertionExpression(node) ||
+      ts.isNonNullExpression(node) ||
+      (typeof ts.isSatisfiesExpression === "function" &&
+        ts.isSatisfiesExpression(node)) ||
+      (typeof ts.isPartiallyEmittedExpression === "function" &&
+        ts.isPartiallyEmittedExpression(node))
+    ) {
+      node = node.expression;
+    }
+    return node;
+  };
+  const isCommonJSCallee = (original: TS): boolean => {
+    const callee = unwrapTransparentExpression(original);
+    if (ts.isIdentifier(callee)) return callee.text === "require";
+    return (
+      ts.isPropertyAccessExpression(callee) &&
+      ts.isIdentifier(unwrapTransparentExpression(callee.expression)) &&
+      unwrapTransparentExpression(callee.expression).text === "require"
+    );
+  };
   const visit = (node: TS) => {
     if (
       ts.isImportDeclaration(node) &&
@@ -224,11 +249,7 @@ export function checkHookImports(
       );
     } else if (
       ts.isCallExpression(node) &&
-      ((ts.isIdentifier(node.expression) &&
-        node.expression.text === "require") ||
-        (ts.isPropertyAccessExpression(node.expression) &&
-          ts.isIdentifier(node.expression.expression) &&
-          node.expression.expression.text === "require"))
+      isCommonJSCallee(node.expression)
     ) {
       diagnostics.push(
         formatAt(

@@ -117,12 +117,21 @@ def test_resolvable_bare_dependency_is_still_rejected(tmp_path: Path):
         compile_hook(import_type)
 
 
-def test_commonjs_require_is_rejected_before_bundling(tmp_path: Path):
+@pytest.mark.parametrize(
+    "callee",
+    [
+        "require",
+        "(require)",
+        "(require as typeof require)",
+        "(<typeof require>require)",
+    ],
+)
+def test_commonjs_require_is_rejected_before_bundling(tmp_path: Path, callee: str):
     (tmp_path / "helper.ts").write_text("export const VALUE = 83;\n")
     entry = tmp_path / "require.hook.ts"
     entry.write_text(
         "declare function require(path: string): { VALUE: number };\n"
-        'const { VALUE } = require("./helper");\n'
+        f'const {{ VALUE }} = {callee}("./helper");\n'
         "export function main(): never { throw new Error(String(VALUE)); }\n"
     )
 
