@@ -116,9 +116,10 @@ static_assert(sizeof(ArrayCacheBranch) == 32 * sizeof(void *));
 static_assert(sizeof(ArrayCacheLeaf) == 32 * sizeof(JSValue));
 
 // The recursive caps fit both the scope ordinal and direct-field count in
-// sixteen bits. Keeping both in the architecture's existing uint32 state word
-// lets finalizers walk caches without consulting an owner that is being torn
-// down, and adds no wrapper bytes or cache allocation.
+// sixteen bits. Packing both into one uint32 word lets finalizers walk caches
+// without consulting an owner that is being torn down. The view and cache-count
+// metadata enlarge the Wasm ObjectState from 16 to 24 bytes, but allocate no
+// separate cache storage before a lazy value is materialized.
 constexpr std::uint32_t kScopeMask = 0xffffu;
 
 [[nodiscard]] constexpr std::uint32_t

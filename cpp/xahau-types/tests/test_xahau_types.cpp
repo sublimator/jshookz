@@ -812,28 +812,124 @@ TEST_F(XahauTypes, TrustedTransactionMintMatchesGenericDecodeAndFailsClosed)
         EXPECT_EQ(to_string(text.get()), message);
     };
 
-    auto const payment = hexBytes(
-        "12000024000000016140000000000F4240"
-        "68400000000000000A73008114"
-        "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
-        "831439249EE0886DE835D4F4D47DA9D9B1D2AED83C11");
-    installValue("genericPayment", types::makeCertifiedObjectCopy(
-                                       ctx, payment.data(), payment.size()));
-    installValue("trustedPayment", mintOwned(payment));
-    auto equivalent = eval(R"JS(
-        genericPayment instanceof Payment &&
-        trustedPayment instanceof Payment &&
-        Object.getPrototypeOf(genericPayment) ===
-          Object.getPrototypeOf(trustedPayment) &&
-        genericPayment.Account.equals(trustedPayment.Account) &&
-        genericPayment.Destination.equals(trustedPayment.Destination) &&
-        genericPayment.Amount.equals(trustedPayment.Amount) &&
-        genericPayment.toBytes().every(
-          (byte, index) => byte === trustedPayment.toBytes()[index]) &&
-        JSON.stringify(genericPayment) === JSON.stringify(trustedPayment)
-    )JS");
-    ASSERT_FALSE(equivalent.isException());
-    EXPECT_TRUE(JS_ToBool(ctx, equivalent.get()));
+    struct AcceptedFixture {
+        char const* name;
+        char const* hex;
+        bool payment;
+    };
+    // Every accepted blob is independently encoded at
+    // xahaud-hookz-test-vectors:b865c6f. The nested Payment and
+    // EnableAmendment are pinned by oracle notes d877442.
+    std::array const accepted = {
+        AcceptedFixture{
+            "payment",
+            "12000024000000016140000000000F4240"
+            "68400000000000000A73008114"
+            "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+            "831439249EE0886DE835D4F4D47DA9D9B1D2AED83C11",
+            true},
+        AcceptedFixture{
+            "account-set",
+            "120003240000000220210000000868400000000000000C73008114"
+            "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+            false},
+        AcceptedFixture{
+            "payment-with-memo",
+            "12000024000000036140000000000F4240"
+            "68400000000000000A73008114"
+            "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+            "831439249EE0886DE835D4F4D47DA9D9B1D2AED83C11"
+            "F9EA7C0A746578742F706C61696E"
+            "7D0B68656C6C6F2D7861686175"
+            "7E0A746578742F706C61696EE1F1",
+            true},
+        AcceptedFixture{
+            "enable-amendment-pseudo-transaction",
+            "1200642400000000260000007B5013"
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            "68400000000000000073008114"
+            "0000000000000000000000000000000000000000",
+            false},
+    };
+
+    for (auto const& fixture : accepted) {
+        SCOPED_TRACE(fixture.name);
+        auto const source = hexBytes(fixture.hex);
+        installValue("genericTransaction", types::makeCertifiedObjectCopy(
+                                               ctx, source.data(), source.size()));
+        installValue("trustedTransaction", mintOwned(source));
+        auto equivalent = eval(R"JS(
+            (() => {
+              const kind = value => value instanceof Payment ? "Payment" :
+                value instanceof Transaction ? "Transaction" : "other";
+              const snapshot = value => JSON.stringify({
+                kind: kind(value),
+                keys: Reflect.ownKeys(value),
+                fields: Reflect.ownKeys(value).map(name => {
+                  const bytes = value.fieldBytes(name);
+                  return [name, bytes === undefined ? null : bytes.toHex()];
+                }),
+                bytes: Array.from(value.toBytes()),
+                json: value.toJSON(),
+              });
+              return Object.getPrototypeOf(genericTransaction) ===
+                  Object.getPrototypeOf(trustedTransaction) &&
+                snapshot(genericTransaction) === snapshot(trustedTransaction);
+            })()
+        )JS");
+        if (equivalent.isException()) {
+            jshookz::qjs::OwnedValue error(ctx, JS_GetException(ctx));
+            FAIL() << to_string(error.get());
+        }
+        EXPECT_TRUE(JS_ToBool(ctx, equivalent.get()));
+
+        auto expectedClass = eval(fixture.payment
+                ? "genericTransaction instanceof Payment && "
+                  "trustedTransaction instanceof Payment"
+                : "genericTransaction instanceof Transaction && "
+                  "trustedTransaction instanceof Transaction && "
+                  "!(genericTransaction instanceof Payment) && "
+                  "!(trustedTransaction instanceof Payment)");
+        ASSERT_FALSE(expectedClass.isException());
+        EXPECT_TRUE(JS_ToBool(ctx, expectedClass.get()));
+    }
+
+    auto expectBothReject = [this, &mintOwned](char const* name,
+                                char const* hex) {
+        SCOPED_TRACE(name);
+        auto const source = hexBytes(hex);
+        jshookz::qjs::OwnedValue generic(ctx,
+            jshookz::provider::types::makeCertifiedObjectCopy(
+                ctx, source.data(), static_cast<std::uint32_t>(source.size())));
+        EXPECT_TRUE(generic.isException());
+        if (generic.isException()) {
+            jshookz::qjs::OwnedValue error(ctx, JS_GetException(ctx));
+            EXPECT_TRUE(JS_IsError(ctx, error.get()));
+        }
+
+        jshookz::qjs::OwnedValue trusted(ctx, mintOwned(source));
+        EXPECT_TRUE(trusted.isException());
+        if (trusted.isException()) {
+            jshookz::qjs::OwnedValue error(ctx, JS_GetException(ctx));
+            EXPECT_TRUE(JS_IsError(ctx, error.get()));
+        }
+    };
+
+    // Independent red controls mirror exact cases in
+    // cpp/x-data/tests/oracle_corpus.json and recursive-index tests. They span
+    // malformed/unknown headers, duplicate fields, wrong terminators,
+    // recursive structure, and a semantically invalid leaf.
+    expectBothReject("truncated-field", "2200");
+    expectBothReject("unknown-long-form-header", "1000");
+    expectBothReject("duplicate-field", "22000000012200000002");
+    expectBothReject("wrong-root-terminator", "F1");
+    expectBothReject("wrong-array-terminator", "F9E1");
+    expectBothReject("invalid-account-length", "8101FF");
+    expectBothReject(
+        "invalid-iou-zero-issuer",
+        "61D4838D7EA4C680000000000000000000000000005553440000000000"
+        "0000000000000000000000000000000000000000000008114"
+        "B5F762798A53D543A014CAF8B297CFF8F2F937E8");
 
     expectInternal(
         hexBytes(
