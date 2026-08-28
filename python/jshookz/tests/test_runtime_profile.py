@@ -64,6 +64,7 @@ def test_profile_lock_pins_provider_and_has_no_wasi(tmp_path: Path):
     assert len(loaded.bytecode_abi_id) == 32
     assert len(loaded.runtime_profile_id) == 32
     assert len(lock["provider"]["imports"]) == 17
+    assert lock["source"]["limits"]["host_work_budget"] == 2_097_152
     assert {item["module"] for item in lock["provider"]["imports"]} == {"env"}
     assert lock["provider"]["imports"] == sorted(
         source["provider"]["imports"], key=lambda item: (item["module"], item["name"])

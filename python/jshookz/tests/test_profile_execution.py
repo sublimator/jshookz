@@ -197,11 +197,12 @@ def test_profile_stack_limit_rejects_unbounded_recursion():
 
 def test_profile_host_work_counts_addressed_bytes_before_dispatch():
     handler = _TraceHost()
-    host = WasmHost.profiled(handler=handler)
+    limits = replace(_limits(), host_work_budget=5)
+    host = WasmHost(handler=handler, execution_limits=limits)
     host.init()
     try:
         small = host.eval('trace("abc")')
-        exhausted = host.eval('trace("x".repeat(1_000_000))')
+        exhausted = host.eval('trace("x")')
     finally:
         host.destroy()
 
@@ -209,5 +210,5 @@ def test_profile_host_work_counts_addressed_bytes_before_dispatch():
     assert small.host_work_used == 4
     assert not exhausted.ok
     assert exhausted.error == "host work budget exhausted"
-    assert exhausted.host_work_used == _limits().host_work_budget
+    assert exhausted.host_work_used == limits.host_work_budget
     assert handler.calls == 1

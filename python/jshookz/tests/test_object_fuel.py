@@ -721,10 +721,12 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
         # Wizer restores the accepted 322-member ordinary namespaces, whose
         # +28,191-byte/+332-allocation baseline persists in every instance.
         # The two selected XFL methods add 336 persistent bytes and 6 objects.
-        "registration": (166_004, 2_492),
-        "pre_call": (1_218_344, 2_542),
-        "peak": (5_413_301, 2_555),
-        "post_success": (3_447_997, 2_569),
+        # Publishing otxn.object adds one function plus its property cell:
+        # exactly +96 persistent bytes and +2 persistent allocations.
+        "registration": (166_100, 2_494),
+        "pre_call": (1_218_440, 2_544),
+        "peak": (5_413_397, 2_557),
+        "post_success": (3_448_093, 2_571),
         "static_protocol": MAXIMUM_STATIC_PROTOCOL_BYTES,
     }
     assert restored_snapshot == registration
@@ -744,7 +746,7 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     )
     assert MAXIMUM_DUPLICATE_STACK == 11 * 6 * 8
     assert peak[0] < limits.quickjs_heap_bytes
-    assert limits.quickjs_heap_bytes - post_success[0] == 13_329_219
+    assert limits.quickjs_heap_bytes - post_success[0] == 13_329_123
     assert limits.quickjs_heap_bytes - post_success[0] >= HEADROOM_BYTES
 
 
