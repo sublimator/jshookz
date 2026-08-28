@@ -15,10 +15,19 @@ enum ResultCode {
  * access performs no additional host calls.
  */
 export function main(): never {
+  const transactionType = rollback.onFail(
+    otxn.type(),
+    "cannot classify originating transaction",
+  );
+  accept.when(
+    transactionType !== TransactionType.Payment,
+    "not an incoming Payment",
+  );
+
   const transaction = otxn.object();
   accept.require(
     transaction instanceof Payment,
-    "not an incoming Payment",
+    "originating Payment is not structurally complete",
   );
 
   const source = transaction.Account;

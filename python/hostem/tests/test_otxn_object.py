@@ -129,7 +129,8 @@ def test_payment_policy_rejects_missing_or_non_native_amounts(
 
     assert result.rejected, result.error
     assert result.return_code == code
-    assert _call_names(result)[:7] == [
+    assert _call_names(result)[:8] == [
+        "otxn_type",
         "otxn_slot",
         "slot_size",
         "slot_clear",
@@ -148,6 +149,7 @@ def test_incomplete_payment_shaped_origin_is_internal_invariant_failure() -> Non
     assert result.error is not None
     assert "not a complete Transaction" in str(result.error)
     assert _call_names(result) == [
+        "otxn_type",
         "otxn_slot",
         "slot_size",
         "slot_clear",
@@ -164,6 +166,7 @@ def test_payment_policy_accepts_matching_native_payment() -> None:
     assert result.return_code == 0
     assert result.return_msg == b"incoming native XAH accepted"
     assert _call_names(result) == [
+        "otxn_type",
         "otxn_slot",
         "slot_size",
         "slot_clear",
@@ -175,7 +178,7 @@ def test_payment_policy_accepts_matching_native_payment() -> None:
     ]
 
 
-def test_payment_policy_accepts_non_payment_after_local_classification() -> None:
+def test_payment_policy_skips_non_payment_without_materializing() -> None:
     runner = _runner(ACCOUNT_SET)
     runner.runtime.otxn_type = 3
 
@@ -183,15 +186,7 @@ def test_payment_policy_accepts_non_payment_after_local_classification() -> None
 
     assert result.accepted, result.error
     assert result.return_msg == b"not an incoming Payment"
-    assert _call_names(result) == [
-        "otxn_slot",
-        "slot_size",
-        "slot_clear",
-        "otxn_slot",
-        "slot",
-        "slot_clear",
-        "accept",
-    ]
+    assert _call_names(result) == ["otxn_type", "accept"]
 
 
 def test_payment_policy_rejects_wrong_destination_and_self_payment() -> None:
