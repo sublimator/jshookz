@@ -40,6 +40,7 @@ during that initialization. Low-level `WasmHost.compile_source` remains a
 diagnostic primitive, not a deployability check.
 
 `compile-hook` and `package-hook` accept `--emit-js` for the final bundle and
-`--emit-source-map` for an optional composed map back to the authoring
-TypeScript. The map is diagnostic only: it is never included in qjsc bytecode
-or the single-payload XQJS artifact.
+`--emit-source-map` for an optional composed map back to authoring TypeScript
+that contributes generated code. Erased type-only modules have no generated
+segment and therefore no source-map entry. The map is diagnostic only: it is
+never included in qjsc bytecode or the single-payload XQJS artifact.

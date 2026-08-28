@@ -10,6 +10,8 @@ import {
 const path = require("path") as {
   resolve(...parts: string[]): string;
   dirname(p: string): string;
+  relative(from: string, to: string): string;
+  isAbsolute(p: string): boolean;
 };
 
 type TS = any;
@@ -114,12 +116,28 @@ export function compile(
     return fail("xfl", [...xfl.diagnostics], { xflProfile: xfl.profile });
   }
 
-  const authoringSources = program
+  const authoringRoot = path.dirname(path.resolve(sourcePath));
+  const withinAuthoringRoot = (candidate: TS): boolean => {
+    const relative = path.relative(
+      authoringRoot,
+      path.resolve(candidate.fileName),
+    );
+    return (
+      relative === "" ||
+      (!relative.startsWith("..") && !path.isAbsolute(relative))
+    );
+  };
+  const policySources = program
     .getSourceFiles()
-    .filter((candidate: TS) => !candidate.isDeclarationFile)
+    .filter(
+      (candidate: TS) =>
+        !candidate.isDeclarationFile ||
+        (path.resolve(candidate.fileName) !== path.resolve(declarationPath) &&
+          withinAuthoringRoot(candidate)),
+    )
     .sort((left: TS, right: TS) => left.fileName.localeCompare(right.fileName));
   const allowStaticRelativeImports = sourcePath.endsWith(".ts");
-  const importDiagnostics = authoringSources.flatMap((candidate: TS) =>
+  const importDiagnostics = policySources.flatMap((candidate: TS) =>
     checkHookImports(ts, candidate, allowStaticRelativeImports),
   );
   if (importDiagnostics.length) {
@@ -134,9 +152,9 @@ export function compile(
     );
   }
 
-  const resultDiagnostics = authoringSources.flatMap((candidate: TS) =>
-    checkResultOwnership(ts, program, candidate),
-  );
+  const resultDiagnostics = policySources
+    .filter((candidate: TS) => !candidate.isDeclarationFile)
+    .flatMap((candidate: TS) => checkResultOwnership(ts, program, candidate));
   if (resultDiagnostics.length) {
     return fail("result", resultDiagnostics);
   }

@@ -63,6 +63,8 @@ class _TypeScriptOutput:
 # to be on PATH. A global tsc of a different major silently changes what
 # type-checks, and nothing would notice.
 _FRONTEND_NODE_MODULES = _FRONTEND_DIR / "node_modules"
+_PINNED_TYPESCRIPT_VERSION = "6.0.3"
+_TYPESCRIPT_IDENTITY_CACHE: dict[tuple[str, int, int, str, int, int], str] = {}
 _PINNED_ESBUILD_VERSION = "0.28.2"
 _ESBUILD_VERSION_CACHE: dict[tuple[str, int, int], str] = {}
 
@@ -102,6 +104,75 @@ def _typescript_library(tsc: str | None) -> Path:
             "pinned frontend TypeScript instead."
         )
     return typescript
+
+
+def _typescript_identity(tsc: str | None) -> str:
+    executable = Path(_typescript_executable(tsc)).resolve()
+    library = _typescript_library(tsc).resolve()
+    executable_stat = executable.stat()
+    library_stat = library.stat()
+    key = (
+        str(executable),
+        executable_stat.st_mtime_ns,
+        executable_stat.st_size,
+        str(library),
+        library_stat.st_mtime_ns,
+        library_stat.st_size,
+    )
+    cached = _TYPESCRIPT_IDENTITY_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    executable_probe = subprocess.run(
+        [str(executable), "--version"],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    executable_version = executable_probe.stdout.strip().removeprefix("Version ")
+    if executable_probe.returncode != 0:
+        detail = executable_probe.stderr.strip() or "version probe failed"
+        raise RuntimeError(f"Cannot execute pinned TypeScript: {detail}")
+
+    node = shutil.which("node")
+    if not node:
+        raise RuntimeError("Node.js not found; it is required beside TypeScript")
+    library_probe = subprocess.run(
+        [
+            node,
+            "-e",
+            (
+                "const ts=require(process.argv[1]);"
+                "process.stdout.write(String(ts.version));"
+            ),
+            str(library),
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    library_version = library_probe.stdout.strip()
+    if library_probe.returncode != 0:
+        detail = library_probe.stderr.strip() or "parser version probe failed"
+        raise RuntimeError(f"Cannot load pinned TypeScript parser: {detail}")
+    if (
+        executable_version != _PINNED_TYPESCRIPT_VERSION
+        or library_version != _PINNED_TYPESCRIPT_VERSION
+    ):
+        raise RuntimeError(
+            "Hook TypeScript version mismatch: expected "
+            f"{_PINNED_TYPESCRIPT_VERSION}, found executable "
+            f"{executable_version or '<unknown>'} and parser "
+            f"{library_version or '<unknown>'}"
+        )
+
+    identity = (
+        f"{_PINNED_TYPESCRIPT_VERSION}:"
+        f"{executable}:{executable_stat.st_mtime_ns}:{executable_stat.st_size}:"
+        f"{library}:{library_stat.st_mtime_ns}:{library_stat.st_size}"
+    )
+    _TYPESCRIPT_IDENTITY_CACHE[key] = identity
+    return identity
 
 
 def _esbuild_executable(esbuild: str | None) -> Path:
@@ -151,7 +222,10 @@ def _frontend_driver_js(tsc: str | None) -> Path:
     if missing:
         raise RuntimeError(f"compiler frontend source missing: {missing[0]}")
     stamp = ":".join(
-        f"{path.name}={path.stat().st_mtime_ns}" for path in _FRONTEND_SOURCES
+        [
+            *(f"{path.name}={path.stat().st_mtime_ns}" for path in _FRONTEND_SOURCES),
+            f"typescript={_typescript_identity(tsc)}",
+        ]
     )
     cache_root = Path(tempfile.gettempdir()) / "jshookz-frontend"
     cache_root.mkdir(parents=True, exist_ok=True)
@@ -318,34 +392,43 @@ def _normalize_source_map(map_path: Path, source_root: Path) -> str:
         try:
             relative = resolved.relative_to(root)
         except ValueError:
-            # On macOS, TypeScript can realpath /var to /private/var while
-            # retaining /Users for authoring sources. Its relative map path
-            # then contains a synthetic /private/Users segment. Reconstruct
-            # only suffixes beneath the already-authorized source root and
-            # select the most-specific existing match.
-            parts = tuple(
+            # TypeScript can realpath macOS's /var -> /private/var while
+            # retaining /Users for authoring sources. Match the complete,
+            # canonical source-root identity in the map path; never guess a
+            # same-content suffix or launder an escaped symlink.
+            raw_parts = tuple(
                 part
                 for part in raw_source.replace("\\", "/").split("/")
                 if part not in {"", ".", ".."}
             )
-            candidates: list[tuple[int, Path, Path]] = []
-            for index in range(len(parts)):
-                candidate = root.joinpath(*parts[index:]).resolve()
+            root_parts = tuple(
+                part for part in root.parts if part not in {root.anchor, ""}
+            )
+            candidates: list[tuple[Path, Path]] = []
+            for index in range(len(raw_parts) - len(root_parts) + 1):
+                if raw_parts[index : index + len(root_parts)] != root_parts:
+                    continue
+                remainder = raw_parts[index + len(root_parts) :]
+                candidate = root.joinpath(*remainder).resolve()
                 try:
                     candidate_relative = candidate.relative_to(root)
                 except ValueError:
                     continue
-                if candidate.is_file() and candidate.read_text() == embedded_content:
-                    candidates.append(
-                        (len(parts) - index, candidate, candidate_relative)
-                    )
-            if not candidates:
+                candidates.append((candidate, candidate_relative))
+            unique_candidates = {
+                (candidate, candidate_relative)
+                for candidate, candidate_relative in candidates
+            }
+            if len(unique_candidates) != 1:
                 raise RuntimeError(
                     "Hook bundler source map escaped the Hook source root: "
                     f"{raw_source}"
                 )
-            _, resolved, relative = max(candidates, key=lambda row: row[0])
-        if not resolved.is_file() or resolved.read_text() != embedded_content:
+            resolved, relative = unique_candidates.pop()
+        source_text = (
+            resolved.read_bytes().decode("utf-8") if resolved.is_file() else None
+        )
+        if source_text != embedded_content:
             raise RuntimeError(
                 f"Hook bundler source map content disagrees with {relative.as_posix()}"
             )
@@ -460,21 +543,28 @@ def _compile_typescript_graph(
         temp_path = Path(temp)
         out_dir = temp_path / "out"
         config = temp_path / "tsconfig.json"
+        compiler_options: dict[str, object] = {
+            "lib": ["ES2023"],
+            "module": "ESNext",
+            "moduleResolution": "Bundler",
+            "outDir": str(out_dir),
+            "rootDir": str(source.parent),
+            "skipLibCheck": False,
+            "strict": True,
+            "target": "ES2023",
+        }
+        if source_map:
+            compiler_options.update(
+                {
+                    "sourceMap": True,
+                    "sourceRoot": str(source.parent),
+                    "inlineSources": True,
+                }
+            )
         config.write_text(
             json.dumps(
                 {
-                    "compilerOptions": {
-                        "lib": ["ES2023"],
-                        "module": "ESNext",
-                        "moduleResolution": "Bundler",
-                        "outDir": str(out_dir),
-                        "rootDir": str(source.parent),
-                        "skipLibCheck": False,
-                        "sourceMap": source_map,
-                        "inlineSources": source_map,
-                        "strict": True,
-                        "target": "ES2023",
-                    },
+                    "compilerOptions": compiler_options,
                     "files": [str(declarations), str(source)],
                 },
                 indent=2,

@@ -186,6 +186,20 @@ export function checkHookImports(
         ),
       );
     } else if (
+      typeof ts.isImportTypeNode === "function" &&
+      ts.isImportTypeNode(node) &&
+      node.argument &&
+      ts.isLiteralTypeNode(node.argument) &&
+      !relativeSpecifier(node.argument.literal)
+    ) {
+      diagnostics.push(
+        formatAt(
+          ts,
+          node,
+          "Hook import types may use only relative module specifiers; bare module specifiers are forbidden",
+        ),
+      );
+    } else if (
       ts.isImportEqualsDeclaration(node) &&
       node.moduleReference &&
       ts.isExternalModuleReference(node.moduleReference)
@@ -206,6 +220,21 @@ export function checkHookImports(
           ts,
           node,
           "Hook modules must not use dynamic import()",
+        ),
+      );
+    } else if (
+      ts.isCallExpression(node) &&
+      ((ts.isIdentifier(node.expression) &&
+        node.expression.text === "require") ||
+        (ts.isPropertyAccessExpression(node.expression) &&
+          ts.isIdentifier(node.expression.expression) &&
+          node.expression.expression.text === "require"))
+    ) {
+      diagnostics.push(
+        formatAt(
+          ts,
+          node,
+          "Hook modules must not use CommonJS require(); use static relative ESM imports",
         ),
       );
     } else if (

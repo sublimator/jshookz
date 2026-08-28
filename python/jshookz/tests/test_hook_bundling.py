@@ -95,7 +95,9 @@ def test_resolvable_bare_dependency_is_still_rejected(tmp_path: Path):
     (package / "package.json").write_text(
         json.dumps({"name": "fixture-package", "types": "index.d.ts"})
     )
-    (package / "index.d.ts").write_text("export const VALUE: 7;\n")
+    (package / "index.d.ts").write_text(
+        "export const VALUE: 7;\nexport interface Imported { value: number }\n"
+    )
     entry = tmp_path / "bare.hook.ts"
     entry.write_text(
         'import { VALUE } from "fixture-package";\n'
@@ -103,6 +105,42 @@ def test_resolvable_bare_dependency_is_still_rejected(tmp_path: Path):
     )
 
     with pytest.raises(RuntimeError, match="bare module specifiers are forbidden"):
+        compile_hook(entry)
+
+    import_type = tmp_path / "bare-import-type.hook.ts"
+    import_type.write_text(
+        'type Imported = import("fixture-package").Imported;\n'
+        "const value: Imported = { value: 83 };\n"
+        "export function main(): never { throw new Error(String(value.value)); }\n"
+    )
+    with pytest.raises(RuntimeError, match="bare module specifiers are forbidden"):
+        compile_hook(import_type)
+
+
+def test_commonjs_require_is_rejected_before_bundling(tmp_path: Path):
+    (tmp_path / "helper.ts").write_text("export const VALUE = 83;\n")
+    entry = tmp_path / "require.hook.ts"
+    entry.write_text(
+        "declare function require(path: string): { VALUE: number };\n"
+        'const { VALUE } = require("./helper");\n'
+        "export function main(): never { throw new Error(String(VALUE)); }\n"
+    )
+
+    with pytest.raises(RuntimeError, match=r"must not use CommonJS require\(\)"):
+        compile_hook(entry)
+
+
+def test_local_declaration_cannot_augment_hook_globals(tmp_path: Path):
+    (tmp_path / "ambient.d.ts").write_text(
+        "export {};\ndeclare global { function phantom(message: string): never; }\n"
+    )
+    entry = tmp_path / "ambient.hook.ts"
+    entry.write_text(
+        'import type {} from "./ambient";\n'
+        'export function main(): never { return phantom("ambient"); }\n'
+    )
+
+    with pytest.raises(RuntimeError, match="must not augment ambient globals"):
         compile_hook(entry)
 
 
@@ -201,6 +239,41 @@ def test_composed_source_map_is_stable_embedded_and_decodable(tmp_path: Path):
     entry_mapping = json.loads(decoded.stdout)
     assert entry_mapping["originalSource"] == "shared/policy.ts"
     assert entry_mapping["originalLine"] > 0
+
+
+def test_source_map_preserves_crlf_and_rejects_escaped_symlink(tmp_path: Path):
+    crlf_root = tmp_path / "crlf"
+    crlf_root.mkdir()
+    helper = crlf_root / "helper.ts"
+    helper.write_bytes(b"export const VALUE = 83;\r\n")
+    entry = crlf_root / "crlf.hook.ts"
+    entry.write_bytes(
+        b'import { VALUE } from "./helper";\r\n'
+        b"export function main(): never { throw new Error(String(VALUE)); }\r\n"
+    )
+
+    source_map = json.loads(compile_hook(entry, source_map=True).source_map or "")
+    contents = dict(
+        zip(source_map["sources"], source_map["sourcesContent"], strict=True)
+    )
+    assert contents["helper.ts"] == helper.read_bytes().decode("utf-8")
+    assert contents["crlf.hook.ts"] == entry.read_bytes().decode("utf-8")
+
+    escaped_root = tmp_path / "escaped"
+    outside = tmp_path / "outside"
+    (escaped_root / "sub").mkdir(parents=True)
+    outside.mkdir()
+    source_text = "export const VALUE = 83;\n"
+    (outside / "helper.ts").write_text(source_text)
+    (escaped_root / "helper.ts").write_text(source_text)
+    (escaped_root / "sub" / "helper.ts").symlink_to(outside / "helper.ts")
+    escaped_entry = escaped_root / "escaped.hook.ts"
+    escaped_entry.write_text(
+        'import { VALUE } from "./sub/helper";\n'
+        "export function main(): never { throw new Error(String(VALUE)); }\n"
+    )
+    with pytest.raises(RuntimeError, match="escaped the Hook source root"):
+        compile_hook(escaped_entry, source_map=True)
 
 
 def test_bundled_output_source_map_and_qjsc_are_deterministic(tmp_path: Path):
@@ -313,3 +386,21 @@ def test_esbuild_dependency_and_runtime_are_exactly_pinned(tmp_path: Path):
     entry = _write_nested_graph(tmp_path / "hook")
     with pytest.raises(RuntimeError, match="expected esbuild 0.28.2, found 0.28.1"):
         compile_hook(entry, esbuild=str(fake))
+
+
+def test_typescript_executable_and_parser_versions_are_enforced(tmp_path: Path):
+    fake_root = tmp_path / "fake-typescript"
+    fake_bin = fake_root / "bin"
+    fake_lib = fake_root / "lib"
+    fake_bin.mkdir(parents=True)
+    fake_lib.mkdir()
+    fake_tsc = fake_bin / "tsc"
+    fake_tsc.write_text("#!/bin/sh\necho 'Version 0.0.0-adversarial'\n")
+    fake_tsc.chmod(0o755)
+    (fake_lib / "typescript.js").write_text(
+        'module.exports = { version: "0.0.0-adversarial" };\n'
+    )
+    entry = _write_nested_graph(tmp_path / "hook-ts-version")
+
+    with pytest.raises(RuntimeError, match="expected 6.0.3"):
+        compile_hook(entry, tsc=str(fake_tsc))
