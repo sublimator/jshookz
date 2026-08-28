@@ -1,0 +1,67 @@
+--- recursive_index.cpp
++++ recursive_index.cpp
+@@ -1018,18 +1018,6 @@
+         if (!cursor_.read_vl_length(length, field_code))
+           return false;
+         payload_begin = cursor_.pos;
+-        if (descriptor->wire_type == 8 && length != 0 && length != 20) {
+-          cursor_.fail(ScanIssue::malformed_data,
+-                       ScanMessage::invalid_account_id, payload_begin,
+-                       field_code, length);
+-          return false;
+-        }
+-        if (descriptor->wire_type == 19 && length % 32 != 0) {
+-          cursor_.fail(ScanIssue::malformed_data,
+-                       ScanMessage::invalid_vector256, payload_begin,
+-                       field_code, length);
+-          return false;
+-        }
+         if (!cursor_.advance(length, ScanMessage::truncated_field, field_code))
+           return false;
+         count_leaf();
+@@ -1041,8 +1029,7 @@
+         }
+         std::uint32_t const length =
+             static_cast<std::uint32_t>(AmountRules::extent(cursor_.at()[0]));
+-        if (length > cursor_.remaining() ||
+-            AmountRules::certify(Slice{cursor_.at(), length}) != nullptr) {
++        if (length > cursor_.remaining()) {
+           cursor_.fail(ScanIssue::malformed_data, ScanMessage::invalid_amount,
+                        cursor_.pos, field_code, length);
+           return false;
+@@ -1054,10 +1041,7 @@
+           return false;
+         count_leaf();
+       } else if (descriptor->wire_type == 9) {
+-        if (cursor_.remaining() < 12 ||
+-            !NumberRules::certify(Slice{cursor_.at(), std::size_t{12}}) ||
+-            (require_canonical_ &&
+-             !canonical_number(Slice{cursor_.at(), std::size_t{12}}))) {
++        if (cursor_.remaining() < 12) {
+           cursor_.fail(ScanIssue::malformed_data, ScanMessage::invalid_number,
+                        cursor_.pos, field_code);
+           return false;
+@@ -1164,10 +1148,5 @@
+     std::uint32_t size = 0;
+     if (!issue_extent(field_code, size))
+       return false;
+-    if (!valid_issue(cursor_.at(), size)) {
+-      cursor_.fail(ScanIssue::malformed_data, ScanMessage::invalid_issue,
+-                   cursor_.pos, field_code, size);
+-      return false;
+-    }
+     return cursor_.advance(size, ScanMessage::invalid_issue, field_code);
+   }
+@@ -1177,12 +1156,6 @@
+       std::uint32_t length = 0;
+       if (!cursor_.read_vl_length(length, field_code))
+         return false;
+-      if (length != 0 && length != 20) {
+-        cursor_.fail(ScanIssue::malformed_data,
+-                     ScanMessage::invalid_xchain_bridge, cursor_.pos,
+-                     field_code, length);
+-        return false;
+-      }
+       if (!cursor_.advance(length, ScanMessage::invalid_xchain_bridge,
+                            field_code) ||
+           !scan_issue(field_code))
