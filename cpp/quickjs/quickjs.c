@@ -7786,12 +7786,13 @@ static int JS_SetPrototypeInternal(JSContext *ctx, JSValueConst obj,
             /* Note: for Proxy objects, proto is NULL */
             p1 = p1->shape->proto;
         } while (p1 != NULL);
-        JS_DupValue(ctx, proto_val);
     }
 
     if (js_shape_prepare_update(ctx, p, NULL))
         return -1;
     sh = p->shape;
+    if (proto)
+        JS_DupValue(ctx, proto_val);
     if (sh->proto)
         JS_FreeValue(ctx, JS_MKPTR(JS_TAG_OBJECT, sh->proto));
     sh->proto = proto;
@@ -7994,11 +7995,11 @@ static int JS_AutoInitProperty(JSContext *ctx, JSObject *p, JSAtom prop,
     func = js_autoinit_func_table[id];
     /* 'func' shall not modify the object properties 'pr' */
     val = func(realm, p, prop, pr->u.init.opaque);
+    if (JS_IsException(val))
+        return -1;
     js_autoinit_free(ctx->rt, pr);
     prs->flags &= ~JS_PROP_TMASK;
     pr->u.value = JS_UNDEFINED;
-    if (JS_IsException(val))
-        return -1;
     if (id == JS_AUTOINIT_ID_MODULE_NS &&
         JS_VALUE_GET_TAG(val) == JS_TAG_STRING) {
         /* WARNING: a varref is returned as a string  ! */

@@ -740,8 +740,9 @@ TEST(
 
 TEST(EnumNamespaceRegistrarOOM,
      EveryAllocationFailureIsAtomicLeakFreeAndRetryable) {
-  static constexpr std::array<char const *, 3> names = {
-      "TransactionType", "TransactionResult", "HookReturnCode"};
+  static constexpr std::array<char const *, 4> names = {
+      "TransactionType", "LedgerEntryType", "TransactionResult",
+      "HookReturnCode"};
 
   auto expectPresence = [&](JSContext *context, bool expected) {
     LocalValue global(context, JS_GetGlobalObject(context));
@@ -882,6 +883,171 @@ TEST(ObjectRegistrarOOM,
   types::unregisterObjectTypes(runtime);
   JS_FreeRuntime(runtime);
   EXPECT_EQ(allocator.liveBlocks, 0u);
+}
+
+TEST(ObjectRegistrarOOM,
+     EveryInitialPrototypeAndConstructorAllocationRetriesLeakFree) {
+  static constexpr std::array<char const *, 5> names = {
+      "STObject", "Transaction", "Payment", "LedgerEntry", "AccountRoot"};
+
+  auto expectPresence = [&](JSContext *context, bool expected) {
+    LocalValue global(context, JS_GetGlobalObject(context));
+    ASSERT_FALSE(JS_IsException(global.get()));
+    for (char const *name : names) {
+      JSAtom const atom = JS_NewAtom(context, name);
+      ASSERT_NE(atom, JS_ATOM_NULL);
+      int const present = JS_HasProperty(context, global.get(), atom);
+      JS_FreeAtom(context, atom);
+      ASSERT_GE(present, 0);
+      EXPECT_EQ(present == 1, expected) << name;
+    }
+  };
+
+  std::size_t initialRequestCount = 0;
+  std::size_t warmRequestCount = 0;
+  {
+    AllocatorControl measured;
+    JSRuntime *runtime = JS_NewRuntime2(&testAllocator, &measured);
+    ASSERT_NE(runtime, nullptr);
+    JSContext *context = JS_NewContext(runtime);
+    ASSERT_NE(context, nullptr);
+
+    measured.startRecording();
+    std::size_t const initialBefore = measured.requests;
+    ASSERT_TRUE(types::registerObjectTypes(context));
+    initialRequestCount = measured.requests - initialBefore;
+    measured.stopRecording();
+    ASSERT_EQ(measured.recordedCount, initialRequestCount);
+
+    measured.startRecording();
+    std::size_t const warmBefore = measured.requests;
+    ASSERT_TRUE(types::registerObjectTypes(context));
+    warmRequestCount = measured.requests - warmBefore;
+    measured.stopRecording();
+    ASSERT_EQ(measured.recordedCount, warmRequestCount);
+
+    ASSERT_GT(initialRequestCount, warmRequestCount);
+    ASSERT_GT(warmRequestCount, 337u);
+    JS_FreeContext(context);
+    types::unregisterObjectTypes(runtime);
+    JS_FreeRuntime(runtime);
+    EXPECT_EQ(measured.liveBlocks, 0u);
+  }
+
+  for (std::size_t ordinal = 1; ordinal <= initialRequestCount; ++ordinal) {
+    SCOPED_TRACE(ordinal);
+    AllocatorControl allocator;
+    JSRuntime *runtime = JS_NewRuntime2(&testAllocator, &allocator);
+    ASSERT_NE(runtime, nullptr);
+    JSContext *context = JS_NewContext(runtime);
+    ASSERT_NE(context, nullptr);
+
+    allocator.rejectAt = allocator.requests + ordinal;
+    bool const registered = types::registerObjectTypes(context);
+    allocator.rejectAt = 0;
+    ASSERT_EQ(allocator.rejections, 1u);
+    if (!registered) {
+      expectOnePendingOOM(context, ordinal);
+      if (!types::registerObjectTypes(context)) {
+        LocalValue exception(context, JS_GetException(context));
+        FAIL() << "same-runtime initial object registration retry failed: "
+               << stringProperty(context, exception.get(), "name") << ": "
+               << stringProperty(context, exception.get(), "message");
+      }
+    }
+    EXPECT_FALSE(JS_HasException(context));
+    expectPresence(context, false);
+    {
+      LocalValue global(context, JS_GetGlobalObject(context));
+      ASSERT_FALSE(JS_IsException(global.get()));
+      ASSERT_TRUE(types::publishObjectTypes(context, global.get()));
+    }
+    expectPresence(context, true);
+
+    JS_FreeContext(context);
+    types::unregisterObjectTypes(runtime);
+    JS_FreeRuntime(runtime);
+    EXPECT_EQ(allocator.liveBlocks, 0u);
+  }
+}
+
+TEST(ObjectPublisherOOM,
+     EveryFiveGlobalPublicationAllocationIsAtomicLeakFreeAndRetryable) {
+  static constexpr std::array<char const *, 5> names = {
+      "STObject", "Transaction", "Payment", "LedgerEntry", "AccountRoot"};
+
+  auto expectPresence = [&](JSContext *context, bool expected) {
+    LocalValue global(context, JS_GetGlobalObject(context));
+    ASSERT_FALSE(JS_IsException(global.get()));
+    for (char const *name : names) {
+      JSAtom const atom = JS_NewAtom(context, name);
+      ASSERT_NE(atom, JS_ATOM_NULL);
+      int const present = JS_HasProperty(context, global.get(), atom);
+      JS_FreeAtom(context, atom);
+      ASSERT_GE(present, 0);
+      EXPECT_EQ(present == 1, expected) << name;
+    }
+  };
+
+  std::size_t requestCount = 0;
+  {
+    AllocatorControl measured;
+    JSRuntime *runtime = JS_NewRuntime2(&testAllocator, &measured);
+    ASSERT_NE(runtime, nullptr);
+    JSContext *context = JS_NewContext(runtime);
+    ASSERT_NE(context, nullptr);
+    ASSERT_TRUE(types::registerObjectTypes(context));
+    {
+      LocalValue global(context, JS_GetGlobalObject(context));
+      ASSERT_FALSE(JS_IsException(global.get()));
+      measured.startRecording();
+      std::size_t const before = measured.requests;
+      ASSERT_TRUE(types::publishObjectTypes(context, global.get()));
+      requestCount = measured.requests - before;
+      measured.stopRecording();
+      ASSERT_EQ(measured.recordedCount, requestCount);
+      ASSERT_GT(requestCount, 0u);
+    }
+    expectPresence(context, true);
+    JS_FreeContext(context);
+    types::unregisterObjectTypes(runtime);
+    JS_FreeRuntime(runtime);
+    EXPECT_EQ(measured.liveBlocks, 0u);
+  }
+
+  for (std::size_t ordinal = 1; ordinal <= requestCount; ++ordinal) {
+    SCOPED_TRACE(ordinal);
+    AllocatorControl allocator;
+    JSRuntime *runtime = JS_NewRuntime2(&testAllocator, &allocator);
+    ASSERT_NE(runtime, nullptr);
+    JSContext *context = JS_NewContext(runtime);
+    ASSERT_NE(context, nullptr);
+    ASSERT_TRUE(types::registerObjectTypes(context));
+    {
+      LocalValue global(context, JS_GetGlobalObject(context));
+      ASSERT_FALSE(JS_IsException(global.get()));
+      allocator.rejectAt = allocator.requests + ordinal;
+      bool const published = types::publishObjectTypes(context, global.get());
+      allocator.rejectAt = 0;
+      ASSERT_EQ(allocator.rejections, 1u);
+      if (!published) {
+        expectOnePendingOOM(context, ordinal);
+        expectPresence(context, false);
+        if (!types::publishObjectTypes(context, global.get())) {
+          LocalValue exception(context, JS_GetException(context));
+          FAIL() << "same-runtime object publication retry failed: "
+                 << stringProperty(context, exception.get(), "name") << ": "
+                 << stringProperty(context, exception.get(), "message");
+        }
+      }
+    }
+    expectPresence(context, true);
+    EXPECT_FALSE(JS_HasException(context));
+    JS_FreeContext(context);
+    types::unregisterObjectTypes(runtime);
+    JS_FreeRuntime(runtime);
+    EXPECT_EQ(allocator.liveBlocks, 0u);
+  }
 }
 
 TEST(FieldDescriptorOOM,
