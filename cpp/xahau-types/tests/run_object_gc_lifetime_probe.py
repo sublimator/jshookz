@@ -109,6 +109,13 @@ def main() -> int:
         label="parent/child/iterator finalizer order",
     ):
         return 1
+    if not require(
+        run(args.probe, "specialized-payment"),
+        returncode=0,
+        stdout="specialized Payment owner=1 index=1 wrapper=1 scan=1 bytes=72\n",
+        label="specialized Payment one-owner/index/wrapper proof",
+    ):
+        return 1
 
     if not require(
         run(args.probe, "radix-topology"),
@@ -134,7 +141,8 @@ def main() -> int:
 
     print(
         "object GC/lifetime/radix controls: ok "
-        "(25 green, 25 GC red, lifetime order, 5 topology banks, 2 radix red)"
+        "(25 green, 25 GC red, lifetime order, specialized Payment, "
+        "5 topology banks, 2 radix red)"
     )
     return 0
 

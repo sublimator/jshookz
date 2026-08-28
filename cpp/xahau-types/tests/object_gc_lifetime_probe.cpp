@@ -135,6 +135,7 @@ public:
         !types::registerRichLeafTypes(context_) ||
         !types::registerAmount(context_, amountLeaves) ||
         !types::registerObjectTypes(context_) ||
+        !types::publishObjectTypes(context_, global.get()) ||
         !types::registerPathSet(context_, pathLeaves))
       error_ = takeException("registerObjectTypes failed");
   }
@@ -1074,6 +1075,47 @@ exerciseMaximumSequential(JSContext *ctx, JSValueConst array,
   return 0;
 }
 
+[[nodiscard]] int runSpecializedPayment() {
+  probe::configureGCProbe(probe::HiddenEdge::none, false);
+  RuntimeFixture fixture;
+  if (!fixture.ready()) {
+    std::fprintf(stderr, "specialized Payment fixture failed: %s\n",
+                 fixture.error().c_str());
+    return 76;
+  }
+  auto const bytes = decodeHex(
+      "12000024000000016140000000000F4240"
+      "68400000000000000A73008114"
+      "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+      "831439249EE0886DE835D4F4D47DA9D9B1D2AED83C11");
+  auto *ctx = fixture.context();
+  LocalValue root = mint(ctx, bytes.data(), bytes.size());
+  LocalValue global(ctx, JS_GetGlobalObject(ctx));
+  LocalValue payment(ctx, JS_GetPropertyStr(ctx, global.get(), "Payment"));
+  probe::ObjectRootMetrics metrics;
+  if (root.isException() || global.isException() || payment.isException() ||
+      JS_IsInstanceOf(ctx, root.get(), payment.get()) != 1 ||
+      !probe::inspectObjectRoot(root.get(), metrics) || metrics.view != 2 ||
+      metrics.cacheCount != 8 || metrics.ownerByteCount != bytes.size() ||
+      metrics.ownerFieldCount != 7 || metrics.ownerScopeCount != 1 ||
+      metrics.indexBytes != 172 || metrics.indexBlocks != 1 ||
+      !metrics.indexStructurallyValid ||
+      !checkCounts(probe::TrackedEntity::owner, 1, 0) ||
+      !checkCounts(probe::TrackedEntity::object, 1, 0)) {
+    std::fprintf(stderr, "specialized Payment root metrics failed: %s\n",
+                 fixture.takeException("no pending exception").c_str());
+    return 76;
+  }
+  root.reset();
+  JS_RunGC(fixture.runtime());
+  if (!probe::gcProbeAllFinalized()) {
+    dumpLiveCounts();
+    return 76;
+  }
+  std::printf("specialized Payment owner=1 index=1 wrapper=1 scan=1 bytes=72\n");
+  return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -1085,6 +1127,8 @@ int main(int argc, char **argv) {
     return runRadixTopology(probe::RadixPoison::allocateOnHit);
   if (argc == 2 && std::strcmp(argv[1], "lifetime-order") == 0)
     return runLifetimeOrder();
+  if (argc == 2 && std::strcmp(argv[1], "specialized-payment") == 0)
+    return runSpecializedPayment();
   if (argc != 3) {
     std::fprintf(stderr, "usage: %s EDGE enabled|disabled | lifetime-order\n",
                  argv[0]);

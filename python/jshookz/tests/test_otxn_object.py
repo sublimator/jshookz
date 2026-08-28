@@ -9,14 +9,20 @@ ROOT = Path(__file__).parents[3]
 
 
 def _maximum_vl_transaction() -> bytes:
-    payment = bytes.fromhex(
-        "120000"
-        "6140000000000F4240"
-        "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8"
-        "8314841F44689750ED44FFB6A21950C8F29403915DFD"
+    maximum_signing_key = bytes.fromhex("73FED417") + bytes(918_744)
+    return (
+        bytes.fromhex(
+            "120000"
+            "2400000001"
+            "6140000000000F4240"
+            "68400000000000000A"
+        )
+        + maximum_signing_key
+        + bytes.fromhex(
+            "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+            "8314841F44689750ED44FFB6A21950C8F29403915DFD"
+        )
     )
-    maximum_blob = bytes.fromhex("701AFED417") + bytes(918_744)
-    return payment[:12] + maximum_blob + payment[12:]
 
 
 class _OriginatingTransactionHost:

@@ -68,6 +68,7 @@ bool readNominalPayload(JSContext *ctx, JSValueConst input,
   case xdata::MaterializerKind::number:
   case xdata::MaterializerKind::st_object:
   case xdata::MaterializerKind::st_array:
+  case xdata::MaterializerKind::ledger_entry_type:
   case xdata::MaterializerKind::transaction_type:
   case xdata::MaterializerKind::transaction_result:
   case xdata::MaterializerKind::uint8:

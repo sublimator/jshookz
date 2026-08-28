@@ -25,21 +25,12 @@ export function main(): never {
     "originating transaction cache identity changed",
     2,
   );
-  const source = rollback.requirePresent(
-    transaction.get(Field.Account),
-    "Payment has no Account",
-    10,
-  );
-  const destination = rollback.requirePresent(
-    transaction.get(Field.Destination),
-    "Payment has no Destination",
-    11,
-  );
-  const amount = rollback.requirePresent(
-    transaction.get(Field.Amount),
-    "Payment has no Amount",
-    12,
-  );
+  if (!(transaction instanceof Payment)) {
+    rollback("originating Payment is not structurally complete", 3);
+  }
+  const source = transaction.Account;
+  const destination = transaction.Destination;
+  const amount = transaction.Amount;
 
   const hookAccount = hook.account();
   rollback.when(

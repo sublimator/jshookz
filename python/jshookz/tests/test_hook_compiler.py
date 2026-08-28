@@ -42,7 +42,7 @@ def test_public_declarations_are_package_data_and_v1_is_default():
     declarations = CANONICAL_HOOKS_API_DECLARATIONS.read_text()
     assert declarations.startswith("export {};")
     assert "declare global {" in declarations
-    assert "interface STObject" in declarations
+    assert "class STObject" in declarations
     assert "namespace ledger" in declarations
     v1 = XAHAU_V1_HOOKS_API_DECLARATIONS.read_text()
     assert "interface Hash256" in v1

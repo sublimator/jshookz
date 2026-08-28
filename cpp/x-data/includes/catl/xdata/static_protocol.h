@@ -30,6 +30,7 @@ enum class MaterializerKind : std::uint8_t {
   xchain_bridge,
   st_object,
   st_array,
+  ledger_entry_type,
   transaction_type,
   transaction_result,
 };
@@ -87,11 +88,56 @@ struct StaticTypeDescriptor {
   MaterializerKind materializer;
 };
 
+enum class StaticObjectRuleKind : std::uint16_t {
+  uint32_zero = 1,
+  native_amount = 2,
+};
+
+struct StaticObjectRule {
+  std::uint32_t field_code;
+  StaticObjectRuleKind kind;
+  std::uint16_t reserved;
+};
+
+struct StaticObjectView {
+  std::uint16_t name_offset;
+  std::uint16_t parent_view;
+  std::uint8_t name_size;
+  std::uint8_t reserved[3];
+};
+
+// One format-backed semantic root. Field spans contain admission ordinals in
+// the generated static protocol, not duplicated field-code tables.
+struct StaticObjectFormat {
+  std::uint16_t type_code;
+  std::uint16_t required_begin;
+  std::uint16_t required_count;
+  std::uint16_t allowed_begin;
+  std::uint16_t allowed_count;
+  std::uint16_t refinement_begin;
+  std::uint16_t refinement_count;
+  std::uint16_t view;
+};
+
+struct StaticObjectFamily {
+  std::uint32_t discriminator_field_code;
+  std::uint16_t format_begin;
+  std::uint16_t format_count;
+  std::uint16_t default_begin;
+  std::uint16_t default_count;
+  std::uint16_t base_view;
+  std::uint16_t reserved;
+};
+
 static_assert(sizeof(StaticFieldName) == 8);
 static_assert(sizeof(StaticFieldDescriptor) == 16);
 static_assert(sizeof(StaticFallbackField) == 8);
 static_assert(sizeof(StaticMaterialField) == 8);
 static_assert(sizeof(StaticTypeDescriptor) == 8);
+static_assert(sizeof(StaticObjectRule) == 8);
+static_assert(sizeof(StaticObjectView) == 8);
+static_assert(sizeof(StaticObjectFormat) == 16);
+static_assert(sizeof(StaticObjectFamily) == 16);
 
 struct StaticNameView {
   char const *data;

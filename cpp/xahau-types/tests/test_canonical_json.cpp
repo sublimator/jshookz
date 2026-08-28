@@ -849,20 +849,14 @@ TEST(ObjectRegistrarOOM,
   ASSERT_NE(context, nullptr);
 
   // Class/prototype installation is one staged transaction. Warm that once;
-  // the exact registration law below is the generated atom table plus all
-  // field and diagnostic atom acquisitions.
+  // the retry loop below isolates the generated field and diagnostic atoms.
   ASSERT_TRUE(types::registerObjectTypes(context));
-  types::unregisterObjectTypes(runtime);
   allocator.startRecording();
   std::size_t const before = allocator.requests;
   ASSERT_TRUE(types::registerObjectTypes(context));
   std::size_t const requestCount = allocator.requests - before;
   allocator.stopRecording();
   ASSERT_EQ(allocator.recordedCount, requestCount);
-  ASSERT_GT(allocator.recordedCount, 0u);
-  EXPECT_EQ(allocator.recorded[0],
-            (AllocationRequest{337u * 8u, RequestKind::allocate}));
-  types::unregisterObjectTypes(runtime);
   ASSERT_GT(requestCount, 337u);
 
   for (std::size_t ordinal = 1; ordinal <= requestCount; ++ordinal) {
@@ -874,11 +868,14 @@ TEST(ObjectRegistrarOOM,
     ASSERT_EQ(allocator.rejections, rejectionsBefore + 1);
     if (!registered) {
       expectOnePendingOOM(context, ordinal);
-      ASSERT_TRUE(types::registerObjectTypes(context))
-          << "same-runtime atom registration retry failed";
+      if (!types::registerObjectTypes(context)) {
+        LocalValue exception(context, JS_GetException(context));
+        FAIL() << "same-runtime object registration retry failed: "
+               << stringProperty(context, exception.get(), "name") << ": "
+               << stringProperty(context, exception.get(), "message");
+      }
     }
     EXPECT_FALSE(JS_HasException(context));
-    types::unregisterObjectTypes(runtime);
   }
 
   JS_FreeContext(context);

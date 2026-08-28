@@ -46,7 +46,7 @@ ROUTES = (
 # both repeats. Ceilings retain roughly five percent headroom. Raising one or
 # lowering a delta floor is a review-triggering rebaseline, not test repair.
 CEILINGS = {
-    ("mint", 8): 23_500.0,
+    ("mint", 8): 25_500.0,
     ("mint", 64): 93_000.0,
     ("primitive_miss", 8): 4_300.0,
     ("primitive_miss", 64): 4_300.0,
@@ -56,16 +56,16 @@ CEILINGS = {
     ("rich_miss", 64): 4_600.0,
     ("rich_hit", 8): 2_800.0,
     ("rich_hit", 64): 2_800.0,
-    ("nested_miss", 8): 8_650.0,
-    ("nested_miss", 64): 8_650.0,
+    ("nested_miss", 8): 10_150.0,
+    ("nested_miss", 64): 10_150.0,
     ("nested_hit", 8): 3_500.0,
     ("nested_hit", 64): 3_500.0,
     ("object_lookup_miss", 8): 39_500.0,
     ("object_lookup_miss", 48): 234_000.0,
     ("object_lookup_hit", 8): 31_300.0,
     ("object_lookup_hit", 48): 188_000.0,
-    ("object_lookup_missing", 8): 2_950.0,
-    ("object_lookup_missing", 48): 3_050.0,
+    ("object_lookup_missing", 8): 4_100.0,
+    ("object_lookup_missing", 48): 4_200.0,
     ("array_length", 8): 1_850.0,
     ("array_length", 64): 1_850.0,
     ("array_random", 8): 4_000.0,
@@ -86,7 +86,7 @@ CEILINGS = {
 # percent headroom. These independently catch fixed-cost regressions that a
 # slope-only comparison would subtract away.
 ABSOLUTE_CEILINGS = {
-    ("mint", 8): (265_000, 453_000),
+    ("mint", 8): (282_000, 484_000),
     ("mint", 64): (814_000, 1_556_000),
     ("primitive_miss", 8): (115_000, 149_000),
     ("primitive_miss", 64): (114_000, 148_000),
@@ -96,16 +96,16 @@ ABSOLUTE_CEILINGS = {
     ("rich_miss", 64): (114_000, 150_000),
     ("rich_hit", 8): (102_000, 124_000),
     ("rich_hit", 64): (102_000, 124_000),
-    ("nested_miss", 8): (150_000, 219_000),
-    ("nested_miss", 64): (150_000, 219_000),
+    ("nested_miss", 8): (162_000, 243_000),
+    ("nested_miss", 64): (163_000, 243_000),
     ("nested_hit", 8): (107_000, 135_000),
     ("nested_hit", 64): (107_000, 135_000),
     ("object_lookup_miss", 8): (397_000, 712_000),
     ("object_lookup_miss", 48): (2_465_000, 4_335_000),
     ("object_lookup_hit", 8): (331_000, 581_000),
     ("object_lookup_hit", 48): (1_582_000, 3_084_000),
-    ("object_lookup_missing", 8): (105_000, 128_000),
-    ("object_lookup_missing", 48): (105_000, 130_000),
+    ("object_lookup_missing", 8): (114_000, 146_000),
+    ("object_lookup_missing", 48): (114_000, 148_000),
     ("array_length", 8): (96_000, 110_000),
     ("array_length", 64): (96_000, 110_000),
     ("array_random", 8): (112_000, 144_000),
@@ -152,7 +152,7 @@ WASM_MALLOC_OVERHEAD = 16
 MAXIMUM_REQUESTED_CORE = 4_194_336
 MAXIMUM_ENGINE_REQUESTED = 413
 MAXIMUM_DUPLICATE_STACK = 528
-MAXIMUM_STATIC_PROTOCOL_BYTES = 23_724
+MAXIMUM_STATIC_PROTOCOL_BYTES = 31_481
 
 
 COMMON_SETUP = r"""
@@ -718,15 +718,14 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
         "post_success": post_success,
         "static_protocol": static_bytes,
     } == {
-        # Wizer restores the accepted 322-member ordinary namespaces, whose
-        # +28,191-byte/+332-allocation baseline persists in every instance.
-        # The two selected XFL methods add 336 persistent bytes and 6 objects.
-        # Publishing otxn.object adds one function plus its property cell:
-        # exactly +96 persistent bytes and +2 persistent allocations.
-        "registration": (166_100, 2_494),
-        "pre_call": (1_218_440, 2_544),
-        "peak": (5_413_397, 2_557),
-        "post_success": (3_448_093, 2_571),
+        # Wizer restores the accepted runtime namespaces plus five frozen
+        # serialized-object constructors/prototypes.  The class hierarchy adds
+        # 3,179 requested persistent bytes and 58 persistent allocations; the
+        # generated complete-format tables add 7,757 static protocol bytes.
+        "registration": (170_207, 2_552),
+        "pre_call": (1_222_547, 2_602),
+        "peak": (5_417_504, 2_615),
+        "post_success": (3_452_208, 2_629),
         "static_protocol": MAXIMUM_STATIC_PROTOCOL_BYTES,
     }
     assert restored_snapshot == registration
@@ -746,7 +745,7 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     )
     assert MAXIMUM_DUPLICATE_STACK == 11 * 6 * 8
     assert peak[0] < limits.quickjs_heap_bytes
-    assert limits.quickjs_heap_bytes - post_success[0] == 13_329_123
+    assert limits.quickjs_heap_bytes - post_success[0] == 13_325_008
     assert limits.quickjs_heap_bytes - post_success[0] >= HEADROOM_BYTES
 
 

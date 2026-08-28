@@ -605,7 +605,8 @@ JSON.stringify((() => {{
       if (member === "[Symbol.iterator]"
             ? typeof receiver[Symbol.iterator] !== "function"
             : kind === "function" ? typeof receiver[member] !== "function"
-                                  : !(member in receiver))
+            : kind === "optional-value" ? false
+                                        : !(member in receiver))
         failures.push(`prototype ${{name}}.${{member}}: expected ${{kind}}`);
     const prototypeNames = Object.getOwnPropertyNames(prototype);
     if (Object.hasOwn(prototype, Symbol.iterator))

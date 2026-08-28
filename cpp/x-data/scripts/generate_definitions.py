@@ -21,9 +21,18 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
+
+# Tests load this file directly with importlib, so make its sibling product
+# module importable without requiring callers to mutate sys.path.
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from object_specializations import load_model
 
 CONSUMED_NAME_CODE_KEYS = (
     "TYPES",
@@ -61,6 +70,7 @@ PROVIDER_WIRE_WIDTHS = {
 }
 
 EXPECTED_PROVIDER_FIELD_OVERRIDES = {
+    "LedgerEntryType": "ledger_entry_type",
     "TransactionType": "transaction_type",
     "TransactionResult": "transaction_result",
 }
@@ -85,6 +95,7 @@ EXPECTED_MATERIALIZER_KINDS = {
     "xchain_bridge",
     "st_object",
     "st_array",
+    "ledger_entry_type",
     "transaction_type",
     "transaction_result",
 }
@@ -160,7 +171,7 @@ def header_size(type_code: int, nth: int) -> int:
 
 def load_materializer_policy(
     path: Path | None,
-) -> tuple[dict[str, str], dict[str, str], str]:
+) -> tuple[dict[str, str], dict[str, str], str, dict[str, Any]]:
     if path is None:
         raise ValueError("--provider-static requires --materializer-policy")
     policy = json.loads(path.read_text(encoding="utf-8"))
@@ -178,6 +189,7 @@ def load_materializer_policy(
             "the nineteen admitted wire types"
         )
     if set(type_materializers.values()) != EXPECTED_MATERIALIZER_KINDS - {
+        "ledger_entry_type",
         "transaction_type",
         "transaction_result",
     }:
@@ -216,9 +228,14 @@ def load_materializer_policy(
     if overrides != EXPECTED_PROVIDER_FIELD_OVERRIDES:
         raise ValueError(
             "provider field override closure must be exactly "
-            "TransactionType/TransactionResult"
+            "LedgerEntryType/TransactionType/TransactionResult"
         )
-    return type_materializers, overrides, hashlib.sha256(path.read_bytes()).hexdigest()
+    return (
+        type_materializers,
+        overrides,
+        hashlib.sha256(path.read_bytes()).hexdigest(),
+        policy,
+    )
 
 
 def tables_from_defs(defs: dict) -> dict[str, list[dict[str, Any]]]:
@@ -369,10 +386,162 @@ namespace {namespace} {{
 """
 
 
+def _cpp_identifier(name: str) -> str:
+    value = re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+    if not re.fullmatch(r"[a-z_][a-z0-9_]*", value):
+        raise ValueError(f"object specialization name is not a C++ identifier: {name}")
+    return value
+
+
+def provider_object_specializations(
+    defs: dict[str, Any],
+    policy: dict[str, Any],
+    admitted: list[dict[str, Any]],
+) -> dict[str, Any]:
+    model = load_model(defs, policy)
+    source_fields = defs["FIELDS"]
+    admission_by_name = {
+        source_fields[row["name_ordinal"]][0]: ordinal
+        for ordinal, row in enumerate(admitted)
+    }
+
+    view_names = ["st_object"]
+    view_public_names = ["STObject"]
+    view_parent_names: list[str | None] = [None]
+    for family in model.families:
+        view_names.append(_cpp_identifier(family.name))
+        view_public_names.append(family.name)
+        view_parent_names.append("st_object")
+        for leaf in family.leaves:
+            view_names.append(_cpp_identifier(leaf))
+            view_public_names.append(leaf)
+            view_parent_names.append(_cpp_identifier(family.name))
+    if len(view_names) != len(set(view_names)):
+        raise ValueError("object specialization view names are not unique")
+    view_ordinals = {name: ordinal for ordinal, name in enumerate(view_names)}
+    view_name_offset = 0
+    object_views: list[dict[str, int | str]] = []
+    for public_name, parent_name in zip(view_public_names, view_parent_names):
+        encoded = public_name.encode("ascii")
+        object_views.append(
+            {
+                "name": public_name,
+                "name_offset": view_name_offset,
+                "name_size": len(encoded),
+                "parent_view": (
+                    NO_ORDINAL if parent_name is None else view_ordinals[parent_name]
+                ),
+            }
+        )
+        view_name_offset += len(encoded) + 1
+
+    required_fields: list[int] = []
+    allowed_fields: list[int] = []
+    defaults: list[dict[str, int | str]] = []
+    refinements: list[dict[str, int | str]] = []
+    formats: list[dict[str, int]] = []
+    families: list[dict[str, int]] = []
+    refinement_map = model.refinement_map()
+    object_binding_paths = ["STObject"]
+    inherited_members = (
+        "fieldBytes",
+        "get",
+        "has",
+        "toBytes",
+        "toJSON",
+        "withField",
+        "withoutField",
+    )
+
+    for family in model.families:
+        object_binding_paths.append(family.name)
+        object_binding_paths.extend(
+            f"{family.name}.{member}"
+            for member in (*inherited_members, *(field.name for field in family.common))
+        )
+        for leaf in family.leaves:
+            object_binding_paths.append(leaf)
+            object_binding_paths.extend(
+                f"{leaf}.{member}"
+                for member in (
+                    *inherited_members,
+                    *(field.name for field in family.format(leaf).fields),
+                )
+            )
+        format_begin = len(formats)
+        default_begin = len(defaults)
+        for field_name, kind in family.defaults:
+            defaults.append(
+                {"field_code": admitted[admission_by_name[field_name]]["code"], "kind": kind}
+            )
+        for object_format in family.formats:
+            required_begin = len(required_fields)
+            required_fields.extend(
+                admission_by_name[name] for name in object_format.required
+            )
+            allowed_begin = len(allowed_fields)
+            allowed_fields.extend(
+                sorted(admission_by_name[name] for name in object_format.allowed)
+            )
+            refinement_begin = len(refinements)
+            for field_name, kind in sorted(
+                refinement_map.get(object_format.name, {}).items()
+            ):
+                refinements.append(
+                    {
+                        "field_code": admitted[admission_by_name[field_name]]["code"],
+                        "kind": kind,
+                    }
+                )
+            selected_view = (
+                object_format.name
+                if object_format.name in family.leaves
+                else family.name
+            )
+            formats.append(
+                {
+                    "type_code": object_format.type_code,
+                    "required_begin": required_begin,
+                    "required_count": len(object_format.required),
+                    "allowed_begin": allowed_begin,
+                    "allowed_count": len(object_format.allowed),
+                    "refinement_begin": refinement_begin,
+                    "refinement_count": len(refinements) - refinement_begin,
+                    "view": view_ordinals[_cpp_identifier(selected_view)],
+                }
+            )
+        families.append(
+            {
+                "discriminator_field_code": admitted[
+                    admission_by_name[family.discriminator]
+                ]["code"],
+                "format_begin": format_begin,
+                "format_count": len(family.formats),
+                "default_begin": default_begin,
+                "default_count": len(defaults) - default_begin,
+                "base_view": view_ordinals[_cpp_identifier(family.name)],
+            }
+        )
+
+    return {
+        "object_view_names": view_names,
+        "object_views": object_views,
+        "object_required_fields": required_fields,
+        "object_allowed_fields": allowed_fields,
+        "object_defaults": defaults,
+        "object_refinements": refinements,
+        "object_formats": formats,
+        "object_families": families,
+        "object_binding_paths": object_binding_paths,
+        "object_specialization_sha256": model.digest,
+    }
+
+
 def provider_tables_from_defs(
     defs: dict[str, Any],
     type_materializers: dict[str, str],
     overrides: dict[str, str],
+    policy: dict[str, Any],
 ) -> dict[str, Any]:
     types = defs.get("TYPES")
     source_fields = defs.get("FIELDS")
@@ -531,6 +700,9 @@ def provider_tables_from_defs(
         type_name_parts.append(cpp_blob_part(type_name))
         type_name_offset += len(encoded_name) + 1
 
+    object_specializations = provider_object_specializations(
+        defs, policy, admitted
+    )
     return {
         "names": names,
         "name_parts": name_parts,
@@ -544,6 +716,7 @@ def provider_tables_from_defs(
         "max_type_code": max(row["wire_type"] for row in admitted),
         "max_nth": max(row["code"] & 0xFFFF for row in admitted),
         "duplicate_word_count": (len(material) + 63) // 64,
+        **object_specializations,
     }
 
 
@@ -589,6 +762,50 @@ def generate_provider_header(
         "}"
         for row in tables["types"]
     ]
+    object_view_enum = "enum ObjectView : std::uint16_t {\n" + "\n".join(
+        f"  {name} = {ordinal},"
+        for ordinal, name in enumerate(tables["object_view_names"])
+    ) + f"\n  object_view_count = {len(tables['object_view_names'])},\n}};"
+    object_view_name_parts = [cpp_blob_part(row["name"]) for row in tables["object_views"]]
+    object_view_rows = [
+        "{"
+        f"{row['name_offset']}, {row['parent_view']}, {row['name_size']}, {{0, 0, 0}}"
+        "}"
+        for row in tables["object_views"]
+    ]
+    required_field_rows = [str(value) for value in tables["object_required_fields"]]
+    allowed_field_rows = [str(value) for value in tables["object_allowed_fields"]]
+    default_rows = [
+        "{"
+        f"0x{row['field_code']:08x}u, StaticObjectRuleKind::{row['kind']}, 0"
+        "}"
+        for row in tables["object_defaults"]
+    ]
+    refinement_rows = [
+        "{"
+        f"0x{row['field_code']:08x}u, StaticObjectRuleKind::{row['kind']}, 0"
+        "}"
+        for row in tables["object_refinements"]
+    ]
+    object_format_rows = [
+        "{"
+        f"{row['type_code']}, {row['required_begin']}, "
+        f"{row['required_count']}, {row['allowed_begin']}, "
+        f"{row['allowed_count']}, {row['refinement_begin']}, "
+        f"{row['refinement_count']}, "
+        f"ObjectView::{tables['object_view_names'][row['view']]}"
+        "}"
+        for row in tables["object_formats"]
+    ]
+    object_family_rows = [
+        "{"
+        f"0x{row['discriminator_field_code']:08x}u, {row['format_begin']}, "
+        f"{row['format_count']}, {row['default_begin']}, "
+        f"{row['default_count']}, "
+        f"ObjectView::{tables['object_view_names'][row['base_view']]}, 0"
+        "}"
+        for row in tables["object_families"]
+    ]
     fast_rows = ",\n".join(
         "    {" + ", ".join(str(value) for value in row) + "}" for row in tables["fast"]
     )
@@ -608,6 +825,30 @@ def generate_provider_header(
             + "\n    ".join(tables["type_name_parts"])
             + ";",
             _static_array("StaticTypeDescriptor", "TYPES", type_rows),
+            "// Generated provider surface bindings for the selected object views.\n"
+            + "\n".join(
+                f"// @binding provider:{path}"
+                for path in tables["object_binding_paths"]
+            ),
+            object_view_enum,
+            "inline constexpr char OBJECT_VIEW_NAME_BYTES[] =\n    "
+            + "\n    ".join(object_view_name_parts)
+            + ";",
+            _static_array("StaticObjectView", "OBJECT_VIEWS", object_view_rows),
+            _static_array(
+                "std::uint16_t", "OBJECT_REQUIRED_FIELDS", required_field_rows
+            ),
+            _static_array(
+                "std::uint16_t", "OBJECT_ALLOWED_FIELDS", allowed_field_rows
+            ),
+            _static_array(
+                "StaticObjectRule", "OBJECT_DEFAULTS", default_rows
+            ),
+            _static_array(
+                "StaticObjectRule", "OBJECT_REFINEMENTS", refinement_rows
+            ),
+            _static_array("StaticObjectFormat", "OBJECT_FORMATS", object_format_rows),
+            _static_array("StaticObjectFamily", "OBJECT_FAMILIES", object_family_rows),
         ]
     )
     identity = f"xahau:{source_sha}:{policy_sha}"
@@ -630,6 +871,7 @@ using namespace catl::xdata;
 {body}
 inline constexpr char DEFINITIONS_SHA256[] = {cpp_string(source_sha)};
 inline constexpr char MATERIALIZER_POLICY_SHA256[] = {cpp_string(policy_sha)};
+inline constexpr char OBJECT_SPECIALIZATION_SHA256[] = {cpp_string(tables["object_specialization_sha256"])};
 inline constexpr char PROTOCOL_IDENTITY[] = {cpp_string(identity)};
 
 inline constexpr ProtocolView PROTOCOL{{
@@ -661,6 +903,11 @@ static_assert(FIELDS.size() == 327);
 static_assert(FIELD_NAMES.size() == 337);
 static_assert(MATERIAL_FIELDS.size() == 325);
 static_assert(TYPES.size() == 19);
+static_assert(OBJECT_FAMILIES.size() == {len(tables["object_families"])});
+static_assert(OBJECT_VIEWS.size() == {len(tables["object_views"])});
+static_assert(OBJECT_FORMATS.size() == {len(tables["object_formats"])});
+static_assert(OBJECT_REQUIRED_FIELDS.size() == {len(tables["object_required_fields"])});
+static_assert(OBJECT_ALLOWED_FIELDS.size() == {len(tables["object_allowed_fields"])});
 static_assert(PROTOCOL.duplicate_word_count == 6);
 static_assert(PROTOCOL.inferred_vl_count == 0);
 
@@ -716,10 +963,12 @@ def main() -> None:
             print(f"  Wrote {args.output}", file=sys.stderr)
             return
         if args.provider_static:
-            type_materializers, overrides, policy_sha = load_materializer_policy(
-                args.materializer_policy
+            type_materializers, overrides, policy_sha, policy = (
+                load_materializer_policy(args.materializer_policy)
             )
-            tables = provider_tables_from_defs(defs, type_materializers, overrides)
+            tables = provider_tables_from_defs(
+                defs, type_materializers, overrides, policy
+            )
         else:
             if args.materializer_policy is not None:
                 raise ValueError("--materializer-policy requires --provider-static")

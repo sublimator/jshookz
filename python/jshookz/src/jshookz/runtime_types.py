@@ -18,12 +18,16 @@ class RuntimeGlobal(TypedDict):
     extensible: bool
     ordinary_object: bool
     own_has_instance: bool
+    inherited_has_instance: bool
     has_instance_callable: bool
     has_instance_writable: bool | None
     has_instance_enumerable: bool | None
     has_instance_configurable: bool | None
     own_prototype: bool
     constructible: bool
+    construction_throws: bool | None
+    prototype_parent: str | None
+    constructor_parent: str | None
 
 
 class RuntimeEnumNamespace(TypedDict):
@@ -51,6 +55,9 @@ _OBSERVE_GLOBALS = r"""
 JSON.stringify({
   schema: "jshookz.runtime-type-observation.v1",
   globals: Object.getOwnPropertyNames(globalThis).sort().map(name => {
+    const prototypeNouns = [
+      "STObject", "Transaction", "Payment", "LedgerEntry", "AccountRoot"
+    ];
     const value = globalThis[name];
     const kind = value === null ? "null" : typeof value;
     const objectLike = (kind === "object" || kind === "function");
@@ -66,6 +73,23 @@ JSON.stringify({
         constructible = true;
       } catch (_) {}
     }
+    let constructionThrows = null;
+    let prototypeParent = null;
+    let constructorParent = null;
+    if (prototypeNouns.includes(name)) {
+      try { Reflect.construct(value, []); constructionThrows = false; }
+      catch (error) { constructionThrows = error instanceof TypeError; }
+      const parentPrototype = Object.getPrototypeOf(value.prototype);
+      prototypeParent = parentPrototype === Object.prototype
+        ? "Object"
+        : prototypeNouns.find(candidate =>
+            globalThis[candidate].prototype === parentPrototype) ?? null;
+      const parentConstructor = Object.getPrototypeOf(value);
+      constructorParent = parentConstructor === Function.prototype
+        ? "Function"
+        : prototypeNouns.find(candidate =>
+            globalThis[candidate] === parentConstructor) ?? null;
+    }
     return {
       name,
       kind,
@@ -74,16 +98,20 @@ JSON.stringify({
       ordinary_object: kind === "object" &&
         Object.getPrototypeOf(value) === Object.prototype,
       own_has_instance: descriptor !== undefined,
-      has_instance_callable: descriptor !== undefined &&
-        typeof descriptor.value === "function",
+      inherited_has_instance: objectLike && value[Symbol.hasInstance] !== undefined,
+      has_instance_callable: objectLike &&
+        typeof value[Symbol.hasInstance] === "function",
       has_instance_writable: descriptor === undefined ? null : descriptor.writable,
       has_instance_enumerable: descriptor === undefined ? null : descriptor.enumerable,
       has_instance_configurable: descriptor === undefined ? null : descriptor.configurable,
       own_prototype: objectLike && Object.hasOwn(value, "prototype"),
       constructible,
+      construction_throws: constructionThrows,
+      prototype_parent: prototypeParent,
+      constructor_parent: constructorParent,
     };
   }),
-  enum_namespaces: ["TransactionType", "TransactionResult", "HookReturnCode"].map(name => {
+  enum_namespaces: ["TransactionType", "LedgerEntryType", "TransactionResult", "HookReturnCode"].map(name => {
     const value = globalThis[name];
     const kind = value === null ? "null" : typeof value;
     const objectLike = (kind === "object" || kind === "function");

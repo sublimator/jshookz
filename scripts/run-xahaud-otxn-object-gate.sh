@@ -55,11 +55,13 @@ repo_root="$(git rev-parse --show-toplevel)"
 xahaud_root="$(cd "$xahaud_root" && pwd)"
 jshookz="$repo_root/python/jshookz/.venv/bin/jshookz"
 provider_dir="$repo_root/build/xahau-provider"
+live_bundle="$repo_root/build/xahaud-live-provider-bundle"
 hook_source="$repo_root/python/hostem/examples/accept-incoming-xah.hook.ts"
 hook_bytecode="$repo_root/build/accept-incoming-xah.qjsc"
 hook_javascript="$repo_root/build/accept-incoming-xah.mjs"
 hook_artifact="$repo_root/build/accept-incoming-xah.xqjs"
 declarations="$repo_root/python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts"
+types_dir="$repo_root/python/jshookz/src/jshookz/types"
 
 [[ -x "$jshookz" ]] || {
     printf 'missing jshookz environment: %s\n' "$jshookz" >&2
@@ -92,6 +94,31 @@ cd "$repo_root"
     --emit-bytecode "$hook_bytecode" \
     --emit-js "$hook_javascript" \
     -o "$hook_artifact"
+
+# xahaud compiles the runtime profile beside the provider identity. Supplying
+# only live WASM bytes to a binary built against its branch-pinned bundle is an
+# incoherent test set. Assemble one symlinked current-working-tree bundle and
+# reconfigure only that cache path; the xahaud source tree remains untouched.
+mkdir -p "$live_bundle"
+ln -sfn "$provider_dir/jshookz_provider.wasm" \
+    "$live_bundle/jshookz_provider.wasm"
+ln -sfn "$provider_dir/jshookz_provider.manifest.cmake" \
+    "$live_bundle/jshookz_provider.manifest.cmake"
+ln -sfn "$provider_dir/jshookz_provider.manifest.json" \
+    "$live_bundle/jshookz_provider.manifest.json"
+ln -sfn "$provider_dir/jshookz_provider.native-abi.json" \
+    "$live_bundle/jshookz_provider.native-abi.json"
+ln -sfn "$types_dir/api-artifacts.json" "$live_bundle/api-artifacts.json"
+ln -sfn "$types_dir/hooks-api.d.ts" "$live_bundle/hooks-api.d.ts"
+ln -sfn "$types_dir/xahau-quickjs-v1.d.ts" \
+    "$live_bundle/xahau-quickjs-v1.d.ts"
+ln -sfn "$types_dir/xahau-quickjs-v1.surface.json" \
+    "$live_bundle/xahau-quickjs-v1.surface.json"
+ln -sfn "$repo_root/python/jshookz/src/jshookz/xfl_profile_ledger.ts" \
+    "$live_bundle/xfl-profile-ledger.ts"
+
+cmake -S "$xahaud_root" -B "$xahaud_root/build" \
+    -DXAHAU_QUICKJS_PROVIDER_BUNDLE_DIR="$live_bundle"
 
 cd "$xahaud_root"
 PATH="$repo_root/python/jshookz/.venv/bin:$PATH" \

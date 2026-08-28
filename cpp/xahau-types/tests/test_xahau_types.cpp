@@ -648,6 +648,209 @@ TEST_F(XahauTypes, CertifiedObjectIsLazyImmutableAndCanonical)
         R"({"keys":["Flags","Sequence"],"same":true,"flags":9,"sequence":7,"fieldBytes":[0,0,0,9],"canonical":[34,0,0,0,9,36,0,0,0,7],"json":{"Flags":9,"Sequence":7},"jsonFresh":true,"extensible":false,"assignmentFailed":true,"absent":true})");
 }
 
+TEST_F(XahauTypes, GeneratedObjectClassesUseRealPrototypeHierarchy)
+{
+    installRoot(hexBytes(
+        "12000024000000016140000000000F4240"
+        "68400000000000000A73008114"
+        "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        "831439249EE0886DE835D4F4D47DA9D9B1D2AED83C11"));
+    auto payment = eval(R"JS(
+        (() => {
+          const nouns = [STObject, Transaction, Payment, LedgerEntry, AccountRoot];
+          const hierarchy =
+            Object.getPrototypeOf(Transaction.prototype) === STObject.prototype &&
+            Object.getPrototypeOf(Payment.prototype) === Transaction.prototype &&
+            Object.getPrototypeOf(LedgerEntry.prototype) === STObject.prototype &&
+            Object.getPrototypeOf(AccountRoot.prototype) === LedgerEntry.prototype &&
+            Object.getPrototypeOf(Transaction) === STObject &&
+            Object.getPrototypeOf(Payment) === Transaction &&
+            Object.getPrototypeOf(LedgerEntry) === STObject &&
+            Object.getPrototypeOf(AccountRoot) === LedgerEntry;
+          const shapes = nouns.every(noun =>
+            typeof noun === "function" && Object.isFrozen(noun) &&
+            Object.isFrozen(noun.prototype));
+          const unavailable = nouns.every(noun => {
+            let called = false;
+            let constructed = false;
+            try { noun(); } catch (error) { called = error instanceof TypeError; }
+            try { new noun(); }
+            catch (error) { constructed = error instanceof TypeError; }
+            return called && constructed;
+          });
+          class Forged extends STObject {}
+          let forged = false;
+          try { new Forged(); } catch (error) { forged = error instanceof TypeError; }
+          const checks = {
+            hierarchy, shapes, unavailable, forged,
+            payment: root instanceof Payment,
+            transaction: root instanceof Transaction,
+            object: root instanceof STObject,
+            notLedger: !(root instanceof LedgerEntry),
+            notAccountRoot: !(root instanceof AccountRoot),
+            prototype: Object.getPrototypeOf(root) === Payment.prototype,
+            transactionType: root.TransactionType === 0,
+            accountIdentity: root.Account === root.Account,
+            destinationIdentity: root.Destination === root.Destination,
+            accountsDifferent: !root.Account.equals(root.Destination),
+            amountIdentity: root.Amount === root.Amount,
+            amount: root.Amount.asNative().drops === 1000000n,
+            flagsIdentity: root.Flags !== undefined && root.Flags === root.Flags,
+            flags: root.Flags?.toNumber() === 0,
+            bytes: root.toBytes().length === 72,
+          };
+          return Object.entries(checks).filter(([, ok]) => !ok)
+            .map(([name]) => name).join(",");
+        })()
+    )JS");
+    if (payment.isException()) {
+        jshookz::qjs::OwnedValue error(ctx, JS_GetException(ctx));
+        FAIL() << to_string(error.get());
+    }
+    EXPECT_EQ(to_string(payment.get()), "");
+
+    installRoot(hexBytes(
+        "11006122000000002400000007250000007B2D00000000"
+        "550000000000000000000000000000000000000000000000000000000000000000"
+        "62400000000EE6B2808114"
+        "B5F762798A53D543A014CAF8B297CFF8F2F937E8"));
+    auto accountRoot = eval(R"JS(
+        root instanceof AccountRoot && root instanceof LedgerEntry &&
+        root instanceof STObject && !(root instanceof Transaction) &&
+        !(root instanceof Payment) &&
+        Object.getPrototypeOf(root) === AccountRoot.prototype &&
+        root.LedgerEntryType === 97 && root.Flags.toNumber() === 0 &&
+        root.Sequence.toNumber() === 7 && root.OwnerCount.toNumber() === 0 &&
+        root.PreviousTxnLgrSeq.toNumber() === 123 &&
+        root.Balance.asNative().drops === 250000000n &&
+        root.Balance === root.Balance && root.Account === root.Account
+    )JS");
+    if (accountRoot.isException()) {
+        jshookz::qjs::OwnedValue error(ctx, JS_GetException(ctx));
+        FAIL() << to_string(error.get());
+    }
+    EXPECT_TRUE(JS_ToBool(ctx, accountRoot.get()));
+
+    installRoot(hexBytes(
+        "120003240000000220210000000868400000000000000C73008114"
+        "B5F762798A53D543A014CAF8B297CFF8F2F937E8"));
+    auto transaction = eval(
+        "root instanceof Transaction && root instanceof STObject && "
+        "!(root instanceof Payment) && !(root instanceof LedgerEntry) && "
+        "Object.getPrototypeOf(root) === Transaction.prototype");
+    ASSERT_FALSE(transaction.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, transaction.get()));
+
+    installRoot(hexBytes(
+        "1100642200000000310000000000000002320000000000000001"
+        "581111111111111111111111111111111111111111111111111111111111111111"
+        "8214B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        "0113402222222222222222222222222222222222222222222222222222222222222222"
+        "3333333333333333333333333333333333333333333333333333333333333333"));
+    auto ledgerEntry = eval(
+        "root instanceof LedgerEntry && root instanceof STObject && "
+        "!(root instanceof AccountRoot) && !(root instanceof Transaction) && "
+        "Object.getPrototypeOf(root) === LedgerEntry.prototype");
+    ASSERT_FALSE(ledgerEntry.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, ledgerEntry.get()));
+}
+
+TEST_F(XahauTypes, ObjectClassificationFailsClosedToConcreteSTObject)
+{
+    auto expectGeneric = [this](char const* hex) {
+        installRoot(hexBytes(hex));
+        auto result = eval(
+            "root instanceof STObject && !(root instanceof Transaction) && "
+            "!(root instanceof Payment) && !(root instanceof LedgerEntry) && "
+            "!(root instanceof AccountRoot) && "
+            "Object.getPrototypeOf(root) === STObject.prototype");
+        if (result.isException()) {
+            jshookz::qjs::OwnedValue error(ctx, JS_GetException(ctx));
+            ADD_FAILURE() << to_string(error.get());
+            return;
+        }
+        EXPECT_TRUE(JS_ToBool(ctx, result.get()));
+    };
+
+    expectGeneric(""); // no discriminator / non-ledger serialized object
+    expectGeneric("127FFF"); // unknown TransactionType
+    expectGeneric("1200008114B5F762798A53D543A014CAF8B297CFF8F2F937E8");
+    // AccountRoot shape with an IOU Balance violates the native-balance rule.
+    expectGeneric(
+        "1100612200000000240000000125000000012D00000000"
+        "550000000000000000000000000000000000000000000000000000000000000000"
+        "62D4838D7EA4C680000000000000000000000000005553440000000000"
+        "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8");
+    // Both family discriminators are intrinsically conflicting.
+    expectGeneric(
+        "1100611200006140000000000F42408114"
+        "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        "8314B5F762798A53D543A014CAF8B297CFF8F2F937E8");
+}
+
+TEST_F(XahauTypes, TrustedTransactionMintMatchesGenericDecodeAndFailsClosed)
+{
+    namespace types = jshookz::provider::types;
+    auto mintOwned = [this](std::vector<std::uint8_t> const& source) {
+        auto* owned = static_cast<std::uint8_t*>(js_malloc(ctx, source.size()));
+        if (owned == nullptr)
+            return JS_ThrowOutOfMemory(ctx);
+        std::memcpy(owned, source.data(), source.size());
+        return types::makeCertifiedTransactionOwned(
+            ctx, owned, static_cast<std::uint32_t>(source.size()));
+    };
+    auto expectInternal = [this, &mintOwned](
+                              std::vector<std::uint8_t> const& source,
+                              std::string_view message) {
+        jshookz::qjs::OwnedValue failed(ctx, mintOwned(source));
+        EXPECT_TRUE(failed.isException());
+        jshookz::qjs::OwnedValue error(ctx, JS_GetException(ctx));
+        ASSERT_FALSE(error.isException());
+        jshookz::qjs::OwnedValue text(ctx, JS_ToString(ctx, error.get()));
+        ASSERT_FALSE(text.isException());
+        EXPECT_EQ(to_string(text.get()), message);
+    };
+
+    auto const payment = hexBytes(
+        "12000024000000016140000000000F4240"
+        "68400000000000000A73008114"
+        "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        "831439249EE0886DE835D4F4D47DA9D9B1D2AED83C11");
+    installValue("genericPayment", types::makeCertifiedObjectCopy(
+                                       ctx, payment.data(), payment.size()));
+    installValue("trustedPayment", mintOwned(payment));
+    auto equivalent = eval(R"JS(
+        genericPayment instanceof Payment &&
+        trustedPayment instanceof Payment &&
+        Object.getPrototypeOf(genericPayment) ===
+          Object.getPrototypeOf(trustedPayment) &&
+        genericPayment.Account.equals(trustedPayment.Account) &&
+        genericPayment.Destination.equals(trustedPayment.Destination) &&
+        genericPayment.Amount.equals(trustedPayment.Amount) &&
+        genericPayment.toBytes().every(
+          (byte, index) => byte === trustedPayment.toBytes()[index]) &&
+        JSON.stringify(genericPayment) === JSON.stringify(trustedPayment)
+    )JS");
+    ASSERT_FALSE(equivalent.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, equivalent.get()));
+
+    expectInternal(
+        hexBytes(
+            "11006122000000002400000007250000007B2D00000000"
+            "550000000000000000000000000000000000000000000000000000000000000000"
+            "62400000000EE6B2808114"
+            "B5F762798A53D543A014CAF8B297CFF8F2F937E8"),
+        "InternalError: trusted originating object is not a complete Transaction");
+    expectInternal(
+        hexBytes(
+            "1200006140000000000000018314"
+            "39249EE0886DE835D4F4D47DA9D9B1D2AED83C11"),
+                   "InternalError: trusted originating object is not a complete Transaction");
+    expectInternal(hexBytes("2200"),
+                   "InternalError: trusted object certification failed: truncated field");
+}
+
 TEST_F(XahauTypes, ObjectFieldSelectorFormsMatchTheDeclaredSurface)
 {
     installRoot({0x22, 0x00, 0x00, 0x00, 0x09});
@@ -858,7 +1061,7 @@ TEST_F(XahauTypes, ObjectReplacementAcceptsEveryExactNominalMaterializer)
         (() => {
           const inputs = [
             ["CloseResolution", vUInt8],
-            ["LedgerEntryType", vUInt16],
+            ["LedgerEntryType", 97],
             ["NetworkID", vUInt32],
             ["IndexNext", vUInt64],
             ["EmailHash", vHash128],
@@ -879,8 +1082,8 @@ TEST_F(XahauTypes, ObjectReplacementAcceptsEveryExactNominalMaterializer)
             current = current.withField(field, value);
           const exact = inputs.every(([field, input]) => {
             const observed = current.get(field);
-            return observed !== input &&
-              (typeof input.toBytes === "function"
+            return typeof input === "number" ? observed === input :
+              observed !== input && (typeof input.toBytes === "function"
                 ? Array.from(current.fieldBytes(field).toBytes()).join(",") ===
                     Array.from(input.toBytes()).join(",")
                 : observed.toString() === input.toString());
@@ -1139,7 +1342,7 @@ TEST_F(XahauTypes, RuntimeTypeObjectsUseOneSealedNominalClassifier)
             "AccountID", "Amount", "Currency", "Hash", "Hash128",
             "Hash160", "Hash192", "Hash256", "IOUAmount", "Issue",
             "MPTAmount", "NativeAmount", "Path", "PathHop", "PathSet",
-            "Result", "STArray", "STBlob", "STObject", "SerializedField",
+            "Result", "STArray", "STBlob", "SerializedField",
             "UInt", "UInt8", "UInt16", "UInt32", "UInt64", "Vector256",
             "VoidResult", "XChainBridge", "XFLDecimal",
           ];
@@ -1160,7 +1363,6 @@ TEST_F(XahauTypes, RuntimeTypeObjectsUseOneSealedNominalClassifier)
             ["Result", resultValue, ["Result"]],
             ["STArray", stArrayValue, ["STArray"]],
             ["STBlob", STBlob.from(new Uint8Array()), ["STBlob"]],
-            ["STObject", stObjectValue, ["STObject"]],
             ["SerializedField", Field.Flags, ["SerializedField"]],
             ["UInt8", UInt8.zero, ["UInt", "UInt8"]],
             ["UInt16", UInt16.zero, ["UInt", "UInt16"]],
@@ -1277,7 +1479,15 @@ TEST_F(XahauTypes, RuntimeTypeRegistrationIsRepeatableAndKeepsOldValuesNominal)
     installValue(
         "oldVoidResult", jshookz::provider::bindings::effect_success(ctx));
 
-    auto before = eval("globalThis.__priorNouns = [Currency, UInt8]");
+    installRoot(hexBytes(
+        "12000024000000016140000000000F4240"
+        "68400000000000000A73008114"
+        "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+        "8314B5F762798A53D543A014CAF8B297CFF8F2F937E8"));
+
+    auto before = eval(
+        "globalThis.oldPayment = root;"
+        "globalThis.__priorNouns = [Currency, UInt8, Payment]");
     ASSERT_FALSE(before.isException());
     ASSERT_TRUE(jshookz::provider::bindings::registerResult(ctx));
     ASSERT_TRUE(register_cpp_types(ctx));
@@ -1293,7 +1503,8 @@ TEST_F(XahauTypes, RuntimeTypeRegistrationIsRepeatableAndKeepsOldValuesNominal)
             oldBlob instanceof STBlob &&
             util.decodeObject(oldBlob) instanceof STObject &&
             oldResult instanceof Result && oldVoidResult instanceof VoidResult &&
-            Currency !== prior[0] && UInt8 !== prior[1];
+            oldPayment instanceof Payment && oldPayment instanceof Transaction &&
+            Payment === prior[2] && Currency !== prior[0] && UInt8 !== prior[1];
         })()
     )JS");
     ASSERT_FALSE(after.isException());

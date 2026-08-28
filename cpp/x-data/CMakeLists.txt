@@ -394,6 +394,10 @@ if(BUILD_TESTING)
             file(SHA256
                 ${CMAKE_CURRENT_LIST_DIR}/definitions/xahau_definitions.json
                 _xahau_definitions_sha256)
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                ${CMAKE_CURRENT_LIST_DIR}/definitions/xahau_definitions.json
+                ${CMAKE_CURRENT_LIST_DIR}/definitions/provider_static_policy.json
+            )
             file(SHA256
                 ${CMAKE_CURRENT_LIST_DIR}/definitions/provider_static_policy.json
                 _xahau_provider_policy_sha256)

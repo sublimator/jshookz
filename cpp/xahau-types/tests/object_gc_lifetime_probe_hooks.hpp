@@ -108,6 +108,17 @@ struct ArrayCacheMetrics {
   std::size_t allocationCount = 0;
 };
 
+struct ObjectRootMetrics {
+  std::uint16_t view = 0;
+  std::uint16_t cacheCount = 0;
+  std::uint32_t ownerByteCount = 0;
+  std::uint32_t ownerFieldCount = 0;
+  std::uint32_t ownerScopeCount = 0;
+  std::uint32_t indexBytes = 0;
+  std::uint32_t indexBlocks = 0;
+  bool indexStructurallyValid = false;
+};
+
 void configureGCProbe(HiddenEdge edge, bool disableSelectedMark) noexcept;
 void enableAllGCProbeMarks() noexcept;
 
@@ -146,5 +157,7 @@ void gcProbeRadixAllocated(RadixAllocationKind kind,
 // surface, and exists only in the separately compiled probe binary.
 [[nodiscard]] bool inspectArrayCache(JSValueConst array,
                                      ArrayCacheMetrics &metrics) noexcept;
+[[nodiscard]] bool inspectObjectRoot(JSValueConst object,
+                                     ObjectRootMetrics &metrics) noexcept;
 
 } // namespace jshookz::provider::types::test

@@ -4,7 +4,7 @@ from jshookz.host import WasmHost
 from jshookz.paths import XAHAU_HOOK_PROVIDER_WASM
 from jshookz.runtime_types import SCHEMA, observe_runtime_types
 
-_NOMINAL_MATRIX_GAS = 11_096_794
+_NOMINAL_MATRIX_GAS = 11_222_698
 
 _XFL_VALUE_KERNEL = r"""
 JSON.stringify((() => {
@@ -126,6 +126,7 @@ JSON.stringify((() => {
     "UInt32", "UInt64", "Vector256", "VoidResult", "XChainBridge",
     "XFLDecimal",
   ];
+  const callbackFreeNouns = nouns.filter(name => name !== "STObject");
   const cases = [
     ["AccountID", accountIDValue, ["AccountID"]],
     ["native amount", nativeAmountValue, ["Amount", "NativeAmount"]],
@@ -168,7 +169,7 @@ JSON.stringify((() => {
       get() { ++callbacks; throw new Error("get trap"); },
       getPrototypeOf() { ++callbacks; throw new Error("prototype trap"); },
     });
-    for (const name of nouns) {
+    for (const name of callbackFreeNouns) {
       if (proxy instanceof globalThis[name]) fail(`proxy:${label}:${name}`);
     }
     if (callbacks !== 0) fail(`proxy-callback:${label}`);
@@ -228,14 +229,38 @@ def test_sealed_provider_runtime_type_observation_is_actual_global_state() -> No
         assert not row["own_prototype"]
         assert not row["constructible"]
 
+    prototype_parents = {
+        "STObject": ("Object", "Function"),
+        "Transaction": ("STObject", "STObject"),
+        "Payment": ("Transaction", "Transaction"),
+        "LedgerEntry": ("STObject", "STObject"),
+        "AccountRoot": ("LedgerEntry", "LedgerEntry"),
+    }
+    for name, (prototype_parent, constructor_parent) in prototype_parents.items():
+        row = rows[name]
+        assert row["kind"] == "function"
+        assert not row["ordinary_object"]
+        assert row["frozen"]
+        assert not row["extensible"]
+        assert not row["own_has_instance"]
+        assert row["inherited_has_instance"]
+        assert row["has_instance_callable"]
+        assert row["own_prototype"]
+        assert row["constructible"]  # engine constructor bit
+        assert row["construction_throws"]  # Hook code still cannot call `new`
+        assert row["prototype_parent"] == prototype_parent
+        assert row["constructor_parent"] == constructor_parent
+
     enum_rows = {row["name"]: row for row in observation["enum_namespaces"]}
     assert set(enum_rows) == {
         "TransactionType",
+        "LedgerEntryType",
         "TransactionResult",
         "HookReturnCode",
     }
     expected = {
         "TransactionType": (77, "Invoke", 99),
+        "LedgerEntryType": (34, "AccountRoot", 97),
         "TransactionResult": (199, "telLOCAL_ERROR", -399),
         "HookReturnCode": (46, "INVALID_FLOAT", -10024),
     }

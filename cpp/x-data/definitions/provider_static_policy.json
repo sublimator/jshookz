@@ -22,7 +22,34 @@
     "XChainBridge": "xchain_bridge"
   },
   "descriptor_overrides": {
+    "LedgerEntryType": "ledger_entry_type",
     "TransactionResult": "transaction_result",
     "TransactionType": "transaction_type"
+  },
+  "object_specializations": {
+    "families": [
+      {
+        "name": "Transaction",
+        "discriminator": "TransactionType",
+        "type_table": "TRANSACTION_TYPES",
+        "format_table": "TRANSACTION_FORMATS",
+        "leaves": ["Payment"],
+        "defaults": {
+          "Flags": "uint32_zero"
+        }
+      },
+      {
+        "name": "LedgerEntry",
+        "discriminator": "LedgerEntryType",
+        "type_table": "LEDGER_ENTRY_TYPES",
+        "format_table": "LEDGER_ENTRY_FORMATS",
+        "leaves": ["AccountRoot"]
+      }
+    ],
+    "refinements": {
+      "AccountRoot": {
+        "Balance": "native_amount"
+      }
+    }
   }
 }

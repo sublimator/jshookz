@@ -20,7 +20,9 @@
 #include "catl/xdata/number-rules.h"
 #include "catl/xdata/recursive_index.h"
 #include "catl/xdata/static_protocol.h"
+#include "static_xahau_protocol.h"
 
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -33,7 +35,12 @@ namespace {
 
 namespace qjs = ::jshookz::qjs;
 namespace xdata = catl::xdata;
+namespace static_data = catl::xdata::xahau_static_data;
 namespace bindings = jshookz::provider::bindings;
+
+using ObjectView = static_data::ObjectView;
+constexpr auto kObjectViewCount =
+    static_cast<std::size_t>(ObjectView::object_view_count);
 
 constexpr std::uint32_t kProtocolTag = 1;
 
@@ -52,6 +59,8 @@ struct CertifiedObjectValue {
 struct ObjectState {
   JSValue owner = JS_UNDEFINED;
   std::uint32_t scopeKey = 0;
+  std::uint16_t view = ObjectView::st_object;
+  std::uint16_t cacheCount = 0;
   JSValue *cache = nullptr;
 };
 
@@ -89,6 +98,17 @@ struct FieldAtomRecord {
 };
 
 static_assert(sizeof(CertifiedObjectValue) == sizeof(void *) * 2 + 8);
+static_assert(offsetof(ObjectState, owner) == 0);
+static_assert(offsetof(ObjectState, scopeKey) == sizeof(JSValue));
+static_assert(offsetof(ObjectState, view) == sizeof(JSValue) + 4);
+static_assert(offsetof(ObjectState, cacheCount) == sizeof(JSValue) + 6);
+static_assert(offsetof(ObjectState, cache) == sizeof(JSValue) + 8);
+constexpr std::size_t kObjectStateUnpadded =
+    sizeof(JSValue) + 8 + sizeof(JSValue *);
+static_assert(
+    sizeof(ObjectState) ==
+    (kObjectStateUnpadded + alignof(ObjectState) - 1) /
+        alignof(ObjectState) * alignof(ObjectState));
 static_assert(sizeof(FieldAtomRecord) == 8);
 static_assert(offsetof(ArrayCacheRoot, branches) == 16);
 static_assert(sizeof(ArrayCacheRoot) == 16 + 32 * sizeof(void *));
@@ -119,6 +139,9 @@ template <class State>
 FieldAtomRecord *fieldAtoms;
 std::uint32_t fieldAtomCount;
 JSAtom diagnosticAtoms[9];
+std::array<JSValue, kObjectViewCount> objectPrototypes{};
+std::array<JSValue, kObjectViewCount> objectConstructors{};
+bool objectNounsReady = false;
 
 constexpr char const *diagnosticNames[] = {
     "domain", "issue", "offset",  "fieldCode",    "expected",
@@ -200,7 +223,7 @@ void objectFinalizer(JSRuntime *runtime, JSValue value) {
   test::gcProbeFinalized(test::TrackedEntity::object, value);
 #endif
   if (state->cache != nullptr) {
-    std::uint32_t const count = directCount(*state);
+    std::uint32_t const count = state->cacheCount;
     for (std::uint32_t i = 0; i < count; ++i)
       JS_FreeValueRT(runtime, state->cache[i]);
     js_free_rt(runtime, state->cache);
@@ -219,7 +242,7 @@ void objectMark(JSRuntime *runtime, JSValueConst value, JS_MarkFunc *mark) {
     JS_MarkValue(runtime, state->owner, mark);
   if (state->cache == nullptr)
     return;
-  std::uint32_t const count = directCount(*state);
+  std::uint32_t const count = state->cacheCount;
   for (std::uint32_t i = 0; i < count; ++i) {
 #if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
     if (!test::gcProbeMarkEnabled(test::HiddenEdge::objectCacheValue))
@@ -374,6 +397,18 @@ void clearRegistrar(JSRuntime *runtime) noexcept {
   std::memset(diagnosticAtoms, 0, sizeof(diagnosticAtoms));
 }
 
+void clearObjectNouns(JSRuntime *runtime) noexcept {
+  if (objectNounsReady && runtime != nullptr) {
+    for (JSValue value : objectPrototypes)
+      JS_FreeValueRT(runtime, value);
+    for (JSValue value : objectConstructors)
+      JS_FreeValueRT(runtime, value);
+  }
+  objectPrototypes.fill(JS_UNDEFINED);
+  objectConstructors.fill(JS_UNDEFINED);
+  objectNounsReady = false;
+}
+
 [[nodiscard]] bool registerAtoms(JSContext *ctx) {
   auto const &protocol = xdata::xahau_static_protocol();
   auto const bytes = static_cast<std::size_t>(protocol.field_name_count) *
@@ -442,6 +477,142 @@ void clearRegistrar(JSRuntime *runtime) noexcept {
   return state;
 }
 
+[[nodiscard]] std::uint64_t readBigEndian(std::uint8_t const *bytes,
+                                          std::uint32_t size) noexcept;
+
+[[nodiscard]] bool sortedOrdinalContains(std::uint16_t const *values,
+                                         std::uint16_t count,
+                                         std::uint16_t wanted) noexcept {
+  std::uint16_t first = 0;
+  std::uint16_t last = count;
+  while (first < last) {
+    auto const middle = static_cast<std::uint16_t>(first + (last - first) / 2);
+    if (values[middle] < wanted)
+      first = static_cast<std::uint16_t>(middle + 1);
+    else
+      last = middle;
+  }
+  return first < count && values[first] == wanted;
+}
+
+[[nodiscard]] xdata::StaticObjectFormat const *findObjectFormat(
+    xdata::StaticObjectFamily const &family, std::uint16_t typeCode) noexcept {
+  std::uint16_t first = 0;
+  std::uint16_t count = family.format_count;
+  while (count != 0) {
+    auto const step = static_cast<std::uint16_t>(count / 2);
+    auto const index = static_cast<std::uint16_t>(first + step);
+    auto const &format = static_data::OBJECT_FORMATS[family.format_begin + index];
+    if (format.type_code < typeCode) {
+      first = static_cast<std::uint16_t>(index + 1);
+      count = static_cast<std::uint16_t>(count - step - 1);
+    } else {
+      count = step;
+    }
+  }
+  if (first >= family.format_count)
+    return nullptr;
+  auto const &format = static_data::OBJECT_FORMATS[family.format_begin + first];
+  return format.type_code == typeCode ? &format : nullptr;
+}
+
+[[nodiscard]] bool objectRuleHolds(CertifiedObjectValue const &owner,
+                                   xdata::RecursiveIndexView index,
+                                   std::uint32_t scope,
+                                   xdata::StaticObjectRule const &rule) noexcept {
+  auto const *field = index.find_object_field(scope, rule.field_code);
+  if (field == nullptr || field->payload_begin > field->wire_end ||
+      field->wire_end > owner.byteCount)
+    return false;
+  switch (rule.kind) {
+  case xdata::StaticObjectRuleKind::native_amount:
+    return field->wire_end - field->payload_begin == 8;
+  case xdata::StaticObjectRuleKind::uint32_zero:
+    return true;
+  }
+  return false;
+}
+
+[[nodiscard]] ObjectView classifyObjectScope(
+    CertifiedObjectValue const &owner, std::uint32_t scopeId) noexcept {
+  auto const index = ownerIndex(owner);
+  auto const *scope = index.scope(scopeId);
+  if (scope == nullptr || scope->kind() != xdata::ScopeKind::object)
+    return ObjectView::st_object;
+
+  xdata::StaticObjectFamily const *selectedFamily = nullptr;
+  xdata::StaticObjectFormat const *selectedFormat = nullptr;
+  for (auto const &family : static_data::OBJECT_FAMILIES) {
+    auto const *discriminator =
+        index.find_object_field(scopeId, family.discriminator_field_code);
+    if (discriminator == nullptr)
+      continue;
+    if (selectedFamily != nullptr ||
+        discriminator->payload_begin > discriminator->wire_end ||
+        discriminator->wire_end > owner.byteCount ||
+        discriminator->wire_end - discriminator->payload_begin != 2)
+      return ObjectView::st_object;
+    auto const typeCode = static_cast<std::uint16_t>(readBigEndian(
+        owner.bytes + discriminator->payload_begin, 2));
+    selectedFamily = &family;
+    selectedFormat = findObjectFormat(family, typeCode);
+    if (selectedFormat == nullptr)
+      return ObjectView::st_object;
+  }
+  if (selectedFamily == nullptr || selectedFormat == nullptr)
+    return ObjectView::st_object;
+
+  auto const &protocol = xdata::xahau_static_protocol();
+  for (std::uint16_t i = 0; i < selectedFormat->required_count; ++i) {
+    auto const admission = static_data::OBJECT_REQUIRED_FIELDS[
+        selectedFormat->required_begin + i];
+    auto const *descriptor = protocol.field_by_ordinal(admission);
+    if (descriptor == nullptr ||
+        index.find_object_field(scopeId, descriptor->code) == nullptr)
+      return ObjectView::st_object;
+  }
+  auto const *allowed = static_data::OBJECT_ALLOWED_FIELDS.data() +
+                        selectedFormat->allowed_begin;
+  for (std::uint32_t i = 0; i < scope->field_count(); ++i) {
+    auto const *field = index.field(scope->first_field + i);
+    auto const *descriptor = field == nullptr
+                                 ? nullptr
+                                 : protocol.field_by_code(field->field_code);
+    if (descriptor == nullptr)
+      return ObjectView::st_object;
+    auto const admission = static_cast<std::uint16_t>(descriptor - protocol.fields);
+    if (!sortedOrdinalContains(allowed, selectedFormat->allowed_count,
+                               admission))
+      return ObjectView::st_object;
+  }
+  for (std::uint16_t i = 0; i < selectedFormat->refinement_count; ++i) {
+    auto const &rule = static_data::OBJECT_REFINEMENTS[
+        selectedFormat->refinement_begin + i];
+    if (!objectRuleHolds(owner, index, scopeId, rule))
+      return ObjectView::st_object;
+  }
+  return static_cast<ObjectView>(selectedFormat->view);
+}
+
+[[nodiscard]] bool viewBelongsToFamily(
+    ObjectView view, xdata::StaticObjectFamily const &family) noexcept {
+  if (family.base_view == view)
+    return true;
+  for (std::uint16_t i = 0; i < family.format_count; ++i) {
+    if (static_data::OBJECT_FORMATS[family.format_begin + i].view == view)
+      return true;
+  }
+  return false;
+}
+
+[[nodiscard]] std::uint16_t objectDefaultCount(ObjectView view) noexcept {
+  for (auto const &family : static_data::OBJECT_FAMILIES) {
+    if (viewBelongsToFamily(view, family))
+      return family.default_count;
+  }
+  return 0;
+}
+
 [[nodiscard]] JSValue newObjectWrapper(JSContext *ctx, JSValueConst owner,
                                        std::uint32_t scopeId) {
   auto *ownerState = ownerFrom(owner);
@@ -450,7 +621,16 @@ void clearRegistrar(JSRuntime *runtime) noexcept {
   if (scope == nullptr || scope->kind() != xdata::ScopeKind::object ||
       scopeId > kScopeMask || scope->field_count() > kScopeMask)
     return JS_ThrowInternalError(ctx, "invalid certified object scope");
-  JSValue value = JS_NewObjectClass(ctx, objectClassId);
+  auto const view = classifyObjectScope(*ownerState, scopeId);
+  auto const viewIndex = static_cast<std::size_t>(view);
+  if (!objectNounsReady || viewIndex >= objectPrototypes.size() ||
+      !JS_IsObject(objectPrototypes[viewIndex]))
+    return JS_ThrowInternalError(ctx, "object prototype registrar is unavailable");
+  auto const defaults = objectDefaultCount(view);
+  if (defaults > kScopeMask - scope->field_count())
+    return JS_ThrowInternalError(ctx, "object semantic cache exceeds limits");
+  JSValue value =
+      JS_NewObjectProtoClass(ctx, objectPrototypes[viewIndex], objectClassId);
   if (JS_IsException(value))
     return value;
   auto *state =
@@ -461,6 +641,8 @@ void clearRegistrar(JSRuntime *runtime) noexcept {
   }
   state->owner = JS_DupValue(ctx, owner);
   state->scopeKey = makeScopeKey(scopeId, scope->field_count());
+  state->view = view;
+  state->cacheCount = static_cast<std::uint16_t>(scope->field_count() + defaults);
   JS_SetOpaque(value, state);
 #if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
   test::gcProbeCreated(test::TrackedEntity::object, value);
@@ -657,6 +839,7 @@ void clearRegistrar(JSRuntime *runtime) noexcept {
   case Kind::uint8:
   case Kind::uint16:
   case Kind::uint32:
+  case Kind::ledger_entry_type:
   case Kind::transaction_type:
   case Kind::transaction_result:
     return JS_NewUint32(
@@ -793,6 +976,7 @@ void clearRegistrar(JSRuntime *runtime) noexcept {
     return makeUIntValue(ctx, 32, readBigEndian(payload, size));
   case Kind::uint64:
     return makeUIntValue(ctx, 64, readBigEndian(payload, size));
+  case Kind::ledger_entry_type:
   case Kind::transaction_type:
   case Kind::transaction_result:
     return JS_NewUint32(
@@ -838,6 +1022,11 @@ struct LocatedField {
   std::uint32_t slot = 0;
 };
 
+struct LocatedDefault {
+  xdata::StaticObjectRule const *rule = nullptr;
+  std::uint32_t slot = 0;
+};
+
 [[nodiscard]] LocatedField locateObjectField(ObjectState const &state,
                                              std::uint32_t code) noexcept {
   auto *owner = ownerFrom(state);
@@ -853,6 +1042,35 @@ struct LocatedField {
       static_cast<std::uint32_t>(field - first) >= scope->field_count())
     return {};
   return {field, static_cast<std::uint32_t>(field - first)};
+}
+
+[[nodiscard]] LocatedDefault locateObjectDefault(ObjectState const &state,
+                                                 std::uint32_t code) noexcept {
+  auto const view = static_cast<ObjectView>(state.view);
+  for (auto const &family : static_data::OBJECT_FAMILIES) {
+    if (!viewBelongsToFamily(view, family))
+      continue;
+    for (std::uint16_t i = 0; i < family.default_count; ++i) {
+      auto const &rule = static_data::OBJECT_DEFAULTS[family.default_begin + i];
+      if (rule.field_code == code)
+        return {&rule, directCount(state) + i};
+    }
+    break;
+  }
+  return {};
+}
+
+[[nodiscard]] bool ensureObjectCache(JSContext *ctx, ObjectState &state) {
+  if (state.cache != nullptr)
+    return true;
+  auto const bytes = static_cast<std::size_t>(state.cacheCount) * sizeof(JSValue);
+  auto *cache = static_cast<JSValue *>(js_malloc(ctx, bytes));
+  if (cache == nullptr)
+    return false;
+  for (std::uint32_t i = 0; i < state.cacheCount; ++i)
+    cache[i] = JS_UNDEFINED;
+  state.cache = cache;
+  return true;
 }
 
 [[nodiscard]] JSValue objectValue(JSContext *ctx, ObjectState &state,
@@ -873,17 +1091,34 @@ struct LocatedField {
       ctx, materializeField(ctx, state.owner, *owner, *located.field));
   if (local.isException())
     return local.release();
-  if (state.cache == nullptr) {
-    auto const bytes =
-        static_cast<std::size_t>(scope->field_count()) * sizeof(JSValue);
-    auto *cache = static_cast<JSValue *>(js_malloc(ctx, bytes));
-    if (cache == nullptr)
-      return oom(ctx);
-    for (std::uint32_t i = 0; i < scope->field_count(); ++i)
-      cache[i] = JS_UNDEFINED;
-    state.cache = cache;
-  }
+  if (!ensureObjectCache(ctx, state))
+    return oom(ctx);
   state.cache[located.slot] = local.release();
+  return JS_DupValue(ctx, state.cache[located.slot]);
+}
+
+[[nodiscard]] JSValue objectDefaultValue(JSContext *ctx, ObjectState &state,
+                                         LocatedDefault located) {
+  if (located.rule == nullptr)
+    return JS_UNDEFINED;
+  if (located.slot >= state.cacheCount)
+    return JS_ThrowInternalError(ctx, "object default cache is invalid");
+  if (state.cache != nullptr && !JS_IsUndefined(state.cache[located.slot]))
+    return JS_DupValue(ctx, state.cache[located.slot]);
+
+  qjs::OwnedValue value(ctx);
+  switch (located.rule->kind) {
+  case xdata::StaticObjectRuleKind::uint32_zero:
+    value = qjs::OwnedValue(ctx, makeUIntValue(ctx, 32, 0));
+    break;
+  case xdata::StaticObjectRuleKind::native_amount:
+    return JS_ThrowInternalError(ctx, "refinement cannot supply a default");
+  }
+  if (value.isException())
+    return value.release();
+  if (!ensureObjectCache(ctx, state))
+    return oom(ctx);
+  state.cache[located.slot] = value.release();
   return JS_DupValue(ctx, state.cache[located.slot]);
 }
 
@@ -925,7 +1160,8 @@ struct LocatedField {
   std::uint32_t code = 0;
   if (!resolveFieldArgument(ctx, argc, argv, code, false))
     return JS_HasException(ctx) ? JS_EXCEPTION : JS_FALSE;
-  return JS_NewBool(ctx, locateObjectField(*state, code).field != nullptr);
+  return JS_NewBool(ctx, locateObjectField(*state, code).field != nullptr ||
+                             locateObjectDefault(*state, code).rule != nullptr);
 }
 
 [[nodiscard]] JSValue objectGet(JSContext *ctx, JSValueConst thisValue,
@@ -936,7 +1172,11 @@ struct LocatedField {
   std::uint32_t code = 0;
   if (!resolveFieldArgument(ctx, argc, argv, code, false))
     return JS_HasException(ctx) ? JS_EXCEPTION : JS_UNDEFINED;
-  return objectValue(ctx, *state, locateObjectField(*state, code));
+  auto const field = locateObjectField(*state, code);
+  return field.field != nullptr
+             ? objectValue(ctx, *state, field)
+             : objectDefaultValue(ctx, *state,
+                                  locateObjectDefault(*state, code));
 }
 
 [[nodiscard]] JSValue objectFieldBytes(JSContext *ctx, JSValueConst thisValue,
@@ -1255,10 +1495,15 @@ struct LocatedField {
   if (name == nullptr || (name->flags & xdata::field_name_serialized) == 0)
     return 0;
   auto const located = locateObjectField(*state, name->code);
-  if (located.field == nullptr)
+  auto const defaulted = located.field == nullptr
+                             ? locateObjectDefault(*state, name->code)
+                             : LocatedDefault{};
+  if (located.field == nullptr && defaulted.rule == nullptr)
     return 0;
   if (descriptor != nullptr) {
-    JSValue materialized = objectValue(ctx, *state, located);
+    JSValue materialized = located.field != nullptr
+                               ? objectValue(ctx, *state, located)
+                               : objectDefaultValue(ctx, *state, defaulted);
     if (JS_IsException(materialized))
       return -1;
     descriptor->value = materialized;
@@ -1317,21 +1562,36 @@ struct LocatedField {
   auto const *scope = index.scope(scopeId(*state));
   if (scope == nullptr)
     return -1;
-  auto const count = scope->field_count();
+  std::uint32_t defaultCount = 0;
+  auto const view = static_cast<ObjectView>(state->view);
+  xdata::StaticObjectFamily const *familyDefaults = nullptr;
+  for (auto const &family : static_data::OBJECT_FAMILIES) {
+    if (viewBelongsToFamily(view, family)) {
+      familyDefaults = &family;
+      for (std::uint16_t i = 0; i < family.default_count; ++i) {
+        auto const &rule = static_data::OBJECT_DEFAULTS[family.default_begin + i];
+        if (index.find_object_field(scopeId(*state), rule.field_code) == nullptr)
+          ++defaultCount;
+      }
+      break;
+    }
+  }
+  auto const count = scope->field_count() + defaultCount;
   if (count == 0)
     return 0;
   auto *names = static_cast<JSPropertyEnum *>(
       js_malloc(ctx, static_cast<std::size_t>(count) * sizeof(JSPropertyEnum)));
   if (names == nullptr)
     return -1;
-  for (std::uint32_t i = 0; i < count; ++i) {
+  std::uint32_t written = 0;
+  for (std::uint32_t i = 0; i < scope->field_count(); ++i) {
     auto const *field = index.field(scope->first_field + i);
     auto const *descriptor =
         field == nullptr
             ? nullptr
             : xdata::xahau_static_protocol().field_by_code(field->field_code);
     if (descriptor == nullptr) {
-      for (std::uint32_t j = 0; j < i; ++j)
+      for (std::uint32_t j = 0; j < written; ++j)
         JS_FreeAtom(ctx, names[j].atom);
       js_free(ctx, names);
       return -1;
@@ -1340,13 +1600,46 @@ struct LocatedField {
     auto const name = xdata::xahau_static_protocol().field_name(nameOrdinal);
     JSAtom const atom = JS_NewAtomLen(ctx, name.data, name.size);
     if (atom == JS_ATOM_NULL) {
-      for (std::uint32_t j = 0; j < i; ++j)
+      for (std::uint32_t j = 0; j < written; ++j)
         JS_FreeAtom(ctx, names[j].atom);
       js_free(ctx, names);
       (void)atomFailure(ctx);
       return -1;
     }
-    names[i] = {true, atom};
+    names[written++] = {true, atom};
+  }
+  if (familyDefaults != nullptr) {
+    for (std::uint16_t i = 0; i < familyDefaults->default_count; ++i) {
+      auto const &rule = static_data::OBJECT_DEFAULTS[
+          familyDefaults->default_begin + i];
+      if (index.find_object_field(scopeId(*state), rule.field_code) != nullptr)
+        continue;
+      auto const *descriptor =
+          xdata::xahau_static_protocol().field_by_code(rule.field_code);
+      if (descriptor == nullptr) {
+        for (std::uint32_t j = 0; j < written; ++j)
+          JS_FreeAtom(ctx, names[j].atom);
+        js_free(ctx, names);
+        return -1;
+      }
+      auto const name =
+          xdata::xahau_static_protocol().field_name(descriptor->name_ordinal);
+      JSAtom const atom = JS_NewAtomLen(ctx, name.data, name.size);
+      if (atom == JS_ATOM_NULL) {
+        for (std::uint32_t j = 0; j < written; ++j)
+          JS_FreeAtom(ctx, names[j].atom);
+        js_free(ctx, names);
+        (void)atomFailure(ctx);
+        return -1;
+      }
+      names[written++] = {true, atom};
+    }
+  }
+  if (written != count) {
+    for (std::uint32_t j = 0; j < written; ++j)
+      JS_FreeAtom(ctx, names[j].atom);
+    js_free(ctx, names);
+    return -1;
   }
   *table = names;
   *length = count;
@@ -1391,7 +1684,8 @@ struct LocatedField {
     return -1;
   auto const *name = fieldNameByAtom(prop);
   return name == nullptr || (name->flags & xdata::field_name_serialized) == 0 ||
-         locateObjectField(*state, name->code).field == nullptr;
+         (locateObjectField(*state, name->code).field == nullptr &&
+          locateObjectDefault(*state, name->code).rule == nullptr);
 }
 
 [[nodiscard]] int arrayDelete(JSContext *ctx, JSValueConst value, JSAtom prop) {
@@ -1484,6 +1778,70 @@ JSCFunctionListEntry const iteratorPrototype[] = {
     JS_CFUNC_DEF("next", 0, iteratorNext),
     JS_CFUNC_DEF("[Symbol.iterator]", 0, iteratorSelf),
 };
+
+[[nodiscard]] JSValue unavailableObjectConstructor(
+    JSContext *ctx, JSValueConst, int, JSValueConst *) {
+  return JS_ThrowTypeError(
+      ctx, "serialized object constructors are provider-only");
+}
+
+struct StagedObjectNouns {
+  JSContext *ctx;
+  std::array<JSValue, kObjectViewCount> prototypes;
+  std::array<JSValue, kObjectViewCount> constructors;
+
+  explicit StagedObjectNouns(JSContext *context) : ctx(context) {
+    prototypes.fill(JS_UNDEFINED);
+    constructors.fill(JS_UNDEFINED);
+  }
+
+  ~StagedObjectNouns() {
+    for (JSValue value : prototypes)
+      JS_FreeValue(ctx, value);
+    for (JSValue value : constructors)
+      JS_FreeValue(ctx, value);
+  }
+
+  StagedObjectNouns(StagedObjectNouns const &) = delete;
+  StagedObjectNouns &operator=(StagedObjectNouns const &) = delete;
+};
+
+[[nodiscard]] bool stageObjectNouns(JSContext *ctx,
+                                    StagedObjectNouns &staged) {
+  static_assert(static_data::OBJECT_VIEWS.size() == kObjectViewCount);
+  for (std::size_t i = 0; i < kObjectViewCount; ++i) {
+    auto const &view = static_data::OBJECT_VIEWS[i];
+    if (i == static_cast<std::size_t>(ObjectView::st_object)) {
+      if (view.parent_view != xdata::ProtocolView::no_ordinal)
+        return false;
+      staged.prototypes[i] = qjs::makePrototype(ctx, objectPrototype, false);
+    } else {
+      if (view.parent_view >= i ||
+          !JS_IsObject(staged.prototypes[view.parent_view]))
+        return false;
+      staged.prototypes[i] =
+          JS_NewObjectProto(ctx, staged.prototypes[view.parent_view]);
+    }
+    if (JS_IsException(staged.prototypes[i]))
+      return false;
+
+    auto const *name = static_data::OBJECT_VIEW_NAME_BYTES + view.name_offset;
+    staged.constructors[i] = JS_NewCFunction2(
+        ctx, unavailableObjectConstructor, name, 0, JS_CFUNC_constructor, 0);
+    if (JS_IsException(staged.constructors[i]) ||
+        (view.parent_view != xdata::ProtocolView::no_ordinal &&
+         JS_SetPrototype(ctx, staged.constructors[i],
+                         staged.constructors[view.parent_view]) < 0) ||
+        JS_SetConstructor(ctx, staged.constructors[i], staged.prototypes[i]) < 0)
+      return false;
+  }
+  for (std::size_t i = 0; i < kObjectViewCount; ++i) {
+    if (!qjs::freezeObject(ctx, staged.prototypes[i]) ||
+        !qjs::freezeObject(ctx, staged.constructors[i]))
+      return false;
+  }
+  return true;
+}
 
 [[nodiscard]] JSValue newOwner(JSContext *ctx, std::uint8_t *bytes,
                                std::uint32_t byteCount, void *index) {
@@ -1941,7 +2299,8 @@ validateReplacementPayload(JSContext *ctx,
     return validateReplacementPayload(ctx, descriptor,
                                       {scratch, std::size_t{12}}, output);
   }
-  if (descriptor.materializer == xdata::MaterializerKind::transaction_type ||
+  if (descriptor.materializer == xdata::MaterializerKind::ledger_entry_type ||
+      descriptor.materializer == xdata::MaterializerKind::transaction_type ||
       descriptor.materializer == xdata::MaterializerKind::transaction_result) {
     if (!JS_IsNumber(value))
       return ReplacementInputStatus::mismatch;
@@ -2191,30 +2550,28 @@ bool registerObjectTypes(JSContext *ctx) {
   }
 
   qjs::OwnedValue currentOwner(ctx, JS_GetClassProto(ctx, ownerClassId));
-  qjs::OwnedValue currentObject(ctx, JS_GetClassProto(ctx, objectClassId));
   qjs::OwnedValue currentArray(ctx, JS_GetClassProto(ctx, arrayClassId));
   qjs::OwnedValue currentIterator(ctx, JS_GetClassProto(ctx, iteratorClassId));
   bool const prototypesReady =
-      JS_IsObject(currentOwner.get()) && JS_IsObject(currentObject.get()) &&
-      JS_IsObject(currentArray.get()) && JS_IsObject(currentIterator.get());
+      JS_IsObject(currentOwner.get()) && JS_IsObject(currentArray.get()) &&
+      JS_IsObject(currentIterator.get());
 
   qjs::OwnedValue ownerPrototype(ctx);
-  qjs::OwnedValue stagedObjectPrototype(ctx);
   qjs::OwnedValue stagedArrayPrototype(ctx);
   qjs::OwnedValue stagedIteratorPrototype(ctx);
   if (!prototypesReady) {
     ownerPrototype = qjs::OwnedValue(
         ctx, qjs::makePrototype(ctx, std::span<JSCFunctionListEntry const>{}));
-    stagedObjectPrototype =
-        qjs::OwnedValue(ctx, qjs::makePrototype(ctx, objectPrototype));
     stagedArrayPrototype =
         qjs::OwnedValue(ctx, qjs::makePrototype(ctx, arrayPrototype));
     stagedIteratorPrototype =
         qjs::OwnedValue(ctx, qjs::makePrototype(ctx, iteratorPrototype));
   }
-  if (ownerPrototype.isException() || stagedObjectPrototype.isException() ||
-      stagedArrayPrototype.isException() ||
-      stagedIteratorPrototype.isException() || !registerAtoms(ctx)) {
+  StagedObjectNouns stagedObjectNouns(ctx);
+  if (ownerPrototype.isException() || stagedArrayPrototype.isException() ||
+      stagedIteratorPrototype.isException() ||
+      (!objectNounsReady && !stageObjectNouns(ctx, stagedObjectNouns)) ||
+      !registerAtoms(ctx)) {
     clearRegistrar(JS_GetRuntime(ctx));
     return atomFailure(ctx);
   }
@@ -2223,15 +2580,64 @@ bool registerObjectTypes(JSContext *ctx) {
     // Allocation-free commit: retries never observe a partially installed
     // prototype set or a partially registered generated-atom accelerator.
     JS_SetClassProto(ctx, ownerClassId, ownerPrototype.release());
-    JS_SetClassProto(ctx, objectClassId, stagedObjectPrototype.release());
     JS_SetClassProto(ctx, arrayClassId, stagedArrayPrototype.release());
     JS_SetClassProto(ctx, iteratorClassId, stagedIteratorPrototype.release());
+  }
+  if (!objectNounsReady) {
+    JS_SetClassProto(
+        ctx, objectClassId,
+        JS_DupValue(ctx, stagedObjectNouns.prototypes[
+                             static_cast<std::size_t>(ObjectView::st_object)]));
+    for (std::size_t i = 0; i < kObjectViewCount; ++i) {
+      objectPrototypes[i] = stagedObjectNouns.prototypes[i];
+      stagedObjectNouns.prototypes[i] = JS_UNDEFINED;
+      objectConstructors[i] = stagedObjectNouns.constructors[i];
+      stagedObjectNouns.constructors[i] = JS_UNDEFINED;
+    }
+    objectNounsReady = true;
   }
   return !JS_HasException(ctx);
 }
 
 void unregisterObjectTypes(JSRuntime *runtime) noexcept {
   clearRegistrar(runtime);
+  clearObjectNouns(runtime);
+}
+
+bool publishObjectTypes(JSContext *ctx, JSValueConst global) {
+  if (!objectNounsReady || !JS_IsObject(global))
+    return false;
+  std::array<JSAtom, kObjectViewCount> atoms{};
+  std::size_t published = 0;
+  for (std::size_t i = 0; i < kObjectViewCount; ++i) {
+    auto const &view = static_data::OBJECT_VIEWS[i];
+    auto const *name = static_data::OBJECT_VIEW_NAME_BYTES + view.name_offset;
+    atoms[i] = JS_NewAtomLen(ctx, name, view.name_size);
+    if (atoms[i] == JS_ATOM_NULL)
+      break;
+    if (JS_DefinePropertyValue(ctx, global, atoms[i],
+                               JS_DupValue(ctx, objectConstructors[i]),
+                               JS_PROP_CONFIGURABLE | JS_PROP_ENUMERABLE) < 0)
+      break;
+    ++published;
+  }
+  if (published != kObjectViewCount) {
+    bool const hadException = JS_HasException(ctx);
+    qjs::OwnedValue exception(
+        ctx, hadException ? JS_GetException(ctx) : JS_UNDEFINED);
+    for (std::size_t i = 0; i < published; ++i)
+      JS_DeleteProperty(ctx, global, atoms[i], 0);
+    for (JSAtom atom : atoms) {
+      if (atom != JS_ATOM_NULL)
+        JS_FreeAtom(ctx, atom);
+    }
+    if (hadException)
+      JS_Throw(ctx, exception.release());
+    return atomFailure(ctx);
+  }
+  for (JSAtom atom : atoms)
+    JS_FreeAtom(ctx, atom);
+  return true;
 }
 
 bool registeredFieldCode(JSAtom atom, std::uint32_t &code) noexcept {
@@ -2262,8 +2668,8 @@ std::uint32_t certifiedObjectMaxBytes() noexcept {
   return xdata::RecursiveScanLimits{}.max_bytes;
 }
 
-JSValue makeCertifiedObjectOwned(JSContext *ctx, std::uint8_t *bytes,
-                                 std::uint32_t size) {
+JSValue makeCertifiedTransactionOwned(JSContext *ctx, std::uint8_t *bytes,
+                                      std::uint32_t size) {
   if ((size != 0 && bytes == nullptr) ||
       size > xdata::RecursiveScanLimits{}.max_bytes) {
     js_free(ctx, bytes);
@@ -2271,8 +2677,26 @@ JSValue makeCertifiedObjectOwned(JSContext *ctx, std::uint8_t *bytes,
         ctx, "trusted object bytes violate the provider size invariant");
   }
   auto outcome = mintOwnedObjectBytes(ctx, bytes, size);
-  if (JS_IsException(outcome.value) || !JS_IsUndefined(outcome.value))
+  if (JS_IsException(outcome.value))
     return outcome.value;
+  if (!JS_IsUndefined(outcome.value)) {
+    auto const *state = static_cast<ObjectState const *>(
+        JS_GetOpaque(outcome.value, objectClassId));
+    auto const view = state == nullptr ? ObjectView::st_object
+                                       : static_cast<ObjectView>(state->view);
+    bool transaction = false;
+    for (auto const &family : static_data::OBJECT_FAMILIES) {
+      if (family.base_view == ObjectView::transaction) {
+        transaction = viewBelongsToFamily(view, family);
+        break;
+      }
+    }
+    if (transaction)
+      return outcome.value;
+    JS_FreeValue(ctx, outcome.value);
+    return JS_ThrowInternalError(
+        ctx, "trusted originating object is not a complete Transaction");
+  }
   return JS_ThrowInternalError(
       ctx, "trusted object certification failed: %s",
       xdata::scan_message_literal(outcome.status.message_id));
@@ -2389,6 +2813,32 @@ bool isSTArray(JSValueConst value) noexcept {
 }
 
 #if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
+bool test::inspectObjectRoot(JSValueConst value,
+                             test::ObjectRootMetrics &metrics) noexcept {
+  metrics = {};
+  if (!JS_IsObject(value) || JS_GetClassID(value) != objectClassId)
+    return false;
+  auto const *state =
+      static_cast<ObjectState const *>(JS_GetOpaque(value, objectClassId));
+  auto const *owner = state == nullptr ? nullptr : ownerFrom(*state);
+  if (state == nullptr || owner == nullptr)
+    return false;
+  auto const index = ownerIndex(*owner);
+  auto const *header = index.header();
+  if (header == nullptr || scopeId(*state) != header->root_scope ||
+      !xdata::recursive_index_size(header->scope_count, header->field_count,
+                                   metrics.indexBytes))
+    return false;
+  metrics.view = state->view;
+  metrics.cacheCount = state->cacheCount;
+  metrics.ownerByteCount = owner->byteCount;
+  metrics.ownerFieldCount = header->field_count;
+  metrics.ownerScopeCount = header->scope_count;
+  metrics.indexBlocks = owner->index == nullptr ? 0 : 1;
+  metrics.indexStructurallyValid = index.structurally_valid();
+  return true;
+}
+
 bool test::inspectArrayCache(JSValueConst value,
                              test::ArrayCacheMetrics &metrics) noexcept {
   metrics = {};

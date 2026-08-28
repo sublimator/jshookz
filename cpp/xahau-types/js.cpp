@@ -192,7 +192,6 @@ publishCppRuntimeTypes(JSContext* ctx, JSValueConst global)
         {"PathHop", types::RuntimeTypeId::pathHop},
         {"PathSet", types::RuntimeTypeId::pathSet},
         {"STArray", types::RuntimeTypeId::stArray},
-        {"STObject", types::RuntimeTypeId::stObject},
         {"SerializedField", types::RuntimeTypeId::serializedField},
         {"Vector256", types::RuntimeTypeId::vector256},
         {"XChainBridge", types::RuntimeTypeId::xChainBridge},
@@ -230,6 +229,7 @@ extern "C" bool register_cpp_types(JSContext *ctx) {
          types::registerObjectTypes(ctx) &&
          types::registerPathSet(ctx, pathLeaves) &&
          types::registerFieldDescriptors(ctx, global.get()) &&
+         types::publishObjectTypes(ctx, global.get()) &&
          publishCppRuntimeTypes(ctx, global.get()) &&
          jshookz::qjs::installFactory(ctx, global.get(), "util", utilFunctions);
 }

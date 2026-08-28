@@ -11,6 +11,10 @@ namespace jshookz::provider::types {
 // publish a public constructor or byte-decoding utility.
 [[nodiscard]] bool registerObjectTypes(JSContext* ctx);
 
+// Publish the real, non-user-constructible STObject prototype hierarchy built
+// by registerObjectTypes. The five globals are committed as one group.
+[[nodiscard]] bool publishObjectTypes(JSContext* ctx, JSValueConst global);
+
 // Release registrar-owned atoms/storage before the owning runtime is freed.
 void unregisterObjectTypes(JSRuntime* runtime) noexcept;
 
@@ -31,10 +35,11 @@ void unregisterObjectTypes(JSRuntime* runtime) noexcept;
 [[nodiscard]] std::uint32_t certifiedObjectMaxBytes() noexcept;
 
 // Trusted-host ingress used by otxn.object(). This consumes `bytes` on every
-// path, certifies/indexes it exactly once, and adopts it directly as the sole
-// immutable root owner on success. Malformed trusted bytes are an internal
+// path, certifies/indexes it exactly once, requires a complete generated
+// Transaction format, and adopts it directly as the sole immutable root owner
+// on success. Malformed or non-Transaction trusted bytes are an internal
 // provider invariant failure; allocation failure remains exact QuickJS OOM.
-[[nodiscard]] JSValue makeCertifiedObjectOwned(
+[[nodiscard]] JSValue makeCertifiedTransactionOwned(
     JSContext* ctx, std::uint8_t* bytes, std::uint32_t size);
 
 // Private adapters behind the eventual util.validateObject,

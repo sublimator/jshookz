@@ -18,28 +18,47 @@ HOOK = Path(__file__).parents[1] / "examples" / "accept-incoming-xah.hook.ts"
 # static oracle outputs; the provider under test never encodes its own input.
 SOURCE = bytes.fromhex("B5F762798A53D543A014CAF8B297CFF8F2F937E8")
 DESTINATION = bytes.fromhex("841F44689750ED44FFB6A21950C8F29403915DFD")
+SEQUENCE = bytes.fromhex("2400000001")
+FEE = bytes.fromhex("68400000000000000A")
+SIGNING_PUB_KEY = bytes.fromhex("7300")
+ACCOUNT = bytes.fromhex("8114") + SOURCE
+DESTINATION_FIELD = bytes.fromhex("8314") + DESTINATION
 PAYMENT = bytes.fromhex(
     "120000"
+    "2400000001"
     "6140000000000F4240"
+    "68400000000000000A"
+    "7300"
     "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8"
     "8314841F44689750ED44FFB6A21950C8F29403915DFD"
 )
 ACCOUNT_SET = bytes.fromhex(
-    "1200038114B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+    "120003"
+    "2400000001"
+    "68400000000000000A"
+    "7300"
+    "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8"
 )
 PAYMENT_WITHOUT_DESTINATION = bytes.fromhex(
     "120000"
+    "2400000001"
     "6140000000000F4240"
+    "68400000000000000A"
+    "7300"
     "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8"
 )
 IOU_PAYMENT = bytes.fromhex(
-    "12000061D4838D7EA4C680000000000000000000000000005553440000000000"
+    "1200002400000001"
+    "61D4838D7EA4C680000000000000000000000000005553440000000000"
     "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+    "68400000000000000A7300"
     "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8"
     "8314841F44689750ED44FFB6A21950C8F29403915DFD"
 )
 MPT_PAYMENT = bytes.fromhex(
-    "12000061600000000000000001000000010101010101010101010101010101010101010101"
+    "1200002400000001"
+    "61600000000000000001000000010101010101010101010101010101010101010101"
+    "68400000000000000A7300"
     "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8"
     "8314841F44689750ED44FFB6A21950C8F29403915DFD"
 )
@@ -64,13 +83,14 @@ def test_otxn_object_is_one_certified_cached_local_view() -> None:
           const first = otxn.object();
           const second = otxn.object();
           if (first !== second) rollback("otxn cache identity changed", 1);
-
-          const account = rollback.requirePresent(
-            first.get(Field.Account), "missing Account", 2);
-          const destination = rollback.requirePresent(
-            first.get(Field.Destination), "missing Destination", 3);
-          const amount = rollback.requirePresent(
-            first.get(Field.Amount), "missing Amount", 4);
+          if (!(first instanceof Payment) ||
+              !(first instanceof Transaction) ||
+              !(first instanceof STObject)) {
+            rollback("specialized hierarchy mismatch", 2);
+          }
+          const account = first.Account;
+          const destination = first.Destination;
+          const amount = first.Amount;
           if (account.toHex() !== "B5F762798A53D543A014CAF8B297CFF8F2F937E8" ||
               destination.toHex() !== "841F44689750ED44FFB6A21950C8F29403915DFD" ||
               !amount.isNative() || amount.drops !== 1000000n) {
@@ -98,7 +118,6 @@ def test_otxn_object_is_one_certified_cached_local_view() -> None:
 @pytest.mark.parametrize(
     ("transaction", "code"),
     [
-        (PAYMENT_WITHOUT_DESTINATION, 11),
         (IOU_PAYMENT, 22),
         (MPT_PAYMENT, 22),
     ],
@@ -111,6 +130,24 @@ def test_payment_policy_rejects_missing_or_non_native_amounts(
     assert result.rejected, result.error
     assert result.return_code == code
     assert _call_names(result)[:7] == [
+        "otxn_type",
+        "otxn_slot",
+        "slot_size",
+        "slot_clear",
+        "otxn_slot",
+        "slot",
+        "slot_clear",
+    ]
+
+
+def test_incomplete_payment_shaped_origin_is_internal_invariant_failure() -> None:
+    result = _runner(PAYMENT_WITHOUT_DESTINATION).run_file(HOOK)
+
+    assert not result.accepted
+    assert not result.rejected
+    assert result.error is not None
+    assert "not a complete Transaction" in str(result.error)
+    assert _call_names(result) == [
         "otxn_type",
         "otxn_slot",
         "slot_size",
@@ -158,9 +195,12 @@ def test_payment_policy_rejects_wrong_destination_and_self_payment() -> None:
     assert wrong.return_code == 20
 
     self_payment = (
-        bytes.fromhex("1200006140000000000F4240")
-        + bytes.fromhex("8114")
-        + SOURCE
+        bytes.fromhex("120000")
+        + SEQUENCE
+        + bytes.fromhex("6140000000000F4240")
+        + FEE
+        + SIGNING_PUB_KEY
+        + ACCOUNT
         + bytes.fromhex("8314")
         + SOURCE
     )
@@ -300,10 +340,14 @@ def test_cache_resets_before_each_invocation_in_one_provider_instance() -> None:
             runtime.call_log = []
             replacement = bytes.fromhex("AA" * 20)
             runtime.otxn_blob = (
-                bytes.fromhex("1200006140000000000F42408114")
+                bytes.fromhex("120000")
+                + SEQUENCE
+                + bytes.fromhex("6140000000000F4240")
+                + FEE
+                + SIGNING_PUB_KEY
+                + bytes.fromhex("8114")
                 + replacement
-                + bytes.fromhex("8314")
-                + DESTINATION
+                + DESTINATION_FIELD
             )
             second = host.run_hook_bytecode(bytecode)
             second_calls = [call.name for call in runtime.call_log]
@@ -329,10 +373,18 @@ def test_cache_resets_before_each_invocation_in_one_provider_instance() -> None:
 
 
 def test_maximum_vl_field_stays_lazy_and_inside_host_work_envelope() -> None:
-    # 918,744 is xahaud's canonical maximum VL payload. Blob is type 7,
-    # field 26: header 70 1A; FE D4 17 is that maximum's VL prefix.
-    maximum_blob = bytes.fromhex("701AFED417") + bytes(918_744)
-    transaction = PAYMENT[:12] + maximum_blob + PAYMENT[12:]
+    # 918,744 is xahaud's canonical maximum VL payload. SigningPubKey is an
+    # admitted required Payment field; FE D4 17 is that maximum's VL prefix.
+    maximum_signing_key = bytes.fromhex("73FED417") + bytes(918_744)
+    transaction = (
+        bytes.fromhex("120000")
+        + SEQUENCE
+        + bytes.fromhex("6140000000000F4240")
+        + FEE
+        + maximum_signing_key
+        + ACCOUNT
+        + DESTINATION_FIELD
+    )
     result = _runner(transaction).run_file(HOOK)
 
     assert result.accepted, result.error

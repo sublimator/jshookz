@@ -172,6 +172,77 @@ inline constexpr std::array<EnumNamespaceMember, 77> TRANSACTION_TYPE_MEMBERS{{
     {"EscrowCreate", 1},
 }};
 
+inline constexpr std::array<EnumNamespaceMember, 34> LEDGER_ENTRY_TYPE_MEMBERS{{
+    // @binding provider:LedgerEntryType.DID
+    {"DID", 141},
+    // @binding provider:LedgerEntryType.PermissionedDomain
+    {"PermissionedDomain", 130},
+    // @binding provider:LedgerEntryType.Credential
+    {"Credential", 129},
+    // @binding provider:LedgerEntryType.Oracle
+    {"Oracle", 128},
+    // @binding provider:LedgerEntryType.MPToken
+    {"MPToken", 127},
+    // @binding provider:LedgerEntryType.MPTokenIssuance
+    {"MPTokenIssuance", 126},
+    // @binding provider:LedgerEntryType.AMM
+    {"AMM", 121},
+    // @binding provider:LedgerEntryType.PayChannel
+    {"PayChannel", 120},
+    // @binding provider:LedgerEntryType.HookState
+    {"HookState", 118},
+    // @binding provider:LedgerEntryType.Escrow
+    {"Escrow", 117},
+    // @binding provider:LedgerEntryType.XChainOwnedCreateAccountClaimID
+    {"XChainOwnedCreateAccountClaimID", 116},
+    // @binding provider:LedgerEntryType.FeeSettings
+    {"FeeSettings", 115},
+    // @binding provider:LedgerEntryType.RippleState
+    {"RippleState", 114},
+    // @binding provider:LedgerEntryType.XChainOwnedClaimID
+    {"XChainOwnedClaimID", 113},
+    // @binding provider:LedgerEntryType.DepositPreauth
+    {"DepositPreauth", 112},
+    // @binding provider:LedgerEntryType.Offer
+    {"Offer", 111},
+    // @binding provider:LedgerEntryType.Bridge
+    {"Bridge", 105},
+    // @binding provider:LedgerEntryType.LedgerHashes
+    {"LedgerHashes", 104},
+    // @binding provider:LedgerEntryType.Amendments
+    {"Amendments", 102},
+    // @binding provider:LedgerEntryType.DirectoryNode
+    {"DirectoryNode", 100},
+    // @binding provider:LedgerEntryType.AccountRoot
+    {"AccountRoot", 97},
+    // @binding provider:LedgerEntryType.URIToken
+    {"URIToken", 85},
+    // @binding provider:LedgerEntryType.Ticket
+    {"Ticket", 84},
+    // @binding provider:LedgerEntryType.SignerList
+    {"SignerList", 83},
+    // @binding provider:LedgerEntryType.UNLReport
+    {"UNLReport", 82},
+    // @binding provider:LedgerEntryType.NFTokenPage
+    {"NFTokenPage", 80},
+    // @binding provider:LedgerEntryType.NegativeUNL
+    {"NegativeUNL", 78},
+    // @binding provider:LedgerEntryType.ImportVLSequence
+    {"ImportVLSequence", 73},
+    // @binding provider:LedgerEntryType.Hook
+    {"Hook", 72},
+    // @binding provider:LedgerEntryType.EmittedTxn
+    {"EmittedTxn", 69},
+    // @binding provider:LedgerEntryType.HookDefinition
+    {"HookDefinition", 68},
+    // @binding provider:LedgerEntryType.Check
+    {"Check", 67},
+    // @binding provider:LedgerEntryType.Cron
+    {"Cron", 65},
+    // @binding provider:LedgerEntryType.NFTokenOffer
+    {"NFTokenOffer", 55},
+}};
+
 inline constexpr std::array<EnumNamespaceMember, 199> TRANSACTION_RESULT_MEMBERS{{
     // @binding provider:TransactionResult.tesSUCCESS
     {"tesSUCCESS", 0},

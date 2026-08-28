@@ -199,6 +199,32 @@ def test_real_xahau_tables_match_cleaned_json() -> None:
     assert invalid["nth"] == -1
 
 
+def test_provider_object_specialization_bindings_are_generated_from_formats() -> None:
+    src = XDATA / "definitions/xahau_definitions.json"
+    policy = json.loads(PROVIDER_POLICY.read_text(encoding="utf-8"))
+    defs = gen.clean_definitions(gen.unwrap_definitions(json.loads(src.read_text())))
+    tables = gen.provider_tables_from_defs(
+        defs,
+        policy["wire_type_materializers"],
+        policy["descriptor_overrides"],
+        policy,
+    )
+    header = gen.generate_provider_header(
+        tables,
+        namespace="catl::xdata::xahau_static",
+        source_name=src.name,
+        source_sha=hashlib.sha256(src.read_bytes()).hexdigest(),
+        policy_sha=hashlib.sha256(PROVIDER_POLICY.read_bytes()).hexdigest(),
+    )
+
+    assert header.count("// @binding provider:") == 123
+    assert "// @binding provider:STObject" in header
+    assert "// @binding provider:Transaction.Account" in header
+    assert "// @binding provider:Payment.Amount" in header
+    assert "// @binding provider:AccountRoot.Balance" in header
+    assert "// @binding provider:AccountSet" not in header
+
+
 @pytest.mark.parametrize("network", ["xahau", "xrpl"])
 def test_reserved_hash_surplus_is_validated_and_rendered(network: str) -> None:
     src = XDATA / f"definitions/{network}_definitions.json"
@@ -246,10 +272,12 @@ def test_reserved_hash_field_use_turns_generation_red(network: str, name: str) -
 def test_real_xahau_provider_closure_is_exact_and_total() -> None:
     src = XDATA / "definitions/xahau_definitions.json"
     defs = gen.clean_definitions(gen.unwrap_definitions(json.loads(src.read_text())))
-    type_materializers, overrides, policy_sha = gen.load_materializer_policy(
+    type_materializers, overrides, policy_sha, policy = gen.load_materializer_policy(
         PROVIDER_POLICY
     )
-    tables = gen.provider_tables_from_defs(defs, type_materializers, overrides)
+    tables = gen.provider_tables_from_defs(
+        defs, type_materializers, overrides, policy
+    )
 
     assert len(tables["names"]) == 337
     assert len(tables["fields"]) == 327
@@ -272,6 +300,7 @@ def test_real_xahau_provider_closure_is_exact_and_total() -> None:
     source_fields = defs["FIELDS"]
     by_name = {source_fields[row["name_ordinal"]][0]: row for row in admitted}
     assert by_name["TransactionType"]["materializer"] == "transaction_type"
+    assert by_name["LedgerEntryType"]["materializer"] == "ledger_entry_type"
     assert by_name["TransactionResult"]["materializer"] == "transaction_result"
     assert by_name["Number"]["materializer"] == "number"
     assert tables["max_type_code"] == 26

@@ -53,6 +53,7 @@ _MATERIAL_PROFILES = {
 }
 _UINT_BITS = {"uint8": 8, "uint16": 16, "uint32": 32, "uint64": 64}
 _FIXED_PAYLOAD_SIZES = {
+    "ledger_entry_type": 2,
     "transaction_result": 1,
     "transaction_type": 2,
     "uint8": 1,
@@ -71,6 +72,7 @@ def _cpp_roots() -> list[Path]:
     return [
         REPO_ROOT / "cpp" / "provider",
         REPO_ROOT / "cpp" / "xahau-types",
+        REPO_ROOT / "cpp" / "x-data" / "generated",
     ]
 
 
@@ -293,7 +295,8 @@ JSON.stringify((() => {{
     if (row.materializer === "number") {{
       if (typeof material !== "string" || material !== "1.25")
         failures.push(`${{prefix}}: expected canonical Number string`);
-    }} else if (row.materializer === "transaction_type" ||
+    }} else if (row.materializer === "ledger_entry_type" ||
+               row.materializer === "transaction_type" ||
                row.materializer === "transaction_result") {{
       if (typeof material !== "number" || material !== 0)
         failures.push(`${{prefix}}: expected numeric enum materializer`);

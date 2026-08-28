@@ -50,6 +50,8 @@ constexpr std::array<ExpectedType, 19> EXPECTED_TYPES{{
 
 MaterializerKind materializer_for(std::string_view field,
                                   std::string_view type) {
+  if (field == "LedgerEntryType")
+    return MaterializerKind::ledger_entry_type;
   if (field == "TransactionType")
     return MaterializerKind::transaction_type;
   if (field == "TransactionResult")

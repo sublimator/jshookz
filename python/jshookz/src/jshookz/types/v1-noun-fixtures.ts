@@ -3,9 +3,9 @@
  *
  * Compiled by tsconfig.v1-root.json with the exact v1 declaration as the
  * only other root, so these prove the SHIPPED surface: every selected
- * noun is a runtime type object — `instanceof` classifies and narrows —
- * and `new` / `.prototype` stay red (each `@ts-expect-error` line is a
- * negative fixture; the file only compiles while every one still fails).
+ * noun is a runtime value — `instanceof` classifies and narrows. A-prime
+ * classifier nouns expose no prototype; the serialized-object classes expose
+ * their real prototype hierarchy but keep `new` inaccessible.
  */
 export {};
 
@@ -38,6 +38,10 @@ if (unknownValue instanceof Result) { const v: Result<unknown, unknown> = unknow
 if (unknownValue instanceof VoidResult) { const v: VoidResult<unknown> = unknownValue; void v; }
 if (unknownValue instanceof STArray) { const v: STArray<STObject> = unknownValue; void v; }
 if (unknownValue instanceof STObject) { const v: STObject = unknownValue; void v; }
+if (unknownValue instanceof Transaction) { const v: Transaction = unknownValue; void v; }
+if (unknownValue instanceof Payment) { const v: Payment = unknownValue; void v; }
+if (unknownValue instanceof LedgerEntry) { const v: LedgerEntry = unknownValue; void v; }
+if (unknownValue instanceof AccountRoot) { const v: AccountRoot = unknownValue; void v; }
 if (unknownValue instanceof SerializedField) {
   const v: SerializedField<unknown, number, number, number> = unknownValue; void v;
 }
@@ -105,8 +109,16 @@ const c27 = new Vector256(); void c27;
 const c28 = new XChainBridge(); void c28;
 // @ts-expect-error the noun is not constructible
 const c29 = new XFLDecimal(); void c29;
+// @ts-expect-error protected provider-only constructor
+const c30 = new Transaction(); void c30;
+// @ts-expect-error private provider-only constructor
+const c31 = new Payment(); void c31;
+// @ts-expect-error protected provider-only constructor
+const c32 = new LedgerEntry(); void c32;
+// @ts-expect-error private provider-only constructor
+const c33 = new AccountRoot(); void c33;
 
-// ---- `.prototype` stays unpromised on every published v1 noun ----
+// ---- only the real serialized-object classes expose `.prototype` ----
 
 // @ts-expect-error no prototype is promised
 const p01 = AccountID.prototype; void p01;
@@ -156,8 +168,7 @@ const p22 = Result.prototype; void p22;
 const p23 = VoidResult.prototype; void p23;
 // @ts-expect-error no prototype is promised
 const p24 = STArray.prototype; void p24;
-// @ts-expect-error no prototype is promised
-const p25 = STObject.prototype; void p25;
+const p25: STObject = STObject.prototype; void p25;
 // @ts-expect-error no prototype is promised
 const p26 = SerializedField.prototype; void p26;
 // @ts-expect-error no prototype is promised
@@ -166,6 +177,13 @@ const p27 = Vector256.prototype; void p27;
 const p28 = XChainBridge.prototype; void p28;
 // @ts-expect-error no prototype is promised
 const p29 = XFLDecimal.prototype; void p29;
+const p30: Transaction = Transaction.prototype; void p30;
+const p31: Payment = Payment.prototype; void p31;
+const p32: LedgerEntry = LedgerEntry.prototype; void p32;
+const p33: AccountRoot = AccountRoot.prototype; void p33;
+const paymentIsTransaction: Transaction = Payment.prototype; void paymentIsTransaction;
+const accountRootIsLedgerEntry: LedgerEntry = AccountRoot.prototype;
+void accountRootIsLedgerEntry;
 
 // ── 0060 activation: profile-configuration vocabulary ────────────────
 
@@ -204,16 +222,21 @@ void activationAdd; void activationSubtract; void activationMultiply; void activ
 // ── 0102: runtime enum namespaces, literal unions, hidden helpers ─────
 
 activationExpectTrue<ActivationEqual<typeof TransactionType.Payment, 0>>();
+activationExpectTrue<ActivationEqual<typeof LedgerEntryType.AccountRoot, 97>>();
 activationExpectTrue<ActivationEqual<typeof TransactionResult.tesSUCCESS, 0>>();
 activationExpectTrue<ActivationEqual<typeof HookReturnCode.TOO_BIG, -3>>();
 
 const transactionTypeValue: TransactionType = TransactionType.Invoke;
+const ledgerEntryTypeValue: LedgerEntryType = LedgerEntryType.AccountRoot;
 const transactionResultValue: TransactionResult = TransactionResult.tecNO_ENTRY;
 const hookReturnCodeValue: HookReturnCode = HookReturnCode.INVALID_FLOAT;
-void transactionTypeValue; void transactionResultValue; void hookReturnCodeValue;
+void transactionTypeValue; void ledgerEntryTypeValue;
+void transactionResultValue; void hookReturnCodeValue;
 
 // @ts-expect-error 123456 is not a declared transaction type
 const badTransactionType: TransactionType = 123456; void badTransactionType;
+// @ts-expect-error 123456 is not a declared ledger-entry type
+const badLedgerEntryType: LedgerEntryType = 123456; void badLedgerEntryType;
 // @ts-expect-error 123456 is not a declared transaction result
 const badTransactionResult: TransactionResult = 123456; void badTransactionResult;
 // @ts-expect-error -24 is the intentionally unused Hook return-code gap

@@ -123,7 +123,7 @@ js_otxn_object(JSContext *ctx, JSValueConst this_val,
             (long long)cleared);
     }
 
-    JSValue object = types::makeCertifiedObjectOwned(ctx, bytes, size);
+    JSValue object = types::makeCertifiedTransactionOwned(ctx, bytes, size);
     if (JS_IsException(object))
         return object;
     originatingTransaction = JS_DupValue(ctx, object);
