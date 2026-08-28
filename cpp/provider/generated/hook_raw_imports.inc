@@ -19,6 +19,18 @@ extern int64_t hook_ledger_last_hash(uint32_t arg0, uint32_t arg1);
 __attribute__((import_module("env"), import_name("otxn_type")))
 extern int64_t hook_otxn_type(void);
 
+__attribute__((import_module("env"), import_name("otxn_slot")))
+extern int64_t hook_otxn_slot(uint32_t arg0);
+
+__attribute__((import_module("env"), import_name("slot_size")))
+extern int64_t hook_slot_size(uint32_t arg0);
+
+__attribute__((import_module("env"), import_name("slot")))
+extern int64_t hook_slot(uint32_t arg0, uint32_t arg1, uint32_t arg2);
+
+__attribute__((import_module("env"), import_name("slot_clear")))
+extern int64_t hook_slot_clear(uint32_t arg0);
+
 __attribute__((import_module("env"), import_name("hook_account")))
 extern int64_t hook_hook_account(uint32_t arg0, uint32_t arg1);
 

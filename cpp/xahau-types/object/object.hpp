@@ -25,6 +25,18 @@ void unregisterObjectTypes(JSRuntime* runtime) noexcept;
 [[nodiscard]] JSValue makeCertifiedObjectCopy(
     JSContext* ctx, std::uint8_t const* bytes, std::uint32_t size);
 
+// Maximum contiguous serialized object accepted by the exact recursive
+// certifier. Host-backed acquisition checks this before allocating its root
+// byte owner.
+[[nodiscard]] std::uint32_t certifiedObjectMaxBytes() noexcept;
+
+// Trusted-host ingress used by otxn.object(). This consumes `bytes` on every
+// path, certifies/indexes it exactly once, and adopts it directly as the sole
+// immutable root owner on success. Malformed trusted bytes are an internal
+// provider invariant failure; allocation failure remains exact QuickJS OOM.
+[[nodiscard]] JSValue makeCertifiedObjectOwned(
+    JSContext* ctx, std::uint8_t* bytes, std::uint32_t size);
+
 // Private adapters behind the eventual util.validateObject,
 // util.safeDecodeObject, and util.decodeObject publication. They enforce the
 // exact ObjectBytes provenance union without executing JavaScript.

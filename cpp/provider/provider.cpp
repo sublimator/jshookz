@@ -7,6 +7,7 @@
  */
 
 #include "provider_internal.hpp"
+#include "bindings/common.hpp"
 #include "bindings/hook_imports.hpp"
 #include "catl/xdata/static_protocol.h"
 #include "runtime_profile_limits.h"
@@ -91,6 +92,7 @@ static void
 destroy_runtime(void)
 {
     if (ctx) {
+        jshookz::provider::bindings::resetOriginatingTransactionCache(ctx);
         jshookz::provider::destroyXFLProfile(ctx);
         JS_FreeContext(ctx);
         ctx = NULL;
@@ -604,6 +606,7 @@ static int32_t qjs_invoke_bytecode_export(
     uint32_t reserved)
 {
     clear_result();
+    jshookz::provider::bindings::resetOriginatingTransactionCache(ctx);
 
     using jshookz::provider::qjs::OwnedValue;
     OwnedValue object(
@@ -717,6 +720,7 @@ int32_t qjs_validate_hook_module(const uint8_t *buf, uint32_t buf_len)
     constexpr std::int32_t failure =
         validation::module_validation_failure_sentinel;
     clear_result();
+    jshookz::provider::bindings::resetOriginatingTransactionCache(ctx);
 
     using jshookz::provider::qjs::OwnedValue;
     OwnedValue object(

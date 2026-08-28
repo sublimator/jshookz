@@ -2258,6 +2258,26 @@ JSValue makeCertifiedObjectCopy(JSContext *ctx, std::uint8_t const *bytes,
       &outcome.status);
 }
 
+std::uint32_t certifiedObjectMaxBytes() noexcept {
+  return xdata::RecursiveScanLimits{}.max_bytes;
+}
+
+JSValue makeCertifiedObjectOwned(JSContext *ctx, std::uint8_t *bytes,
+                                 std::uint32_t size) {
+  if ((size != 0 && bytes == nullptr) ||
+      size > xdata::RecursiveScanLimits{}.max_bytes) {
+    js_free(ctx, bytes);
+    return JS_ThrowInternalError(
+        ctx, "trusted object bytes violate the provider size invariant");
+  }
+  auto outcome = mintOwnedObjectBytes(ctx, bytes, size);
+  if (JS_IsException(outcome.value) || !JS_IsUndefined(outcome.value))
+    return outcome.value;
+  return JS_ThrowInternalError(
+      ctx, "trusted object certification failed: %s",
+      xdata::scan_message_literal(outcome.status.message_id));
+}
+
 // @binding provider:util.validateObject
 JSValue validateObjectBytes(JSContext *ctx, JSValueConst input) {
   JSValue backing = JS_UNDEFINED;
