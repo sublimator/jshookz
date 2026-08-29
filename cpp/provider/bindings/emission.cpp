@@ -33,6 +33,7 @@ constexpr std::uint32_t maximumParameterNameBytes = 32;
 constexpr std::uint32_t maximumParameterValueBytes = 256;
 constexpr std::uint64_t maximumNativeDrops = 100'000'000'000'000'000ULL;
 constexpr std::uint64_t nativeAmountBit = 1ULL << 62;
+constexpr std::array<std::uint8_t, 33> zeroSigningPublicKey{};
 
 [[nodiscard]] constexpr std::uint32_t
 wireCode(BuilderFieldCode code) noexcept
@@ -1076,10 +1077,8 @@ template <std::size_t Capacity>
         // accepts an empty VL, but that spelling changes the transaction ID.
         if (!object.begin(field.code) || !writer.vl_prefix(33))
             return false;
-        for (std::uint32_t i = 0; i < 33; ++i)
-            if (!writer.byte(0))
-                return false;
-        return true;
+        return writer.bytes(
+            zeroSigningPublicKey.data(), zeroSigningPublicKey.size());
     case BuilderFieldCode::Account:
         return object.begin(field.code) &&
             writer.vl_prefix(
