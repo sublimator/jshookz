@@ -238,6 +238,200 @@ TEST_F(XahauTypes, AccountIDZero)
     EXPECT_TRUE(JS_ToBool(ctx, v.get()));
 }
 
+TEST_F(XahauTypes, RecordSchemasRoundTripExactMixedLayouts)
+{
+    auto value = eval(R"JS(
+        (() => {
+          const schema = record("Mixed", 72, [
+            ["small", record.u8(), {expectOffset: 0}],
+            ["medium", record.u16le(), {expectOffset: 1}],
+            ["wide", record.u32le(), {expectOffset: 3}],
+            ["huge", record.u64le(), {expectOffset: 7}],
+            ["blob", record.bytes(3), {expectOffset: 15}],
+            ["hash", record.hash(32), {expectOffset: 18}],
+            ["account", record.accountID(), {expectOffset: 50}],
+            record.padding(2),
+          ]);
+          const hashBytes = new Uint8Array(32);
+          hashBytes[0] = 0xA5;
+          hashBytes[31] = 0x5A;
+          const accountBytes = new Uint8Array(20);
+          accountBytes[0] = 0x11;
+          accountBytes[19] = 0x22;
+          const encoded = schema.safeEncode({
+            small: 0x12,
+            medium: 0x3456,
+            wide: 0x789ABCDE,
+            huge: 0xFEDCBA9876543210n,
+            blob: STBlob.from(new Uint8Array([1, 2, 3])),
+            hash: Hash256.from(hashBytes),
+            account: AccountID.from(accountBytes),
+          });
+          if (!encoded.ok) return "encode-failed";
+          const parsed = schema.safeParse(encoded.value);
+          if (!parsed.ok) return "parse-failed";
+          const bytes = encoded.value.toBytes();
+          return JSON.stringify({
+            name: schema.name,
+            length: schema.byteLength,
+            frozenSchema: Object.isFrozen(schema),
+            frozenValue: Object.isFrozen(parsed.value),
+            values:
+              parsed.value.small === 0x12 &&
+              parsed.value.medium === 0x3456 &&
+              parsed.value.wide === 0x789ABCDE &&
+              parsed.value.huge === 0xFEDCBA9876543210n,
+            rich:
+              parsed.value.blob instanceof STBlob &&
+              parsed.value.hash instanceof Hash256 &&
+              parsed.value.account instanceof AccountID,
+            littleEndian:
+              bytes[1] === 0x56 && bytes[2] === 0x34 &&
+              bytes[3] === 0xDE && bytes[4] === 0xBC &&
+              bytes[7] === 0x10 && bytes[14] === 0xFE,
+            padding: bytes[70] === 0 && bytes[71] === 0,
+          });
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException()) << to_string(value.get());
+    EXPECT_EQ(to_string(value.get()),
+        R"({"name":"Mixed","length":72,"frozenSchema":true,"frozenValue":true,"values":true,"rich":true,"littleEndian":true,"padding":true})");
+}
+
+TEST_F(XahauTypes, ScalarSchemasPreserveResultAndAssertionChannels)
+{
+    auto value = eval(R"JS(
+        (() => {
+          const schema = cell("Counter", record.u64le());
+          const encoded = schema.safeEncode(0xFEDCBA9876543210n);
+          const parsed = encoded.ok ? schema.safeParse(encoded.value) : encoded;
+          const wrong = schema.safeParse(new Uint8Array(7));
+          const invalid = schema.safeEncode(-1n);
+          let assertion = false;
+          try { schema.parse(new Uint8Array(7)); }
+          catch (error) { assertion = error instanceof TypeError; }
+          return JSON.stringify({
+            name: schema.name,
+            length: schema.byteLength,
+            value: parsed.ok && parsed.value === 0xFEDCBA9876543210n,
+            wrong:
+              !wrong.ok && wrong.error.domain === "parse" &&
+              wrong.error.issue === "wrong-length" &&
+              wrong.error.expectedLength === 8 &&
+              wrong.error.actualLength === 7,
+            invalid:
+              !invalid.ok && invalid.error.domain === "encode" &&
+              invalid.error.issue === "invalid-value" &&
+              invalid.error.field === undefined,
+            assertion,
+          });
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException()) << to_string(value.get());
+    EXPECT_EQ(to_string(value.get()),
+        R"({"name":"Counter","length":8,"value":true,"wrong":true,"invalid":true,"assertion":true})");
+}
+
+TEST_F(XahauTypes, RecordPatchPreservesUnclaimedBytesAndValidatesFields)
+{
+    auto value = eval(R"JS(
+        (() => {
+          const schema = record("Patch", 8, [
+            ["head", record.u16le()],
+            record.padding(2),
+            ["tail", record.u32le()],
+          ]);
+          const source = STBlob.from(
+            new Uint8Array([0x34, 0x12, 0xAA, 0xBB, 1, 2, 3, 4]),
+          );
+          const patched = schema.patch(source, {tail: 0x78563412});
+          if (!patched.ok) return "patch-failed";
+          const bytes = patched.value.toBytes();
+          const parsed = schema.parse(patched.value);
+          let invalid = false;
+          try { schema.patch(source, {head: 0x1_0000}); }
+          catch (error) { invalid = error instanceof TypeError; }
+          const wrong = schema.patch(new Uint8Array(7), {});
+          return JSON.stringify({
+            sourceUnchanged: source.byteAt(4) === 1,
+            preserved: bytes[0] === 0x34 && bytes[1] === 0x12 &&
+              bytes[2] === 0xAA && bytes[3] === 0xBB,
+            changed: parsed.tail === 0x78563412,
+            invalid,
+            wrong: !wrong.ok && wrong.error.issue === "wrong-length",
+          });
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException()) << to_string(value.get());
+    EXPECT_EQ(to_string(value.get()),
+        R"({"sourceUnchanged":true,"preserved":true,"changed":true,"invalid":true,"wrong":true})");
+}
+
+TEST_F(XahauTypes, RecordConstructionRejectsLayoutAndNominalityDefects)
+{
+    auto value = eval(R"JS(
+        (() => {
+          const rejected = [];
+          const rejects = (fn) => {
+            try { fn(); rejected.push(false); }
+            catch (error) { rejected.push(error instanceof TypeError || error instanceof RangeError); }
+          };
+          rejects(() => record("offset", 2, [
+            ["value", record.u16le(), {expectOffset: 1}],
+          ]));
+          rejects(() => record("duplicate", 2, [
+            ["value", record.u8()], ["value", record.u8()],
+          ]));
+          rejects(() => record("extent", 3, [["value", record.u16le()]]));
+          rejects(() => record("bare", 1, [record.u8()]));
+          rejects(() => record("forged", 1, [["value", {byteLength: 1}]]));
+          rejects(() => cell("padding", record.padding(1)));
+          rejects(() => record.hash(20));
+          rejects(() => record.bytes(0));
+          const schema = record("receiver", 1, [["value", record.u8()]]);
+          rejects(() => schema.parse.call({}, new Uint8Array([1])));
+          return JSON.stringify({
+            allRejected: rejected.length === 9 && rejected.every(Boolean),
+            frozenGlobals: Object.isFrozen(cell) && Object.isFrozen(record),
+            frozenField: Object.isFrozen(record.u8()),
+          });
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException()) << to_string(value.get());
+    EXPECT_EQ(to_string(value.get()),
+        R"({"allRejected":true,"frozenGlobals":true,"frozenField":true})");
+}
+
+TEST_F(XahauTypes, RecordSchemaOwnershipSurvivesCollectionAndReuse)
+{
+    auto churn = eval(R"JS(
+        (() => {
+          for (let index = 0; index < 512; ++index) {
+            const schema = record(`schema-${index}`, 8, [
+              [`field-${index}`, record.u64le()],
+            ]);
+            const encoded = schema.encode({[`field-${index}`]: BigInt(index)});
+            const parsed = schema.parse(encoded);
+            if (parsed[`field-${index}`] !== BigInt(index)) return false;
+          }
+          return true;
+        })()
+    )JS");
+    ASSERT_FALSE(churn.isException()) << to_string(churn.get());
+    EXPECT_TRUE(JS_ToBool(ctx, churn.get()));
+
+    JS_RunGC(rt);
+
+    auto reused = eval(R"JS(
+        (() => {
+          const schema = record("after-gc", 2, [["value", record.u16le()]]);
+          return schema.parse(schema.encode({value: 0xCAFE})).value === 0xCAFE;
+        })()
+    )JS");
+    ASSERT_FALSE(reused.isException()) << to_string(reused.get());
+    EXPECT_TRUE(JS_ToBool(ctx, reused.get()));
+}
+
 TEST_F(XahauTypes, XFLDecimalTotalValueKernel)
 {
     namespace types = jshookz::provider::types;

@@ -48,7 +48,9 @@ def test_public_declarations_are_package_data_and_v1_is_default():
     v1 = XAHAU_V1_HOOKS_API_DECLARATIONS.read_text()
     assert "interface Hash256" in v1
     assert "const Hash256: Hash256Factory" in v1
-    assert "declare function record" not in v1
+    assert "function cell<" in v1
+    assert "function record<" in v1
+    assert "function u64le()" in v1
 
 
 def test_parameter_keys_reject_structural_to_bytes_impostors(tmp_path: Path):
@@ -131,15 +133,45 @@ def test_checked_hook_languages_share_runtime_enum_namespace_values(
     assert evaluated.error == f"Error: enum:{expected}"
 
 
-def test_default_v1_declarations_reject_unimplemented_rich_api(tmp_path: Path):
-    source = tmp_path / "future-api.hook.ts"
+def test_default_v1_declarations_compile_minimal_record_schema(tmp_path: Path):
+    source = tmp_path / "record-schema.hook.ts"
     source.write_text(
-        "export function main(): never { "
-        "record('future', 1, { value: record.u8(0) }); "
-        "return accept(); }"
+        "const Cell=record('Cell',7,["
+        "['tag',record.u8(),{expectOffset:0}],"
+        "['count',record.u32le(),{expectOffset:1}],"
+        "record.padding(2)]);"
+        "export function main():never{"
+        "const encoded=rollback.onFail(Cell.safeEncode({tag:1,count:2}), 'encode');"
+        "const decoded=rollback.onFail(Cell.safeParse(encoded), 'parse');"
+        "const tag:number=decoded.tag;const count:number=decoded.count;"
+        "trace('record',STBlob.from(new Uint8Array([tag,count])));accept();}"
     )
 
-    with pytest.raises(RuntimeError, match="Cannot find name 'record'"):
+    compile_hook(source)
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "record.u16be();",
+        "record.u32be();",
+        "record.i32le();",
+        "record.xflle();",
+        "record.currency();",
+        "record.overlay({raw:record.bytes(1)});",
+        "record.hash(20);",
+        "cell('forged',{byteLength:1});",
+    ],
+)
+def test_default_v1_declarations_reject_unearned_record_surface(
+    tmp_path: Path, statement: str
+):
+    source = tmp_path / "future-record-api.hook.ts"
+    source.write_text(
+        f"export function main():never{{{statement}accept();}}"
+    )
+
+    with pytest.raises(RuntimeError, match="TypeScript compilation failed"):
         compile_hook(source)
 
 

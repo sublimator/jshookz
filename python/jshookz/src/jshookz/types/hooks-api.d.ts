@@ -995,6 +995,8 @@ declare global {
     ]: T extends readonly [string, infer F, ...unknown[]] ? RecordFieldValue<F> : never;
   };
 
+  type RecordPatch<Value> = { [K in keyof Value]?: Value[K] };
+
   interface RecordSchema<
     Name extends string,
     Size extends number,
@@ -1029,7 +1031,7 @@ declare global {
     encode(value: Value): STBlob;
     patch(
       source: BytesLike | STBlob,
-      values: Partial<Value>,
+      values: RecordPatch<Value>,
     ): ParseResult<STBlob>;
   }
 
@@ -1089,6 +1091,7 @@ declare global {
     function xflbe(): RecordField<XFLDecimal, 8>;
     function xflle(): RecordField<XFLDecimal, 8>;
     function bytes<const Width extends number>(byteLength: Width): RecordField<STBlob, Width>;
+    function hash(byteLength: 32): RecordField<Hash256, 32>;
     function hash<const Width extends HashWidth>(byteLength: Width): RecordField<HashByWidth[Width], Width>;
     function accountID(): RecordField<AccountID, 20>;
     function currency(): RecordField<Currency, 20>;

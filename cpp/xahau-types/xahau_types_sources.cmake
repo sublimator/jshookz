@@ -7,6 +7,7 @@ set(JSHOOKZ_XAHAU_TYPES_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/runtime_type.cpp
     ${CMAKE_CURRENT_LIST_DIR}/result_js.cpp
     ${CMAKE_CURRENT_LIST_DIR}/blob/blob_js.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/record/record_js.cpp
     ${CMAKE_CURRENT_LIST_DIR}/hash/hash256_js.cpp
     ${CMAKE_CURRENT_LIST_DIR}/hash/uint_js.cpp
     ${CMAKE_CURRENT_LIST_DIR}/account/account_js.cpp

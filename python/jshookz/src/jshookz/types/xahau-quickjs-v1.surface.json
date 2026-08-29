@@ -55,7 +55,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "1e89c29eadd671ad8884c9da155ba73e05ac3358b6993869e6e046338fa49cf1"
+    "sha256": "ce9625f3629e5b69756e47275a7047c4858a0f62ca5818235b1528756d9ef81e"
   },
   "globals": {
     "AccountID": "object",
@@ -99,11 +99,13 @@
     "XFLDecimal": "object",
     "XFLProfile": "object",
     "accept": "function",
+    "cell": "function",
     "defineHookConfig": "function",
     "emit": "object",
     "hook": "object",
     "ledger": "object",
     "otxn": "object",
+    "record": "function",
     "rollback": "function",
     "state": "object",
     "trace": "function",
@@ -143,6 +145,16 @@
       "object": "function",
       "param": "function",
       "type": "function"
+    },
+    "record": {
+      "accountID": "function",
+      "bytes": "function",
+      "hash": "function",
+      "padding": "function",
+      "u16le": "function",
+      "u32le": "function",
+      "u64le": "function",
+      "u8": "function"
     },
     "rollback": {
       "onAllFail": "function",

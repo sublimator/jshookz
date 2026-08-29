@@ -61,6 +61,7 @@ registerHiddenClass(
     JSCFunction* toBytes = nullptr);
 
 [[nodiscard]] bool registerSTBlob(JSContext* ctx, JSValueConst global);
+[[nodiscard]] bool registerRecordSchemas(JSContext* ctx, JSValueConst global);
 [[nodiscard]] bool registerHash256(JSContext* ctx, JSValueConst global);
 [[nodiscard]] bool registerAccountID(JSContext* ctx, JSValueConst global);
 [[nodiscard]] bool registerXFL(JSContext* ctx);

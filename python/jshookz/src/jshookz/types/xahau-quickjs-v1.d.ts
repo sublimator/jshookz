@@ -845,6 +845,138 @@ declare global {
     readonly byteLength: Width;
   }
 
+  /**
+   * A named scalar schema. Parsing requires exactly `byteLength`; encoding and
+   * parsing reuse the element's representation. Runtime schema objects are frozen.
+   */
+  interface ScalarSchema<
+    Name extends string,
+    T,
+    Width extends number,
+  > extends BinarySchema<T> {
+    readonly name: Name;
+    readonly byteLength: Width;
+    safeParse(value: BytesLike | STBlob): ParseResult<T>;
+    parse(value: BytesLike | STBlob): T;
+    /** Result-valued encode: rejects out-of-domain values as EncodeError. */
+    safeEncode(value: T): EncodeResult;
+    /**
+     * Assertion form for programmer-guaranteed values. Throws when the value
+     * leaves the codec's domain; prefer `safeEncode` for data-driven values.
+     */
+    encode(value: T): STBlob;
+  }
+
+  /**
+   * One-element record: a width-known codec, no offset.
+   * `cell("Hash256", record.hash(32))`.
+   */
+  function cell<
+    const Name extends string,
+    T,
+    const Width extends number,
+  >(
+    name: Name,
+    field: RecordField<T, Width>,
+  ): ScalarSchema<Name, T, Width>;
+
+  type RecordFieldValue<T> =
+    T extends RecordField<infer V, number> ? V : never;
+
+  interface RecordLayoutClaim {
+    readonly expectOffset: number;
+  }
+
+  type RecordEntry<
+    Name extends string = string,
+    T = unknown,
+    Width extends number = number,
+  > =
+    | readonly [name: Name, field: RecordField<T, Width>]
+    | readonly [name: Name, field: RecordField<T, Width>, layout: RecordLayoutClaim]
+    | RecordField<never, number>;
+
+  type RecordEntries = readonly RecordEntry[];
+
+  type RecordValueFromEntries<E extends RecordEntries> = {
+    [T in E[number] as T extends readonly [infer N extends string, infer F, ...unknown[]]
+      ? RecordFieldValue<F> extends never ? never : N
+      : never
+    ]: T extends readonly [string, infer F, ...unknown[]] ? RecordFieldValue<F> : never;
+  };
+
+  type RecordPatch<Value> = { [K in keyof Value]?: Value[K] };
+
+  interface RecordSchema<
+    Name extends string,
+    Size extends number,
+    Value,
+  > extends BinarySchema<Value> {
+    readonly name: Name;
+    readonly byteLength: Size;
+
+    /**
+     * Decode a record after validating its size and field representations.
+     * Prefer this result-valued form for state or transaction-derived bytes.
+     */
+    safeParse(value: BytesLike | STBlob): ParseResult<Value>;
+
+    /**
+     * Assertion form for a programmer-guaranteed record. Throws on malformed
+     * input; it must not become the default for untrusted persisted bytes.
+     */
+    parse(value: BytesLike | STBlob): Value;
+
+    /**
+     * Result-valued encode: validates every field against its codec domain
+     * and returns the exact record bytes, or an EncodeError naming the first
+     * out-of-domain field.
+     */
+    safeEncode(value: Value): EncodeResult;
+
+    /**
+     * Assertion form for programmer-guaranteed values. Throws on
+     * out-of-domain field values; prefer `safeEncode` for data-driven values.
+     */
+    encode(value: Value): STBlob;
+    patch(
+      source: BytesLike | STBlob,
+      values: RecordPatch<Value>,
+    ): ParseResult<STBlob>;
+  }
+
+  /**
+   * Sequential fixed-width record. Each entry is an independent unit that
+   * names its own length; the array order assigns offsets. `expectOffset` is
+   * an assertion about the derived cursor, never a position. Reserved bytes
+   * are `record.padding(n)` as a bare entry (no dummy name). Accidental overlap is unrepresentable; use
+   * `record.overlay({ ... })` for equal-width reinterpretations of one range.
+   * Construction rejects duplicate entry names.
+   *
+   * Construction refuses when the derived extent is not `byteLength`.
+   */
+  function record<
+    const Name extends string,
+    const Size extends number,
+    const Entries extends RecordEntries,
+  >(
+    name: Name,
+    byteLength: Size,
+    fields: Entries,
+  ): RecordSchema<Name, Size, RecordValueFromEntries<Entries>>;
+
+  namespace record {
+    function u8(): RecordField<number, 1>;
+    function u16le(): RecordField<number, 2>;
+    function u32le(): RecordField<number, 4>;
+    function u64le(): RecordField<bigint, 8>;
+    function bytes<const Width extends number>(byteLength: Width): RecordField<STBlob, Width>;
+    function hash(byteLength: 32): RecordField<Hash256, 32>;
+    function accountID(): RecordField<AccountID, 20>;
+    /** Occupies `byteLength` bytes and is omitted from parsed values. */
+    function padding<const Width extends number>(byteLength: Width): RecordField<never, Width>;
+  }
+
   interface SerializationOptions {
     readonly field?: string | number;
     readonly includeFieldHeader?: boolean;

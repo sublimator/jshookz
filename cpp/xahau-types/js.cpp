@@ -6,6 +6,7 @@
 #include "object/field_js.hpp"
 #include "object/object.hpp"
 #include "pathset/pathset_js.hpp"
+#include "record/record_js.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -240,6 +241,7 @@ extern "C" bool register_cpp_types(JSContext *ctx) {
          types::registerAmount(ctx, amountLeaves) &&
          types::registerObjectTypes(ctx) &&
          types::registerPathSet(ctx, pathLeaves) &&
+         types::registerRecordSchemas(ctx, global.get()) &&
          types::registerFieldDescriptors(ctx, global.get()) &&
          types::publishObjectTypes(ctx, global.get()) &&
          types::publishAmountFactory(ctx, global.get()) &&
