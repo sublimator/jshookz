@@ -33,6 +33,7 @@ constexpr std::uint32_t maximumParameterNameBytes = 32;
 constexpr std::uint32_t maximumParameterValueBytes = 256;
 constexpr std::uint64_t maximumNativeDrops = 100'000'000'000'000'000ULL;
 constexpr std::uint64_t nativeAmountBit = 1ULL << 62;
+constexpr std::uint32_t fullyCanonicalSignatureFlag = 0x80000000U;
 constexpr std::array<std::uint8_t, 33> zeroSigningPublicKey{};
 
 [[nodiscard]] constexpr std::uint32_t
@@ -113,6 +114,26 @@ struct FixedBytes
         return {bytes.data(), size};
     }
 };
+
+void setUInt32(FixedBytes<4> &output, std::uint32_t value) noexcept
+{
+    output.bytes = {
+        static_cast<std::uint8_t>(value >> 24),
+        static_cast<std::uint8_t>(value >> 16),
+        static_cast<std::uint8_t>(value >> 8),
+        static_cast<std::uint8_t>(value),
+    };
+    output.size = 4;
+    output.present = true;
+}
+
+[[nodiscard]] std::uint32_t readUInt32(FixedBytes<4> const &value) noexcept
+{
+    return (static_cast<std::uint32_t>(value.bytes[0]) << 24) |
+        (static_cast<std::uint32_t>(value.bytes[1]) << 16) |
+        (static_cast<std::uint32_t>(value.bytes[2]) << 8) |
+        static_cast<std::uint32_t>(value.bytes[3]);
+}
 
 struct HookParameterSnapshot
 {
@@ -441,7 +462,8 @@ template <std::size_t Capacity>
 
         qjs::OwnedValue name(ctx);
         bool namePresent = false;
-        status = property(ctx, item.get(), "name", name, namePresent);
+        status = property(
+            ctx, item.get(), "HookParameterName", name, namePresent);
         if (status.disposition != ParseDisposition::ok)
             return status;
         if (!namePresent)
@@ -455,7 +477,8 @@ template <std::size_t Capacity>
         qjs::OwnedValue parameterValue(ctx);
         bool valuePresent = false;
         status = property(
-            ctx, item.get(), "value", parameterValue, valuePresent);
+            ctx, item.get(), "HookParameterValue", parameterValue,
+            valuePresent);
         if (status.disposition != ParseDisposition::ok)
             return status;
         if (!valuePresent)
@@ -496,7 +519,7 @@ template <std::size_t Capacity>
 
         qjs::OwnedValue hash(ctx);
         bool hashPresent = false;
-        status = property(ctx, item.get(), "hookHash", hash, hashPresent);
+        status = property(ctx, item.get(), "HookHash", hash, hashPresent);
         if (status.disposition != ParseDisposition::ok)
             return status;
         if (!hashPresent)
@@ -510,7 +533,7 @@ template <std::size_t Capacity>
         qjs::OwnedValue authorize(ctx);
         bool authorizePresent = false;
         status = property(
-            ctx, item.get(), "authorize", authorize, authorizePresent);
+            ctx, item.get(), "Authorize", authorize, authorizePresent);
         if (status.disposition != ParseDisposition::ok)
             return status;
         if (!authorizePresent)
@@ -546,6 +569,67 @@ template <std::size_t Capacity>
         ctx, value, field.materializer, output, operation, field.option_name);
 }
 
+[[nodiscard]] ParseOutcome parseFlagNumber(
+    JSContext *ctx, JSValueConst value, std::uint32_t &output,
+    char const *field)
+{
+    if (!JS_IsNumber(value))
+        return ParseOutcome::encode(field);
+    double numeric = 0;
+    if (JS_ToFloat64(ctx, &numeric, value) < 0)
+        return ParseOutcome::exception();
+    if (!std::isfinite(numeric) || std::trunc(numeric) != numeric ||
+        numeric < 0 ||
+        numeric > static_cast<double>(std::numeric_limits<std::uint32_t>::max()))
+        return ParseOutcome::encode(field);
+    output = static_cast<std::uint32_t>(numeric);
+    return ParseOutcome::success();
+}
+
+[[nodiscard]] ParseOutcome parseFlags(
+    JSContext *ctx, JSValueConst value,
+    TransactionBuilderFieldSpec const &field, FixedBytes<4> &output,
+    char const *operation)
+{
+    if (JS_IsNumber(value)) {
+        std::uint32_t flags = 0;
+        auto const status = parseFlagNumber(
+            ctx, value, flags, field.option_name);
+        if (status.disposition == ParseDisposition::ok)
+            setUInt32(output, flags);
+        return status;
+    }
+
+    int const isArray = JS_IsArray(ctx, value);
+    if (isArray < 0)
+        return ParseOutcome::exception();
+    if (isArray != 0) {
+        std::uint32_t length = 0;
+        auto status = arrayLength(
+            ctx, value, operation, field.option_name, 32, length);
+        if (status.disposition != ParseDisposition::ok)
+            return status;
+        std::uint32_t flags = 0;
+        for (std::uint32_t index = 0; index < length; ++index) {
+            qjs::OwnedValue item(
+                ctx, JS_GetPropertyUint32(ctx, value, index));
+            if (item.isException())
+                return ParseOutcome::exception();
+            std::uint32_t flag = 0;
+            status = parseFlagNumber(
+                ctx, item.get(), flag, field.option_name);
+            if (status.disposition != ParseDisposition::ok)
+                return status;
+            flags |= flag;
+        }
+        setUInt32(output, flags);
+        return ParseOutcome::success();
+    }
+
+    return nominalValue(
+        ctx, value, field.materializer, output, operation, field.option_name);
+}
+
 [[nodiscard]] ParseOutcome parsePayment(
     JSContext *ctx, JSValueConst options, PaymentSnapshot &output)
 {
@@ -567,50 +651,55 @@ template <std::size_t Capacity>
         }
 
         switch (field.option) {
-        case BuilderOption::flags:
-            status = parseLeaf(ctx, value.get(), field, output.flags, operation);
+        case BuilderOption::Flags:
+            status = parseFlags(
+                ctx, value.get(), field, output.flags, operation);
             break;
-        case BuilderOption::sourceTag:
+        case BuilderOption::SourceTag:
             status = parseLeaf(
                 ctx, value.get(), field, output.sourceTag, operation);
             break;
-        case BuilderOption::destinationTag:
+        case BuilderOption::DestinationTag:
             status = parseLeaf(
                 ctx, value.get(), field, output.destinationTag, operation);
             break;
-        case BuilderOption::invoiceId:
+        case BuilderOption::InvoiceID:
             status = parseLeaf(
                 ctx, value.get(), field, output.invoiceId, operation);
             break;
-        case BuilderOption::amount:
+        case BuilderOption::Amount:
             status = parseLeaf(ctx, value.get(), field, output.amount, operation);
             break;
-        case BuilderOption::sendMax:
+        case BuilderOption::SendMax:
             status = parseLeaf(ctx, value.get(), field, output.sendMax, operation);
             break;
-        case BuilderOption::deliverMin:
+        case BuilderOption::DeliverMin:
             status = parseLeaf(
                 ctx, value.get(), field, output.deliverMin, operation);
             break;
-        case BuilderOption::account:
+        case BuilderOption::Account:
             status = parseLeaf(ctx, value.get(), field, output.account, operation);
             break;
-        case BuilderOption::destination:
+        case BuilderOption::Destination:
             status = parseLeaf(
                 ctx, value.get(), field, output.destination, operation);
             break;
-        case BuilderOption::hookParameters:
+        case BuilderOption::HookParameters:
             status = parseParameters(
                 ctx, value.get(), output.hookParameters, operation,
                 field.option_name);
             break;
-        case BuilderOption::hooks:
+        case BuilderOption::Hooks:
         case BuilderOption::none:
             return ParseOutcome::encode(field.option_name);
         }
         if (status.disposition != ParseDisposition::ok)
             return status;
     }
+    setUInt32(
+        output.flags,
+        (output.flags.present ? readUInt32(output.flags) : 0U) |
+            fullyCanonicalSignatureFlag);
     return ParseOutcome::success();
 }
 
@@ -619,13 +708,13 @@ template <std::size_t Capacity>
 {
     constexpr char operation[] = "emit.build.hookSet";
     if (!JS_IsNumber(value))
-        return typeFailure(ctx, operation, "hooks.position", "an integer");
+        return typeFailure(ctx, operation, "Hooks.$position", "an integer");
     double numeric = 0;
     if (JS_ToFloat64(ctx, &numeric, value) < 0)
         return ParseOutcome::exception();
     if (!std::isfinite(numeric) || std::trunc(numeric) != numeric ||
         numeric < 0 || numeric >= maximumHookCount)
-        return ParseOutcome::encode("hooks.position");
+        return ParseOutcome::encode("Hooks.$position");
     position = static_cast<std::uint32_t>(numeric);
     return ParseOutcome::success();
 }
@@ -638,7 +727,7 @@ template <std::size_t Capacity>
     auto const status = property(ctx, action, propertyName, value, present);
     if (status.disposition != ParseDisposition::ok)
         return status;
-    return present ? ParseOutcome::encode("hooks") : ParseOutcome::success();
+    return present ? ParseOutcome::encode("Hooks") : ParseOutcome::success();
 }
 
 [[nodiscard]] ParseOutcome parseHooks(
@@ -647,11 +736,11 @@ template <std::size_t Capacity>
     constexpr char operation[] = "emit.build.hookSet";
     std::uint32_t length = 0;
     auto status = arrayLength(
-        ctx, value, operation, "hooks", maximumHookCount, length);
+        ctx, value, operation, "Hooks", maximumHookCount, length);
     if (status.disposition != ParseDisposition::ok)
         return status;
     if (length == 0)
-        return ParseOutcome::encode("hooks");
+        return ParseOutcome::encode("Hooks");
 
     std::array<bool, maximumHookCount> seen{};
     std::uint32_t highest = 0;
@@ -660,38 +749,40 @@ template <std::size_t Capacity>
         if (action.isException())
             return ParseOutcome::exception();
         if (!JS_IsObject(action.get()) || JS_IsNull(action.get()))
-            return ParseOutcome::encode("hooks");
+            return ParseOutcome::encode("Hooks");
 
         qjs::OwnedValue positionValue(ctx);
         bool positionPresent = false;
         status = property(
-            ctx, action.get(), "position", positionValue, positionPresent);
+            ctx, action.get(), "$position", positionValue, positionPresent);
         if (status.disposition != ParseDisposition::ok)
             return status;
         if (!positionPresent)
-            return ParseOutcome::encode("hooks.position");
+            return ParseOutcome::encode("Hooks.$position");
         std::uint32_t position = 0;
         status = parsePosition(ctx, positionValue.get(), position);
         if (status.disposition != ParseDisposition::ok)
             return status;
         if (seen[position])
-            return ParseOutcome::encode("hooks.position");
+            return ParseOutcome::encode("Hooks.$position");
         seen[position] = true;
         if (position > highest)
             highest = position;
 
         HookActionSnapshot &snapshot = output.hooks[position];
-        qjs::OwnedValue hash(ctx);
-        bool hashPresent = false;
-        status = property(ctx, action.get(), "hookHash", hash, hashPresent);
+        qjs::OwnedValue deletion(ctx);
+        bool deletionPresent = false;
+        status = property(
+            ctx, action.get(), "$delete", deletion, deletionPresent);
         if (status.disposition != ParseDisposition::ok)
             return status;
-        if (!hashPresent)
-            return ParseOutcome::encode("hooks.hookHash");
-
-        if (JS_IsNull(hash.get())) {
+        if (deletionPresent) {
+            if (!JS_IsBool(deletion.get()) || JS_ToBool(ctx, deletion.get()) != 1)
+                return ParseOutcome::encode("Hooks.$delete");
             snapshot.kind = HookActionKind::deletion;
-            for (char const *propertyName : {"namespace", "parameters", "grants"}) {
+            for (char const *propertyName : {
+                     "HookHash", "HookNamespace", "HookParameters",
+                     "HookGrants"}) {
                 status = rejectDeletionPayload(
                     ctx, action.get(), propertyName);
                 if (status.disposition != ParseDisposition::ok)
@@ -700,23 +791,32 @@ template <std::size_t Capacity>
             continue;
         }
 
+        qjs::OwnedValue hash(ctx);
+        bool hashPresent = false;
+        status = property(ctx, action.get(), "HookHash", hash, hashPresent);
+        if (status.disposition != ParseDisposition::ok)
+            return status;
+        if (!hashPresent)
+            return ParseOutcome::encode("Hooks.HookHash");
+
         snapshot.kind = HookActionKind::reference;
         status = nominalValue(
             ctx, hash.get(), xdata::MaterializerKind::hash256,
-            snapshot.hookHash, operation, "hooks.hookHash");
+            snapshot.hookHash, operation, "Hooks.HookHash");
         if (status.disposition != ParseDisposition::ok)
             return status;
 
         qjs::OwnedValue namespaceValue(ctx);
         bool namespacePresent = false;
         status = property(
-            ctx, action.get(), "namespace", namespaceValue, namespacePresent);
+            ctx, action.get(), "HookNamespace", namespaceValue,
+            namespacePresent);
         if (status.disposition != ParseDisposition::ok)
             return status;
         if (namespacePresent) {
             status = nominalValue(
                 ctx, namespaceValue.get(), xdata::MaterializerKind::hash256,
-                snapshot.hookNamespace, operation, "hooks.namespace");
+                snapshot.hookNamespace, operation, "Hooks.HookNamespace");
             if (status.disposition != ParseDisposition::ok)
                 return status;
         }
@@ -724,13 +824,14 @@ template <std::size_t Capacity>
         qjs::OwnedValue parameters(ctx);
         bool parametersPresent = false;
         status = property(
-            ctx, action.get(), "parameters", parameters, parametersPresent);
+            ctx, action.get(), "HookParameters", parameters,
+            parametersPresent);
         if (status.disposition != ParseDisposition::ok)
             return status;
         if (parametersPresent) {
             status = parseParameters(
                 ctx, parameters.get(), snapshot.parameters, operation,
-                "hooks.parameters");
+                "Hooks.HookParameters");
             if (status.disposition != ParseDisposition::ok)
                 return status;
         }
@@ -738,12 +839,13 @@ template <std::size_t Capacity>
         qjs::OwnedValue grants(ctx);
         bool grantsPresent = false;
         status = property(
-            ctx, action.get(), "grants", grants, grantsPresent);
+            ctx, action.get(), "HookGrants", grants, grantsPresent);
         if (status.disposition != ParseDisposition::ok)
             return status;
         if (grantsPresent) {
             status = parseGrants(
-                ctx, grants.get(), snapshot.grants, operation, "hooks.grants");
+                ctx, grants.get(), snapshot.grants, operation,
+                "Hooks.HookGrants");
             if (status.disposition != ParseDisposition::ok)
                 return status;
         }
@@ -772,16 +874,17 @@ template <std::size_t Capacity>
             continue;
         }
         switch (field.option) {
-        case BuilderOption::flags:
-            status = parseLeaf(ctx, value.get(), field, output.flags, operation);
+        case BuilderOption::Flags:
+            status = parseFlags(
+                ctx, value.get(), field, output.flags, operation);
             break;
-        case BuilderOption::account:
+        case BuilderOption::Account:
             status = parseLeaf(ctx, value.get(), field, output.account, operation);
             break;
-        case BuilderOption::hooks:
+        case BuilderOption::Hooks:
             status = parseHooks(ctx, value.get(), output);
             break;
-        case BuilderOption::hookParameters:
+        case BuilderOption::HookParameters:
             status = parseParameters(
                 ctx, value.get(), output.hookParameters, operation,
                 field.option_name);
@@ -839,7 +942,7 @@ template <std::size_t Capacity>
             if (std::memcmp(
                     action.grants.values[grantIndex].authorize.bytes.data(),
                     common.account.data(), common.account.size()) == 0)
-                return ParseOutcome::encode("hooks.grants");
+                return ParseOutcome::encode("Hooks.HookGrants");
         }
     }
     return ParseOutcome::success();
@@ -977,16 +1080,16 @@ template <std::size_t Capacity>
     PaymentSnapshot const &snapshot, BuilderOption option) noexcept
 {
     switch (option) {
-    case BuilderOption::flags: return snapshot.flags.present;
-    case BuilderOption::sourceTag: return snapshot.sourceTag.present;
-    case BuilderOption::destinationTag: return snapshot.destinationTag.present;
-    case BuilderOption::invoiceId: return snapshot.invoiceId.present;
-    case BuilderOption::amount: return snapshot.amount.present;
-    case BuilderOption::sendMax: return snapshot.sendMax.present;
-    case BuilderOption::deliverMin: return snapshot.deliverMin.present;
-    case BuilderOption::account: return snapshot.account.present;
-    case BuilderOption::destination: return snapshot.destination.present;
-    case BuilderOption::hookParameters: return snapshot.hookParameters.present;
+    case BuilderOption::Flags: return snapshot.flags.present;
+    case BuilderOption::SourceTag: return snapshot.sourceTag.present;
+    case BuilderOption::DestinationTag: return snapshot.destinationTag.present;
+    case BuilderOption::InvoiceID: return snapshot.invoiceId.present;
+    case BuilderOption::Amount: return snapshot.amount.present;
+    case BuilderOption::SendMax: return snapshot.sendMax.present;
+    case BuilderOption::DeliverMin: return snapshot.deliverMin.present;
+    case BuilderOption::Account: return snapshot.account.present;
+    case BuilderOption::Destination: return snapshot.destination.present;
+    case BuilderOption::HookParameters: return snapshot.hookParameters.present;
     default: return false;
     }
 }
@@ -997,21 +1100,21 @@ template <std::size_t Capacity>
     PaymentSnapshot const &snapshot) noexcept
 {
     switch (field.option) {
-    case BuilderOption::flags: return object.value(field, snapshot.flags.view());
-    case BuilderOption::sourceTag:
+    case BuilderOption::Flags: return object.value(field, snapshot.flags.view());
+    case BuilderOption::SourceTag:
         return object.value(field, snapshot.sourceTag.view());
-    case BuilderOption::destinationTag:
+    case BuilderOption::DestinationTag:
         return object.value(field, snapshot.destinationTag.view());
-    case BuilderOption::invoiceId:
+    case BuilderOption::InvoiceID:
         return object.value(field, snapshot.invoiceId.view());
-    case BuilderOption::amount: return object.value(field, snapshot.amount.view());
-    case BuilderOption::sendMax: return object.value(field, snapshot.sendMax.view());
-    case BuilderOption::deliverMin:
+    case BuilderOption::Amount: return object.value(field, snapshot.amount.view());
+    case BuilderOption::SendMax: return object.value(field, snapshot.sendMax.view());
+    case BuilderOption::DeliverMin:
         return object.value(field, snapshot.deliverMin.view());
-    case BuilderOption::account: return object.value(field, snapshot.account.view());
-    case BuilderOption::destination:
+    case BuilderOption::Account: return object.value(field, snapshot.account.view());
+    case BuilderOption::Destination:
         return object.value(field, snapshot.destination.view());
-    case BuilderOption::hookParameters:
+    case BuilderOption::HookParameters:
         return object.begin(field.code) &&
             emitParameters(writer, stats, snapshot.hookParameters, 1);
     default: return false;
@@ -1022,10 +1125,10 @@ template <std::size_t Capacity>
     HookSetSnapshot const &snapshot, BuilderOption option) noexcept
 {
     switch (option) {
-    case BuilderOption::flags: return snapshot.flags.present;
-    case BuilderOption::account: return snapshot.account.present;
-    case BuilderOption::hooks: return snapshot.hookCount != 0;
-    case BuilderOption::hookParameters: return snapshot.hookParameters.present;
+    case BuilderOption::Flags: return snapshot.flags.present;
+    case BuilderOption::Account: return snapshot.account.present;
+    case BuilderOption::Hooks: return snapshot.hookCount != 0;
+    case BuilderOption::HookParameters: return snapshot.hookParameters.present;
     default: return false;
     }
 }
@@ -1036,11 +1139,11 @@ template <std::size_t Capacity>
     HookSetSnapshot const &snapshot) noexcept
 {
     switch (field.option) {
-    case BuilderOption::flags: return object.value(field, snapshot.flags.view());
-    case BuilderOption::account: return object.value(field, snapshot.account.view());
-    case BuilderOption::hooks:
+    case BuilderOption::Flags: return object.value(field, snapshot.flags.view());
+    case BuilderOption::Account: return object.value(field, snapshot.account.view());
+    case BuilderOption::Hooks:
         return object.begin(field.code) && emitHooks(writer, stats, snapshot, 1);
-    case BuilderOption::hookParameters:
+    case BuilderOption::HookParameters:
         return object.begin(field.code) &&
             emitParameters(writer, stats, snapshot.hookParameters, 1);
     default: return false;

@@ -1692,13 +1692,21 @@ declare global {
       | (EncodeError & { readonly stage: "encode" })
       | (HostError & { readonly stage: "details" | "fee" });
     type BuildResult = Result<EmittedTransaction, BuildError>;
+    /**
+     * Serialized transaction flags. A list is folded with bitwise OR; builders
+     * may add protocol-required infrastructure flags.
+     */
+    type TransactionFlags =
+      | UInt32
+      | TransactionFlag
+      | readonly TransactionFlag[];
     interface HookParameter {
-      readonly name: StateKeyLike;
-      readonly value: StateValueLike;
+      readonly HookParameterName: StateKeyLike;
+      readonly HookParameterValue: StateValueLike;
     }
     interface HookGrant {
-      readonly hookHash: Hash256;
-      readonly authorize: AccountID;
+      readonly HookHash: Hash256;
+      readonly Authorize: AccountID;
     }
     /**
      * Selected typed emitted-transaction builders.
@@ -1710,45 +1718,46 @@ declare global {
     namespace build {
       interface HookReference {
         /**
-         * Hook-chain slot to override. The builder orders entries by position,
+         * Hook-chain slot to override. The builder orders entries by `$position`,
          * fills omitted lower positions with canonical no-op Hook objects, and
          * serializes `Flags = tfHookOverride` for this action.
          */
-        readonly position: number;
-        readonly hookHash: Hash256;
-        readonly namespace?: Hash256;
-        readonly parameters?: readonly HookParameter[];
-        readonly grants?: readonly HookGrant[];
+        readonly $position: number;
+        readonly HookHash: Hash256;
+        readonly HookNamespace?: Hash256;
+        readonly HookParameters?: readonly HookParameter[];
+        readonly HookGrants?: readonly HookGrant[];
       }
       interface HookDeletion {
         /**
-         * Delete one chain slot. `hookHash: null` serializes the canonical
+         * Delete one chain slot. `$delete: true` serializes the canonical
          * override/delete object: `Flags = tfHookOverride`, zero-length
          * CreateCode, and no HookHash. It is never a zero Hash256.
          */
-        readonly position: number;
-        readonly hookHash: null;
+        readonly $position: number;
+        readonly $delete: true;
       }
       type HookSetEntry = HookReference | HookDeletion;
       interface HookSetOptions {
-        readonly account?: AccountID;
-        readonly flags?: UInt32;
-        readonly hookParameters?: readonly HookParameter[];
+        readonly Account?: AccountID;
+        readonly Flags?: TransactionFlags;
+        readonly HookParameters?: readonly HookParameter[];
         /** Unique in-range position actions; at least one is required. */
-        readonly hooks: readonly HookSetEntry[];
+        readonly Hooks: readonly HookSetEntry[];
       }
       interface PaymentOptions {
         /** Sending account (0087 wave-1: emitted Payments set it in C). */
-        readonly account?: AccountID;
-        readonly destination: AccountID;
-        readonly amount: Amount;
-        readonly sourceTag?: UInt32;
-        readonly destinationTag?: UInt32;
-        readonly flags?: UInt32;
-        readonly invoiceId?: Hash256;
-        readonly sendMax?: Amount;
-        readonly deliverMin?: Amount;
-        readonly hookParameters?: readonly HookParameter[];
+        readonly Account?: AccountID;
+        readonly Destination: AccountID;
+        readonly Amount: Amount;
+        readonly SourceTag?: UInt32;
+        readonly DestinationTag?: UInt32;
+        /** The builder always includes `TransactionFlag.tfFullyCanonicalSig`. */
+        readonly Flags?: TransactionFlags;
+        readonly InvoiceID?: Hash256;
+        readonly SendMax?: Amount;
+        readonly DeliverMin?: Amount;
+        readonly HookParameters?: readonly HookParameter[];
       }
       function hookSet(options: HookSetOptions): BuildResult;
       function payment(options: PaymentOptions): BuildResult;
