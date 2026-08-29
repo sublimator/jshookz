@@ -21,6 +21,8 @@
     "state_foreign",
     "state_set",
     "prepare",
+    "etxn_details",
+    "etxn_fee_base",
     "etxn_reserve",
     "emit"
   ]

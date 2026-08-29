@@ -128,6 +128,29 @@ def test_hook_again_is_one_unaddressed_effect_import():
     assert generated.count('import_name("hook_again")') == 1
 
 
+def test_emission_builder_imports_are_selected_and_fully_metered():
+    source = json.loads(SOURCE.read_text())
+    repository = SOURCE.parents[2]
+    imports = {
+        item["name"]: (item["params"], item["results"])
+        for item in source["provider"]["imports"]
+    }
+
+    assert imports["etxn_details"] == (["i32", "i32"], ["i64"])
+    assert imports["etxn_fee_base"] == (["i32", "i32"], ["i64"])
+    addressed = source["limits"]["host_work_addressed_length_indices"]
+    assert addressed["etxn_details"] == [1]
+    assert addressed["etxn_fee_base"] == [1]
+    policy = json.loads((repository / "xahau/raw-hook-api-policy.json").read_text())
+    assert policy["functions"].count("etxn_details") == 1
+    assert policy["functions"].count("etxn_fee_base") == 1
+    generated = (
+        repository / "cpp/provider/generated/hook_raw_imports.inc"
+    ).read_text()
+    assert generated.count('import_name("etxn_details")') == 1
+    assert generated.count('import_name("etxn_fee_base")') == 1
+
+
 def test_profile_lock_pins_provider_and_has_no_wasi(tmp_path: Path):
     source = json.loads(SOURCE.read_text())
     lock = build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)
@@ -140,7 +163,7 @@ def test_profile_lock_pins_provider_and_has_no_wasi(tmp_path: Path):
     assert loaded.runtime_profile_id.hex() == lock["runtime_profile_id"]
     assert len(loaded.bytecode_abi_id) == 32
     assert len(loaded.runtime_profile_id) == 32
-    assert len(lock["provider"]["imports"]) == 23
+    assert len(lock["provider"]["imports"]) == 25
     assert lock["source"]["limits"]["host_work_budget"] == 2_097_152
     assert {item["module"] for item in lock["provider"]["imports"]} == {"env"}
     assert lock["provider"]["imports"] == sorted(
@@ -155,7 +178,7 @@ def test_profile_lock_pins_provider_and_has_no_wasi(tmp_path: Path):
     assert memory == {
         "name": "memory",
         "kind": "memory",
-        "minimum_pages": 7,
+        "minimum_pages": 8,
         "maximum_pages": 512,
         "memory64": False,
         "shared": False,
@@ -476,7 +499,7 @@ def test_provider_bundle_emits_the_profile_lock(tmp_path: Path):
     assert (
         'XAHAU_QUICKJS_HOST_ADAPTER_POLICY "xahau-raw-hook-host-v1"' in cmake_manifest
     )
-    assert 'XAHAU_QUICKJS_PROVIDER_IMPORT_COUNT "23"' in cmake_manifest
+    assert 'XAHAU_QUICKJS_PROVIDER_IMPORT_COUNT "25"' in cmake_manifest
     assert 'XAHAU_QUICKJS_PROVIDER_EXPORT_COUNT "22"' in cmake_manifest
     cmake_object_limits = {
         "XAHAU_QUICKJS_SERIALIZED_OBJECT_MAX_BYTES": 1_048_576,

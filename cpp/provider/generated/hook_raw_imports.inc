@@ -64,6 +64,12 @@ extern int64_t hook_state_set(uint32_t arg0, uint32_t arg1, uint32_t arg2, uint3
 __attribute__((import_module("env"), import_name("prepare")))
 extern int64_t hook_prepare(uint32_t arg0, uint32_t arg1, uint32_t arg2, uint32_t arg3);
 
+__attribute__((import_module("env"), import_name("etxn_details")))
+extern int64_t hook_etxn_details(uint32_t arg0, uint32_t arg1);
+
+__attribute__((import_module("env"), import_name("etxn_fee_base")))
+extern int64_t hook_etxn_fee_base(uint32_t arg0, uint32_t arg1);
+
 __attribute__((import_module("env"), import_name("etxn_reserve")))
 extern int64_t hook_etxn_reserve(uint32_t arg0);
 

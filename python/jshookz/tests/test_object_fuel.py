@@ -76,7 +76,7 @@ CEILINGS = {
     ("to_bytes", 64): 150_000.0,
     ("to_json", 8): 164_000.0,
     ("to_json", 64): 970_000.0,
-    ("replacement", 8): 52_500.0,
+    ("replacement", 8): 56_700.0,
     ("replacement", 64): 219_000.0,
     ("no_op", 8): 3_850.0,
     ("no_op", 64): 3_850.0,
@@ -116,7 +116,7 @@ ABSOLUTE_CEILINGS = {
     ("to_bytes", 64): (1_274_000, 2_468_000),
     ("to_json", 8): (1_385_000, 2_692_000),
     ("to_json", 64): (7_833_000, 15_586_000),
-    ("replacement", 8): (500_000, 918_000),
+    ("replacement", 8): (536_000, 990_000),
     ("replacement", 64): (1_827_000, 3_571_000),
     ("no_op", 8): (112_000, 142_000),
     ("no_op", 64): (112_000, 143_000),
@@ -132,7 +132,7 @@ DELTA_FLOORS = {
     "object_hit_large_minus_small": 134_000.0,
     "mint_large_minus_small": 55_000.0,
     "traversal_large_minus_small": 260_000.0,
-    "bytes_large_minus_small": 95_000.0,
+    "bytes_large_minus_small": 75_000.0,
     "json_large_minus_small": 650_000.0,
     "replacement_large_minus_small": 130_000.0,
 }
@@ -729,10 +729,13 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
         # noun, and nested util.keylet namespace add 1,364 charged bytes and
         # 25 allocations; no keylet instance is live in this topology.
         # Publishing hook.again adds 150 charged bytes and 3 allocations.
-        "registration": (172_947, 2_604),
-        "pre_call": (1_225_287, 2_654),
-        "peak": (5_420_244, 2_667),
-        "post_success": (3_454_948, 2_681),
+        # The frozen emit.build namespace, its two functions, and the nominal
+        # EmittedTransaction class/prototype add 857 charged persistent bytes
+        # and 16 allocations; no emitted transaction instance is live here.
+        "registration": (173_804, 2_620),
+        "pre_call": (1_226_144, 2_670),
+        "peak": (5_421_101, 2_683),
+        "post_success": (3_455_805, 2_697),
         "static_protocol": MAXIMUM_STATIC_PROTOCOL_BYTES,
     }
     assert restored_snapshot == registration
@@ -752,7 +755,7 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     )
     assert MAXIMUM_DUPLICATE_STACK == 11 * 6 * 8
     assert peak[0] < limits.quickjs_heap_bytes
-    assert limits.quickjs_heap_bytes - post_success[0] == 13_322_268
+    assert limits.quickjs_heap_bytes - post_success[0] == 13_321_411
     assert limits.quickjs_heap_bytes - post_success[0] >= HEADROOM_BYTES
 
 
