@@ -1,6 +1,7 @@
 #include "common.hpp"
 #include "hook_imports.hpp"
 #include "../provider_internal.hpp"
+#include "keylet/keylet_js.hpp"
 #include "object/object.hpp"
 
 namespace jshookz::provider::bindings {
@@ -68,6 +69,23 @@ slotFailure(JSContext *ctx, std::uint32_t slot, char const *stage,
             (long long)result);
     return JS_ThrowInternalError(
         ctx, "otxn.object: %s returned %lld",
+        stage, (long long)result);
+}
+
+[[nodiscard]] JSValue
+lookupSlotFailure(JSContext *ctx, std::uint32_t slot, char const *stage,
+                  std::int64_t result)
+{
+    std::int64_t const cleared = hook_slot_clear(slot);
+    if (cleared != 1)
+        return JS_ThrowInternalError(
+            ctx,
+            "ledger.lookup: slot_clear returned %lld after %s returned %lld",
+            (long long)cleared,
+            stage,
+            (long long)result);
+    return JS_ThrowInternalError(
+        ctx, "ledger.lookup: %s returned %lld",
         stage, (long long)result);
 }
 
@@ -270,11 +288,91 @@ js_ledger_nonce(JSContext *ctx, JSValueConst this_val,
     return host_success(ctx, makeHash256(ctx, bytes, sizeof(bytes)));
 }
 
+JSValue
+// @binding provider:ledger.lookup
+js_ledger_lookup(JSContext *ctx, JSValueConst, int argc, JSValueConst *argv)
+{
+    std::uint8_t keylet[34];
+    types::LedgerKeyletKind kind;
+    if (argc < 1 || !types::readLedgerKeylet(
+                        argc > 0 ? argv[0] : JS_UNDEFINED, keylet, &kind))
+        return JS_ThrowTypeError(
+            ctx, "ledger.lookup: expected a provider LedgerKeylet");
+    if (kind != types::LedgerKeyletKind::accountRoot)
+        return JS_ThrowTypeError(
+            ctx, "ledger.lookup: unsupported keylet type");
+
+    std::int64_t const measurementSlotResult = hook_slot_set(
+        static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(keylet)),
+        sizeof(keylet), 0);
+    if (measurementSlotResult == -5)
+        return host_success(ctx, JS_UNDEFINED);
+    if (measurementSlotResult < 0)
+        return host_failure(ctx, measurementSlotResult);
+    if (measurementSlotResult == 0 || measurementSlotResult > 255)
+        return JS_ThrowInternalError(
+            ctx, "ledger.lookup: slot_set returned %lld",
+            (long long)measurementSlotResult);
+    std::uint32_t const measurementSlot =
+        static_cast<std::uint32_t>(measurementSlotResult);
+
+    std::int64_t const measured = hook_slot_size(measurementSlot);
+    if (measured <= 0 ||
+        measured > static_cast<std::int64_t>(
+            types::certifiedObjectMaxBytes()))
+        return lookupSlotFailure(
+            ctx, measurementSlot, "slot_size", measured);
+    std::uint32_t const size = static_cast<std::uint32_t>(measured);
+    std::int64_t const measurementCleared = hook_slot_clear(measurementSlot);
+    if (measurementCleared != 1)
+        return JS_ThrowInternalError(
+            ctx, "ledger.lookup: measurement slot_clear returned %lld",
+            (long long)measurementCleared);
+
+    auto *bytes = static_cast<std::uint8_t *>(js_malloc(ctx, size));
+    if (bytes == nullptr)
+        return JS_HasException(ctx) ? JS_EXCEPTION : JS_ThrowOutOfMemory(ctx);
+
+    std::int64_t const copySlotResult = hook_slot_set(
+        static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(keylet)),
+        sizeof(keylet), 0);
+    if (copySlotResult <= 0 || copySlotResult > 255) {
+        js_free(ctx, bytes);
+        return JS_ThrowInternalError(
+            ctx, "ledger.lookup: second slot_set returned %lld",
+            (long long)copySlotResult);
+    }
+    std::uint32_t const copySlot =
+        static_cast<std::uint32_t>(copySlotResult);
+
+    std::int64_t const copied = hook_slot(
+        static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(bytes)),
+        size,
+        copySlot);
+    if (copied != static_cast<std::int64_t>(size)) {
+        js_free(ctx, bytes);
+        return lookupSlotFailure(ctx, copySlot, "slot", copied);
+    }
+    std::int64_t const cleared = hook_slot_clear(copySlot);
+    if (cleared != 1) {
+        js_free(ctx, bytes);
+        return JS_ThrowInternalError(
+            ctx, "ledger.lookup: slot_clear returned %lld",
+            (long long)cleared);
+    }
+
+    JSValue object = types::makeCertifiedAccountRootOwned(ctx, bytes, size);
+    if (JS_IsException(object))
+        return object;
+    return host_success(ctx, object);
+}
+
 JSCFunctionListEntry const js_ledger_properties[] = {
     JS_CGETSET_DEF("sequence", js_ledger_sequence, NULL),
     JS_CGETSET_DEF("lastTime", js_ledger_last_time, NULL),
     JS_CGETSET_DEF("lastHash", js_ledger_last_hash, NULL),
     JS_CFUNC_DEF("nonce", 0, js_ledger_nonce),
+    JS_CFUNC_DEF("lookup", 1, js_ledger_lookup),
 };
 
 }  // namespace

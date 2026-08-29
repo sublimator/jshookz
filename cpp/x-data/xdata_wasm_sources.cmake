@@ -4,6 +4,7 @@ set(JSHOOKZ_XDATA_INCLUDE_DIRS
     ${CMAKE_CURRENT_LIST_DIR}/core/includes
     ${CMAKE_CURRENT_LIST_DIR}/base58/includes
     ${CMAKE_CURRENT_LIST_DIR}/generated
+    ${CMAKE_CURRENT_LIST_DIR}/stubs
 )
 
 # Allocation-free, no-throw x-data inventory selected by the sealed provider.

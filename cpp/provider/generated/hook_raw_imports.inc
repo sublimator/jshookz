@@ -28,6 +28,9 @@ extern int64_t hook_otxn_param(uint32_t arg0, uint32_t arg1, uint32_t arg2, uint
 __attribute__((import_module("env"), import_name("otxn_slot")))
 extern int64_t hook_otxn_slot(uint32_t arg0);
 
+__attribute__((import_module("env"), import_name("slot_set")))
+extern int64_t hook_slot_set(uint32_t arg0, uint32_t arg1, uint32_t arg2);
+
 __attribute__((import_module("env"), import_name("slot_size")))
 extern int64_t hook_slot_size(uint32_t arg0);
 

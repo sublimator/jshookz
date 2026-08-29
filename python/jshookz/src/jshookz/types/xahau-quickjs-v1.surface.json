@@ -55,7 +55,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "7f379481a317901ca1a1f8c233134fa9286c2b9615a4ebc0008dbb8d959bf106"
+    "sha256": "15813c765fc466a10fa89333bb4f74fbe5d368103f424c1d62b12505a076c066"
   },
   "globals": {
     "AccountID": "object",
@@ -73,6 +73,7 @@
     "Issue": "object",
     "LedgerEntry": "function",
     "LedgerEntryType": "object",
+    "LedgerKeylet": "object",
     "MPTAmount": "object",
     "NativeAmount": "object",
     "Path": "object",
@@ -128,6 +129,7 @@
     "ledger": {
       "lastHash": "value",
       "lastTime": "value",
+      "lookup": "function",
       "nonce": "function",
       "sequence": "value"
     },
@@ -152,8 +154,12 @@
     },
     "util": {
       "decodeObject": "function",
+      "keylet": "object",
       "safeDecodeObject": "function",
       "validateObject": "function"
+    },
+    "util.keylet": {
+      "account": "function"
     }
   },
   "prototypes": {
@@ -444,6 +450,21 @@
         "constructor"
       ],
       "probe": "util.decodeObject(STBlob.fromHex('1100642200000000580000000000000000000000000000000000000000000000000000000000000000011300'))"
+    },
+    "LedgerKeylet": {
+      "members": {
+        "byteLength": "value",
+        "toBytes": "function",
+        "toHex": "function",
+        "type": "value"
+      },
+      "own": [
+        "byteLength",
+        "toBytes",
+        "toHex",
+        "type"
+      ],
+      "probe": "util.keylet.account(AccountID.zero)"
     },
     "Path": {
       "members": {

@@ -92,6 +92,24 @@ def test_foreign_state_import_is_read_only_and_fully_metered():
     assert "state_foreign_set" not in declaration
 
 
+def test_whole_ledger_lookup_selects_only_metered_slot_set():
+    source = json.loads(SOURCE.read_text())
+    repository = SOURCE.parents[2]
+    imports = {
+        item["name"]: (item["params"], item["results"])
+        for item in source["provider"]["imports"]
+    }
+
+    assert imports["slot_set"] == (["i32", "i32", "i32"], ["i64"])
+    assert source["limits"]["host_work_addressed_length_indices"]["slot_set"] == [1]
+    policy = json.loads((repository / "xahau/raw-hook-api-policy.json").read_text())
+    assert policy["functions"].count("slot_set") == 1
+    generated = (
+        repository / "cpp/provider/generated/hook_raw_imports.inc"
+    ).read_text()
+    assert generated.count('import_name("slot_set")') == 1
+
+
 def test_profile_lock_pins_provider_and_has_no_wasi(tmp_path: Path):
     source = json.loads(SOURCE.read_text())
     lock = build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)
@@ -104,7 +122,7 @@ def test_profile_lock_pins_provider_and_has_no_wasi(tmp_path: Path):
     assert loaded.runtime_profile_id.hex() == lock["runtime_profile_id"]
     assert len(loaded.bytecode_abi_id) == 32
     assert len(loaded.runtime_profile_id) == 32
-    assert len(lock["provider"]["imports"]) == 21
+    assert len(lock["provider"]["imports"]) == 22
     assert lock["source"]["limits"]["host_work_budget"] == 2_097_152
     assert {item["module"] for item in lock["provider"]["imports"]} == {"env"}
     assert lock["provider"]["imports"] == sorted(
@@ -440,7 +458,7 @@ def test_provider_bundle_emits_the_profile_lock(tmp_path: Path):
     assert (
         'XAHAU_QUICKJS_HOST_ADAPTER_POLICY "xahau-raw-hook-host-v1"' in cmake_manifest
     )
-    assert 'XAHAU_QUICKJS_PROVIDER_IMPORT_COUNT "21"' in cmake_manifest
+    assert 'XAHAU_QUICKJS_PROVIDER_IMPORT_COUNT "22"' in cmake_manifest
     assert 'XAHAU_QUICKJS_PROVIDER_EXPORT_COUNT "22"' in cmake_manifest
     cmake_object_limits = {
         "XAHAU_QUICKJS_SERIALIZED_OBJECT_MAX_BYTES": 1_048_576,
@@ -599,6 +617,7 @@ JSON.stringify((() => {{
   const languageGlobals = new Set({language_globals});
   const functionOwn = new Set(["arguments", "caller", "length", "name", "prototype"]);
   const failures = [];
+  const resolve = path => path.split(".").reduce((value, name) => value[name], globalThis);
   const compareNames = (label, actual, expected) => {{
     const actualSet = new Set(actual);
     const expectedSet = new Set(expected);
@@ -631,13 +650,15 @@ JSON.stringify((() => {{
       failures.push(`global ${{name}}: expected ${{kind}}`);
 
   for (const group of ["namespaces", "statics"])
-    for (const [name, members] of Object.entries(surface[group]))
+    for (const [name, members] of Object.entries(surface[group])) {{
+      const receiver = resolve(name);
       checkMembers(
         `${{group.slice(0, -1)}} ${{name}}`,
-        globalThis[name],
+        receiver,
         members,
-        typeof globalThis[name] === "function" ? functionOwn : new Set(),
+        typeof receiver === "function" ? functionOwn : new Set(),
       );
+    }}
 
   for (const [name, profile] of Object.entries(surface.prototypes)) {{
     const receiver = eval(profile.probe);

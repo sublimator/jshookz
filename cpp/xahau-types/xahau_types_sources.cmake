@@ -11,6 +11,7 @@ set(JSHOOKZ_XAHAU_TYPES_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/hash/uint_js.cpp
     ${CMAKE_CURRENT_LIST_DIR}/account/account_js.cpp
     ${CMAKE_CURRENT_LIST_DIR}/account/account_json.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/keylet/keylet_js.cpp
     ${CMAKE_CURRENT_LIST_DIR}/amount/amount_js.cpp
     ${CMAKE_CURRENT_LIST_DIR}/xfl/xfl_arithmetic.cpp
     ${CMAKE_CURRENT_LIST_DIR}/xfl/xfl_js.cpp

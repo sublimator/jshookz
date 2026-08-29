@@ -9,6 +9,7 @@
     "otxn_type",
     "otxn_param",
     "otxn_slot",
+    "slot_set",
     "slot_size",
     "slot",
     "slot_clear",

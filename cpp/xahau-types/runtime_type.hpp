@@ -20,6 +20,7 @@ enum class RuntimeTypeId : std::int32_t {
   hash256,
   iouAmount,
   issue,
+  ledgerKeylet,
   mptAmount,
   nativeAmount,
   path,

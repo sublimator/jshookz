@@ -9,6 +9,8 @@ declare const __voidResultBrand: unique symbol;
 declare const __recordFieldBrand: unique symbol;
 declare const __serializedFieldBrand: unique symbol;
 
+declare const __ledgerKeyletValueBrand: unique symbol;
+
 /**
  * Type-only surface shared by every nominal provider-produced Result.
  *
@@ -1420,6 +1422,23 @@ declare global {
     readonly rawFlags: number;
   }
 
+  /**
+   * Typed ledger locator. `T` is erased at runtime and records the minted
+   * ledger-object shape for `ledger.lookup`. `ledger.get` returns the matching
+   * `HostObject` subtype.
+   */
+  interface LedgerKeylet<T extends STObject = STObject> {
+    readonly [__providerValueBrand]: "LedgerKeylet";
+    readonly [__ledgerKeyletValueBrand]?: T;
+    readonly byteLength: 34;
+    readonly type: number;
+    toBytes(): Uint8Array;
+    toHex(): HexString;
+  }
+
+  /** Typed-locator runtime noun (0085 close shape). */
+  const LedgerKeylet: RuntimeType<LedgerKeylet>;
+
   namespace otxn {
     /**
      * Minted originating transaction. Total getters. Existence is an
@@ -1457,6 +1476,9 @@ declare global {
   }
 
   namespace util {
+    namespace keylet {
+      function account(account: AccountID): LedgerKeylet<AccountRoot>;
+    }
     /**
      * Decode ledger-serialized bytes. Assertion form: malformed input
      * throws TypeError. Gate untrusted bytes with `util.validateObject`
@@ -1480,6 +1502,7 @@ declare global {
     const lastTime: RippleTime;
     const lastHash: Hash256;
     function nonce(): HostResult<Hash256>;
+    function lookup(locator: LedgerKeylet<AccountRoot>): HostResult<AccountRoot | undefined>;
   }
 
   /** Metadata and configuration for the currently executing Hook. */

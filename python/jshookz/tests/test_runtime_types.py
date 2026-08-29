@@ -4,9 +4,9 @@ from jshookz.host import WasmHost
 from jshookz.paths import XAHAU_HOOK_PROVIDER_WASM
 from jshookz.runtime_types import SCHEMA, observe_runtime_types
 
-# Exact runtime-surface observation, including the foreign-state accessor
-# prototype selected by the runtime profile.
-_NOMINAL_MATRIX_GAS = 11_224_267
+# Exact runtime-surface observation, including the foreign-state accessor and
+# account-keylet value selected by the runtime profile.
+_NOMINAL_MATRIX_GAS = 11_748_552
 
 _XFL_VALUE_KERNEL = r"""
 JSON.stringify((() => {
@@ -82,6 +82,7 @@ _NOMINAL_MATRIX = r"""
 JSON.stringify((() => {
   const empty = util.decodeObject(new Uint8Array());
   const accountIDValue = AccountID.from(new Uint8Array(20));
+  const ledgerKeyletValue = util.keylet.account(accountIDValue);
   const hash128Value = empty.withField("EmailHash", new Uint8Array(16)).EmailHash;
   const hash160Value = empty.withField(
     "TakerPaysCurrency", new Uint8Array(20)).TakerPaysCurrency;
@@ -122,7 +123,7 @@ JSON.stringify((() => {
 
   const nouns = [
     "AccountID", "Amount", "Currency", "Hash", "Hash128", "Hash160",
-    "Hash192", "Hash256", "IOUAmount", "Issue", "MPTAmount",
+    "Hash192", "Hash256", "IOUAmount", "Issue", "LedgerKeylet", "MPTAmount",
     "NativeAmount", "Path", "PathHop", "PathSet", "Result", "STArray",
     "STBlob", "STObject", "SerializedField", "UInt", "UInt8", "UInt16",
     "UInt32", "UInt64", "Vector256", "VoidResult", "XChainBridge",
@@ -140,6 +141,7 @@ JSON.stringify((() => {
     ["Hash192", hash192Value, ["Hash", "Hash192"]],
     ["Hash256", hash256Value, ["Hash", "Hash256"]],
     ["Issue", issueValue, ["Issue"]],
+    ["LedgerKeylet", ledgerKeyletValue, ["LedgerKeylet"]],
     ["Path", pathValue, ["Path"]],
     ["PathHop", pathHopValue, ["PathHop"]],
     ["PathSet", pathSetValue, ["PathSet"]],

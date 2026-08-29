@@ -2,6 +2,7 @@
 
 #include "amount/amount_js.hpp"
 #include "leaf/leaf.hpp"
+#include "keylet/keylet_js.hpp"
 #include "object/field_js.hpp"
 #include "object/object.hpp"
 #include "pathset/pathset_js.hpp"
@@ -186,6 +187,7 @@ publishCppRuntimeTypes(JSContext* ctx, JSValueConst global)
         {"Hash192", types::RuntimeTypeId::hash192},
         {"IOUAmount", types::RuntimeTypeId::iouAmount},
         {"Issue", types::RuntimeTypeId::issue},
+        {"LedgerKeylet", types::RuntimeTypeId::ledgerKeylet},
         {"MPTAmount", types::RuntimeTypeId::mptAmount},
         {"NativeAmount", types::RuntimeTypeId::nativeAmount},
         {"Path", types::RuntimeTypeId::path},
@@ -203,6 +205,16 @@ publishCppRuntimeTypes(JSContext* ctx, JSValueConst global)
             return false;
     }
     return true;
+}
+
+[[nodiscard]] bool installUtil(JSContext *ctx, JSValueConst global) {
+  qjs::OwnedValue util(ctx, JS_NewObject(ctx));
+  if (util.isException() ||
+      !qjs::installFunctions(ctx, util.get(), utilFunctions) ||
+      !types::installLedgerKeyletNamespace(ctx, util.get()) ||
+      !qjs::freezeObject(ctx, util.get()))
+    return false;
+  return JS_SetPropertyStr(ctx, global, "util", util.release()) >= 0;
 }
 
 } // namespace
@@ -224,6 +236,7 @@ extern "C" bool register_cpp_types(JSContext *ctx) {
   return types::registerSTBlob(ctx, global.get()) &&
          types::registerHash256(ctx, global.get()) &&
          types::registerAccountID(ctx, global.get()) &&
+         types::registerLedgerKeylet(ctx) &&
          types::registerXFL(ctx) && types::registerRichLeafTypes(ctx) &&
          types::registerAmount(ctx, amountLeaves) &&
          types::registerObjectTypes(ctx) &&
@@ -231,7 +244,7 @@ extern "C" bool register_cpp_types(JSContext *ctx) {
          types::registerFieldDescriptors(ctx, global.get()) &&
          types::publishObjectTypes(ctx, global.get()) &&
          publishCppRuntimeTypes(ctx, global.get()) &&
-         jshookz::qjs::installFactory(ctx, global.get(), "util", utilFunctions);
+         installUtil(ctx, global.get());
 }
 
 extern "C" void

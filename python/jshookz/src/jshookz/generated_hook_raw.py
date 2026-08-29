@@ -11,6 +11,7 @@ RAW_HOOK_ABI = (
     ('otxn_type', 'int64_t', (), ''),
     ('otxn_param', 'int64_t', ('uint32_t', 'uint32_t', 'uint32_t', 'uint32_t'), ''),
     ('otxn_slot', 'int64_t', ('uint32_t',), ''),
+    ('slot_set', 'int64_t', ('uint32_t', 'uint32_t', 'uint32_t'), ''),
     ('slot_size', 'int64_t', ('uint32_t',), ''),
     ('slot', 'int64_t', ('uint32_t', 'uint32_t', 'uint32_t'), ''),
     ('slot_clear', 'int64_t', ('uint32_t',), ''),

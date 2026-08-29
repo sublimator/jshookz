@@ -1321,7 +1321,7 @@ TEST_F(
             "Amount", "NativeAmount", "IOUAmount", "MPTAmount",
             "XFLDecimal", "PathSet", "Path", "PathHop", "Vector256",
             "XChainBridge", "STObject", "STArray", "SerializedField",
-            "Hash",
+            "Hash", "LedgerKeylet",
           ];
           const published = [
             "STBlob", "Hash256", "AccountID", "Field", "util",
@@ -1329,7 +1329,9 @@ TEST_F(
           ];
           return Object.isFrozen(util) &&
             Reflect.ownKeys(util).join(",") ===
-              "validateObject,safeDecodeObject,decodeObject" &&
+              "validateObject,safeDecodeObject,decodeObject,keylet" &&
+            Object.isFrozen(util.keylet) &&
+            Reflect.ownKeys(util.keylet).join(",") === "account" &&
             util.validateObject(bytes) && !util.validateObject(bytes.subarray(0, 2)) &&
             decoded.ok && decoded.value.Flags.toNumber() === 9 &&
             asserted.Flags.toNumber() === 9 &&

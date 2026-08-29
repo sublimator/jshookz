@@ -42,6 +42,14 @@ void unregisterObjectTypes(JSRuntime* runtime) noexcept;
 [[nodiscard]] JSValue makeCertifiedTransactionOwned(
     JSContext* ctx, std::uint8_t* bytes, std::uint32_t size);
 
+// Trusted-host ingress used by the concrete AccountRoot ledger lookup. This
+// consumes `bytes` on every path and succeeds only when the exact generated
+// AccountRoot format (including required fields and leaf refinements) is
+// proven. Any other trusted host payload is an internal provider invariant
+// failure rather than a generic STObject success.
+[[nodiscard]] JSValue makeCertifiedAccountRootOwned(
+    JSContext* ctx, std::uint8_t* bytes, std::uint32_t size);
+
 // Private adapters behind the eventual util.validateObject,
 // util.safeDecodeObject, and util.decodeObject publication. They enforce the
 // exact ObjectBytes provenance union without executing JavaScript.

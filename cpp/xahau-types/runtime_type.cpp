@@ -2,6 +2,7 @@
 
 #include "amount/amount_js.hpp"
 #include "js.hpp"
+#include "keylet/keylet_js.hpp"
 #include "leaf/leaf.hpp"
 #include "object/field_js.hpp"
 #include "object/object.hpp"
@@ -54,6 +55,8 @@ bool runtimeTypeClassifies(RuntimeTypeId type, JSValueConst value) noexcept {
     return isAmountKind(value, AmountIssueKind::iou);
   case RuntimeTypeId::issue:
     return isRichLeaf(value, RichLeafKind::issue);
+  case RuntimeTypeId::ledgerKeylet:
+    return isLedgerKeylet(value);
   case RuntimeTypeId::mptAmount:
     return isAmountKind(value, AmountIssueKind::mpt);
   case RuntimeTypeId::nativeAmount:

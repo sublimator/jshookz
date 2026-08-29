@@ -8,6 +8,7 @@ declare const __resultBrand: unique symbol;
 declare const __voidResultBrand: unique symbol;
 declare const __recordFieldBrand: unique symbol;
 declare const __serializedFieldBrand: unique symbol;
+declare const __ledgerKeyletValueBrand: unique symbol;
 
 /**
  * Type-only surface shared by every nominal provider-produced Result.
@@ -2302,7 +2303,7 @@ declare global {
    */
   interface LedgerKeylet<T extends STObject = STObject> {
     readonly [__providerValueBrand]: "LedgerKeylet";
-    readonly __valueType?: T;
+    readonly [__ledgerKeyletValueBrand]?: T;
     readonly byteLength: 34;
     readonly type: number;
     toBytes(): Uint8Array;
@@ -2734,6 +2735,7 @@ declare global {
     function get(locator: LedgerKeylet<UNLReport>): HostResult<HostUNLReport | undefined>;
     function get(locator: LedgerKeylet): HostResult<HostObject | undefined>;
     function get(locator: Hash256): HostResult<HostObject | undefined>;
+    function lookup(locator: LedgerKeylet<AccountRoot>): HostResult<AccountRoot | undefined>;
     function lookup<T extends STObject>(locator: LedgerKeylet<T>): HostResult<T | undefined>;
     function lookup(locator: Hash256): HostResult<STObject | undefined>;
     function lookupMany(locators: readonly (LedgerKeylet | Hash256)[]): HostResult<readonly (STObject | undefined)[]>;
