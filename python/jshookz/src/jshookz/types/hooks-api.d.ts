@@ -564,10 +564,14 @@ declare global {
   type JSTruthy<T> = Exclude<T, JSFalsy>;
   /** A successful, non-nullish value; falsy-but-present values qualify. */
   type Present<T> = Exclude<T, null | undefined>;
-  /** A value with one canonical serialized-ledger byte representation. */
-  interface SerializedType {
+  /** A provider-minted value with one canonical ledger representation. */
+  type SerializedType = (
+    | { readonly [__providerValueBrand]: string }
+    | { readonly [__stObjectBrand]: void }
+    | { readonly [__stArrayBrand]: void }
+  ) & {
     toBytes(options?: SerializationOptions): Uint8Array;
-  }
+  };
   type BytePart = BytesLike | SerializedType;
   /** State-key input: octets, string text encoded as UTF-8, or a serial value. */
   type StateKeyLike = BytesLike | string | SerializedType;

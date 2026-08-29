@@ -30,6 +30,12 @@
     "emit.tx": {
       "0": "bytesLikeOrSTBlob"
     },
+    "hook.param": {
+      "0": "stateKeyLike"
+    },
+    "otxn.param": {
+      "0": "stateKeyLike"
+    },
     "rollback": {
       "0": "lifecycleMessage"
     },
@@ -43,7 +49,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "00444ce62a03f682f6be96f5b8e135434bc111a57cd3b7e6831ba33c8f6f69eb"
+    "sha256": "d19776230ed4e9c52a8b96b077ec5cad06380b041b38adb3d39d08da8d685c23"
   },
   "globals": {
     "AccountID": "object",
@@ -110,15 +116,18 @@
     },
     "hook": {
       "account": "function",
-      "mode": "function"
+      "mode": "function",
+      "param": "function"
     },
     "ledger": {
       "lastHash": "value",
       "lastTime": "value",
+      "nonce": "function",
       "sequence": "value"
     },
     "otxn": {
       "object": "function",
+      "param": "function",
       "type": "function"
     },
     "rollback": {

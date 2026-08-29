@@ -51,6 +51,18 @@ def test_public_declarations_are_package_data_and_v1_is_default():
     assert "declare function record" not in v1
 
 
+def test_parameter_keys_reject_structural_to_bytes_impostors(tmp_path: Path):
+    source = tmp_path / "fake-serialized-key.hook.ts"
+    source.write_text(
+        "const fake={toBytes:()=>new Uint8Array([1])};"
+        "export function main():never{"
+        "rollback.onFail(otxn.param(fake),'parameter failed');accept();}"
+    )
+
+    with pytest.raises(RuntimeError, match="TypeScript compilation failed"):
+        compile_hook(source)
+
+
 @pytest.mark.parametrize("suffix", [".ts", ".js"])
 @pytest.mark.parametrize(
     ("expression", "expected"),
@@ -1012,8 +1024,10 @@ class _TerminalHost:
         ("export function main(){accept('done')}", "hook", 2),
         ("export function main(){rollback('done')}", "hook", 1),
         (
-            "export function main(){throw new Error('unused')}"
-            "export function callback(_info){accept('done')}",
+            (
+                "export function main(){throw new Error('unused')}"
+                "export function callback(_info){accept('done')}"
+            ),
             "cbak",
             9,
         ),

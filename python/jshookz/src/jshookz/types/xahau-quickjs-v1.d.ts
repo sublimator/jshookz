@@ -537,6 +537,18 @@ declare global {
   /** A successful, non-nullish value; falsy-but-present values qualify. */
   type Present<T> = Exclude<T, null | undefined>;
 
+  /** A provider-minted value with one canonical ledger representation. */
+  type SerializedType = (
+    | { readonly [__providerValueBrand]: string }
+    | { readonly [__stObjectBrand]: void }
+    | { readonly [__stArrayBrand]: void }
+  ) & {
+    toBytes(options?: SerializationOptions): Uint8Array;
+  };
+
+  /** State-key input: octets, string text encoded as UTF-8, or a serial value. */
+  type StateKeyLike = BytesLike | string | SerializedType;
+
   /** Conceptual result nouns (0085 close): the runtime already
    * classifies via isResult/isEffectResult; these make it public. */
   const Result: RuntimeType<Result<unknown, unknown>>;
@@ -826,6 +838,11 @@ declare global {
   interface RecordField<T, Width extends number = number> {
     readonly [__recordFieldBrand]: T;
     readonly byteLength: Width;
+  }
+
+  interface SerializationOptions {
+    readonly field?: string | number;
+    readonly includeFieldHeader?: boolean;
   }
 
   /** @serial Blob */
@@ -1410,6 +1427,14 @@ declare global {
      */
     function object(): Transaction;
     function type(): TransactionType;
+    /**
+     * Transaction-carried hook parameters (`otxn_param`). Names and values
+     * are blobs. Absent and empty are the same host status (`DOESNT_EXIST`)
+     * and both surface as `undefined`. At most 16 parameters, key ≤ 32
+     * bytes, value ≤ 256 bytes — same numeric caps as install-time params,
+     * but the 16 is per originating transaction, not per hook.
+     */
+    function param(name: StateKeyLike): HostResult<STBlob | undefined>;
   }
 
   namespace state {
@@ -1449,6 +1474,7 @@ declare global {
     const sequence: LedgerSequence;
     const lastTime: RippleTime;
     const lastHash: Hash256;
+    function nonce(): HostResult<Hash256>;
   }
 
   /** Metadata and configuration for the currently executing Hook. */
@@ -1456,6 +1482,22 @@ declare global {
     /** Hook account for this invocation; provider construction is total. */
     function account(): AccountID;
     function mode(): HookExecutionMode;
+    /**
+     * Install-time hook parameters (`hook_param`). Names and values are
+     * blobs. Absent and empty are the same host status (`DOESNT_EXIST`)
+     * and both surface as `undefined`. At most 16 parameters per installed
+     * hook, key ≤ 32 bytes, value ≤ 256 bytes.
+     *
+     * The value may have been substituted or deleted by an earlier hook in
+     * this chain via `paramSet`; it is not necessarily the SetHook
+     * install-time blob.
+     *
+     * The schema overload is the same triage as `state.get`: `!ok` is a
+     * host code or a codec issue, `undefined` is absent, otherwise decoded.
+     * `schema.byteLength` must be ≤ 256; the provider rejects a larger
+     * schema at runtime.
+     */
+    function param(name: StateKeyLike): HostResult<STBlob | undefined>;
   }
 
   /**

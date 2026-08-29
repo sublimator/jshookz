@@ -26,6 +26,14 @@ class _TraceHost:
         return 0
 
 
+class _BoundedReadHost:
+    def otxn_param(self, *_args):
+        return -5
+
+    def ledger_nonce(self, *_args):
+        return -77
+
+
 @dataclass(frozen=True)
 class _InitializationFuel:
     envelope: int
@@ -212,3 +220,22 @@ def test_profile_host_work_counts_addressed_bytes_before_dispatch():
     assert exhausted.error == "host work budget exhausted"
     assert exhausted.host_work_used == limits.host_work_budget
     assert handler.calls == 1
+
+
+def test_parameter_and_nonce_charge_their_bounded_addressed_lengths():
+    host = WasmHost.profiled(handler=_BoundedReadHost())
+    host.init()
+    try:
+        parameter = host.eval(
+            "otxn.param(new Uint8Array([1,2,3])).ok"
+        )
+        nonce = host.eval("ledger.nonce().ok")
+    finally:
+        host.destroy()
+
+    assert parameter.ok, parameter.error
+    assert parameter.result_value == "true"
+    assert parameter.host_work_used == 1 + 256 + 3
+    assert nonce.ok, nonce.error
+    assert nonce.result_value == "false"
+    assert nonce.host_work_used - parameter.host_work_used == 1 + 32

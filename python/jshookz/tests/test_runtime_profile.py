@@ -2,19 +2,18 @@ import copy
 import hashlib
 import importlib.metadata
 import json
-import tomllib
 from pathlib import Path
 
 import pytest
-
+import tomllib
+from jshookz.build import _validate_native_abi, seal_xahau_hook_provider_bundle
+from jshookz.host import WasmHost
 from jshookz.paths import (
     XAHAU_HOOK_PROVIDER_WASM,
     XAHAU_RUNTIME_PROFILE_SOURCE,
     XAHAU_V1_HOOKS_API_DECLARATIONS,
     XAHAU_V1_JAVASCRIPT_SURFACE,
 )
-from jshookz.build import _validate_native_abi, seal_xahau_hook_provider_bundle
-from jshookz.host import WasmHost
 from jshookz.runtime_profile import (
     _validate_provider_policy,
     _wasm_stack_pointer_initial,
@@ -24,7 +23,6 @@ from jshookz.runtime_profile import (
     profile_execution_limits,
     verify_runtime_profile_lock,
 )
-
 
 SOURCE = XAHAU_RUNTIME_PROFILE_SOURCE
 OBJECT_LIMITS = {
@@ -51,6 +49,22 @@ def test_native_engine_and_python_oracle_versions_are_named_separately():
     assert importlib.metadata.version("wasmtime") == "47.0.1"
 
 
+def test_parameter_and_nonce_imports_have_exact_host_work_coordinates():
+    source = json.loads(SOURCE.read_text())
+    imports = {
+        item["name"]: (item["params"], item["results"])
+        for item in source["provider"]["imports"]
+    }
+
+    assert imports["otxn_param"] == (["i32"] * 4, ["i64"])
+    assert imports["hook_param"] == (["i32"] * 4, ["i64"])
+    assert imports["ledger_nonce"] == (["i32"] * 2, ["i64"])
+    addressed = source["limits"]["host_work_addressed_length_indices"]
+    assert addressed["otxn_param"] == [1, 3]
+    assert addressed["hook_param"] == [1, 3]
+    assert addressed["ledger_nonce"] == [1]
+
+
 def test_profile_lock_pins_provider_and_has_no_wasi(tmp_path: Path):
     source = json.loads(SOURCE.read_text())
     lock = build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)
@@ -63,7 +77,7 @@ def test_profile_lock_pins_provider_and_has_no_wasi(tmp_path: Path):
     assert loaded.runtime_profile_id.hex() == lock["runtime_profile_id"]
     assert len(loaded.bytecode_abi_id) == 32
     assert len(loaded.runtime_profile_id) == 32
-    assert len(lock["provider"]["imports"]) == 17
+    assert len(lock["provider"]["imports"]) == 20
     assert lock["source"]["limits"]["host_work_budget"] == 2_097_152
     assert {item["module"] for item in lock["provider"]["imports"]} == {"env"}
     assert lock["provider"]["imports"] == sorted(
@@ -399,7 +413,7 @@ def test_provider_bundle_emits_the_profile_lock(tmp_path: Path):
     assert (
         'XAHAU_QUICKJS_HOST_ADAPTER_POLICY "xahau-raw-hook-host-v1"' in cmake_manifest
     )
-    assert 'XAHAU_QUICKJS_PROVIDER_IMPORT_COUNT "17"' in cmake_manifest
+    assert 'XAHAU_QUICKJS_PROVIDER_IMPORT_COUNT "20"' in cmake_manifest
     assert 'XAHAU_QUICKJS_PROVIDER_EXPORT_COUNT "22"' in cmake_manifest
     cmake_object_limits = {
         "XAHAU_QUICKJS_SERIALIZED_OBJECT_MAX_BYTES": 1_048_576,

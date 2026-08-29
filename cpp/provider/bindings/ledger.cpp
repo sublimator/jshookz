@@ -19,6 +19,41 @@ enum class InvocationMode : std::uint8_t
 
 InvocationMode invocationMode = InvocationMode::unavailable;
 
+using ParameterReader = std::int64_t (*)(
+    std::uint32_t,
+    std::uint32_t,
+    std::uint32_t,
+    std::uint32_t);
+
+[[nodiscard]] JSValue
+readParameter(
+    JSContext *ctx,
+    qjs::ByteView const& name,
+    char const *operation,
+    ParameterReader reader)
+{
+    std::uint8_t value[256];
+    std::int64_t const result = reader(
+        static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(value)),
+        sizeof(value),
+        static_cast<std::uint32_t>(
+            reinterpret_cast<std::uintptr_t>(name.data())),
+        name.size());
+    if (result == -5 || result == 0)
+        return host_success(ctx, JS_UNDEFINED);
+    if (result < 0)
+        return host_failure(ctx, result);
+    if (result > static_cast<std::int64_t>(sizeof(value)))
+        return JS_ThrowInternalError(
+            ctx,
+            "%s: host returned oversized length %lld",
+            operation,
+            (long long)result);
+    return host_success(
+        ctx,
+        makeSTBlob(ctx, value, static_cast<std::uint32_t>(result)));
+}
+
 [[nodiscard]] JSValue
 slotFailure(JSContext *ctx, std::uint32_t slot, char const *stage,
             std::int64_t result)
@@ -76,6 +111,20 @@ js_otxn_type(JSContext *ctx, JSValueConst this_val,
             "otxn.type: host violated total invocation fact with %lld",
             (long long)result);
     return JS_NewInt64(ctx, result);
+}
+
+JSValue
+// @binding provider:otxn.param
+js_otxn_param(JSContext *ctx, JSValueConst this_val,
+              int argc, JSValueConst *argv)
+{
+    if (argc < 1)
+        return JS_ThrowTypeError(ctx, "otxn.param: expected a name");
+    auto name = qjs::ByteView::getBinding(
+        ctx, argv[0], "otxn.param", 0, qjs::BytePolicy::stateKeyLike);
+    if (!name)
+        return qjs::pendingOrTypeError(ctx, "otxn.param: invalid name");
+    return readParameter(ctx, name, "otxn.param", hook_otxn_param);
 }
 
 JSValue
@@ -163,6 +212,20 @@ js_hook_account(JSContext *ctx, JSValueConst this_val,
 }
 
 JSValue
+// @binding provider:hook.param
+js_hook_param(JSContext *ctx, JSValueConst this_val,
+              int argc, JSValueConst *argv)
+{
+    if (argc < 1)
+        return JS_ThrowTypeError(ctx, "hook.param: expected a name");
+    auto name = qjs::ByteView::getBinding(
+        ctx, argv[0], "hook.param", 0, qjs::BytePolicy::stateKeyLike);
+    if (!name)
+        return qjs::pendingOrTypeError(ctx, "hook.param: invalid name");
+    return readParameter(ctx, name, "hook.param", hook_hook_param);
+}
+
+JSValue
 // @binding provider:hook.mode
 js_hook_mode(JSContext *ctx, JSValueConst this_val,
              int argc, JSValueConst *argv)
@@ -188,10 +251,30 @@ js_hook_mode(JSContext *ctx, JSValueConst this_val,
     return JS_NewString(ctx, value);
 }
 
+JSValue
+// @binding provider:ledger.nonce
+js_ledger_nonce(JSContext *ctx, JSValueConst this_val,
+                int argc, JSValueConst *argv)
+{
+    std::uint8_t bytes[32];
+    std::int64_t const result = hook_ledger_nonce(
+        static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(bytes)),
+        sizeof(bytes));
+    if (result < 0)
+        return host_failure(ctx, result);
+    if (result != static_cast<std::int64_t>(sizeof(bytes)))
+        return JS_ThrowInternalError(
+            ctx,
+            "ledger.nonce: host returned %lld, expected 32",
+            (long long)result);
+    return host_success(ctx, makeHash256(ctx, bytes, sizeof(bytes)));
+}
+
 JSCFunctionListEntry const js_ledger_properties[] = {
     JS_CGETSET_DEF("sequence", js_ledger_sequence, NULL),
     JS_CGETSET_DEF("lastTime", js_ledger_last_time, NULL),
     JS_CGETSET_DEF("lastHash", js_ledger_last_hash, NULL),
+    JS_CFUNC_DEF("nonce", 0, js_ledger_nonce),
 };
 
 }  // namespace
@@ -248,6 +331,8 @@ registerHook(JSContext *ctx, JSValue global)
         return false;
     if (JS_SetPropertyStr(ctx, hook.get(), "account",
             JS_NewCFunction(ctx, js_hook_account, "account", 0)) < 0 ||
+        JS_SetPropertyStr(ctx, hook.get(), "param",
+            JS_NewCFunction(ctx, js_hook_param, "param", 1)) < 0 ||
         JS_SetPropertyStr(ctx, hook.get(), "mode",
             JS_NewCFunction(ctx, js_hook_mode, "mode", 0)) < 0)
         return false;
@@ -269,6 +354,9 @@ registerLedger(JSContext *ctx, JSValue global)
         return false;
     if (JS_SetPropertyStr(ctx, otxn.get(), "type",
             JS_NewCFunction(ctx, js_otxn_type, "type", 0)) < 0)
+        return false;
+    if (JS_SetPropertyStr(ctx, otxn.get(), "param",
+            JS_NewCFunction(ctx, js_otxn_param, "param", 1)) < 0)
         return false;
     if (JS_SetPropertyStr(ctx, otxn.get(), "object",
             JS_NewCFunction(ctx, js_otxn_object, "object", 0)) < 0)

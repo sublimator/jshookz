@@ -16,8 +16,14 @@ extern int64_t hook_ledger_last_time(void);
 __attribute__((import_module("env"), import_name("ledger_last_hash")))
 extern int64_t hook_ledger_last_hash(uint32_t arg0, uint32_t arg1);
 
+__attribute__((import_module("env"), import_name("ledger_nonce")))
+extern int64_t hook_ledger_nonce(uint32_t arg0, uint32_t arg1);
+
 __attribute__((import_module("env"), import_name("otxn_type")))
 extern int64_t hook_otxn_type(void);
+
+__attribute__((import_module("env"), import_name("otxn_param")))
+extern int64_t hook_otxn_param(uint32_t arg0, uint32_t arg1, uint32_t arg2, uint32_t arg3);
 
 __attribute__((import_module("env"), import_name("otxn_slot")))
 extern int64_t hook_otxn_slot(uint32_t arg0);
@@ -33,6 +39,9 @@ extern int64_t hook_slot_clear(uint32_t arg0);
 
 __attribute__((import_module("env"), import_name("hook_account")))
 extern int64_t hook_hook_account(uint32_t arg0, uint32_t arg1);
+
+__attribute__((import_module("env"), import_name("hook_param")))
+extern int64_t hook_hook_param(uint32_t arg0, uint32_t arg1, uint32_t arg2, uint32_t arg3);
 
 __attribute__((import_module("env"), import_name("trace")))
 extern int64_t hook_trace(uint32_t arg0, uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t arg4);
