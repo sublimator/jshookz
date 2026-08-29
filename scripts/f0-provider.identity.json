@@ -1,6 +1,6 @@
 {
   "schema": "jshookz.f0-provider-identity.v1",
-  "control_commit": "ee66e625610db52a69396286cb813380968b9f62",
+  "control_commit": "ee66e62ab2ab15145007b26991e232fc290487fa",
   "files": {
     "build/xahau-provider/jshookz_provider.manifest.json": "cfa5c890f96d768e2693823024adf06a841425d9348c4f79334518c264363e3d",
     "build/xahau-provider/jshookz_provider.native-abi.json": "db5c633dda8c29c809649fdbc60e06c18814e769e659d850275b1f8cff7e87b9",
