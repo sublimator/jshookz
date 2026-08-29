@@ -1,4 +1,4 @@
-/* Exported callback must accept CallbackInfo. main is called with no args. */
+/* Source entry shape is compiler-owned; invocation/normal-return law is provider-owned. */
 
 type TS = any;
 
@@ -42,104 +42,173 @@ function moduleExports(checker: TS, source: TS): TS[] {
   return checker.getExportsOfModule(symbol);
 }
 
-function declarationOf(symbol: TS): TS {
-  const declarations = symbol.getDeclarations() || [];
-  return declarations[0];
-}
-
-function isRestParameter(parameter: TS): boolean {
-  const declaration = parameter.valueDeclaration;
-  return !!(declaration && declaration.dotDotDotToken);
-}
-
-function parameterType(checker: TS, parameter: TS, source: TS): TS {
-  if (parameter.valueDeclaration) {
-    return checker.getTypeOfSymbolAtLocation(
-      parameter,
-      parameter.valueDeclaration,
-    );
-  }
-  return checker.getTypeOfSymbolAtLocation(parameter, source);
-}
-
-function acceptedType(ts: TS, checker: TS, parameter: TS, source: TS): TS {
-  const type = parameterType(checker, parameter, source);
-  if (!isRestParameter(parameter)) return type;
-  if (checker.isTupleType && checker.isTupleType(type)) {
-    const element = checker.getTypeArguments(type)[0];
-    if (element) return element;
-  }
-  if (checker.getIndexTypeOfType) {
-    const index = checker.getIndexTypeOfType(type, ts.IndexKind.Number);
-    if (index) return index;
-  }
-  const indexed = checker.getIndexInfoOfType
-    ? checker.getIndexInfoOfType(type, ts.IndexKind.Number)
-    : undefined;
-  if (indexed && indexed.type) return indexed.type;
-  return type;
-}
-
 function typeName(type: TS): string {
   const symbol = type.aliasSymbol || type.symbol;
   return symbol && typeof symbol.getName === "function" ? symbol.getName() : "";
 }
 
-function isUnverifiedCallable(ts: TS, checker: TS, type: TS): boolean {
-  if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return true;
-  if (typeName(type) === "Function") return true;
-  const apparent = checker.getApparentType ? checker.getApparentType(type) : type;
-  return typeName(apparent) === "Function";
+function hasModifier(ts: TS, node: TS, kind: number): boolean {
+  return !!node.modifiers?.some((modifier: TS) => modifier.kind === kind);
+}
+
+function directEntryDeclaration(
+  ts: TS,
+  symbol: TS,
+  source: TS,
+): { node: TS; error?: string } {
+  const declarations = symbol.getDeclarations() || [];
+  const node = declarations[0] || source;
+  const functions = declarations.filter(
+    (declaration: TS) =>
+      declaration.getSourceFile() === source &&
+      ts.isFunctionDeclaration(declaration) &&
+      declaration.name?.text === symbol.getName() &&
+      hasModifier(ts, declaration, ts.SyntaxKind.ExportKeyword),
+  );
+  if (
+    (symbol.flags & ts.SymbolFlags.Alias) !== 0 ||
+    functions.length !== declarations.length ||
+    functions.length !== 1 ||
+    !functions[0].body
+  ) {
+    return {
+      node,
+      error: "must be one direct exported function declaration; aliases, re-exports, variables, and overloads are forbidden",
+    };
+  }
+  return { node: functions[0] };
+}
+
+function returnTypeIsNever(ts: TS, checker: TS, declaration: TS): boolean {
+  const signature = checker.getSignatureFromDeclaration(declaration);
+  if (!signature) return false;
+  return !!(checker.getReturnTypeOfSignature(signature).flags & ts.TypeFlags.Never);
+}
+
+function hasOneRequiredParameter(checker: TS, declaration: TS): boolean {
+  const parameter = declaration.parameters[0];
+  const signature = checker.getSignatureFromDeclaration(declaration);
+  return !!(
+    parameter &&
+    !parameter.questionToken &&
+    !parameter.initializer &&
+    !parameter.dotDotDotToken &&
+    signature &&
+    signature.minArgumentCount === 1
+  );
+}
+
+function exactlyCallbackInfo(
+  ts: TS,
+  checker: TS,
+  declaration: TS,
+  callbackInfo: TS,
+): boolean {
+  const parameter = declaration.parameters[0];
+  const type = checker.getTypeAtLocation(parameter);
+  if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return false;
+  if (typeName(type) === "Function") return false;
+  return (
+    checker.isTypeAssignableTo(type, callbackInfo) &&
+    checker.isTypeAssignableTo(callbackInfo, type)
+  );
 }
 
 export function checkEntrySignatures(ts: TS, program: TS, source: TS): string[] {
   const checker = program.getTypeChecker();
   const diagnostics: string[] = [];
   const exported = moduleExports(checker, source);
+  const main = exported.find((symbol) => symbol.getName() === "main");
+  if (!main) {
+    diagnostics.push(
+      formatAt(ts, source, "JSH-ENTRY001: Hook module must directly export main"),
+    );
+    return diagnostics;
+  }
+
+  const mainDeclaration = directEntryDeclaration(ts, main, source);
+  if (mainDeclaration.error) {
+    diagnostics.push(
+      formatAt(
+        ts,
+        mainDeclaration.node,
+        `JSH-ENTRY002: exported main ${mainDeclaration.error}`,
+      ),
+    );
+  } else {
+    if (mainDeclaration.node.parameters.length !== 0) {
+      diagnostics.push(
+        formatAt(
+          ts,
+          mainDeclaration.node,
+          "JSH-ENTRY003: exported main must declare exactly zero parameters",
+        ),
+      );
+    }
+    if (!returnTypeIsNever(ts, checker, mainDeclaration.node)) {
+      diagnostics.push(
+        formatAt(
+          ts,
+          mainDeclaration.node,
+          "JSH-ENTRY004: exported main must have checked return type never",
+        ),
+      );
+    }
+  }
+
   const callback = exported.find((symbol) => symbol.getName() === "callback");
   if (!callback) return diagnostics;
 
   const callbackInfo = findCallbackInfoType(ts, program, checker);
-  const node = declarationOf(callback) || source;
+  const callbackDeclaration = directEntryDeclaration(ts, callback, source);
+  const node = callbackDeclaration.node;
+  if (callbackDeclaration.error) {
+    diagnostics.push(
+      formatAt(
+        ts,
+        node,
+        `JSH-ENTRY005: exported callback ${callbackDeclaration.error}`,
+      ),
+    );
+    return diagnostics;
+  }
   if (!callbackInfo) {
     diagnostics.push(
       formatAt(
         ts,
         node,
-        "exported callback requires CallbackInfo in the Hook declarations",
+        "JSH-ENTRY007: exported callback requires CallbackInfo in the Hook declarations",
       ),
     );
     return diagnostics;
   }
 
-  const type = checker.getTypeOfSymbolAtLocation(callback, source);
-  const signatures = checker.getSignaturesOfType(type, ts.SignatureKind.Call);
-  if (signatures.length === 0) {
-    if (isUnverifiedCallable(ts, checker, type)) {
-      diagnostics.push(
-        formatAt(
-          ts,
-          node,
-          "exported callback must accept CallbackInfo; parameter type is " +
-            checker.typeToString(type),
-        ),
-      );
-    }
-    return diagnostics;
-  }
-
-  for (const signature of signatures) {
-    const parameters = signature.getParameters();
-    if (parameters.length === 0) continue;
-    const first = parameters[0];
-    const accepted = acceptedType(ts, checker, first, source);
-    if (checker.isTypeAssignableTo(callbackInfo, accepted)) continue;
+  const parameters = node.parameters;
+  if (parameters.length !== 1 || !hasOneRequiredParameter(checker, node)) {
     diagnostics.push(
       formatAt(
         ts,
         node,
-        "exported callback must accept CallbackInfo; parameter type is " +
-          checker.typeToString(accepted),
+        "JSH-ENTRY006: exported callback must declare exactly one required non-default, non-rest parameter",
+      ),
+    );
+  } else if (!exactlyCallbackInfo(ts, checker, node, callbackInfo)) {
+    diagnostics.push(
+      formatAt(
+        ts,
+        node,
+        "JSH-ENTRY007: exported callback parameter must have checked type CallbackInfo; received " +
+          checker.typeToString(checker.getTypeAtLocation(parameters[0])),
+      ),
+    );
+  }
+
+  if (!returnTypeIsNever(ts, checker, node)) {
+    diagnostics.push(
+      formatAt(
+        ts,
+        node,
+        "JSH-ENTRY008: exported callback must have checked return type never",
       ),
     );
   }

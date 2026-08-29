@@ -159,7 +159,10 @@ export function compile(
     return fail("result", resultDiagnostics);
   }
 
-  const entryDiagnostics = checkEntrySignatures(ts, program, source);
+  const allowMalformed = sourceAllowsMalformed(ts, source);
+  const entryDiagnostics = allowMalformed
+    ? []
+    : checkEntrySignatures(ts, program, source);
   if (entryDiagnostics.length) {
     return fail("entry", entryDiagnostics);
   }
@@ -177,7 +180,7 @@ export function compile(
     kind: "ok",
     diagnostics: [],
     createCount,
-    allowMalformed: sourceAllowsMalformed(ts, source),
+    allowMalformed,
     xflProfile: xfl.profile,
   };
 }

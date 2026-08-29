@@ -519,7 +519,7 @@ declare global {
    * MODULE CONTRACT — how a hook binds to the provider. A hook is one
    * ES module; the provider invokes its EXPORTS by name:
    *
-   * - `export function main(reserved: number): never` — the hook entry
+   * - `export function main(): never` — the hook entry
    *   point. The Wasm `qjs_hook` export locates the module's exported
    *   `main` and calls it. A hook terminates through `accept` /
    *   `rollback` (hence `never`); returning without a terminal is an
@@ -536,7 +536,7 @@ declare global {
    * the module entry is `main`, never `hook` — `export function hook`
    * shadows the namespace and does not compile.
    */
-  type HookEntry = (reserved: number) => never;
+  type HookEntry = () => never;
   type CallbackEntry = (info: CallbackInfo) => never;
 
   type BytesLike = Uint8Array | ArrayBuffer | readonly number[];
@@ -2257,6 +2257,9 @@ declare global {
      */
     Weak = "weak",
 
+    /** Again-as-weak execution requested by a preceding strong pass. */
+    Again = "again",
+
     /** Emitted-transaction callback execution. */
     Callback = "callback",
   }
@@ -2440,18 +2443,22 @@ declare global {
 
     /**
      * Failed build stage. `"details"` and `"fee"` are host stages while
-     * finalizing an emission; `"amounts"` is the builder refusing its
-     * arguments before any host crossing, with code `INVALID_ARGUMENT`.
+     * finalizing an emission; `"encode"` is the builder refusing malformed
+     * local arguments before any host crossing.
      */
-    type BuildStage = "details" | "fee" | "amounts";
-    type BuildResult = Result<
-      EmittedTransaction,
-      HostError & { readonly stage: BuildStage }
-    >;
+    type BuildError =
+      | (EncodeError & { readonly stage: "encode" })
+      | (HostError & { readonly stage: "details" | "fee" });
+    type BuildResult = Result<EmittedTransaction, BuildError>;
 
     interface HookParameter {
       readonly name: StateKeyLike;
       readonly value: StateValueLike;
+    }
+
+    interface HookGrant {
+      readonly hookHash: Hash256;
+      readonly authorize: AccountID;
     }
 
     /**
@@ -2470,12 +2477,37 @@ declare global {
         readonly blob?: StateValueLike;
       }
 
+      interface HookReference {
+        /**
+         * Hook-chain slot to override. The builder orders entries by position,
+         * fills omitted lower positions with canonical no-op Hook objects, and
+         * serializes `Flags = tfHookOverride` for this action.
+         */
+        readonly position: number;
+        readonly hookHash: Hash256;
+        readonly namespace?: Hash256;
+        readonly parameters?: readonly HookParameter[];
+        readonly grants?: readonly HookGrant[];
+      }
+
+      interface HookDeletion {
+        /**
+         * Delete one chain slot. `hookHash: null` serializes the canonical
+         * override/delete object: `Flags = tfHookOverride`, zero-length
+         * CreateCode, and no HookHash. It is never a zero Hash256.
+         */
+        readonly position: number;
+        readonly hookHash: null;
+      }
+
+      type HookSetEntry = HookReference | HookDeletion;
+
       interface HookSetOptions {
         readonly account?: AccountID;
-        readonly hooks: readonly {
-          readonly position: number;
-          readonly hookHash: Hash256 | null;
-        }[];
+        readonly flags?: UInt32;
+        readonly hookParameters?: readonly HookParameter[];
+        /** Unique in-range position actions; at least one is required. */
+        readonly hooks: readonly HookSetEntry[];
       }
 
       interface PaymentOptions {
@@ -2518,9 +2550,8 @@ declare global {
         readonly destination: AccountID;
         readonly uri?: StateValueLike;
         /**
-         * An EMPTY amounts array is refused at BUILD time with stage
-         * "amounts" and code `INVALID_ARGUMENT` — not deferred to emit
-         * (0070:294-297, 0084:161-169).
+         * An EMPTY amounts array is refused locally at BUILD time with stage
+         * "encode" — not deferred to emit (0070:294-297, 0084:161-169).
          */
         readonly amounts?: readonly Amount[];
         readonly sourceTag?: UInt32;
@@ -2709,7 +2740,7 @@ declare global {
     function account(): AccountID;
     function hash(): HostResult<Hash256>;
     function position(): HostResult<number>;
-    function mode(): HostResult<HookExecutionMode>;
+    function mode(): HookExecutionMode;
     function hashAt(position: number): HostResult<Hash256 | undefined>;
     /**
      * Install-time hook parameters (`hook_param`). Names and values are

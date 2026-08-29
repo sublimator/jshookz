@@ -29,7 +29,8 @@ def _xfl_test_declaration(suffix: str) -> tuple[str, str]:
         return "declare const decimal: XFLDecimal;\n", ": never"
     return (
         "/** @type {XFLDecimal} */ const decimal = "
-        "/** @type {*} */ (globalThis).decimal;\n",
+        "/** @type {*} */ (globalThis).decimal;\n"
+        "/** @returns {never} */\n",
         "",
     )
 
@@ -64,8 +65,9 @@ def test_checked_hook_languages_share_runtime_enum_namespace_values(
 ):
     source = tmp_path / f"runtime-enum.hook{suffix}"
     annotation = ": never" if suffix == ".ts" else ""
+    js_return = "" if suffix == ".ts" else "/** @returns {never} */ "
     source.write_text(
-        f"export function main(){annotation} {{ "
+        f"{js_return}export function main(){annotation} {{ "
         f"throw new Error(`enum:${{{expression}}}`); }}"
     )
     compiled = compile_hook(source)
@@ -108,10 +110,11 @@ def test_xfl_policy_preserves_canonical_config_profile(
 ):
     source = tmp_path / f"config-only.hook{suffix}"
     annotation = ": never" if suffix == ".ts" else ""
+    js_return = "" if suffix == ".ts" else "/** @returns {never} */ "
     source.write_text(
         "export const hookConfig = defineHookConfig({ "
         f"xflArithmetic: XFLProfile.{member} }});\n"
-        f"export function main(){annotation} {{ return accept(); }}\n"
+        f"{js_return}export function main(){annotation} {{ return accept(); }}\n"
     )
 
     if suffix == ".ts":
@@ -920,8 +923,8 @@ def test_main_does_not_receive_the_raw_callback_word(tmp_path: Path):
     source = tmp_path / "main-arguments.hook.ts"
     source.write_text(
         """
-        export function main(...args: unknown[]): never {
-          throw new Error(`main arguments:${args.length}`);
+        export function main(): never {
+          throw new Error(`main arguments:${arguments.length}`);
         }
         """
     )
@@ -939,7 +942,11 @@ def test_packager_rejects_host_calls_during_module_initialization(
     tmp_path: Path,
 ):
     source = tmp_path / "host-init.hook.js"
-    source.write_text("export function main() {}\nvoid ledger.sequence;")
+    source.write_text(
+        "/** @returns {never} */\n"
+        "export function main() { throw new Error('entry'); }\n"
+        "void ledger.sequence;"
+    )
 
     with pytest.raises(RuntimeError, match="not deployable"):
         package_hook(
@@ -955,8 +962,9 @@ def test_compiler_rejects_aliased_host_call_during_module_initialization(
 ):
     source = tmp_path / "aliased-terminal.hook.js"
     source.write_text(
-        "const terminal = accept; terminal('not an entry', 1); "
-        "export function main() {}"
+        "const terminal = accept; terminal('not an entry', 1);\n"
+        "/** @returns {never} */\n"
+        "export function main() { throw new Error('entry'); }"
     )
 
     with pytest.raises(RuntimeError, match="unavailable during module initialization"):
@@ -976,14 +984,15 @@ def test_compiler_rejects_aliased_host_call_during_module_initialization(
         ),
     ],
 )
-def test_compiler_accepts_live_callable_main_exports(
+def test_compiler_rejects_indirect_main_exports(
     tmp_path: Path,
     module: str,
 ):
     source = tmp_path / "live-main.hook.ts"
     source.write_text(module)
 
-    assert compile_hook(source).bytecode
+    with pytest.raises(RuntimeError, match="JSH-ENTRY002"):
+        compile_hook(source)
 
 
 @pytest.mark.parametrize(
@@ -991,16 +1000,16 @@ def test_compiler_accepts_live_callable_main_exports(
     [
         (
             "export default function main(): never { return accept(); }",
-            "no exported main entry point",
+            "JSH-ENTRY001",
         ),
         (
             "export let main: (() => never) | number = () => accept(); main = 1;",
-            "main entry point is not callable",
+            "JSH-ENTRY002",
         ),
-        ("export class main {}", "main entry point is not callable"),
+        ("export class main {}", "JSH-ENTRY002"),
     ],
 )
-def test_compiler_uses_provider_live_export_validation(
+def test_compiler_rejects_invalid_main_source_shapes_before_provider(
     tmp_path: Path,
     module: str,
     error: str,
@@ -1052,7 +1061,7 @@ def test_compiler_refuses_missing_main_export(tmp_path: Path):
         }
         """
     )
-    with pytest.raises(RuntimeError, match="no exported main entry point"):
+    with pytest.raises(RuntimeError, match="JSH-ENTRY001"):
         compile_hook(source)
 
 
@@ -1069,7 +1078,7 @@ def test_compiler_rejects_numeric_callback_parameter(tmp_path: Path):
         """
     )
 
-    with pytest.raises(RuntimeError, match="CallbackInfo"):
+    with pytest.raises(RuntimeError, match="JSH-ENTRY007"):
         compile_hook(source)
 
 
@@ -1088,6 +1097,162 @@ def test_compiler_accepts_callback_info_parameter(tmp_path: Path):
     )
 
     assert compile_hook(source).bytecode
+
+
+def test_checked_javascript_accepts_exact_entry_contract(tmp_path: Path):
+    source = tmp_path / "exact-entry.hook.js"
+    source.write_text(
+        """
+        /** @returns {never} */
+        export function main() { return accept("ok"); }
+        /**
+         * @param {CallbackInfo} info
+         * @returns {never}
+         */
+        export function callback(info) {
+          if (info.failureBitSet) return rollback("failed", info.rawFlags);
+          return accept("cb");
+        }
+        """
+    )
+
+    assert compile_hook(source).bytecode
+
+
+@pytest.mark.parametrize(
+    ("suffix", "body"),
+    [
+        (".ts", "export function main() {}"),
+        (".ts", "export function main() { return undefined; }"),
+        (".ts", "export function main() { return 7; }"),
+        (".js", "export function main() {}"),
+        (".js", "export function main() { return undefined; }"),
+        (".js", "export function main() { return 7; }"),
+    ],
+)
+def test_compiler_rejects_every_normal_entry_return(
+    tmp_path: Path,
+    suffix: str,
+    body: str,
+):
+    source = tmp_path / f"normal-return.hook{suffix}"
+    source.write_text(body)
+
+    with pytest.raises(RuntimeError, match="JSH-ENTRY004"):
+        compile_hook(source)
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "export function main(_value: number): never { return accept(); }",
+        "export function main(_value = 0): never { return accept(); }",
+        "export function main(..._values: number[]): never { return accept(); }",
+    ],
+)
+def test_typescript_main_requires_zero_formal_parameters(
+    tmp_path: Path,
+    declaration: str,
+):
+    source = tmp_path / "main-arity.hook.ts"
+    source.write_text(declaration)
+
+    with pytest.raises(RuntimeError, match="JSH-ENTRY003"):
+        compile_hook(source)
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "export function callback(info?: CallbackInfo): never { return accept(); }",
+        "export function callback(info: CallbackInfo = {} as CallbackInfo): never { return accept(); }",
+        "export function callback(...info: [CallbackInfo]): never { void info; return accept(); }",
+    ],
+)
+def test_typescript_callback_requires_one_plain_parameter(
+    tmp_path: Path,
+    declaration: str,
+):
+    source = tmp_path / "callback-arity.hook.ts"
+    source.write_text(
+        "export function main(): never { return accept(); }\n" + declaration
+    )
+
+    with pytest.raises(RuntimeError, match="JSH-ENTRY006"):
+        compile_hook(source)
+
+
+def test_checked_javascript_rejects_optional_callback_parameter(tmp_path: Path):
+    source = tmp_path / "optional-callback.hook.js"
+    source.write_text(
+        """
+        /** @returns {never} */
+        export function main() { return accept(); }
+        /**
+         * @param {CallbackInfo} [info]
+         * @returns {never}
+         */
+        export function callback(info) { void info; return accept(); }
+        """
+    )
+
+    with pytest.raises(RuntimeError, match="JSH-ENTRY006"):
+        compile_hook(source)
+
+
+def test_typescript_rejects_entry_overloads(tmp_path: Path):
+    source = tmp_path / "overloaded-main.hook.ts"
+    source.write_text(
+        """
+        export function main(): never;
+        export function main(): never { return accept(); }
+        """
+    )
+
+    with pytest.raises(RuntimeError, match="JSH-ENTRY002"):
+        compile_hook(source)
+
+
+def test_checked_javascript_rejects_indirect_main_export(tmp_path: Path):
+    source = tmp_path / "indirect-main.hook.js"
+    source.write_text(
+        """
+        /** @returns {never} */
+        function hookMain() { return accept(); }
+        export { hookMain as main };
+        """
+    )
+
+    with pytest.raises(RuntimeError, match="JSH-ENTRY002"):
+        compile_hook(source)
+
+
+@pytest.mark.parametrize(
+    ("suffix", "callback"),
+    [
+        (".ts", "export function callback(info: CallbackInfo) { void info; }"),
+        (
+            ".js",
+            "/** @param {CallbackInfo} info */\n"
+            "export function callback(info) { void info; }",
+        ),
+    ],
+)
+def test_compiler_rejects_normally_returning_callback(
+    tmp_path: Path,
+    suffix: str,
+    callback: str,
+):
+    source = tmp_path / f"callback-return.hook{suffix}"
+    main = (
+        "export function main(): never { return accept(); }"
+        if suffix == ".ts"
+        else "/** @returns {never} */\nexport function main() { return accept(); }"
+    )
+    source.write_text(main + "\n" + callback)
+
+    with pytest.raises(RuntimeError, match="JSH-ENTRY008"):
+        compile_hook(source)
 
 
 def test_compiler_driver_creates_one_program(tmp_path: Path):
@@ -1425,7 +1590,7 @@ def test_compiler_rejects_rest_number_callback(tmp_path: Path):
         }
         """
     )
-    with pytest.raises(RuntimeError, match="CallbackInfo"):
+    with pytest.raises(RuntimeError, match="JSH-ENTRY006"):
         compile_hook(source)
 
 
@@ -1437,7 +1602,7 @@ def test_compiler_rejects_function_typed_callback(tmp_path: Path):
         export const callback: Function = (n: number) => accept("cb", n);
         """
     )
-    with pytest.raises(RuntimeError, match="CallbackInfo"):
+    with pytest.raises(RuntimeError, match="JSH-ENTRY005"):
         compile_hook(source)
 
 
@@ -1454,7 +1619,9 @@ def test_compiler_emits_noncallable_entries_when_flagged(tmp_path: Path):
     assert compiled.bytecode
 
 
-def test_compiler_emits_malformed_bytecode_when_flagged(tmp_path: Path):
+def test_provider_malformed_bypass_does_not_bypass_source_entry_policy(
+    tmp_path: Path,
+):
     source = tmp_path / "missing-main.hook.ts"
     source.write_text(
         """
@@ -1465,11 +1632,11 @@ def test_compiler_emits_malformed_bytecode_when_flagged(tmp_path: Path):
         """
     )
 
-    with pytest.raises(RuntimeError, match="no exported main entry point"):
+    with pytest.raises(RuntimeError, match="JSH-ENTRY001"):
         compile_hook(source)
 
-    compiled = compile_hook(source, allow_malformed=True)
-    assert compiled.bytecode
+    with pytest.raises(RuntimeError, match="JSH-ENTRY001"):
+        compile_hook(source, allow_malformed=True)
 
 
 def test_allow_malformed_directive_ignores_string_and_block_comment(
