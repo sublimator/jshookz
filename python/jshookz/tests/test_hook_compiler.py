@@ -1146,6 +1146,7 @@ def test_compiler_rejects_every_normal_entry_return(
     "declaration",
     [
         "export function main(_value: number): never { return accept(); }",
+        "export function main(_value?: number): never { return accept(); }",
         "export function main(_value = 0): never { return accept(); }",
         "export function main(..._values: number[]): never { return accept(); }",
     ],
@@ -1155,6 +1156,28 @@ def test_typescript_main_requires_zero_formal_parameters(
     declaration: str,
 ):
     source = tmp_path / "main-arity.hook.ts"
+    source.write_text(declaration)
+
+    with pytest.raises(RuntimeError, match="JSH-ENTRY003"):
+        compile_hook(source)
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "/** @param {number} _value @returns {never} */\n"
+        "export function main(_value) { return accept(); }",
+        "/** @param {number} [_value=0] @returns {never} */\n"
+        "export function main(_value = 0) { return accept(); }",
+        "/** @param {...number} _values @returns {never} */\n"
+        "export function main(..._values) { return accept(); }",
+    ],
+)
+def test_checked_javascript_main_requires_zero_formal_parameters(
+    tmp_path: Path,
+    declaration: str,
+):
+    source = tmp_path / "main-arity.hook.js"
     source.write_text(declaration)
 
     with pytest.raises(RuntimeError, match="JSH-ENTRY003"):
@@ -1200,6 +1223,45 @@ def test_checked_javascript_rejects_optional_callback_parameter(tmp_path: Path):
         compile_hook(source)
 
 
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "/** @param {CallbackInfo} info @returns {never} */\n"
+        "export function callback(info = /** @type {CallbackInfo} */ ({})) "
+        "{ void info; return accept(); }",
+        "/** @param {...CallbackInfo} info @returns {never} */\n"
+        "export function callback(...info) { void info; return accept(); }",
+    ],
+)
+def test_checked_javascript_callback_requires_one_plain_parameter(
+    tmp_path: Path,
+    declaration: str,
+):
+    source = tmp_path / "callback-arity.hook.js"
+    source.write_text(
+        "/** @returns {never} */\n"
+        "export function main() { return accept(); }\n" + declaration
+    )
+
+    with pytest.raises(RuntimeError, match="JSH-ENTRY006"):
+        compile_hook(source)
+
+
+def test_checked_javascript_rejects_wrong_callback_type(tmp_path: Path):
+    source = tmp_path / "wrong-callback.hook.js"
+    source.write_text(
+        """
+        /** @returns {never} */
+        export function main() { return accept(); }
+        /** @param {number} info @returns {never} */
+        export function callback(info) { return accept("cb", info); }
+        """
+    )
+
+    with pytest.raises(RuntimeError, match="JSH-ENTRY007"):
+        compile_hook(source)
+
+
 def test_typescript_rejects_entry_overloads(tmp_path: Path):
     source = tmp_path / "overloaded-main.hook.ts"
     source.write_text(
@@ -1225,6 +1287,59 @@ def test_checked_javascript_rejects_indirect_main_export(tmp_path: Path):
 
     with pytest.raises(RuntimeError, match="JSH-ENTRY002"):
         compile_hook(source)
+
+
+@pytest.mark.parametrize(
+    ("suffix", "module", "error"),
+    [
+        (
+            ".ts",
+            "export function other(): never { throw new Error('other'); }",
+            "JSH-ENTRY001",
+        ),
+        (
+            ".js",
+            "/** @returns {never} */\n"
+            "export function other() { throw new Error('other'); }",
+            "JSH-ENTRY001",
+        ),
+        (".ts", "export const main = 1;", "JSH-ENTRY002"),
+        (".js", "export const main = 1;", "JSH-ENTRY002"),
+    ],
+)
+def test_hook_languages_reject_missing_or_noncallable_main(
+    tmp_path: Path,
+    suffix: str,
+    module: str,
+    error: str,
+):
+    source = tmp_path / f"invalid-main.hook{suffix}"
+    source.write_text(module)
+
+    with pytest.raises(RuntimeError, match=error):
+        compile_hook(source)
+
+
+@pytest.mark.parametrize(
+    ("suffix", "module"),
+    [
+        (".ts", "export function main(): never { throw new Error('boom'); }"),
+        (
+            ".js",
+            "/** @returns {never} */\n"
+            "export function main() { throw new Error('boom'); }",
+        ),
+    ],
+)
+def test_hook_languages_accept_uncaught_throw_as_nonreturning_entry(
+    tmp_path: Path,
+    suffix: str,
+    module: str,
+):
+    source = tmp_path / f"throwing-main.hook{suffix}"
+    source.write_text(module)
+
+    assert compile_hook(source).bytecode
 
 
 @pytest.mark.parametrize(
