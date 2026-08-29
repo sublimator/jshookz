@@ -659,6 +659,29 @@ TEST_F(XahauTypes, UIntAddOverflowIsResult)
     EXPECT_EQ(to_string(domain.get()), "uint");
 }
 
+TEST_F(XahauTypes, UIntFlagMembership)
+{
+    auto value = eval(R"JS(
+        (() => {
+          const flags = UInt32.from(0x80020000).okOr(null);
+          return [
+            flags.hasFlag(0x80000000),
+            flags.hasFlag(0x00020000),
+            flags.hasFlag(0x80020000),
+            flags.hasFlag(0x00010000),
+            flags.hasFlag(0),
+            flags.hasFlag(-1),
+            flags.hasFlag(0x1_0000_0000),
+            UInt8.from(3).okOr(null).hasFlag(3),
+          ].join(":");
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException());
+    EXPECT_EQ(
+        to_string(value.get()),
+        "true:true:true:false:false:false:false:true");
+}
+
 TEST_F(XahauTypes, UIntWrappingArithmetic)
 {
     auto value = eval(R"JS(

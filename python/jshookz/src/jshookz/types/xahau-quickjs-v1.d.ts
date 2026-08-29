@@ -681,6 +681,11 @@ declare global {
     /** Conversion is total through 32 bits; UInt64 may exceed JS safe integer. */
     toNumber(): Bits extends 64 ? UIntResult<number> : number;
     isZero(): boolean;
+    /**
+     * True when every bit in the nonzero flag is present. A composite flag is
+     * an ALL-bits test, never an ANY-bits test.
+     */
+    hasFlag(flag: UIntInput<Bits>): boolean;
     equals(other: unknown): boolean;
     compare(other: UInt<Bits>): -1 | 0 | 1;
     add(other: UIntInput<Bits>): UIntResult<UInt<Bits>>;

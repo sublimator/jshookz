@@ -432,6 +432,29 @@ uintIsZero(
 }
 
 JSValue
+// @binding provider:UInt.hasFlag
+uintHasFlag(
+    JSContext* ctx,
+    JSValueConst thisValue,
+    int argc,
+    JSValueConst* argv)
+{
+    auto const* integer = thisUInt(ctx, thisValue);
+    if (integer == nullptr)
+        return JS_EXCEPTION;
+    if (argc < 1)
+        return JS_FALSE;
+    std::uint64_t flag = 0;
+    InputStatus const status =
+        readUInt(ctx, argv[0], integer->bits, flag);
+    if (status == InputStatus::exception)
+        return JS_EXCEPTION;
+    if (status != InputStatus::valid || flag == 0)
+        return JS_FALSE;
+    return JS_NewBool(ctx, (integer->value & flag) == flag);
+}
+
+JSValue
 // @binding provider:UInt.equals
 uintEquals(
     JSContext* ctx,
@@ -697,6 +720,7 @@ JSCFunctionListEntry const uintPrototypeFunctions[] = {
     JS_CFUNC_DEF("toNumber", 0, uintToNumber),
     JS_CFUNC_DEF("toString", 0, uintToString),
     JS_CFUNC_DEF("isZero", 0, uintIsZero),
+    JS_CFUNC_DEF("hasFlag", 1, uintHasFlag),
     JS_CFUNC_DEF("equals", 1, uintEquals),
     JS_CFUNC_DEF("compare", 1, uintCompare),
     JS_CFUNC_MAGIC_DEF(
