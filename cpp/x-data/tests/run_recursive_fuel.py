@@ -32,10 +32,10 @@ PINNED_WASI_VERSION = (
 )
 PINNED_WASMTIME_VERSION = "47.0.1"
 PINNED_SOURCE_MANIFEST_SHA256 = (
-    "8a6b94e338e69440e60ef2585663c7124fa9488dcb9531d8b6518008148c878c"
+    "bfd288a63ed75c4b850a5b0ec58d668b667745f998671d438bc187ca76721f61"
 )
 PINNED_ARTIFACT_SHA256 = (
-    "16055ec2db4905a037b3aaaf8e021f9ce5a7038fb9639aad9f4fd866e261b4b9"
+    "38479358d9416d6b7bb487f8c41a65ad8ba71d0b8306ef54fb7c62eb7dd19780"
 )
 PINNED_COUNTER_ABI = "recursive-xdata-fuel-v1"
 
@@ -118,18 +118,19 @@ SHAPES = {
     ),
 }
 
-# First clean slopes were 97 / 4507 / 12946 / 18569 for small and
-# 97 / 31721 / 89192 / 176355 for large. Ceilings retain approximately five
+# The 2026-08-29 shared-writer rebaseline measured slopes of
+# 97 / 4489 / 12934 / 15245 for small and
+# 97 / 31571 / 89092 / 135323 for large. Ceilings retain approximately five
 # percent headroom. Any increase is a review-triggering rebaseline.
 SLOPE_CEILINGS = {
     "recursive_small_baseline_repeat": 102.0,
     "recursive_small_certify_repeat": 4735.0,
     "recursive_small_index_repeat": 13600.0,
-    "recursive_small_serialize_repeat": 19500.0,
+    "recursive_small_serialize_repeat": 16010.0,
     "recursive_large_baseline_repeat": 102.0,
     "recursive_large_certify_repeat": 33310.0,
     "recursive_large_index_repeat": 93660.0,
-    "recursive_large_serialize_repeat": 185180.0,
+    "recursive_large_serialize_repeat": 142100.0,
 }
 
 # Absolute totals include deterministic fixture/index setup. These are not
@@ -141,16 +142,16 @@ ABSOLUTE_CEILINGS = {
     ("recursive_small_certify_repeat", 256): 1_411_000,
     ("recursive_small_index_repeat", 128): 1_949_000,
     ("recursive_small_index_repeat", 256): 3_689_000,
-    ("recursive_small_serialize_repeat", 128): 2_710_000,
-    ("recursive_small_serialize_repeat", 256): 5_206_000,
+    ("recursive_small_serialize_repeat", 128): 2_260_000,
+    ("recursive_small_serialize_repeat", 256): 4_309_000,
     ("recursive_large_baseline_repeat", 128): 208_000,
     ("recursive_large_baseline_repeat", 256): 221_000,
     ("recursive_large_certify_repeat", 128): 4_492_000,
     ("recursive_large_certify_repeat", 256): 8_755_000,
     ("recursive_large_index_repeat", 128): 12_276_000,
     ("recursive_large_index_repeat", 256): 24_263_000,
-    ("recursive_large_serialize_repeat", 128): 24_083_000,
-    ("recursive_large_serialize_repeat", 256): 47_784_000,
+    ("recursive_large_serialize_repeat", 128): 18_525_000,
+    ("recursive_large_serialize_repeat", 256): 36_712_000,
 }
 
 # Each production route must remain materially costlier than the three-byte
@@ -158,18 +159,19 @@ ABSOLUTE_CEILINGS = {
 NEGATIVE_CONTROL_DELTA_FLOORS = {
     ("small", "certify"): 3_960.0,
     ("small", "index"): 11_560.0,
-    ("small", "serialize"): 16_620.0,
+    ("small", "serialize"): 13_630.0,
     ("large", "certify"): 28_460.0,
     ("large", "index"): 80_180.0,
-    ("large", "serialize"): 158_630.0,
+    ("large", "serialize"): 121_700.0,
 }
 
-# Clean large-minus-small deltas were 27,214 / 76,246 / 157,786. Both a
-# floor and ceiling are frozen so a route cannot collapse or become nonlinear.
+# Shared-writer clean large-minus-small deltas are 27,082 / 76,158 / 120,078.
+# Both a floor and ceiling are frozen so a route cannot collapse or become
+# nonlinear.
 STRUCTURE_DELTA_BOUNDS = {
     "certify": (24_490.0, 29_940.0),
     "index": (68_620.0, 83_880.0),
-    "serialize": (142_000.0, 173_570.0),
+    "serialize": (108_070.0, 132_090.0),
 }
 BASELINE_STRUCTURE_SPREAD_CEILING = 1.0
 REPEAT_SPREAD_CEILING = 0
