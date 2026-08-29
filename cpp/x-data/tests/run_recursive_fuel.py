@@ -32,7 +32,7 @@ PINNED_WASI_VERSION = (
 )
 PINNED_WASMTIME_VERSION = "47.0.1"
 PINNED_SOURCE_MANIFEST_SHA256 = (
-    "410762667522434afd599569b4c0f93f3eb22e9062939d37719e6e141bbaf1ff"
+    "8a6b94e338e69440e60ef2585663c7124fa9488dcb9531d8b6518008148c878c"
 )
 PINNED_ARTIFACT_SHA256 = (
     "16055ec2db4905a037b3aaaf8e021f9ce5a7038fb9639aad9f4fd866e261b4b9"
@@ -207,6 +207,18 @@ def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def sha256_dependency(path: Path) -> str:
+    data = path.read_bytes()
+    if path.name == "runtime_profile_limits.h":
+        # This generated header carries the full profile document hash as a
+        # provenance comment. Raw-ABI/profile metadata changes can alter that
+        # comment without changing any recursive-index constant or machine
+        # code. Hash the semantic header so this fuel lane turns red only when
+        # a compiled limit changes.
+        data = re.sub(br"^// SHA-256: [0-9a-f]+\n", b"", data, flags=re.MULTILINE)
+    return hashlib.sha256(data).hexdigest()
+
+
 def validate_toolchain(wasi: Path) -> tuple[Path, Path]:
     clang = wasi / "bin" / "clang++"
     objdump = wasi / "bin" / "llvm-objdump"
@@ -294,7 +306,7 @@ def dependency_manifest(src: Path, clang: Path, wasi: Path) -> tuple[str, list[s
     rows = []
     for path in sorted(dependencies):
         relative = path.relative_to(src).as_posix()
-        rows.append(f"{relative}\0{sha256_file(path)}")
+        rows.append(f"{relative}\0{sha256_dependency(path)}")
     digest = hashlib.sha256(("\n".join(rows) + "\n").encode()).hexdigest()
     return digest, rows
 
