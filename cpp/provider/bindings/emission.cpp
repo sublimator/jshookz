@@ -1071,7 +1071,15 @@ template <std::size_t Capacity>
             *feeOffset = writer.position();
         return writer.be64(nativeAmountBit);
     case BuilderFieldCode::SigningPubKey:
-        return object.begin(field.code) && writer.vl_prefix(0);
+        // Match xahaud HookAPI::prepare: emitted transactions carry its
+        // 33-byte all-zero public-key convention. HookAPI::emit also
+        // accepts an empty VL, but that spelling changes the transaction ID.
+        if (!object.begin(field.code) || !writer.vl_prefix(33))
+            return false;
+        for (std::uint32_t i = 0; i < 33; ++i)
+            if (!writer.byte(0))
+                return false;
+        return true;
     case BuilderFieldCode::Account:
         return object.begin(field.code) &&
             writer.vl_prefix(

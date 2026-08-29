@@ -8,7 +8,8 @@ from hostem.runner import HookRunner
 
 # Independently decoded and re-encoded with the native xahau-codec. These are
 # static oracle outputs; the provider under test does not produce its own
-# expected bytes.
+# expected bytes. SigningPubKey follows xahaud HookAPI::prepare's emission
+# convention: a 33-byte all-zero VL, not the also-accepted empty VL.
 PAYMENT = bytes.fromhex(
     """
     120000
@@ -20,7 +21,7 @@ PAYMENT = bytes.fromhex(
     201B00000069
     614000000000000001
     68400000000000000A
-    7300
+    7321000000000000000000000000000000000000000000000000000000000000000000
     81140000000000000000000000000000000000000000
     83141111111111111111111111111111111111111111
     ED
@@ -40,7 +41,7 @@ HOOK_SET = bytes.fromhex(
     201A00000065
     201B00000069
     68400000000000000A
-    7300
+    7321000000000000000000000000000000000000000000000000000000000000000000
     81140000000000000000000000000000000000000000
     ED
       202E00000001
