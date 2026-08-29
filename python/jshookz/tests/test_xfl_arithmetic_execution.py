@@ -199,12 +199,12 @@ class _RecordingHost:
     def accept(self, pointer: int, length: int, code: int) -> int:
         message = self._message(pointer, length)
         self.calls.append(("accept", message, code))
-        return code
+        raise _TerminalSignal("accept", message, code)
 
     def rollback(self, pointer: int, length: int, code: int) -> int:
         message = self._message(pointer, length)
         self.calls.append(("rollback", message, code))
-        return code or -1
+        raise _TerminalSignal("rollback", message, code)
 
     def trace(
         self,
@@ -225,13 +225,55 @@ class _RecordingHost:
         return 0
 
 
+class _TerminalSignal(Exception):
+    """Model the native Hook host's non-returning accept/rollback imports."""
+
+    def __init__(self, policy: str, message: str, code: int):
+        super().__init__(policy, message, code)
+        self.policy = policy
+        self.message = message
+        self.code = code
+
+
+def _run_with_terminal_host(
+    host: WasmHost,
+    bytecode: bytes,
+    *,
+    export: str = "hook",
+    reserved: int = 0,
+) -> ContractResult:
+    fuel_before = host.store.get_fuel()
+    try:
+        return host.run_hook_bytecode(
+            bytecode,
+            export=export,
+            reserved=reserved,
+        )
+    except _TerminalSignal as signal:
+        gas_used = host._fuel_used_since(fuel_before)
+        if signal.policy == "accept":
+            return ContractResult(
+                exit_code=0,
+                gas_used=gas_used,
+                host_work_used=host._host_work_used(),
+            )
+        return ContractResult(
+            exit_code=signal.code or -1,
+            result_value=signal.message,
+            error=signal.message,
+            gas_used=gas_used,
+            host_work_used=host._host_work_used(),
+        )
+
+
 def _execute(bytecode: bytes, *, export: str = "hook", reserved: int = 0):
     handler = _RecordingHost()
     host = WasmHost.profiled(handler=handler)
     handler.host = host
     host.init()
     try:
-        result = host.run_hook_bytecode(
+        result = _run_with_terminal_host(
+            host,
             bytecode,
             export=export,
             reserved=reserved,
@@ -263,7 +305,8 @@ def _execute_on_wasm(
     handler.host = host
     host.init()
     try:
-        result = host.run_hook_bytecode(
+        result = _run_with_terminal_host(
+            host,
             bytecode,
             export=export,
             reserved=reserved,
@@ -695,7 +738,8 @@ def _resource_measurement(
         before_size = resource("qjs_resource_current_size")
         before_count = resource("qjs_resource_current_count")
         exports["qjs_resource_reset_peak"](host.store)
-        result = host.run_hook_bytecode(
+        result = _run_with_terminal_host(
+            host,
             bytecode,
             export="cbak",
             reserved=selector,
