@@ -117,11 +117,27 @@ JSValue js_accountid_from(JSContext *ctx, JSValueConst, int argc,
                           JSValueConst *argv) {
   if (argc < 1)
     return JS_ThrowTypeError(ctx, "AccountID.from() expects a byte value");
+  JSValue backing = JS_UNDEFINED;
+  std::uint8_t const *direct = nullptr;
+  std::size_t directSize = 0;
+  auto const directStatus = getSTBlobByteSpanNoThrow(
+      ctx, argv[0], &backing, &direct, &directSize);
+  if (directStatus != JS_OBJECT_BYTES_WRONG_KIND) {
+    qjs::OwnedValue keepAlive(ctx, backing);
+    if (directStatus != JS_OBJECT_BYTES_OK)
+      return qjs::byteInputTypeError(
+          ctx, "AccountID.from()", qjs::BytePolicy::bytesLikeOrSTBlob);
+    if (directSize != 20)
+      return JS_ThrowTypeError(
+          ctx, "AccountID.from() needs exactly 20 bytes (got %u)",
+          static_cast<unsigned>(directSize));
+    return newAccountID(ctx, JS_UNDEFINED, direct, 20);
+  }
   auto bytes = qjs::ByteView::getBinding(ctx, argv[0], "AccountID.from", 0,
-                                         qjs::BytePolicy::bytesLike);
+                                         qjs::BytePolicy::bytesLikeOrSTBlob);
   if (!bytes) {
     return qjs::byteInputTypeError(ctx, "AccountID.from()",
-                                   qjs::BytePolicy::bytesLike);
+                                   qjs::BytePolicy::bytesLikeOrSTBlob);
   }
   if (bytes.size() != 20) {
     return JS_ThrowTypeError(

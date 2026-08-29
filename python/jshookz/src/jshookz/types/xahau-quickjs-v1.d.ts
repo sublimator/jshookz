@@ -999,7 +999,7 @@ declare global {
   }
 
   interface STBlobFactory extends RuntimeType<STBlob> {
-    from(value: BytesLike): STBlob;
+    from(value: BytesLike | STBlob): STBlob;
     /** Decode an even-length hexadecimal literal. */
     fromHex(value: HexString): STBlob;
   }
@@ -1070,7 +1070,7 @@ declare global {
 
   interface Hash256Factory extends RuntimeType<Hash256> {
     readonly zero: Hash256;
-    from(value: BytesLike): Hash256;
+    from(value: BytesLike | STBlob): Hash256;
     /** Decode exactly 32 bytes from an even-length hexadecimal literal. */
     fromHex(value: HexString): Hash256;
   }
@@ -1124,7 +1124,7 @@ declare global {
     readonly zero: AccountID;
     /** Ripple's no-account sentinel: integer one as a 20-byte AccountID. */
     readonly one: AccountID;
-    from(value: BytesLike): AccountID;
+    from(value: BytesLike | STBlob): AccountID;
     /** Decode exactly 20 bytes from an even-length hexadecimal literal. */
     fromHex(value: HexString): AccountID;
   }

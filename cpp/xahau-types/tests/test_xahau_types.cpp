@@ -238,6 +238,31 @@ TEST_F(XahauTypes, AccountIDZero)
     EXPECT_TRUE(JS_ToBool(ctx, v.get()));
 }
 
+TEST_F(XahauTypes, ByteFactoriesAcceptSTBlobWithoutRoundTrip)
+{
+    auto value = eval(R"JS(
+        (() => {
+          const accountBlob = STBlob.fromHex("11".repeat(20));
+          const hashBlob = STBlob.fromHex("22".repeat(32));
+          const account = AccountID.from(accountBlob);
+          const hash = Hash256.from(hashBlob);
+          let richRejected = false;
+          try { AccountID.from(Amount.drops(1n)); }
+          catch (error) { richRejected = error instanceof TypeError; }
+          return JSON.stringify({
+            blobIdentity: STBlob.from(accountBlob) === accountBlob,
+            account: account.toHex() === "11".repeat(20),
+            hash: hash.toHex() === "22".repeat(32),
+            richRejected,
+          });
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException());
+    EXPECT_EQ(
+        to_string(value.get()),
+        R"({"blobIdentity":true,"account":true,"hash":true,"richRejected":true})");
+}
+
 TEST_F(XahauTypes, RecordSchemasRoundTripExactMixedLayouts)
 {
     auto value = eval(R"JS(

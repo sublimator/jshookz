@@ -1,13 +1,13 @@
 {
   "byte_policies": {
     "AccountID.from": {
-      "0": "bytesLike"
+      "0": "bytesLikeOrSTBlob"
     },
     "AccountID.fromHex": {
       "0": "hexString"
     },
     "Hash256.from": {
-      "0": "bytesLike"
+      "0": "bytesLikeOrSTBlob"
     },
     "Hash256.fromHex": {
       "0": "hexString"
@@ -16,7 +16,7 @@
       "0": "bytesLikeOrSTBlob"
     },
     "STBlob.from": {
-      "0": "bytesLike"
+      "0": "bytesLikeOrSTBlob"
     },
     "STBlob.fromHex": {
       "0": "hexString"
@@ -55,7 +55,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "5e434ccdebca257dfc00b4cf162fd2ede14f246b5dce28813ef5a766a16e2f35"
+    "sha256": "f524637b8e38860fb55c3bc7be45498de77bb8601152f931902c77031c98abe3"
   },
   "globals": {
     "AccountID": "object",

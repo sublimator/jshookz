@@ -1241,7 +1241,7 @@ declare global {
   }
 
   interface STBlobFactory extends RuntimeType<STBlob> {
-    from(value: BytesLike): STBlob;
+    from(value: BytesLike | STBlob): STBlob;
     /** Decode an even-length hexadecimal literal. */
     fromHex(value: HexString): STBlob;
     /**
@@ -1323,7 +1323,7 @@ declare global {
 
   interface Hash256Factory extends RuntimeType<Hash256> {
     readonly zero: Hash256;
-    from(value: BytesLike): Hash256;
+    from(value: BytesLike | STBlob): Hash256;
     /** Decode exactly 32 bytes from an even-length hexadecimal literal. */
     fromHex(value: HexString): Hash256;
   }
@@ -1336,7 +1336,7 @@ declare global {
   }
   const Hash384: RuntimeType<Hash384> & {
     readonly zero: Hash384;
-    from(value: BytesLike | Hash<48>): Hash384;
+    from(value: BytesLike | STBlob | Hash<48>): Hash384;
   };
 
   /** @serial Hash512 */
@@ -1345,7 +1345,7 @@ declare global {
   }
   const Hash512: RuntimeType<Hash512> & {
     readonly zero: Hash512;
-    from(value: BytesLike | Hash<64>): Hash512;
+    from(value: BytesLike | STBlob | Hash<64>): Hash512;
   };
 
   /**
@@ -1393,10 +1393,10 @@ declare global {
     readonly zero: AccountID;
     /** Ripple's no-account sentinel: integer one as a 20-byte AccountID. */
     readonly one: AccountID;
-    from(value: BytesLike): AccountID;
+    from(value: BytesLike | STBlob): AccountID;
     /** Decode exactly 20 bytes from an even-length hexadecimal literal. */
     fromHex(value: HexString): AccountID;
-    from(value: BytesLike | Hash160 | string): AccountID;
+    from(value: BytesLike | STBlob | Hash160 | string): AccountID;
     fromRAddress(value: string): AccountID;
   }
 
@@ -1415,7 +1415,7 @@ declare global {
 
   interface CurrencyFactory extends RuntimeType<Currency> {
     readonly native: Currency;
-    from(value: BytesLike | string): Currency;
+    from(value: BytesLike | STBlob | string): Currency;
   }
 
   const Currency: CurrencyFactory;

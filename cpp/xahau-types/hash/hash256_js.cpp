@@ -109,11 +109,27 @@ JSValue js_hash256_from(JSContext *ctx, JSValueConst, int argc,
                         JSValueConst *argv) {
   if (argc < 1)
     return JS_ThrowTypeError(ctx, "Hash256.from() expects a byte value");
+  JSValue backing = JS_UNDEFINED;
+  std::uint8_t const *direct = nullptr;
+  std::size_t directSize = 0;
+  auto const directStatus = getSTBlobByteSpanNoThrow(
+      ctx, argv[0], &backing, &direct, &directSize);
+  if (directStatus != JS_OBJECT_BYTES_WRONG_KIND) {
+    qjs::OwnedValue keepAlive(ctx, backing);
+    if (directStatus != JS_OBJECT_BYTES_OK)
+      return qjs::byteInputTypeError(
+          ctx, "Hash256.from()", qjs::BytePolicy::bytesLikeOrSTBlob);
+    if (directSize != 32)
+      return JS_ThrowTypeError(
+          ctx, "Hash256.from() needs exactly 32 bytes (got %u)",
+          static_cast<unsigned>(directSize));
+    return newHash256(ctx, JS_UNDEFINED, direct, 32);
+  }
   auto bytes = qjs::ByteView::getBinding(ctx, argv[0], "Hash256.from", 0,
-                                         qjs::BytePolicy::bytesLike);
+                                         qjs::BytePolicy::bytesLikeOrSTBlob);
   if (!bytes) {
     return qjs::byteInputTypeError(ctx, "Hash256.from()",
-                                   qjs::BytePolicy::bytesLike);
+                                   qjs::BytePolicy::bytesLikeOrSTBlob);
   }
   if (bytes.size() != 32) {
     return JS_ThrowTypeError(

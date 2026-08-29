@@ -129,11 +129,20 @@ js_blob_from(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
 {
     if (argc < 1)
         return JS_ThrowTypeError(ctx, "STBlob.from() expects a byte value");
+    if (JS_IsObject(argv[0]) && JS_GetClassID(argv[0]) == js_blob_class_id) {
+        auto const* blob = static_cast<JSBlob const*>(
+            JS_GetOpaque(argv[0], js_blob_class_id));
+        if (blob == nullptr || (blob->len != 0 && blob->data == nullptr))
+            return qjs::byteInputTypeError(
+                ctx, "STBlob.from()", qjs::BytePolicy::bytesLikeOrSTBlob);
+        return JS_DupValue(ctx, argv[0]);
+    }
     auto bytes = qjs::ByteView::getBinding(
-        ctx, argv[0], "STBlob.from", 0, qjs::BytePolicy::bytesLike);
+        ctx, argv[0], "STBlob.from", 0,
+        qjs::BytePolicy::bytesLikeOrSTBlob);
     if (!bytes)
         return qjs::byteInputTypeError(
-            ctx, "STBlob.from()", qjs::BytePolicy::bytesLike);
+            ctx, "STBlob.from()", qjs::BytePolicy::bytesLikeOrSTBlob);
     return newBlob(ctx, bytes.data(), bytes.size());
 }
 
