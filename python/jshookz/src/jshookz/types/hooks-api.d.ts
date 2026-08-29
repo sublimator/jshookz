@@ -1012,7 +1012,7 @@ declare global {
 
     /**
      * Result-valued encode: validates every field against its codec domain
-     * and returns the exact record bytes, or a ParseError naming the first
+     * and returns the exact record bytes, or an EncodeError naming the first
      * out-of-domain field.
      */
     safeEncode(value: Value): EncodeResult;
@@ -1231,6 +1231,11 @@ declare global {
     from(value: BytesLike): STBlob;
     /** Decode an even-length hexadecimal literal. */
     fromHex(value: HexString): STBlob;
+    /**
+     * Concatenate raw byte-like parts without interpreting strings or rich
+     * serialized values. Use `util.bytes` when parts include UTF-8 strings or
+     * provider values that must first be encoded through their byte contract.
+     */
     concat(...parts: (BytesLike | STBlob)[]): STBlob;
     /** Asserts an integer in 0..255. */
     fromUint8(value: number): STBlob;
