@@ -2789,6 +2789,11 @@ declare global {
     >(fields: T): HostResult<BatchOutcomes<T>>;
     function paramSet(targetHook: Hash256, name: StateKeyLike, value: BytesLike): HostVoidResult;
     function skip(targetHook: Hash256, remove?: boolean): HostVoidResult;
+    /**
+     * Nominate the current strong Hook for one later Again-as-weak execution
+     * if the transaction reaches the native post-apply path and the same Hook
+     * remains installed. Success confirms nomination, not eventual delivery.
+     */
     function again(): HostVoidResult;
 
   }

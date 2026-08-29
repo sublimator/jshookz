@@ -17,6 +17,7 @@ RAW_HOOK_ABI = (
     ('slot_clear', 'int64_t', ('uint32_t',), ''),
     ('hook_account', 'int64_t', ('uint32_t', 'uint32_t'), ''),
     ('hook_param', 'int64_t', ('uint32_t', 'uint32_t', 'uint32_t', 'uint32_t'), ''),
+    ('hook_again', 'int64_t', (), ''),
     ('trace', 'int64_t', ('uint32_t', 'uint32_t', 'uint32_t', 'uint32_t', 'uint32_t'), ''),
     ('state', 'int64_t', ('uint32_t', 'uint32_t', 'uint32_t', 'uint32_t'), ''),
     ('state_foreign', 'int64_t', ('uint32_t', 'uint32_t', 'uint32_t', 'uint32_t', 'uint32_t', 'uint32_t', 'uint32_t', 'uint32_t'), ''),

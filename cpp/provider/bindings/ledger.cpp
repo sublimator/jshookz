@@ -270,6 +270,22 @@ js_hook_mode(JSContext *ctx, JSValueConst this_val,
 }
 
 JSValue
+// @binding provider:hook.again
+js_hook_again(JSContext *ctx, JSValueConst this_val,
+              int argc, JSValueConst *argv)
+{
+    std::int64_t const result = hook_hook_again();
+    if (result < 0)
+        return host_effect_failure(ctx, result);
+    if (result != 1)
+        return JS_ThrowInternalError(
+            ctx,
+            "hook.again: host returned %lld, expected 1",
+            (long long)result);
+    return host_effect_success(ctx);
+}
+
+JSValue
 // @binding provider:ledger.nonce
 js_ledger_nonce(JSContext *ctx, JSValueConst this_val,
                 int argc, JSValueConst *argv)
@@ -432,7 +448,9 @@ registerHook(JSContext *ctx, JSValue global)
         JS_SetPropertyStr(ctx, hook.get(), "param",
             JS_NewCFunction(ctx, js_hook_param, "param", 1)) < 0 ||
         JS_SetPropertyStr(ctx, hook.get(), "mode",
-            JS_NewCFunction(ctx, js_hook_mode, "mode", 0)) < 0)
+            JS_NewCFunction(ctx, js_hook_mode, "mode", 0)) < 0 ||
+        JS_SetPropertyStr(ctx, hook.get(), "again",
+            JS_NewCFunction(ctx, js_hook_again, "again", 0)) < 0)
         return false;
     return JS_SetPropertyStr(ctx, global, "hook", hook.release()) >= 0;
 }

@@ -728,10 +728,11 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
         # this topology. The frozen LedgerKeylet class/prototype, classifier
         # noun, and nested util.keylet namespace add 1,364 charged bytes and
         # 25 allocations; no keylet instance is live in this topology.
-        "registration": (172_797, 2_601),
-        "pre_call": (1_225_137, 2_651),
-        "peak": (5_420_094, 2_664),
-        "post_success": (3_454_798, 2_678),
+        # Publishing hook.again adds 150 charged bytes and 3 allocations.
+        "registration": (172_947, 2_604),
+        "pre_call": (1_225_287, 2_654),
+        "peak": (5_420_244, 2_667),
+        "post_success": (3_454_948, 2_681),
         "static_protocol": MAXIMUM_STATIC_PROTOCOL_BYTES,
     }
     assert restored_snapshot == registration
@@ -751,7 +752,7 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     )
     assert MAXIMUM_DUPLICATE_STACK == 11 * 6 * 8
     assert peak[0] < limits.quickjs_heap_bytes
-    assert limits.quickjs_heap_bytes - post_success[0] == 13_322_418
+    assert limits.quickjs_heap_bytes - post_success[0] == 13_322_268
     assert limits.quickjs_heap_bytes - post_success[0] >= HEADROOM_BYTES
 
 

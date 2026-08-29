@@ -1526,6 +1526,12 @@ declare global {
      * schema at runtime.
      */
     function param(name: StateKeyLike): HostResult<STBlob | undefined>;
+    /**
+     * Nominate the current strong Hook for one later Again-as-weak execution
+     * if the transaction reaches the native post-apply path and the same Hook
+     * remains installed. Success confirms nomination, not eventual delivery.
+     */
+    function again(): HostVoidResult;
   }
 
   /**

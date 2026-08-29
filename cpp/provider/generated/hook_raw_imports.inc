@@ -46,6 +46,9 @@ extern int64_t hook_hook_account(uint32_t arg0, uint32_t arg1);
 __attribute__((import_module("env"), import_name("hook_param")))
 extern int64_t hook_hook_param(uint32_t arg0, uint32_t arg1, uint32_t arg2, uint32_t arg3);
 
+__attribute__((import_module("env"), import_name("hook_again")))
+extern int64_t hook_hook_again(void);
+
 __attribute__((import_module("env"), import_name("trace")))
 extern int64_t hook_trace(uint32_t arg0, uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t arg4);
 

@@ -15,6 +15,7 @@
     "slot_clear",
     "hook_account",
     "hook_param",
+    "hook_again",
     "trace",
     "state",
     "state_foreign",

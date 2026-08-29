@@ -6,7 +6,7 @@ from jshookz.runtime_types import SCHEMA, observe_runtime_types
 
 # Exact runtime-surface observation, including the foreign-state accessor and
 # account-keylet value selected by the runtime profile.
-_NOMINAL_MATRIX_GAS = 11_748_552
+_NOMINAL_MATRIX_GAS = 11_748_032
 
 _XFL_VALUE_KERNEL = r"""
 JSON.stringify((() => {

@@ -37,6 +37,15 @@ class _BoundedReadHost:
         return -5
 
 
+class _AgainHost:
+    def __init__(self):
+        self.calls = 0
+
+    def hook_again(self):
+        self.calls += 1
+        return 1
+
+
 @dataclass(frozen=True)
 class _InitializationFuel:
     envelope: int
@@ -223,6 +232,28 @@ def test_profile_host_work_counts_addressed_bytes_before_dispatch():
     assert exhausted.error == "host work budget exhausted"
     assert exhausted.host_work_used == limits.host_work_budget
     assert handler.calls == 1
+
+
+def test_hook_again_charges_one_base_unit_and_exhausts_before_dispatch():
+    handler = _AgainHost()
+    limits = replace(_limits(), host_work_budget=2)
+    host = WasmHost(handler=handler, execution_limits=limits)
+    host.init()
+    try:
+        first = host.eval("hook.again().moot()")
+        second = host.eval("hook.again().moot()")
+        exhausted = host.eval("hook.again().moot()")
+    finally:
+        host.destroy()
+
+    assert first.ok, first.error
+    assert first.host_work_used == 1
+    assert second.ok, second.error
+    assert second.host_work_used == 2
+    assert not exhausted.ok
+    assert exhausted.error == "host work budget exhausted"
+    assert exhausted.host_work_used == 2
+    assert handler.calls == 2
 
 
 def test_parameter_and_nonce_charge_their_bounded_addressed_lengths():

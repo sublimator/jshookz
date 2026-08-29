@@ -212,6 +212,15 @@
       ]
     },
     {
+      "name": "hook_again",
+      "return_type": "int64_t",
+      "param_types": [],
+      "amendment": null,
+      "wasm_signature": [
+        "0x7e"
+      ]
+    },
+    {
       "name": "trace",
       "return_type": "int64_t",
       "param_types": [
