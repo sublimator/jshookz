@@ -8,6 +8,17 @@ namespace {
 
 JSValue originatingTransaction = JS_UNDEFINED;
 
+enum class InvocationMode : std::uint8_t
+{
+    unavailable,
+    strong,
+    weak,
+    again,
+    callback,
+};
+
+InvocationMode invocationMode = InvocationMode::unavailable;
+
 [[nodiscard]] JSValue
 slotFailure(JSContext *ctx, std::uint32_t slot, char const *stage,
             std::int64_t result)
@@ -59,9 +70,12 @@ js_otxn_type(JSContext *ctx, JSValueConst this_val,
              int argc, JSValueConst *argv)
 {
     int64_t result = hook_otxn_type();
-    return result < 0
-        ? host_failure(ctx, result)
-        : host_success(ctx, JS_NewInt64(ctx, result));
+    if (result < 0)
+        return JS_ThrowInternalError(
+            ctx,
+            "otxn.type: host violated total invocation fact with %lld",
+            (long long)result);
+    return JS_NewInt64(ctx, result);
 }
 
 JSValue
@@ -148,6 +162,32 @@ js_hook_account(JSContext *ctx, JSValueConst this_val,
     return makeAccountID(ctx, bytes, sizeof(bytes));
 }
 
+JSValue
+// @binding provider:hook.mode
+js_hook_mode(JSContext *ctx, JSValueConst this_val,
+             int argc, JSValueConst *argv)
+{
+    char const *value = nullptr;
+    switch (invocationMode) {
+    case InvocationMode::strong:
+        value = "strong";
+        break;
+    case InvocationMode::weak:
+        value = "weak";
+        break;
+    case InvocationMode::again:
+        value = "again";
+        break;
+    case InvocationMode::callback:
+        value = "callback";
+        break;
+    case InvocationMode::unavailable:
+        return JS_ThrowInternalError(
+            ctx, "hook.mode: invocation context is unavailable");
+    }
+    return JS_NewString(ctx, value);
+}
+
 JSCFunctionListEntry const js_ledger_properties[] = {
     JS_CGETSET_DEF("sequence", js_ledger_sequence, NULL),
     JS_CGETSET_DEF("lastTime", js_ledger_last_time, NULL),
@@ -164,13 +204,52 @@ resetOriginatingTransactionCache(JSContext *ctx) noexcept
 }
 
 bool
+setInvocationMode(
+    JSContext *ctx,
+    bool callback,
+    std::uint32_t rawMode) noexcept
+{
+    if (invocationMode != InvocationMode::unavailable) {
+        JS_ThrowInternalError(ctx, "hook.mode: stale invocation context");
+        return false;
+    }
+    if (callback) {
+        invocationMode = InvocationMode::callback;
+        return true;
+    }
+    switch (rawMode) {
+    case 0:
+        invocationMode = InvocationMode::strong;
+        return true;
+    case 1:
+        invocationMode = InvocationMode::weak;
+        return true;
+    case 2:
+        invocationMode = InvocationMode::again;
+        return true;
+    default:
+        JS_ThrowRangeError(
+            ctx, "hook.mode: unsupported invocation mode %u", rawMode);
+        return false;
+    }
+}
+
+void
+resetInvocationMode() noexcept
+{
+    invocationMode = InvocationMode::unavailable;
+}
+
+bool
 registerHook(JSContext *ctx, JSValue global)
 {
     qjs::OwnedValue hook(ctx, JS_NewObject(ctx));
     if (hook.isException())
         return false;
     if (JS_SetPropertyStr(ctx, hook.get(), "account",
-            JS_NewCFunction(ctx, js_hook_account, "account", 0)) < 0)
+            JS_NewCFunction(ctx, js_hook_account, "account", 0)) < 0 ||
+        JS_SetPropertyStr(ctx, hook.get(), "mode",
+            JS_NewCFunction(ctx, js_hook_mode, "mode", 0)) < 0)
         return false;
     return JS_SetPropertyStr(ctx, global, "hook", hook.release()) >= 0;
 }

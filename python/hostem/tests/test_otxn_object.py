@@ -115,6 +115,48 @@ def test_otxn_object_is_one_certified_cached_local_view() -> None:
     ]
 
 
+def test_otxn_type_is_direct_and_equals_the_certified_object_discriminator() -> None:
+    source = """
+        export function main(): never {
+          const transaction = otxn.object();
+          if (otxn.type() !== transaction.TransactionType) {
+            rollback("originating transaction type mismatch", 1);
+          }
+          accept("one trusted discriminator", 0);
+        }
+    """
+
+    result = _runner(PAYMENT).run_typescript(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"one trusted discriminator"
+    assert _call_names(result) == [
+        "otxn_slot",
+        "slot_size",
+        "slot_clear",
+        "otxn_slot",
+        "slot",
+        "slot_clear",
+        "otxn_type",
+        "accept",
+    ]
+
+
+def test_negative_otxn_type_is_an_execution_invariant_failure() -> None:
+    runner = _runner(PAYMENT)
+    runner.runtime.otxn_type = -5
+
+    result = runner.run_typescript(
+        "export function main(): never { void otxn.type(); accept('no'); }"
+    )
+
+    assert not result.accepted
+    assert not result.rejected
+    assert result.error is not None
+    assert "host violated total invocation fact with -5" in str(result.error)
+    assert _call_names(result) == ["otxn_type"]
+
+
 @pytest.mark.parametrize(
     ("transaction", "code"),
     [
@@ -330,7 +372,7 @@ def test_cache_resets_before_each_invocation_in_one_provider_instance() -> None:
         bytecode = host.compile_source(
             """
             export function main() {
-              return otxn.object().get(Field.Account).toHex();
+              throw new Error(otxn.object().get(Field.Account).toHex());
             }
             """,
             module=True,
@@ -363,12 +405,10 @@ def test_cache_resets_before_each_invocation_in_one_provider_instance() -> None:
         "slot",
         "slot_clear",
     ]
-    assert first.ok, first.error
-    assert first.result_value == SOURCE.hex().upper()
+    assert first.error == f"Error: {SOURCE.hex().upper()}"
     assert first_calls == expected_calls
     assert first.host_work_used == len(PAYMENT) + 6
-    assert second.ok, second.error
-    assert second.result_value == ("AA" * 20)
+    assert second.error == f"Error: {'AA' * 20}"
     assert second_calls == expected_calls
     assert second.host_work_used == 2 * (len(PAYMENT) + 6)
 

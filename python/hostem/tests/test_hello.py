@@ -130,8 +130,7 @@ def test_rollback_require_present_collapses_host_failure_and_absence():
     source = """
         export function main(_reserved) {
           const mode = otxn.type();
-          if (!mode.ok) rollback("unexpected type failure", -1);
-          if (mode.value === 1) {
+          if (mode === 1) {
             rollback.onFail(
               state.set("K".repeat(33), new Uint8Array([1])),
               "required operation failed",

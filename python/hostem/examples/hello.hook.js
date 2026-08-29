@@ -1,7 +1,7 @@
+/** @returns {never} */
 export function main() {
 
   const txType = otxn.type();
-  if (!txType.ok) rollback("otxn.type failed", txType.error.code);
 
   const account = hook.account();
 
@@ -13,7 +13,7 @@ export function main() {
   }
 
   accept(
-    `hello:${txType.value}:${account.toHex().slice(0, 8)}`,
+    `hello:${txType}:${account.toHex().slice(0, 8)}`,
     17,
   );
 }

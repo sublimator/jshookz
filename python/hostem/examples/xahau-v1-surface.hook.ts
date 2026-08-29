@@ -46,9 +46,8 @@ function typecheckV1Surface(blob: STBlob, hash: Hash256, account: AccountID): vo
   ledger.lastTime;
   ledger.lastHash;
   const transactionType = otxn.type();
-  if (transactionType.ok) {
-    void (transactionType.value === TransactionType.Payment);
-  }
+  void (transactionType === TransactionType.Payment);
+  void (hook.mode() === HookExecutionMode.Strong);
   state.get("key").okOr(undefined);
   state.set("key", blob).moot();
   rollback.onFail(state.get("key"), "state read failed");

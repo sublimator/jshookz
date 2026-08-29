@@ -2322,7 +2322,7 @@ declare global {
      * The handle itself is total.
      */
     function hostObject(): HostTx;
-    function type(): HostResult<TransactionType>;
+    function type(): TransactionType;
     function id(flags?: number): HostResult<Hash256>;
     function generation(): HostResult<number>;
     function burden(): HostResult<bigint>;

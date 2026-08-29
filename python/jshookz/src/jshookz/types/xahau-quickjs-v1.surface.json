@@ -43,7 +43,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "6246d42482aea85442460a5d8ed51d79f7059c4d813797b7827fd28b2c209590"
+    "sha256": "00444ce62a03f682f6be96f5b8e135434bc111a57cd3b7e6831ba33c8f6f69eb"
   },
   "globals": {
     "AccountID": "object",
@@ -109,7 +109,8 @@
       "tx": "function"
     },
     "hook": {
-      "account": "function"
+      "account": "function",
+      "mode": "function"
     },
     "ledger": {
       "lastHash": "value",

@@ -93,6 +93,7 @@ destroy_runtime(void)
 {
     if (ctx) {
         jshookz::provider::bindings::resetOriginatingTransactionCache(ctx);
+        jshookz::provider::bindings::resetInvocationMode();
         jshookz::provider::destroyXFLProfile(ctx);
         JS_FreeContext(ctx);
         ctx = NULL;
@@ -607,6 +608,22 @@ static int32_t qjs_invoke_bytecode_export(
 {
     clear_result();
     jshookz::provider::bindings::resetOriginatingTransactionCache(ctx);
+    jshookz::provider::bindings::resetInvocationMode();
+
+    struct InvocationModeReset
+    {
+        ~InvocationModeReset()
+        {
+            jshookz::provider::bindings::resetInvocationMode();
+        }
+    } invocationModeReset;
+
+    bool const is_callback = std::strcmp(export_name, "callback") == 0;
+    if (!jshookz::provider::bindings::setInvocationMode(
+            ctx, is_callback, reserved)) {
+        store_exception();
+        return -1;
+    }
 
     using jshookz::provider::qjs::OwnedValue;
     OwnedValue object(
@@ -673,7 +690,6 @@ static int32_t qjs_invoke_bytecode_export(
         return -1;
     }
 
-    bool const is_callback = std::strcmp(export_name, "callback") == 0;
     OwnedValue argument(
         ctx, is_callback ? callbackInfo(ctx, reserved) : JS_UNDEFINED);
     if (argument.isException()) {
@@ -694,7 +710,11 @@ static int32_t qjs_invoke_bytecode_export(
         store_exception();
         return -1;
     }
-    return store_value(result.get());
+    store_static_result(
+        is_callback
+            ? "TypeError: Hook callback returned normally; call accept or rollback"
+            : "TypeError: Hook main returned normally; call accept or rollback");
+    return -1;
 }
 
 __attribute__((export_name("qjs_hook")))

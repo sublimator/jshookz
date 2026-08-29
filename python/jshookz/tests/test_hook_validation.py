@@ -268,13 +268,14 @@ def test_post_definition_mutation_cannot_change_observed_profile():
 def test_one_host_keeps_sequential_main_callback_and_failure_profiles_isolated():
     xahau_main = compile_bytecode(
         "export const hookConfig=defineHookConfig({xflArithmetic:"
-        "XFLProfile.xahauFloatV1});export function main(){return "
-        "hookConfig.xflArithmetic}"
+        "XFLProfile.xahauFloatV1});export function main(){throw new Error("
+        "'profile:'+hookConfig.xflArithmetic)}"
     )
     nearest_callback = compile_bytecode(
         "export const hookConfig=defineHookConfig({xflArithmetic:"
-        "XFLProfile.nearestEvenV1});export function main(){return -1}"
-        "export function callback(){return hookConfig.xflArithmetic}"
+        "XFLProfile.nearestEvenV1});export function main(){throw new Error("
+        "'profile:'+hookConfig.xflArithmetic)}export function callback(){throw "
+        "new Error('profile:'+hookConfig.xflArithmetic)}"
     )
     throwing = compile_bytecode(
         "export const hookConfig=defineHookConfig({xflArithmetic:"
@@ -288,20 +289,23 @@ def test_one_host_keeps_sequential_main_callback_and_failure_profiles_isolated()
     host = WasmHost(wasm_path=XAHAU_HOOK_PROVIDER_WASM)
     host.init()
     try:
-        assert host.run_hook_bytecode(xahau_main).result_value == "1"
+        assert host.run_hook_bytecode(xahau_main).error == "Error: profile:1"
         assert (
-            host.run_hook_bytecode(nearest_callback, export="cbak").result_value
-            == "2"
+            host.run_hook_bytecode(nearest_callback, export="cbak").error
+            == "Error: profile:2"
         )
         assert host.run_hook_bytecode(throwing).error == "Error: A failed"
-        assert host.run_hook_bytecode(nearest_callback).result_value == "-1"
+        assert (
+            host.run_hook_bytecode(nearest_callback).error
+            == "Error: profile:2"
+        )
         assert host.run_hook_bytecode(init_throwing).error == "Error: init failed"
         assert host.validate_hook_bytecode(xahau_main).profile is (
             XFLArithmeticProfile.XAHAU_FLOAT_V1
         )
         assert (
-            host.run_hook_bytecode(nearest_callback, export="cbak").result_value
-            == "2"
+            host.run_hook_bytecode(nearest_callback, export="cbak").error
+            == "Error: profile:2"
         )
     finally:
         host.destroy()

@@ -1369,6 +1369,23 @@ declare global {
 
   type TransactionResult = (typeof TransactionResult)[keyof typeof TransactionResult];
 
+  const enum HookExecutionMode {
+    /** Strong pre-apply execution. */
+    Strong = "strong",
+
+    /**
+     * Weak post-apply execution. Xahau has no `hefWEAK` symbol: this is the
+     * execution state with neither `hefSTRONG` nor `hefCALLBACK` set.
+     */
+    Weak = "weak",
+
+    /** Again-as-weak execution requested by a preceding strong pass. */
+    Again = "again",
+
+    /** Emitted-transaction callback execution. */
+    Callback = "callback",
+  }
+
   /** Information supplied to an emitted-transaction callback entry point. */
   interface CallbackInfo {
     /** Exact whole-word applied predicate: `rawFlags === 0`. */
@@ -1392,7 +1409,7 @@ declare global {
      * execution invariant.
      */
     function object(): Transaction;
-    function type(): HostResult<TransactionType>;
+    function type(): TransactionType;
   }
 
   namespace state {
@@ -1438,6 +1455,7 @@ declare global {
   namespace hook {
     /** Hook account for this invocation; provider construction is total. */
     function account(): AccountID;
+    function mode(): HookExecutionMode;
   }
 
   /**

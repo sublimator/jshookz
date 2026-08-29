@@ -15,10 +15,7 @@ enum ResultCode {
  * access performs no additional host calls.
  */
 export function main(): never {
-  const transactionType = rollback.onFail(
-    otxn.type(),
-    "cannot classify originating transaction",
-  );
+  const transactionType = otxn.type();
   accept.when(
     transactionType !== TransactionType.Payment,
     "not an incoming Payment",

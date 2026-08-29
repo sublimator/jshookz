@@ -18,5 +18,10 @@ JSValue host_effect_failure(JSContext* ctx, std::int64_t code);
 [[nodiscard]] bool registerEmission(JSContext* ctx, JSValue global);
 [[nodiscard]] bool registerLegacy(JSContext* ctx, JSValue global);
 void resetOriginatingTransactionCache(JSContext* ctx) noexcept;
+[[nodiscard]] bool setInvocationMode(
+    JSContext* ctx,
+    bool callback,
+    std::uint32_t rawMode) noexcept;
+void resetInvocationMode() noexcept;
 
 }  // namespace jshookz::provider::bindings

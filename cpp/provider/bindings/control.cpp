@@ -7,6 +7,25 @@
 namespace jshookz::provider::bindings {
 namespace {
 
+int64_t
+callAcceptTerminal(
+    std::uint32_t message, std::uint32_t length, std::int64_t code)
+{
+    /* Xahaud terminates the Wasm invocation from inside this import, so C++
+       destructors above the crossing do not run. Clear provider-owned
+       invocation context at the final point before the terminal trap. */
+    resetInvocationMode();
+    return hook_accept(message, length, code);
+}
+
+int64_t
+callRollbackTerminal(
+    std::uint32_t message, std::uint32_t length, std::int64_t code)
+{
+    resetInvocationMode();
+    return hook_rollback(message, length, code);
+}
+
 JSValue
 // @binding provider:accept
 js_hook_accept(JSContext *ctx, JSValueConst this_val,
@@ -18,7 +37,7 @@ js_hook_accept(JSContext *ctx, JSValueConst this_val,
         return JS_EXCEPTION;
 
     if (argc == 0 || JS_IsUndefined(argv[0]))
-        return JS_NewInt64(ctx, hook_accept(0, 0, code));
+        return JS_NewInt64(ctx, callAcceptTerminal(0, 0, code));
 
     /* A lifecycle message string is UTF-8 text, not the hex-string shorthand
        accepted by BytesLike APIs. accept deliberately does not invoke an
@@ -28,7 +47,7 @@ js_hook_accept(JSContext *ctx, JSValueConst this_val,
     if (!message)
         return qjs::byteInputTypeError(
             ctx, "accept", qjs::BytePolicy::lifecycleMessage);
-    int64_t result = hook_accept(
+    int64_t result = callAcceptTerminal(
         (uint32_t)(uintptr_t)message.data(), message.size(), code);
     return JS_NewInt64(ctx, result);
 }
@@ -43,14 +62,14 @@ js_hook_rollback(JSContext *ctx, JSValueConst this_val,
         JS_ToInt64(ctx, &code, argv[1]) < 0)
         return JS_EXCEPTION;
     if (argc == 0 || JS_IsUndefined(argv[0]))
-        return JS_NewInt64(ctx, hook_rollback(0, 0, code));
+        return JS_NewInt64(ctx, callRollbackTerminal(0, 0, code));
 
     auto message = qjs::ByteView::getBinding(ctx, argv[0], "rollback", 0,
                                              qjs::BytePolicy::lifecycleMessage);
     if (!message)
         return qjs::byteInputTypeError(
             ctx, "rollback", qjs::BytePolicy::lifecycleMessage);
-    int64_t result = hook_rollback(
+    int64_t result = callRollbackTerminal(
         (uint32_t)(uintptr_t)message.data(), message.size(), code);
     return JS_NewInt64(ctx, result);
 }
@@ -145,7 +164,7 @@ js_rollback_on_fail(JSContext *ctx, JSValueConst this_val,
     if (length < 0 || (size_t)length >= sizeof(message))
         return JS_ThrowInternalError(
             ctx, "rollback.onFail: failed to format status");
-    return JS_NewInt64(ctx, hook_rollback(
+    return JS_NewInt64(ctx, callRollbackTerminal(
         (uint32_t)(uintptr_t)message, (uint32_t)length, code));
 }
 

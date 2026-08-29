@@ -932,10 +932,167 @@ def test_main_does_not_receive_the_raw_callback_word(tmp_path: Path):
 
     host = WasmHost(wasm_path=XAHAU_HOOK_PROVIDER_WASM)
     host.init()
-    evaluated = host.run_hook_bytecode(compiled.bytecode, reserved=9)
+    evaluated = host.run_hook_bytecode(compiled.bytecode, reserved=2)
 
     assert evaluated.exit_code == -1
     assert evaluated.error == "Error: main arguments:0"
+
+
+def test_provider_installs_and_clears_exact_invocation_modes(tmp_path: Path):
+    source = tmp_path / "invocation-mode.hook.ts"
+    source.write_text(
+        """
+        export function main(): never {
+          throw new Error(`mode:${hook.mode()}`);
+        }
+        export function callback(_info: CallbackInfo): never {
+          throw new Error(`mode:${hook.mode()}`);
+        }
+        """
+    )
+    compiled = compile_hook(source)
+
+    host = WasmHost(wasm_path=XAHAU_HOOK_PROVIDER_WASM)
+    host.init()
+    try:
+        for export, reserved, expected in [
+            ("hook", 0, "strong"),
+            ("hook", 1, "weak"),
+            ("hook", 2, "again"),
+            ("cbak", 9, "callback"),
+            ("hook", 0, "strong"),
+        ]:
+            evaluated = host.run_hook_bytecode(
+                compiled.bytecode,
+                export=export,
+                reserved=reserved,
+            )
+            assert evaluated.error == f"Error: mode:{expected}"
+
+        invalid = host.run_hook_bytecode(compiled.bytecode, reserved=3)
+        assert invalid.error == "RangeError: hook.mode: unsupported invocation mode 3"
+    finally:
+        host.destroy()
+
+
+def test_provider_installs_invocation_mode_before_module_evaluation():
+    host = WasmHost(wasm_path=XAHAU_HOOK_PROVIDER_WASM)
+    host.init()
+    try:
+        bytecode = host.compile_source(
+            "const seen = hook.mode(); "
+            "export function main() { throw new Error(`module-mode:${seen}`); }",
+            module=True,
+        )
+        evaluated = host.run_hook_bytecode(bytecode, reserved=2)
+    finally:
+        host.destroy()
+
+    assert evaluated.error == "Error: module-mode:again"
+
+
+class _TerminalSignal(Exception):
+    pass
+
+
+class _TerminalHost:
+    def accept(self, *_args: object) -> int:
+        raise _TerminalSignal("accept")
+
+    def rollback(self, *_args: object) -> int:
+        raise _TerminalSignal("rollback")
+
+    def state(self, *_args: object) -> int:
+        return -1
+
+
+@pytest.mark.parametrize(
+    ("source", "export", "reserved"),
+    [
+        ("export function main(){accept('done')}", "hook", 2),
+        ("export function main(){rollback('done')}", "hook", 1),
+        (
+            "export function main(){throw new Error('unused')}"
+            "export function callback(_info){accept('done')}",
+            "cbak",
+            9,
+        ),
+        (
+            "export function main(){rollback.onFail(state.get('key'))}",
+            "hook",
+            0,
+        ),
+    ],
+)
+def test_terminal_traps_clear_invocation_mode_before_leaving_wasm(
+    source: str,
+    export: str,
+    reserved: int,
+):
+    host = WasmHost(
+        wasm_path=XAHAU_HOOK_PROVIDER_WASM,
+        handler=_TerminalHost(),
+    )
+    host.init()
+    try:
+        bytecode = host.compile_source(source, module=True)
+        with pytest.raises(_TerminalSignal):
+            host.run_hook_bytecode(
+                bytecode,
+                export=export,
+                reserved=reserved,
+            )
+
+        observed = host.eval("hook.mode()")
+        assert not observed.ok
+        assert observed.error == (
+            "InternalError: hook.mode: invocation context is unavailable"
+        )
+    finally:
+        host.destroy()
+
+
+@pytest.mark.parametrize(
+    ("export", "expected"),
+    [
+        (
+            "hook",
+            "TypeError: Hook main returned normally; call accept or rollback",
+        ),
+        (
+            "cbak",
+            "TypeError: Hook callback returned normally; call accept or rollback",
+        ),
+    ],
+)
+def test_provider_rejects_every_normal_entry_return(
+    tmp_path: Path,
+    export: str,
+    expected: str,
+):
+    source = tmp_path / "normal-return.hook.ts"
+    source.write_text(
+        """
+        // @jshookz-allow-malformed
+        export function main() { return 7; }
+        export function callback(_info: CallbackInfo) { return undefined; }
+        """
+    )
+    compiled = compile_hook(source)
+
+    host = WasmHost(wasm_path=XAHAU_HOOK_PROVIDER_WASM)
+    host.init()
+    try:
+        evaluated = host.run_hook_bytecode(
+            compiled.bytecode,
+            export=export,
+            reserved=0,
+        )
+    finally:
+        host.destroy()
+
+    assert evaluated.exit_code == -1
+    assert evaluated.error == expected
 
 
 def test_packager_rejects_host_calls_during_module_initialization(
