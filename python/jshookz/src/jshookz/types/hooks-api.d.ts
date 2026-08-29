@@ -2393,7 +2393,12 @@ declare global {
       readonly value?: StateValueLike;
     }
 
-    interface Accessor {
+    interface ForeignAccessor {
+      get(key: StateKeyLike): HostResult<STBlob | undefined>;
+    }
+
+    /** Broad schema/batch intent layered over the implemented blob accessor. */
+    interface ForeignSchemaAccessor extends ForeignAccessor {
       get(key: StateKeyLike): HostResult<STBlob | undefined>;
       get<T>(key: StateKeyLike, schema: BinarySchema<T>): StateReadResult<T>;
       /** Policied read: disposition declared at the site (`ReadPolicies`). */
@@ -2404,9 +2409,6 @@ declare global {
       ): PolicyRead<T, P>;
       getMany(keys: readonly StateKeyLike[]): HostResult<readonly (STBlob | undefined)[]>;
       getMany<const T extends BatchKeys>(keys: T): HostResult<BatchValues<T>>;
-      set(key: StateKeyLike, value: StateValueLike): HostVoidResult;
-      del(key: StateKeyLike): HostVoidResult;
-      setMany(items: readonly Put[]): HostVoidResult;
     }
 
     /** String parts are encoded as UTF-8 state-key text. */
@@ -2428,15 +2430,16 @@ declare global {
       value: string | BytesLike | STBlob | Hash256 | AccountID,
     ): HostVoidResult;
     function set(key: StateKeyLike, value: StateValueLike): HostVoidResult;
+    function del(key: string | BytesLike | STBlob | Hash256 | AccountID): HostVoidResult;
     function del(key: StateKeyLike): HostVoidResult;
     function setMany(items: readonly Put[]): HostVoidResult;
     /**
-     * Accessor over another account's namespaced state: same read and
-     * write shapes as own state. Writes are grant-gated by the host
-     * (`state_foreign_set` authorization); an unauthorized write is an
-     * ordinary `HostError`, not a distinct channel.
+     * Read-only accessor over another account's namespaced state. Constructing
+     * the accessor is local and total; each `get` owns its host crossing.
+     * Foreign mutation is deliberately absent from this surface.
      */
-    function foreign(account: AccountID, namespace: Hash256): Accessor;
+    function foreign(account: AccountID, namespace: Hash256): ForeignSchemaAccessor;
+    function foreign(account: AccountID, namespace: Hash256): ForeignAccessor;
   }
 
   namespace emit {

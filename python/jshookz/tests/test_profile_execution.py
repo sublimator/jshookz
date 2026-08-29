@@ -33,6 +33,9 @@ class _BoundedReadHost:
     def ledger_nonce(self, *_args):
         return -77
 
+    def state_foreign(self, *_args):
+        return -5
+
 
 @dataclass(frozen=True)
 class _InitializationFuel:
@@ -239,3 +242,18 @@ def test_parameter_and_nonce_charge_their_bounded_addressed_lengths():
     assert nonce.ok, nonce.error
     assert nonce.result_value == "false"
     assert nonce.host_work_used - parameter.host_work_used == 1 + 32
+
+
+def test_foreign_state_charges_output_key_namespace_and_account_lengths():
+    host = WasmHost.profiled(handler=_BoundedReadHost())
+    host.init()
+    try:
+        result = host.eval(
+            "state.foreign(AccountID.zero, Hash256.zero).get('KEY').ok"
+        )
+    finally:
+        host.destroy()
+
+    assert result.ok, result.error
+    assert result.result_value == "true"
+    assert result.host_work_used == 1 + 4096 + 3 + 32 + 20

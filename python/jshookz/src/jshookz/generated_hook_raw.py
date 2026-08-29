@@ -18,6 +18,7 @@ RAW_HOOK_ABI = (
     ('hook_param', 'int64_t', ('uint32_t', 'uint32_t', 'uint32_t', 'uint32_t'), ''),
     ('trace', 'int64_t', ('uint32_t', 'uint32_t', 'uint32_t', 'uint32_t', 'uint32_t'), ''),
     ('state', 'int64_t', ('uint32_t', 'uint32_t', 'uint32_t', 'uint32_t'), ''),
+    ('state_foreign', 'int64_t', ('uint32_t', 'uint32_t', 'uint32_t', 'uint32_t', 'uint32_t', 'uint32_t', 'uint32_t', 'uint32_t'), ''),
     ('state_set', 'int64_t', ('uint32_t', 'uint32_t', 'uint32_t', 'uint32_t'), ''),
     ('prepare', 'int64_t', ('uint32_t', 'uint32_t', 'uint32_t', 'uint32_t'), 'featureHooksUpdate2'),
     ('etxn_reserve', 'int64_t', ('uint32_t',), ''),

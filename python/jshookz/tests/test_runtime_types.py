@@ -4,7 +4,9 @@ from jshookz.host import WasmHost
 from jshookz.paths import XAHAU_HOOK_PROVIDER_WASM
 from jshookz.runtime_types import SCHEMA, observe_runtime_types
 
-_NOMINAL_MATRIX_GAS = 11_223_251
+# Exact runtime-surface observation, including the foreign-state accessor
+# prototype selected by the runtime profile.
+_NOMINAL_MATRIX_GAS = 11_224_267
 
 _XFL_VALUE_KERNEL = r"""
 JSON.stringify((() => {

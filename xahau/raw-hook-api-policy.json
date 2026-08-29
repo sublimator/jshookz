@@ -16,6 +16,7 @@
     "hook_param",
     "trace",
     "state",
+    "state_foreign",
     "state_set",
     "prepare",
     "etxn_reserve",

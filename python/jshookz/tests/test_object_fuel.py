@@ -723,10 +723,13 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
         # 3,179 requested persistent bytes and 58 persistent allocations; the
         # generated complete-format tables add 7,757 static protocol bytes.
         # Publishing accept.require adds 136 charged bytes and 3 allocations.
-        "registration": (170_343, 2_555),
-        "pre_call": (1_222_683, 2_605),
-        "peak": (5_417_640, 2_618),
-        "post_success": (3_452_344, 2_632),
+        # The frozen foreign-state accessor class/prototype adds 1,090 charged
+        # persistent bytes and 21 allocations; no accessor instance is live in
+        # this topology.
+        "registration": (171_433, 2_576),
+        "pre_call": (1_223_773, 2_626),
+        "peak": (5_418_730, 2_639),
+        "post_success": (3_453_434, 2_653),
         "static_protocol": MAXIMUM_STATIC_PROTOCOL_BYTES,
     }
     assert restored_snapshot == registration
@@ -746,7 +749,7 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     )
     assert MAXIMUM_DUPLICATE_STACK == 11 * 6 * 8
     assert peak[0] < limits.quickjs_heap_bytes
-    assert limits.quickjs_heap_bytes - post_success[0] == 13_324_872
+    assert limits.quickjs_heap_bytes - post_success[0] == 13_323_782
     assert limits.quickjs_heap_bytes - post_success[0] >= HEADROOM_BYTES
 
 

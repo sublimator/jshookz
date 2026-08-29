@@ -1438,11 +1438,16 @@ declare global {
   }
 
   namespace state {
+    interface ForeignAccessor {
+      get(key: StateKeyLike): HostResult<STBlob | undefined>;
+    }
     function get(key: string | BytesLike | STBlob | Hash256 | AccountID): HostResult<STBlob | undefined>;
     function set(
       key: string | BytesLike | STBlob | Hash256 | AccountID,
       value: string | BytesLike | STBlob | Hash256 | AccountID,
     ): HostVoidResult;
+    function del(key: string | BytesLike | STBlob | Hash256 | AccountID): HostVoidResult;
+    function foreign(account: AccountID, namespace: Hash256): ForeignAccessor;
   }
 
   namespace emit {

@@ -65,6 +65,33 @@ def test_parameter_and_nonce_imports_have_exact_host_work_coordinates():
     assert addressed["ledger_nonce"] == [1]
 
 
+def test_foreign_state_import_is_read_only_and_fully_metered():
+    source = json.loads(SOURCE.read_text())
+    repository = SOURCE.parents[2]
+    imports = {
+        item["name"]: (item["params"], item["results"])
+        for item in source["provider"]["imports"]
+    }
+
+    assert imports["state_foreign"] == (["i32"] * 8, ["i64"])
+    assert "state_foreign_set" not in imports
+    addressed = source["limits"]["host_work_addressed_length_indices"]
+    assert addressed["state_foreign"] == [1, 3, 5, 7]
+    assert "state_foreign_set" not in addressed
+    policy = json.loads((repository / "xahau/raw-hook-api-policy.json").read_text())
+    assert "state_foreign" in policy["functions"]
+    assert "state_foreign_set" not in policy["functions"]
+    generated = (
+        repository / "cpp/provider/generated/hook_raw_imports.inc"
+    ).read_text()
+    assert 'import_name("state_foreign")' in generated
+    assert 'import_name("state_foreign_set")' not in generated
+    declaration = XAHAU_V1_HOOKS_API_DECLARATIONS.read_text()
+    assert "interface ForeignAccessor" in declaration
+    assert "ForeignAccessor.get" not in declaration
+    assert "state_foreign_set" not in declaration
+
+
 def test_profile_lock_pins_provider_and_has_no_wasi(tmp_path: Path):
     source = json.loads(SOURCE.read_text())
     lock = build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)
@@ -77,7 +104,7 @@ def test_profile_lock_pins_provider_and_has_no_wasi(tmp_path: Path):
     assert loaded.runtime_profile_id.hex() == lock["runtime_profile_id"]
     assert len(loaded.bytecode_abi_id) == 32
     assert len(loaded.runtime_profile_id) == 32
-    assert len(lock["provider"]["imports"]) == 20
+    assert len(lock["provider"]["imports"]) == 21
     assert lock["source"]["limits"]["host_work_budget"] == 2_097_152
     assert {item["module"] for item in lock["provider"]["imports"]} == {"env"}
     assert lock["provider"]["imports"] == sorted(
@@ -413,7 +440,7 @@ def test_provider_bundle_emits_the_profile_lock(tmp_path: Path):
     assert (
         'XAHAU_QUICKJS_HOST_ADAPTER_POLICY "xahau-raw-hook-host-v1"' in cmake_manifest
     )
-    assert 'XAHAU_QUICKJS_PROVIDER_IMPORT_COUNT "20"' in cmake_manifest
+    assert 'XAHAU_QUICKJS_PROVIDER_IMPORT_COUNT "21"' in cmake_manifest
     assert 'XAHAU_QUICKJS_PROVIDER_EXPORT_COUNT "22"' in cmake_manifest
     cmake_object_limits = {
         "XAHAU_QUICKJS_SERIALIZED_OBJECT_MAX_BYTES": 1_048_576,

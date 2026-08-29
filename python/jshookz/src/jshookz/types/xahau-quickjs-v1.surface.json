@@ -39,6 +39,12 @@
     "rollback": {
       "0": "lifecycleMessage"
     },
+    "state.ForeignAccessor.get": {
+      "0": "stateKeyLike"
+    },
+    "state.del": {
+      "0": "stateKeyLike"
+    },
     "state.get": {
       "0": "stateKeyLike"
     },
@@ -49,7 +55,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "d19776230ed4e9c52a8b96b077ec5cad06380b041b38adb3d39d08da8d685c23"
+    "sha256": "7f379481a317901ca1a1f8c233134fa9286c2b9615a4ebc0008dbb8d959bf106"
   },
   "globals": {
     "AccountID": "object",
@@ -139,6 +145,8 @@
       "when": "function"
     },
     "state": {
+      "del": "function",
+      "foreign": "function",
       "get": "function",
       "set": "function"
     },
@@ -811,6 +819,15 @@
         "subtract"
       ],
       "probe": "util.decodeObject(STBlob.fromHex('61D4838D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E8')).Amount.toXFL()"
+    },
+    "state.ForeignAccessor": {
+      "members": {
+        "get": "function"
+      },
+      "own": [
+        "get"
+      ],
+      "probe": "state.foreign(AccountID.zero, Hash256.zero)"
     }
   },
   "schema": "jshookz.javascript-surface.v1",

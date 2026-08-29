@@ -63,6 +63,43 @@ def test_parameter_keys_reject_structural_to_bytes_impostors(tmp_path: Path):
         compile_hook(source)
 
 
+def test_exact_v1_types_local_delete_and_read_only_foreign_state(tmp_path: Path):
+    source = tmp_path / "foreign-state.hook.ts"
+    source.write_text(
+        "export function main():never{"
+        "const foreign:state.ForeignAccessor="
+        "state.foreign(AccountID.zero,Hash256.zero);"
+        "const read:HostResult<STBlob|undefined>=foreign.get('K');"
+        "const deletion:HostVoidResult=state.del('K');"
+        "rollback.onFail(read);deletion.moot();accept();}"
+    )
+
+    compile_hook(source)
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "state.foreign(AccountID.zero,Hash256.zero).set('K',[1]);",
+        "state.foreign(AccountID.zero,Hash256.zero).del('K');",
+        "state.foreign(AccountID.zero,Hash256.zero).getMany(['K']);",
+        "state.foreign({toBytes:()=>new Uint8Array(20)},Hash256.zero);",
+        "state.foreign(AccountID.zero,{toBytes:()=>new Uint8Array(32)});",
+    ],
+)
+def test_exact_v1_rejects_unearned_or_structural_foreign_state_surface(
+    tmp_path: Path,
+    statement: str,
+):
+    source = tmp_path / "foreign-state-red.hook.ts"
+    source.write_text(
+        f"export function main():never{{{statement}accept();}}"
+    )
+
+    with pytest.raises(RuntimeError, match="TypeScript compilation failed"):
+        compile_hook(source)
+
+
 @pytest.mark.parametrize("suffix", [".ts", ".js"])
 @pytest.mark.parametrize(
     ("expression", "expected"),
