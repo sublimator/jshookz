@@ -179,7 +179,6 @@ struct RuntimeNoun
 publishCppRuntimeTypes(JSContext* ctx, JSValueConst global)
 {
     constexpr RuntimeNoun nouns[] = {
-        {"Amount", types::RuntimeTypeId::amount},
         {"Currency", types::RuntimeTypeId::currency},
         {"Hash", types::RuntimeTypeId::hash},
         {"Hash128", types::RuntimeTypeId::hash128},
@@ -243,6 +242,7 @@ extern "C" bool register_cpp_types(JSContext *ctx) {
          types::registerPathSet(ctx, pathLeaves) &&
          types::registerFieldDescriptors(ctx, global.get()) &&
          types::publishObjectTypes(ctx, global.get()) &&
+         types::publishAmountFactory(ctx, global.get()) &&
          publishCppRuntimeTypes(ctx, global.get()) &&
          installUtil(ctx, global.get());
 }

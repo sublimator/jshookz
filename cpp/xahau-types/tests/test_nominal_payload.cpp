@@ -38,6 +38,8 @@ struct alignas(std::max_align_t) AllocationHeader {
 struct AllocationControl {
   std::size_t requests = 0;
   std::size_t liveBlocks = 0;
+  std::size_t rejectAt = 0;
+  std::size_t rejections = 0;
   bool recording = false;
   std::size_t recordedRequests = 0;
   std::size_t maximumRecordedRequest = 0;
@@ -65,6 +67,15 @@ struct AllocationControl {
   }
 };
 
+[[nodiscard]] bool rejectRequest(AllocationControl *control) noexcept {
+  ++control->requests;
+  if (control->rejectAt == 0 || control->requests != control->rejectAt)
+    return false;
+  control->rejectAt = 0;
+  ++control->rejections;
+  return true;
+}
+
 [[nodiscard]] bool wouldExceed(JSMallocState const *state, std::size_t oldSize,
                                std::size_t newSize) noexcept {
   if (state->malloc_size < oldSize)
@@ -76,7 +87,8 @@ struct AllocationControl {
 
 void *countingMalloc(JSMallocState *state, std::size_t size) {
   auto *control = static_cast<AllocationControl *>(state->opaque);
-  ++control->requests;
+  if (rejectRequest(control))
+    return nullptr;
   control->record(size);
   if (size == 0 ||
       size >
@@ -113,7 +125,8 @@ void *countingRealloc(JSMallocState *state, void *pointer, std::size_t size) {
     return nullptr;
   }
   auto *control = static_cast<AllocationControl *>(state->opaque);
-  ++control->requests;
+  if (rejectRequest(control))
+    return nullptr;
   control->record(size);
   auto *header = static_cast<AllocationHeader *>(pointer) - 1;
   std::size_t const oldSize = header->size;
@@ -173,6 +186,20 @@ constexpr JSMallocFunctions countingAllocator = {
   return bytes;
 }
 
+[[nodiscard]] std::string stringProperty(JSContext *context,
+                                         JSValueConst object,
+                                         char const *name) {
+  qjs::OwnedValue value(context, JS_GetPropertyStr(context, object, name));
+  if (value.isException())
+    return {};
+  char const *text = JS_ToCString(context, value.get());
+  if (text == nullptr)
+    return {};
+  std::string result{text};
+  JS_FreeCString(context, text);
+  return result;
+}
+
 struct NominalCase {
   char const *name;
   xdata::MaterializerKind kind;
@@ -216,6 +243,7 @@ protected:
         makeIssueForAmount,
     };
     ASSERT_TRUE(types::registerAmount(context, amountLeaves));
+    ASSERT_TRUE(types::publishAmountFactory(context, global.get()));
     ASSERT_TRUE(types::registerObjectTypes(context));
     types::PathSetLeafMaterializers const pathLeaves{
         types::makeAccountIDView,
@@ -388,6 +416,80 @@ TEST_F(NominalPayloadTest,
       EXPECT_EQ(payload.size, 0u);
       EXPECT_EQ(std::count(std::begin(scratch), std::end(scratch), 0), 8);
     }
+  }
+  EXPECT_FALSE(JS_HasException(context));
+}
+
+TEST_F(NominalPayloadTest,
+       AmountDropsPropagatesEveryAllocationFailureAndRetriesNominally) {
+  qjs::OwnedValue global(context, JS_GetGlobalObject(context));
+  qjs::OwnedValue factory(
+      context, JS_GetPropertyStr(context, global.get(), "Amount"));
+  qjs::OwnedValue function(
+      context, JS_GetPropertyStr(context, factory.get(), "drops"));
+  qjs::OwnedValue argument(context, JS_NewBigInt64(context, 1));
+  ASSERT_FALSE(global.isException());
+  ASSERT_FALSE(factory.isException());
+  ASSERT_FALSE(function.isException());
+  ASSERT_FALSE(argument.isException());
+  ASSERT_TRUE(JS_IsFunction(context, function.get()));
+
+  auto invoke = [&]() {
+    JSValueConst arguments[] = {argument.get()};
+    return qjs::OwnedValue(
+        context,
+        JS_Call(context, function.get(), factory.get(), 1, arguments));
+  };
+
+  {
+    auto warm = invoke();
+    ASSERT_FALSE(warm.isException());
+  }
+
+  allocations.startRecording();
+  std::size_t const measuredBefore = allocations.requests;
+  {
+    auto measured = invoke();
+    ASSERT_FALSE(measured.isException());
+  }
+  std::size_t const requestCount = allocations.requests - measuredBefore;
+  allocations.stopRecording();
+  ASSERT_EQ(allocations.recordedRequests, requestCount);
+  ASSERT_GT(requestCount, 0u);
+
+  for (std::size_t ordinal = 1; ordinal <= requestCount; ++ordinal) {
+    SCOPED_TRACE(ordinal);
+    std::size_t const liveBefore = allocations.liveBlocks;
+    std::size_t const rejectionsBefore = allocations.rejections;
+    allocations.rejectAt = allocations.requests + ordinal;
+    {
+      auto failed = invoke();
+      allocations.rejectAt = 0;
+      ASSERT_TRUE(failed.isException());
+      ASSERT_EQ(allocations.rejections, rejectionsBefore + 1);
+      ASSERT_TRUE(JS_HasException(context));
+      qjs::OwnedValue exception(context, JS_GetException(context));
+      ASSERT_TRUE(JS_IsError(context, exception.get()));
+      EXPECT_EQ(stringProperty(context, exception.get(), "name"),
+                "InternalError");
+      EXPECT_EQ(stringProperty(context, exception.get(), "message"),
+                "out of memory");
+      ASSERT_FALSE(JS_HasException(context));
+    }
+    EXPECT_EQ(allocations.liveBlocks, liveBefore);
+
+    auto retry = invoke();
+    ASSERT_FALSE(retry.isException());
+    EXPECT_TRUE(types::isAmountKind(retry.get(), types::AmountIssueKind::native));
+    std::uint8_t scratch[8]{};
+    types::NominalPayloadView payload;
+    ASSERT_TRUE(types::readNominalPayload(
+        context, retry.get(), xdata::MaterializerKind::amount, scratch,
+        payload));
+    std::array<std::uint8_t, 8> const expected{
+        0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+    ASSERT_EQ(payload.size, expected.size());
+    EXPECT_EQ(std::memcmp(payload.data, expected.data(), expected.size()), 0);
   }
   EXPECT_FALSE(JS_HasException(context));
 }

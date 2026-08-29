@@ -2,6 +2,7 @@
 #include "js.hpp"
 #include "leaf/leaf.hpp"
 #include "object/field_js.hpp"
+#include "object/nominal_payload.hpp"
 #include "object/object.hpp"
 #include "pathset/pathset_js.hpp"
 #include "result.hpp"
@@ -1342,6 +1343,79 @@ TEST_F(
     )JS");
     ASSERT_FALSE(value.isException());
     EXPECT_TRUE(JS_ToBool(ctx, value.get()));
+}
+
+TEST_F(XahauTypes, AmountDropsMintsOnlyBoundedNativeNominalAmounts)
+{
+    namespace types = jshookz::provider::types;
+    auto behavior = eval(R"JS(
+        (() => {
+          const hex = value => Array.from(value.toBytes(), byte =>
+            byte.toString(16).padStart(2, "0")).join("").toUpperCase();
+          const catches = (name, action) => {
+            try { action(); return false; }
+            catch (error) { return error?.name === name; }
+          };
+
+          const zero = Amount.drops(0n);
+          const one = Amount.drops(1n);
+          const maximum = Amount.drops(100_000_000_000_000_000n);
+          const detached = Amount.drops.call(Object.create(null), 42n);
+          const forged = {
+            kind: "native",
+            drops: 1n,
+            byteLength: 8,
+            toBytes: () => one.toBytes(),
+          };
+          const dropsGetter = Object.getOwnPropertyDescriptor(
+            Object.getPrototypeOf(one), "drops").get;
+          const ownNames = Object.getOwnPropertyNames(Amount);
+          const ownSymbols = Object.getOwnPropertySymbols(Amount);
+
+          return typeof Amount === "object" && Amount !== null &&
+            Object.isFrozen(Amount) && !Object.isExtensible(Amount) &&
+            ownNames.length === 1 && ownNames[0] === "drops" &&
+            ownSymbols.length === 1 && ownSymbols[0] === Symbol.hasInstance &&
+            typeof Amount.drops === "function" && Amount.drops.length === 1 &&
+            Amount.from === undefined && Amount.iou === undefined &&
+            Amount.mpt === undefined &&
+            zero.drops === 0n && hex(zero) === "4000000000000000" &&
+            one.drops === 1n && hex(one) === "4000000000000001" &&
+            maximum.drops === 100_000_000_000_000_000n &&
+            hex(maximum) === "416345785D8A0000" &&
+            detached.drops === 42n && detached instanceof Amount &&
+            detached instanceof NativeAmount &&
+            !(detached instanceof IOUAmount) && !(detached instanceof MPTAmount) &&
+            !(forged instanceof Amount) && !(forged instanceof NativeAmount) &&
+            catches("TypeError", () => dropsGetter.call(forged)) &&
+            catches("TypeError", () => Amount.drops()) &&
+            catches("TypeError", () => Amount.drops(1)) &&
+            catches("TypeError", () => Amount.drops("1")) &&
+            catches("TypeError", () => Amount.drops(Object(1n))) &&
+            catches("RangeError", () => Amount.drops(-1n)) &&
+            catches("RangeError", () =>
+              Amount.drops(100_000_000_000_000_001n)) &&
+            catches("RangeError", () => Amount.drops(1n << 1024n)) &&
+            catches("TypeError", () => Reflect.construct(Amount, [])) &&
+            catches("TypeError", () => Reflect.construct(Amount.drops, [1n])) &&
+            !Reflect.set(Amount, "drops", () => forged) &&
+            Amount.drops(2n).drops === 2n;
+        })()
+    )JS");
+    ASSERT_FALSE(behavior.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, behavior.get()));
+
+    auto nominal = eval("Amount.drops(1n)");
+    ASSERT_FALSE(nominal.isException());
+    std::uint8_t scratch[8]{};
+    types::NominalPayloadView payload;
+    ASSERT_TRUE(types::readNominalPayload(
+        ctx, nominal.get(), catl::xdata::MaterializerKind::amount, scratch,
+        payload));
+    std::array<std::uint8_t, 8> const expected{
+        0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+    ASSERT_EQ(payload.size, expected.size());
+    EXPECT_EQ(std::memcmp(payload.data, expected.data(), expected.size()), 0);
 }
 
 TEST_F(XahauTypes, STObjectJoinsSerializedByteFamily)

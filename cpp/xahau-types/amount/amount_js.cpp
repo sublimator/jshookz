@@ -143,6 +143,66 @@ parts(AmountState const &state) noexcept {
   return value;
 }
 
+constexpr std::uint64_t kMaximumNativeDrops = 100'000'000'000'000'000ULL;
+
+enum class DropsInputStatus : std::uint8_t {
+  valid,
+  outOfRange,
+  exception,
+};
+
+[[nodiscard]] DropsInputStatus readDrops(JSContext *ctx, JSValueConst input,
+                                         std::uint64_t &output) {
+  qjs::OwnedValue rendered(ctx, JS_ToString(ctx, input));
+  if (rendered.isException())
+    return DropsInputStatus::exception;
+  std::size_t length = 0;
+  char const *text = JS_ToCStringLen(ctx, &length, rendered.get());
+  if (text == nullptr)
+    return DropsInputStatus::exception;
+
+  bool valid = length != 0;
+  std::uint64_t value = 0;
+  for (std::size_t index = 0; valid && index < length; ++index) {
+    char const digit = text[index];
+    valid = digit >= '0' && digit <= '9';
+    if (!valid)
+      break;
+    std::uint64_t const part = static_cast<std::uint64_t>(digit - '0');
+    if (value > (kMaximumNativeDrops - part) / 10) {
+      valid = false;
+      break;
+    }
+    value = value * 10 + part;
+  }
+  JS_FreeCString(ctx, text);
+  if (!valid)
+    return DropsInputStatus::outOfRange;
+  output = value;
+  return DropsInputStatus::valid;
+}
+
+[[nodiscard]] JSValue amountFactoryDrops(JSContext *ctx, JSValueConst, int argc,
+                                         JSValueConst *argv) {
+  if (argc < 1 || !JS_IsBigInt(ctx, argv[0]))
+    return JS_ThrowTypeError(ctx, "Amount.drops expects bigint");
+
+  std::uint64_t drops = 0;
+  DropsInputStatus const status = readDrops(ctx, argv[0], drops);
+  if (status == DropsInputStatus::exception)
+    return JS_EXCEPTION;
+  if (status == DropsInputStatus::outOfRange)
+    return JS_ThrowRangeError(ctx, "Amount.drops value is out of range");
+
+  std::uint64_t word = drops | xdata::AmountRules::kPositive;
+  std::uint8_t wire[8];
+  for (std::size_t index = sizeof(wire); index-- > 0;) {
+    wire[index] = static_cast<std::uint8_t>(word);
+    word >>= 8;
+  }
+  return newAmount(ctx, JS_UNDEFINED, wire, sizeof(wire));
+}
+
 [[nodiscard]] JSValue amountKind(JSContext *ctx, JSValueConst thisValue) {
   auto const *state = amountState(ctx, thisValue);
   return state == nullptr
@@ -459,6 +519,10 @@ JSCFunctionListEntry const amountPrototype[] = {
     JS_CFUNC_DEF("compare", 1, amountCompare),
 };
 
+JSCFunctionListEntry const amountFactory[] = {
+    JS_CFUNC_DEF("drops", 1, amountFactoryDrops),
+};
+
 } // namespace
 
 bool registerAmount(JSContext *ctx, AmountLeafMaterializers const &leaves) {
@@ -470,6 +534,16 @@ bool registerAmount(JSContext *ctx, AmountLeafMaterializers const &leaves) {
   return registerHiddenClass(ctx, &amountClassId, &amountClass, amountPrototype,
                              qjs::ByteClassFamily::serializedType,
                              amountToBytes);
+}
+
+bool publishAmountFactory(JSContext *ctx, JSValueConst global) {
+  qjs::OwnedValue factory(ctx, JS_NewObject(ctx));
+  if (factory.isException() ||
+      !qjs::installFunctions(ctx, factory.get(), amountFactory) ||
+      !installRuntimeTypeClassifier(ctx, factory.get(), RuntimeTypeId::amount) ||
+      !qjs::freezeObject(ctx, factory.get()))
+    return false;
+  return JS_SetPropertyStr(ctx, global, "Amount", factory.release()) >= 0;
 }
 
 JSValue makeAmountBytes(JSContext *ctx, std::uint8_t const *bytes,

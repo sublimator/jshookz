@@ -33,6 +33,11 @@ struct AmountLeafMaterializers {
 [[nodiscard]] bool registerAmount(JSContext *ctx,
                                   AmountLeafMaterializers const &leaves);
 
+// Publishes the frozen classifier-plus-drops Amount noun after the hidden
+// class has been registered. No broad byte/IOU/MPT authoring routes are
+// installed here.
+[[nodiscard]] bool publishAmountFactory(JSContext *ctx, JSValueConst global);
+
 // Provider-only canonical materializer. It validates the complete Amount
 // representation, copies at most 48 bytes inline, and publishes no borrowed
 // storage. No public constructor route reaches this function.
