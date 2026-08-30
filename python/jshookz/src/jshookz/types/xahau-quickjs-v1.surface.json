@@ -65,13 +65,14 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "88095e8874611b3564d301cd9712b3b7aa5aafb7a01daeb8961df23a9ee7f076"
+    "sha256": "99aca01b20dfa16efd5bcacb2b6409f760e4c44ca0a0eb3b32930e9666fb4d40"
   },
   "globals": {
     "AccountID": "object",
     "AccountRoot": "function",
     "Amount": "object",
     "Currency": "object",
+    "EntropyTier": "object",
     "Field": "object",
     "Hash": "object",
     "Hash128": "object",
@@ -113,6 +114,7 @@
     "cell": "function",
     "defineHookConfig": "function",
     "emit": "object",
+    "entropy": "object",
     "hook": "object",
     "ledger": "object",
     "otxn": "object",
@@ -125,6 +127,7 @@
   "namespaces": {
     "accept": {
       "require": "function",
+      "requireTransaction": "function",
       "unlessPresent": "function",
       "unlessTruthy": "function",
       "when": "function"
@@ -138,6 +141,13 @@
     "emit.build": {
       "hookSet": "function",
       "payment": "function"
+    },
+    "entropy": {
+      "cr": "object"
+    },
+    "entropy.cr": {
+      "dice": "function",
+      "status": "function"
     },
     "hook": {
       "account": "function",
@@ -958,6 +968,12 @@
     "Currency": {
       "from": "function"
     },
+    "EntropyTier": {
+      "consensusFallback": "value",
+      "participantAligned": "value",
+      "validatorFull": "value",
+      "validatorQuorum": "value"
+    },
     "Hash256": {
       "from": "function",
       "fromHex": "function",
@@ -1003,6 +1019,7 @@
       "RESERVE_INSUFFICIENT": "value",
       "SUCCESS": "value",
       "TOO_BIG": "value",
+      "TOO_LITTLE_ENTROPY": "value",
       "TOO_MANY_EMITTED_TXN": "value",
       "TOO_MANY_NAMESPACES": "value",
       "TOO_MANY_NONCES": "value",

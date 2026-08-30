@@ -110,6 +110,100 @@ def test_missing_and_empty_parameters_are_the_same_typed_absence() -> None:
     ]
 
 
+def test_parameter_codecs_decode_scalars_and_records_without_cell_wrappers() -> None:
+    runtime = HookRuntime()
+    runtime.tx_params["U16"] = bytes.fromhex("3412")
+    runtime.params["POLICY"] = bytes.fromhex("017856")
+
+    result = _run(
+        runtime,
+        """
+        const Policy = record("ParameterPolicy", 3, [
+          ["enabled", record.u8()],
+          ["threshold", record.u16le()],
+        ]);
+
+        export function main(): never {
+          const scalar = rollback.requirePresent(
+            otxn.param("U16", record.u16le()),
+            "typed transaction parameter missing or malformed",
+            1,
+          );
+          const policy = rollback.requirePresent(
+            hook.param("POLICY", Policy),
+            "typed hook parameter missing or malformed",
+            2,
+          );
+          const missing = rollback.onFail(
+            hook.param("MISSING", record.u8()),
+            "typed missing parameter failed",
+            3,
+          );
+          if (scalar !== 0x1234 ||
+              policy.enabled !== 1 ||
+              policy.threshold !== 0x5678 ||
+              missing !== undefined) {
+            rollback("typed parameter mismatch", 4);
+          }
+          accept("typed parameters", 0);
+        }
+        """,
+    )
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"typed parameters"
+    assert _call_names(result) == [
+        "otxn_param",
+        "hook_param",
+        "hook_param",
+        "accept",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("value", "actual_length"),
+    [(bytes.fromhex("12"), 1), (bytes.fromhex("123456"), 3)],
+)
+def test_parameter_codec_rejects_short_and_long_values_without_truncation(
+    value: bytes,
+    actual_length: int,
+) -> None:
+    runtime = HookRuntime()
+    runtime.params["U16"] = value
+
+    result = _run(
+        runtime,
+        f"""
+        function expectSchemaFailure(
+          result: SchemaReadResult<number>,
+        ): HostError | ParseError {{
+          if (result.ok) {{
+            rollback("expected typed parameter failure", 1);
+          }} else {{
+            return result.error;
+          }}
+        }}
+
+        export function main(): never {{
+          const error = expectSchemaFailure(
+            hook.param("U16", record.u16le()),
+          );
+          if (error.domain !== "parse" ||
+              error.issue !== "wrong-length" ||
+              error.expectedLength !== 2 ||
+              error.actualLength !== {actual_length}) {{
+            rollback("typed parameter length mismatch", 2);
+          }}
+          accept("typed parameter rejected", 0);
+        }}
+        """,
+    )
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"typed parameter rejected"
+    assert _call_names(result) == ["hook_param", "accept"]
+
+
 def test_hook_parameter_observes_the_chain_override() -> None:
     runtime = HookRuntime()
     runtime.params["KEY"] = b"installed"

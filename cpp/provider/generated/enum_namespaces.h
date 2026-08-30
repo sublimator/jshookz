@@ -15,6 +15,17 @@ struct EnumNamespaceMember
     std::int64_t value;
 };
 
+inline constexpr std::array<EnumNamespaceMember, 4> ENTROPY_TIER_MEMBERS{{
+    // @binding provider:EntropyTier.consensusFallback
+    {"consensusFallback", 1},
+    // @binding provider:EntropyTier.participantAligned
+    {"participantAligned", 2},
+    // @binding provider:EntropyTier.validatorQuorum
+    {"validatorQuorum", 3},
+    // @binding provider:EntropyTier.validatorFull
+    {"validatorFull", 4},
+}};
+
 inline constexpr std::array<EnumNamespaceMember, 77> TRANSACTION_TYPE_MEMBERS{{
     // @binding provider:TransactionType.Payment
     {"Payment", 0},
@@ -644,7 +655,7 @@ inline constexpr std::array<EnumNamespaceMember, 199> TRANSACTION_RESULT_MEMBERS
     {"telLOCAL_ERROR", -399},
 }};
 
-inline constexpr std::array<EnumNamespaceMember, 46> HOOK_RETURN_CODE_MEMBERS{{
+inline constexpr std::array<EnumNamespaceMember, 47> HOOK_RETURN_CODE_MEMBERS{{
     // @binding provider:HookReturnCode.SUCCESS
     {"SUCCESS", 0},
     // @binding provider:HookReturnCode.OUT_OF_BOUNDS
@@ -735,6 +746,8 @@ inline constexpr std::array<EnumNamespaceMember, 46> HOOK_RETURN_CODE_MEMBERS{{
     {"TOO_MANY_STATE_MODIFICATIONS", -44},
     // @binding provider:HookReturnCode.TOO_MANY_NAMESPACES
     {"TOO_MANY_NAMESPACES", -45},
+    // @binding provider:HookReturnCode.TOO_LITTLE_ENTROPY
+    {"TOO_LITTLE_ENTROPY", -48},
     // @binding provider:HookReturnCode.INVALID_FLOAT
     {"INVALID_FLOAT", -10024},
 }};

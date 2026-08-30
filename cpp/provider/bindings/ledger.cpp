@@ -3,6 +3,7 @@
 #include "../provider_internal.hpp"
 #include "keylet/keylet_js.hpp"
 #include "object/object.hpp"
+#include "record/record_js.hpp"
 
 namespace jshookz::provider::bindings {
 namespace {
@@ -31,8 +32,21 @@ readParameter(
     JSContext *ctx,
     qjs::ByteView const& name,
     char const *operation,
-    ParameterReader reader)
+    ParameterReader reader,
+    JSValueConst codec = JS_UNDEFINED)
 {
+    bool const typed = !JS_IsUndefined(codec);
+    std::uint32_t codecByteLength = 0;
+    if (typed && !types::readBinaryCodecByteLength(
+                     ctx, codec, &codecByteLength))
+        return JS_EXCEPTION;
+    if (typed && codecByteLength > 256)
+        return JS_ThrowRangeError(
+            ctx, "%s: codec exceeds the 256-byte parameter limit", operation);
+
+    // hook_param truncates to the supplied output capacity. Always fetch the
+    // complete parameter ceiling before local decoding so an oversized value
+    // cannot masquerade as a valid fixed-width prefix.
     std::uint8_t value[256];
     std::int64_t const result = reader(
         static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(value)),
@@ -50,9 +64,11 @@ readParameter(
             "%s: host returned oversized length %lld",
             operation,
             (long long)result);
-    return host_success(
-        ctx,
-        makeSTBlob(ctx, value, static_cast<std::uint32_t>(result)));
+    if (typed)
+        return types::safeParseBinaryCodecBytes(
+            ctx, codec, value, static_cast<std::uint32_t>(result));
+    return host_success(ctx, makeSTBlob(
+        ctx, value, static_cast<std::uint32_t>(result)));
 }
 
 [[nodiscard]] JSValue
@@ -155,13 +171,16 @@ js_otxn_param(JSContext *ctx, JSValueConst this_val,
         ctx, argv[0], "otxn.param", 0, qjs::BytePolicy::stateKeyLike);
     if (!name)
         return qjs::pendingOrTypeError(ctx, "otxn.param: invalid name");
-    return readParameter(ctx, name, "otxn.param", hook_otxn_param);
+    return readParameter(
+        ctx,
+        name,
+        "otxn.param",
+        hook_otxn_param,
+        argc > 1 ? argv[1] : JS_UNDEFINED);
 }
 
 JSValue
-// @binding provider:otxn.object
-js_otxn_object(JSContext *ctx, JSValueConst this_val,
-               int argc, JSValueConst *argv)
+materializeOriginatingTransaction(JSContext *ctx)
 {
     if (!JS_IsUndefined(originatingTransaction))
         return JS_DupValue(ctx, originatingTransaction);
@@ -225,6 +244,14 @@ js_otxn_object(JSContext *ctx, JSValueConst this_val,
 }
 
 JSValue
+// @binding provider:otxn.object
+js_otxn_object(JSContext *ctx, JSValueConst this_val,
+               int argc, JSValueConst *argv)
+{
+    return materializeOriginatingTransaction(ctx);
+}
+
+JSValue
 // @binding provider:hook.account
 js_hook_account(JSContext *ctx, JSValueConst this_val,
                 int argc, JSValueConst *argv)
@@ -253,7 +280,12 @@ js_hook_param(JSContext *ctx, JSValueConst this_val,
         ctx, argv[0], "hook.param", 0, qjs::BytePolicy::stateKeyLike);
     if (!name)
         return qjs::pendingOrTypeError(ctx, "hook.param: invalid name");
-    return readParameter(ctx, name, "hook.param", hook_hook_param);
+    return readParameter(
+        ctx,
+        name,
+        "hook.param",
+        hook_hook_param,
+        argc > 1 ? argv[1] : JS_UNDEFINED);
 }
 
 JSValue
@@ -405,6 +437,12 @@ JSCFunctionListEntry const js_ledger_properties[] = {
 
 }  // namespace
 
+JSValue
+originatingTransactionObject(JSContext *ctx)
+{
+    return materializeOriginatingTransaction(ctx);
+}
+
 void
 resetOriginatingTransactionCache(JSContext *ctx) noexcept
 {
@@ -458,7 +496,7 @@ registerHook(JSContext *ctx, JSValue global)
     if (JS_SetPropertyStr(ctx, hook.get(), "account",
             JS_NewCFunction(ctx, js_hook_account, "account", 0)) < 0 ||
         JS_SetPropertyStr(ctx, hook.get(), "param",
-            JS_NewCFunction(ctx, js_hook_param, "param", 1)) < 0 ||
+            JS_NewCFunction(ctx, js_hook_param, "param", 2)) < 0 ||
         JS_SetPropertyStr(ctx, hook.get(), "mode",
             JS_NewCFunction(ctx, js_hook_mode, "mode", 0)) < 0 ||
         JS_SetPropertyStr(ctx, hook.get(), "again",
@@ -484,7 +522,7 @@ registerLedger(JSContext *ctx, JSValue global)
             JS_NewCFunction(ctx, js_otxn_type, "type", 0)) < 0)
         return false;
     if (JS_SetPropertyStr(ctx, otxn.get(), "param",
-            JS_NewCFunction(ctx, js_otxn_param, "param", 1)) < 0)
+            JS_NewCFunction(ctx, js_otxn_param, "param", 2)) < 0)
         return false;
     if (JS_SetPropertyStr(ctx, otxn.get(), "object",
             JS_NewCFunction(ctx, js_otxn_object, "object", 0)) < 0)

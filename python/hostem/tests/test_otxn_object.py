@@ -18,6 +18,7 @@ HOOK = Path(__file__).parents[1] / "examples" / "accept-incoming-xah.hook.ts"
 # static oracle outputs; the provider under test never encodes its own input.
 SOURCE = bytes.fromhex("B5F762798A53D543A014CAF8B297CFF8F2F937E8")
 DESTINATION = bytes.fromhex("841F44689750ED44FFB6A21950C8F29403915DFD")
+TRANSACTION_TYPE_ACCOUNT_SET = 3
 SEQUENCE = bytes.fromhex("2400000001")
 FEE = bytes.fromhex("68400000000000000A")
 SIGNING_PUB_KEY = bytes.fromhex("7300")
@@ -140,6 +141,79 @@ def test_otxn_type_is_direct_and_equals_the_certified_object_discriminator() -> 
         "otxn_type",
         "accept",
     ]
+
+
+def test_accept_require_transaction_returns_one_cached_specialized_view() -> None:
+    source = """
+        export function main(): never {
+          const payment = accept.requireTransaction(TransactionType.Payment);
+          const cached = otxn.object();
+          if (payment !== cached || !(payment instanceof Payment)) {
+            rollback("required transaction identity changed", 1);
+          }
+          if (payment.Destination.toHex() !==
+              "841F44689750ED44FFB6A21950C8F29403915DFD") {
+            rollback("required Payment was not statically specialized", 2);
+          }
+          accept("one required Payment", 0);
+        }
+    """
+
+    result = _runner(PAYMENT).run_typescript(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"one required Payment"
+    assert _call_names(result) == [
+        "otxn_type",
+        "otxn_slot",
+        "slot_size",
+        "slot_clear",
+        "otxn_slot",
+        "slot",
+        "slot_clear",
+        "accept",
+    ]
+
+
+def test_accept_require_transaction_exits_before_object_materialization() -> None:
+    source = """
+        export function main(): never {
+          accept.requireTransaction(
+            TransactionType.Payment,
+            "Payments only",
+            17,
+          );
+          rollback("unreachable", 18);
+        }
+    """
+
+    runner = _runner(ACCOUNT_SET)
+    runner.runtime.otxn_type = TRANSACTION_TYPE_ACCOUNT_SET
+    result = runner.run_typescript(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"Payments only"
+    assert result.return_code == 17
+    assert _call_names(result) == ["otxn_type", "accept"]
+
+
+def test_accept_require_transaction_maps_only_specialized_kinds() -> None:
+    _runner(PAYMENT).run_typescript(
+        "export function main(): never { "
+        "const payment = accept.requireTransaction(TransactionType.Payment); "
+        "void payment.Destination; accept(); }"
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Property 'Destination' does not exist on type 'Transaction'",
+    ):
+        HookRunner().run_typescript(
+            "export function main(): never { "
+            "const accountSet = "
+            "accept.requireTransaction(TransactionType.AccountSet); "
+            "void accountSet.Destination; accept(); }"
+        )
 
 
 def test_negative_otxn_type_is_an_execution_invariant_failure() -> None:

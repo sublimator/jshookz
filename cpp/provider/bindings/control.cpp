@@ -1,6 +1,7 @@
 #include "common.hpp"
 #include "quickjs.hpp"
 #include "hook_imports.hpp"
+#include "../../xahau-types/js.hpp"
 
 #include <cstdio>
 
@@ -385,6 +386,55 @@ js_accept_require(JSContext *ctx, JSValueConst this_val,
 }
 
 JSValue
+// @binding provider:accept.requireTransaction
+js_accept_require_transaction(JSContext *ctx, JSValueConst this_val,
+                              int argc, JSValueConst *argv)
+{
+    if (argc < 1)
+        return JS_ThrowTypeError(
+            ctx, "accept.requireTransaction: expected TransactionType");
+
+    std::uint64_t expectedType;
+    types::UIntInputStatus const input =
+        types::readUIntInput(ctx, argv[0], 16, expectedType);
+    if (input == types::UIntInputStatus::exception)
+        return JS_EXCEPTION;
+    if (input != types::UIntInputStatus::valid)
+        return JS_ThrowTypeError(
+            ctx,
+            "accept.requireTransaction: expected a valid TransactionType");
+
+    std::int64_t const actualType = hook_otxn_type();
+    if (actualType < 0)
+        return JS_ThrowInternalError(
+            ctx,
+            "accept.requireTransaction: otxn_type violated total invocation "
+            "fact with %lld",
+            (long long)actualType);
+    if (static_cast<std::uint64_t>(actualType) != expectedType)
+        return call_lifecycle(
+            ctx, this_val, argc, argv, 1, js_hook_accept);
+
+    qjs::OwnedValue transaction(ctx, originatingTransactionObject(ctx));
+    if (transaction.isException())
+        return transaction.release();
+    qjs::OwnedValue classifiedType =
+        qjs::property(ctx, transaction.get(), "TransactionType");
+    if (classifiedType.isException())
+        return classifiedType.release();
+    std::int64_t decodedType;
+    if (JS_ToInt64(ctx, &decodedType, classifiedType.get()) < 0)
+        return JS_EXCEPTION;
+    if (decodedType < 0 ||
+        static_cast<std::uint64_t>(decodedType) != expectedType)
+        return JS_ThrowInternalError(
+            ctx,
+            "accept.requireTransaction: otxn_type and certified object "
+            "disagree");
+    return transaction.release();
+}
+
+JSValue
 // @binding provider:accept.when
 js_accept_when(JSContext *ctx, JSValueConst this_val,
                int argc, JSValueConst *argv)
@@ -515,6 +565,12 @@ registerControl(JSContext *ctx, JSValue global)
                 ctx, js_accept_unless_truthy, "unlessTruthy", 3)) < 0 ||
         JS_SetPropertyStr(ctx, accept.get(), "require",
             JS_NewCFunction(ctx, js_accept_require, "require", 3)) < 0 ||
+        JS_SetPropertyStr(ctx, accept.get(), "requireTransaction",
+            JS_NewCFunction(
+                ctx,
+                js_accept_require_transaction,
+                "requireTransaction",
+                3)) < 0 ||
         JS_SetPropertyStr(ctx, accept.get(), "when",
             JS_NewCFunction(ctx, js_accept_when, "when", 3)) < 0)
         return false;

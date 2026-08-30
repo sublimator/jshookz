@@ -16,6 +16,7 @@ set(JSHOOKZ_PROVIDER_CPP_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/bindings/common.cpp
     ${CMAKE_CURRENT_LIST_DIR}/bindings/control.cpp
     ${CMAKE_CURRENT_LIST_DIR}/bindings/emission.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/bindings/entropy.cpp
     ${CMAKE_CURRENT_LIST_DIR}/bindings/ledger.cpp
     ${CMAKE_CURRENT_LIST_DIR}/bindings/legacy.cpp
     ${CMAKE_CURRENT_LIST_DIR}/bindings/register.cpp

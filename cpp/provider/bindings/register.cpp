@@ -14,6 +14,7 @@ registerBindings(JSContext *ctx)
         bindings::registerLedger(ctx, global.get()) &&
         bindings::registerState(ctx, global.get()) &&
         bindings::registerEmission(ctx, global.get()) &&
+        bindings::registerEntropy(ctx, global.get()) &&
         bindings::registerTrace(ctx, global.get()) &&
         bindings::registerLegacy(ctx, global.get());
 }

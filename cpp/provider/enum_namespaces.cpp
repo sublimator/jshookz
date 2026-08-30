@@ -28,6 +28,7 @@ struct NamespaceSpec {
 };
 
 constexpr std::array namespaceSpecs = {
+    NamespaceSpec{"EntropyTier", generated::ENTROPY_TIER_MEMBERS},
     NamespaceSpec{"TransactionType", generated::TRANSACTION_TYPE_MEMBERS},
     NamespaceSpec{"LedgerEntryType", generated::LEDGER_ENTRY_TYPE_MEMBERS},
     NamespaceSpec{"TransactionResult", generated::TRANSACTION_RESULT_MEMBERS},
@@ -74,7 +75,7 @@ bool registerEnumNamespaces(JSContext *context) {
   OwnedValue global(context, JS_GetGlobalObject(context));
   std::array<OwnedValue, namespaceSpecs.size()> objects = {
       OwnedValue(context), OwnedValue(context), OwnedValue(context),
-      OwnedValue(context)};
+      OwnedValue(context), OwnedValue(context)};
   std::array<JSAtom, namespaceSpecs.size()> atoms{};
   if (global.isException())
     return failRegistration(context);

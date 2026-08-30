@@ -63,6 +63,8 @@
     "imports": [
       {"module": "env", "name": "accept", "params": ["i32", "i32", "i64"], "results": ["i64"]},
       {"module": "env", "name": "emit", "params": ["i32", "i32", "i32", "i32"], "results": ["i64"]},
+      {"module": "env", "name": "entropy_cr_dice", "params": ["i32", "i32"], "results": ["i64"]},
+      {"module": "env", "name": "entropy_cr_status", "params": [], "results": ["i64"]},
       {"module": "env", "name": "etxn_details", "params": ["i32", "i32"], "results": ["i64"]},
       {"module": "env", "name": "etxn_fee_base", "params": ["i32", "i32"], "results": ["i64"]},
       {"module": "env", "name": "etxn_reserve", "params": ["i32"], "results": ["i64"]},

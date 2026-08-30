@@ -62,7 +62,7 @@ js_state_get(JSContext *ctx, JSValueConst this_val,
 
     bool const typed = argc > 1;
     std::uint32_t capacity = 4096;
-    if (typed && !types::readBinarySchemaByteLength(
+    if (typed && !types::readBinaryCodecByteLength(
                      ctx, argv[1], &capacity))
         return JS_EXCEPTION;
     if (capacity > 4096)
@@ -85,7 +85,7 @@ js_state_get(JSContext *ctx, JSValueConst this_val,
             ctx, "state.get: host returned oversized length %lld",
             (long long)result);
     if (typed)
-        return types::safeParseBinarySchemaBytes(
+        return types::safeParseBinaryCodecBytes(
             ctx, argv[1], value, static_cast<std::uint32_t>(result));
     return host_success(ctx, makeSTBlob(ctx, value, (uint32_t)result));
 }
@@ -159,7 +159,7 @@ js_foreign_state_get(JSContext *ctx, JSValueConst this_val,
 
     bool const typed = argc > 1;
     std::uint32_t capacity = 4096;
-    if (typed && !types::readBinarySchemaByteLength(
+    if (typed && !types::readBinaryCodecByteLength(
                      ctx, argv[1], &capacity))
         return JS_EXCEPTION;
     if (capacity > 4096)
@@ -184,7 +184,7 @@ js_foreign_state_get(JSContext *ctx, JSValueConst this_val,
             "state.ForeignAccessor.get: host returned oversized length %lld",
             (long long)result);
     if (typed)
-        return types::safeParseBinarySchemaBytes(
+        return types::safeParseBinaryCodecBytes(
             ctx, argv[1], value, static_cast<std::uint32_t>(result));
     return host_success(ctx, makeSTBlob(ctx, value, (uint32_t)result));
 }

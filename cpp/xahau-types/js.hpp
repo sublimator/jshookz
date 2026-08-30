@@ -77,6 +77,21 @@ registerHiddenClass(
                           std::uint8_t expectedBits) noexcept;
 [[nodiscard]] bool isXFLDecimal(JSValueConst value) noexcept;
 
+enum class UIntInputStatus
+{
+    valid,
+    outOfRange,
+    invalidType,
+    exception,
+};
+
+// Provider-only lossless marshalling for raw unsigned Hook arguments.
+[[nodiscard]] UIntInputStatus readUIntInput(
+    JSContext* ctx,
+    JSValueConst input,
+    std::uint8_t bits,
+    std::uint64_t& output);
+
 // Provider-only materializer seams. These mint exact nominal values without
 // routing through public JavaScript factories.
 [[nodiscard]] JSValue makeUIntValue(JSContext *ctx, std::uint8_t bits,

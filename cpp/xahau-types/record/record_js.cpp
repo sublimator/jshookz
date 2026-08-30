@@ -1367,35 +1367,66 @@ registerRecordSchemas(JSContext* context, JSValueConst global)
         !JS_HasException(context);
 }
 
-bool readBinarySchemaByteLength(
+bool readBinaryCodecByteLength(
     JSContext* context,
-    JSValueConst schema,
+    JSValueConst codec,
     std::uint32_t* byteLength) noexcept
 {
     if (byteLength != nullptr)
         *byteLength = 0;
     if (context == nullptr || byteLength == nullptr)
         return false;
-    auto const* state = schemaState(context, schema);
-    if (state == nullptr)
+    if (auto const* field = fieldState(codec); field != nullptr) {
+        if (field->kind == FieldKind::padding) {
+            JS_ThrowTypeError(
+                context, "binary codec: padding cannot decode a value");
+            return false;
+        }
+        *byteLength = field->width;
+        return true;
+    }
+    auto const* schema = schemaState(context, codec);
+    if (schema == nullptr)
         return false;
-    *byteLength = state->byteLength;
+    *byteLength = schema->byteLength;
     return true;
 }
 
-JSValue safeParseBinarySchemaBytes(
+JSValue safeParseBinaryCodecBytes(
     JSContext* context,
-    JSValueConst schema,
+    JSValueConst codec,
     std::uint8_t const* bytes,
     std::uint32_t length)
 {
-    auto const* state = schemaState(context, schema);
-    if (state == nullptr)
-        return JS_EXCEPTION;
     if (length != 0 && bytes == nullptr)
         return JS_ThrowInternalError(
-            context, "record schema host bytes are unavailable");
-    return parseSchemaBytes(context, *state, bytes, length, true);
+            context, "binary codec host bytes are unavailable");
+
+    if (auto const* field = fieldState(codec); field != nullptr) {
+        if (field->kind == FieldKind::padding)
+            return JS_ThrowTypeError(
+                context, "binary codec: padding cannot decode a value");
+        if (length != field->width)
+            return wrongLengthFailure(context, field->width, length);
+        FieldSpec const spec{
+            .name = JS_ATOM_NULL,
+            .offset = 0,
+            .width = field->width,
+            .kind = field->kind,
+        };
+        bool invalid = false;
+        JSValue decoded = decodeField(context, spec, bytes, invalid);
+        if (invalid)
+            return parseValueFailure(context, JS_ATOM_NULL);
+        if (JS_IsException(decoded))
+            return decoded;
+        return bindings::result_success(context, decoded);
+    }
+
+    auto const* schema = schemaState(context, codec);
+    if (schema == nullptr)
+        return JS_EXCEPTION;
+    return parseSchemaBytes(context, *schema, bytes, length, true);
 }
 
 }  // namespace jshookz::provider::types

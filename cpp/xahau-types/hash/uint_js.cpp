@@ -1,6 +1,7 @@
 #include "result.hpp"
 #include "runtime_type.hpp"
 
+#include "../js.hpp"
 #include "object/nominal_payload.hpp"
 #include "quickjs.hpp"
 #include "xfl/xfl.hpp"
@@ -15,6 +16,7 @@ namespace {
 using jshookz::provider::bindings::result_success;
 using jshookz::provider::bindings::uint_failure;
 using jshookz::provider::qjs::OwnedValue;
+using InputStatus = jshookz::provider::types::UIntInputStatus;
 
 struct UIntValue
 {
@@ -241,14 +243,6 @@ newUInt(JSContext* ctx, std::uint8_t bits, std::uint64_t value)
     }
     return object;
 }
-
-enum class InputStatus
-{
-    valid,
-    outOfRange,
-    invalidType,
-    exception,
-};
 
 InputStatus
 parseDecimalBigInt(
@@ -814,6 +808,16 @@ newFactory(JSContext* ctx, std::uint8_t bits)
 }  // namespace
 
 namespace jshookz::provider::types {
+
+jshookz::provider::types::UIntInputStatus
+readUIntInput(
+    JSContext* ctx,
+    JSValueConst input,
+    std::uint8_t bits,
+    std::uint64_t& output)
+{
+    return readUInt(ctx, input, bits, output);
+}
 
 bool
 isUInt(JSValueConst value, std::uint8_t expectedBits) noexcept

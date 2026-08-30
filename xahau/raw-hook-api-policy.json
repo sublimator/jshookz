@@ -27,5 +27,31 @@
     "etxn_fee_base",
     "etxn_reserve",
     "emit"
+  ],
+  "experimental_extensions": [
+    {
+      "name": "entropy_cr_dice",
+      "return_type": "int64_t",
+      "param_types": ["uint32_t", "uint32_t"],
+      "amendment": "featureConsensusEntropy",
+      "source": {
+        "repository": "https://github.com/Xahau/xahaud.git",
+        "commit": "877d02fb40ab7b8f4d740767d035b664bde1acc5",
+        "path": "include/xrpl/hook/hook_api.macro",
+        "macro_function_count": 81
+      }
+    },
+    {
+      "name": "entropy_cr_status",
+      "return_type": "int64_t",
+      "param_types": [],
+      "amendment": "featureConsensusEntropy",
+      "source": {
+        "repository": "https://github.com/Xahau/xahaud.git",
+        "commit": "877d02fb40ab7b8f4d740767d035b664bde1acc5",
+        "path": "include/xrpl/hook/hook_api.macro",
+        "macro_function_count": 81
+      }
+    }
   ]
 }
