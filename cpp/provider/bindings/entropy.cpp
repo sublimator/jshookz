@@ -18,6 +18,7 @@ constexpr std::uint64_t entropyStatusMask =
     (entropyCountMask << entropyCountShift) | entropyDenominatorMask;
 
 JSValue
+// @binding provider:entropy.cr.dice
 js_entropy_cr_dice(
     JSContext* ctx,
     JSValueConst,
@@ -56,6 +57,7 @@ js_entropy_cr_dice(
 }
 
 JSValue
+// @binding provider:entropy.cr.status
 js_entropy_cr_status(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
     std::int64_t const result = hook_entropy_cr_status();
@@ -98,6 +100,7 @@ js_entropy_cr_status(JSContext* ctx, JSValueConst, int, JSValueConst*)
 }  // namespace
 
 bool
+// @binding provider:entropy.cr
 registerEntropy(JSContext* ctx, JSValue global)
 {
     qjs::OwnedValue entropy(ctx, JS_NewObject(ctx));

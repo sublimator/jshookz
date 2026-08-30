@@ -111,7 +111,13 @@ JSON.stringify({
       constructor_parent: constructorParent,
     };
   }),
-  enum_namespaces: ["TransactionType", "LedgerEntryType", "TransactionResult", "HookReturnCode"].map(name => {
+  enum_namespaces: [
+    "TransactionType",
+    "LedgerEntryType",
+    "TransactionResult",
+    "HookReturnCode",
+    "EntropyTier",
+  ].map(name => {
     const value = globalThis[name];
     const kind = value === null ? "null" : typeof value;
     const objectLike = (kind === "object" || kind === "function");

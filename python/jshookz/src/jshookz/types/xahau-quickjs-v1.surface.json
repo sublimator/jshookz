@@ -617,6 +617,36 @@
       ],
       "probe": "util.decodeObject(STBlob.fromHex('12000024000000016140000000000F424068400000000000000A73008114B5F762798A53D543A014CAF8B297CFF8F2F937E88314B5F762798A53D543A014CAF8B297CFF8F2F937E8'))"
     },
+    "RecordField": {
+      "members": {
+        "byteLength": "value"
+      },
+      "own": [
+        "byteLength"
+      ],
+      "probe": "record.u8()"
+    },
+    "RecordSchema": {
+      "members": {
+        "byteLength": "value",
+        "encode": "function",
+        "name": "value",
+        "parse": "function",
+        "patch": "function",
+        "safeEncode": "function",
+        "safeParse": "function"
+      },
+      "own": [
+        "byteLength",
+        "encode",
+        "name",
+        "parse",
+        "patch",
+        "safeEncode",
+        "safeParse"
+      ],
+      "probe": "record('SurfaceRecord', 1, [['value', record.u8()]])"
+    },
     "Result": {
       "frozen": true,
       "members": {
@@ -705,6 +735,25 @@
         "withoutField"
       ],
       "probe": "util.decodeObject(new Uint8Array([0x22, 0, 0, 0, 9]))"
+    },
+    "ScalarSchema": {
+      "members": {
+        "byteLength": "value",
+        "encode": "function",
+        "name": "value",
+        "parse": "function",
+        "safeEncode": "function",
+        "safeParse": "function"
+      },
+      "own": [
+        "byteLength",
+        "encode",
+        "name",
+        "parse",
+        "safeEncode",
+        "safeParse"
+      ],
+      "probe": "cell('SurfaceScalar', record.u8())"
     },
     "Transaction": {
       "exotic": {

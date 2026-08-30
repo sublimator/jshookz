@@ -678,7 +678,6 @@ schemaName(JSContext* context, JSValueConst thisValue)
         : JS_AtomToString(context, state->name);
 }
 
-// @binding provider:BinarySchema.byteLength
 // @binding provider:ScalarSchema.byteLength
 // @binding provider:RecordSchema.byteLength
 [[nodiscard]] JSValue
@@ -690,7 +689,6 @@ schemaByteLength(JSContext* context, JSValueConst thisValue)
         : JS_NewUint32(context, state->byteLength);
 }
 
-// @binding provider:BinarySchema.safeParse
 // @binding provider:ScalarSchema.safeParse
 // @binding provider:RecordSchema.safeParse
 [[nodiscard]] JSValue

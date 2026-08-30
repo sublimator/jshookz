@@ -150,7 +150,7 @@
     "serialized_object_max_fields": 32768,
     "serialized_object_max_scopes": 32769,
     "serialized_object_max_depth": 10,
-    "wasmtime_fuel_per_initialization": 5000000,
+    "wasmtime_fuel_per_initialization": 5500000,
     "wasmtime_fuel_per_invocation": 50000000,
     "host_work_meter": "base-plus-addressed-byte-v1",
     "host_work_budget": 2097152,

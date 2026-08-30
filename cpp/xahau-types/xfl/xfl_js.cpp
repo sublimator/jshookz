@@ -408,6 +408,7 @@ registerXFL(JSContext* ctx)
 }
 
 bool
+// @binding provider:XFLDecimal.zero
 publishXFLFactory(JSContext* ctx, JSValueConst global)
 {
     qjs::OwnedValue factory(ctx, JS_NewObject(ctx));

@@ -152,7 +152,7 @@ WASM_MALLOC_OVERHEAD = 16
 MAXIMUM_REQUESTED_CORE = 4_194_336
 MAXIMUM_ENGINE_REQUESTED = 413
 MAXIMUM_DUPLICATE_STACK = 528
-MAXIMUM_STATIC_PROTOCOL_BYTES = 31_481
+MAXIMUM_STATIC_PROTOCOL_BYTES = 31_498
 
 
 COMMON_SETUP = r"""
@@ -728,14 +728,13 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
         # this topology. The frozen LedgerKeylet class/prototype, classifier
         # noun, and nested util.keylet namespace add 1,364 charged bytes and
         # 25 allocations; no keylet instance is live in this topology.
-        # Publishing hook.again adds 150 charged bytes and 3 allocations.
-        # The frozen emit.build namespace, its two functions, and the nominal
-        # EmittedTransaction class/prototype add 857 charged persistent bytes
-        # and 16 allocations; no emitted transaction instance is live here.
-        "registration": (173_804, 2_620),
-        "pre_call": (1_226_144, 2_670),
-        "peak": (5_421_101, 2_683),
-        "post_success": (3_455_805, 2_697),
+        # Publishing hook.again, emit.build, entropy.cr, the entropy enum,
+        # typed parameter codecs, and accept.requireTransaction moves this
+        # exact experimental-provider registration snapshot coherently.
+        "registration": (183_346, 2_765),
+        "pre_call": (1_235_942, 2_815),
+        "peak": (5_430_899, 2_828),
+        "post_success": (3_465_603, 2_842),
         "static_protocol": MAXIMUM_STATIC_PROTOCOL_BYTES,
     }
     assert restored_snapshot == registration
@@ -746,7 +745,7 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     peak_requested_delta = peak_requested - pre_call_requested
     peak_count_delta = peak[1] - pre_call[1]
 
-    assert pre_call_requested - registration_requested == 1_051_540
+    assert pre_call_requested - registration_requested == 1_051_796
     assert peak_requested_delta == MAXIMUM_REQUESTED_CORE + MAXIMUM_ENGINE_REQUESTED
     assert peak[0] - pre_call[0] == (
         MAXIMUM_REQUESTED_CORE
@@ -755,7 +754,7 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     )
     assert MAXIMUM_DUPLICATE_STACK == 11 * 6 * 8
     assert peak[0] < limits.quickjs_heap_bytes
-    assert limits.quickjs_heap_bytes - post_success[0] == 13_321_411
+    assert limits.quickjs_heap_bytes - post_success[0] == 13_311_613
     assert limits.quickjs_heap_bytes - post_success[0] >= HEADROOM_BYTES
 
 

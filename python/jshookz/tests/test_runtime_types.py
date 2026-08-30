@@ -6,7 +6,7 @@ from jshookz.runtime_types import SCHEMA, observe_runtime_types
 
 # Exact runtime-surface observation, including the foreign-state accessor,
 # account-keylet value, and selected typed emission builders.
-_NOMINAL_MATRIX_GAS = 11_755_845
+_NOMINAL_MATRIX_GAS = 11_746_655
 
 _XFL_VALUE_KERNEL = r"""
 JSON.stringify((() => {
@@ -261,12 +261,14 @@ def test_sealed_provider_runtime_type_observation_is_actual_global_state() -> No
         "LedgerEntryType",
         "TransactionResult",
         "HookReturnCode",
+        "EntropyTier",
     }
     expected = {
         "TransactionType": (77, "Invoke", 99),
         "LedgerEntryType": (34, "AccountRoot", 97),
         "TransactionResult": (199, "telLOCAL_ERROR", -399),
-        "HookReturnCode": (46, "INVALID_FLOAT", -10024),
+        "HookReturnCode": (47, "INVALID_FLOAT", -10024),
+        "EntropyTier": (4, "validatorFull", 4),
     }
     for name, (count, member, literal) in expected.items():
         row = enum_rows[name]
