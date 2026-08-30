@@ -363,6 +363,11 @@ TEST_F(XahauTypes, XFLFactoryAndLittleEndianRecordMatchPinnedFloatSet)
         (() => {
           const decimal = XFLDecimal.from(6541432897943971n, -5);
           const small = XFLDecimal.from(12345n, 0);
+          const order18Before = XFLDecimal.from(999999999999995968n, 0);
+          const order18At = XFLDecimal.from(999999999999995969n, 0);
+          const negativeOrder18Before = XFLDecimal.from(-999999999999995968n, 0);
+          const negativeOrder18At = XFLDecimal.from(-999999999999995969n, 0);
+          const signedMaximum = XFLDecimal.from(9223372036854775807n, 0);
           const signedMinimum = XFLDecimal.from(-9223372036854775808n, 0);
           const overflow = XFLDecimal.from(1n, 97);
           const underflow = XFLDecimal.from(1n, -97);
@@ -370,6 +375,9 @@ TEST_F(XahauTypes, XFLFactoryAndLittleEndianRecordMatchPinnedFloatSet)
           if (!decimal.ok) return "factory-failed";
           const encoded = schema.safeEncode(decimal.value);
           if (!encoded.ok) return "encode-failed";
+          const order18Encoded = order18At.ok
+            ? schema.safeEncode(order18At.value)
+            : order18At;
           const parsed = schema.safeParse(encoded.value);
           const bytes = encoded.value.toBytes();
           let raw = 0n;
@@ -400,6 +408,19 @@ TEST_F(XahauTypes, XFLFactoryAndLittleEndianRecordMatchPinnedFloatSet)
             knownAnswer: raw === 6275552114197674403n,
             smallAnswer:
               small.ok && rawOf(small.value) === 6162158790242838528n,
+            order18Answers:
+              order18Before.ok && order18At.ok &&
+              negativeOrder18Before.ok && negativeOrder18At.ok &&
+              rawOf(order18Before.value) === 6405111470866104279n &&
+              rawOf(order18At.value) === 6405111470866104270n &&
+              rawOf(negativeOrder18Before.value) === 1793425452438716375n &&
+              rawOf(negativeOrder18At.value) === 1793425452438716366n,
+            order18Record:
+              order18Encoded.ok &&
+              order18Encoded.value.toHex() === "CEFFC06FF286E358",
+            signedMaximumAnswer:
+              signedMaximum.ok &&
+              rawOf(signedMaximum.value) === 6422349241412441079n,
             signedMinimumAnswer:
               signedMinimum.ok &&
               rawOf(signedMinimum.value) === 1810663222985053175n,
@@ -425,7 +446,7 @@ TEST_F(XahauTypes, XFLFactoryAndLittleEndianRecordMatchPinnedFloatSet)
     )JS");
     ASSERT_FALSE(value.isException()) << to_string(value.get());
     EXPECT_EQ(to_string(value.get()),
-        R"({"knownAnswer":true,"smallAnswer":true,"signedMinimumAnswer":true,"nominal":true,"zero":true,"noOne":true,"frozenFactory":true,"invalid":true,"malformedScalar":true,"malformedField":true,"assertion":true})");
+        R"({"knownAnswer":true,"smallAnswer":true,"order18Answers":true,"order18Record":true,"signedMaximumAnswer":true,"signedMinimumAnswer":true,"nominal":true,"zero":true,"noOne":true,"frozenFactory":true,"invalid":true,"malformedScalar":true,"malformedField":true,"assertion":true})");
 }
 
 TEST_F(XahauTypes, CurrencyIssueAndIouAmountAuthoringIsCanonical)
@@ -433,13 +454,30 @@ TEST_F(XahauTypes, CurrencyIssueAndIouAmountAuthoringIsCanonical)
     auto value = eval(R"JS(
         (() => {
           const currency = Currency.from("EVR");
-          const issuer = AccountID.from(new Uint8Array(20).fill(0x11));
+          const issuer = AccountID.fromHex(
+            "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+          );
           const issue = Issue.iou(currency, issuer);
           const decimal = XFLDecimal.from(15n, -1);
+          const negativeDecimal = XFLDecimal.from(-15n, -1);
+          const boundaryDecimal = XFLDecimal.from(999999999999995969n, 0);
           if (!decimal.ok) return "decimal-failed";
+          if (!negativeDecimal.ok) return "negative-decimal-failed";
+          if (!boundaryDecimal.ok) return "boundary-decimal-failed";
           const amount = Amount.iou(decimal.value, issue);
+          const zeroAmount = Amount.iou(XFLDecimal.zero, issue);
+          const negativeAmount = Amount.iou(negativeDecimal.value, issue);
+          const boundaryAmount = Amount.iou(boundaryDecimal.value, issue);
           if (!amount.ok) return "amount-failed";
+          if (!zeroAmount.ok || !negativeAmount.ok || !boundaryAmount.ok)
+            return "amount-family-failed";
           const wire = amount.value.toBytes();
+          const hexOf = value => {
+            let hex = "";
+            for (const byte of value.toBytes())
+              hex += byte.toString(16).padStart(2, "0");
+            return hex.toUpperCase();
+          };
           const nativeIssue = Amount.drops(1n).issue;
           const rejected = Amount.iou(decimal.value, nativeIssue);
           let invalidCurrency = false;
@@ -460,10 +498,22 @@ TEST_F(XahauTypes, CurrencyIssueAndIouAmountAuthoringIsCanonical)
               amount.value.value.equals(decimal.value) &&
               amount.value.issue.equals(issue),
             wire:
-              wire.length === 48 && (wire[0] & 0x80) !== 0 &&
-              wire.slice(8, 28).every((byte, index) =>
-                byte === currency.toBytes()[index]) &&
-              wire.slice(28).every(byte => byte === 0x11),
+              wire.length === 48 &&
+              hexOf(amount.value) ===
+                "D485543DF729C0000000000000000000000000004556520000000000" +
+                "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+            zeroWire:
+              hexOf(zeroAmount.value) ===
+                "80000000000000000000000000000000000000004556520000000000" +
+                "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+            negativeWire:
+              hexOf(negativeAmount.value) ===
+                "9485543DF729C0000000000000000000000000004556520000000000" +
+                "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
+            boundaryWire:
+              hexOf(boundaryAmount.value) ===
+                "D8E386F26FC0FFCE0000000000000000000000004556520000000000" +
+                "B5F762798A53D543A014CAF8B297CFF8F2F937E8",
             rejected:
               !rejected.ok && rejected.error.domain === "encode" &&
               rejected.error.issue === "invalid-value",
@@ -479,7 +529,7 @@ TEST_F(XahauTypes, CurrencyIssueAndIouAmountAuthoringIsCanonical)
         FAIL() << to_string(error.get());
     }
     EXPECT_EQ(to_string(value.get()),
-        R"({"currency":true,"issue":true,"amount":true,"wire":true,"rejected":true,"invalidCurrency":true,"invalidIssuer":true,"frozenFactories":true})");
+        R"({"currency":true,"issue":true,"amount":true,"wire":true,"zeroWire":true,"negativeWire":true,"boundaryWire":true,"rejected":true,"invalidCurrency":true,"invalidIssuer":true,"frozenFactories":true})");
 }
 
 TEST_F(XahauTypes, RecordPatchPreservesUnclaimedBytesAndValidatesFields)

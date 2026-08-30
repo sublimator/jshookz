@@ -191,59 +191,59 @@ void accountRootIsLedgerEntry;
 const uriTokenIsLedgerEntry: LedgerEntry = URIToken.prototype;
 void uriTokenIsLedgerEntry;
 
-// ── selected v1 state, ledger, and amount surface ────────────────
+// ── Schema reads, decimal authoring, and concrete lookup ────────────
 
-declare const surfaceSchema: BinarySchema<{ readonly value: XFLDecimal }>;
-declare const surfaceForeign: state.ForeignAccessor;
+declare const decimalStateSchema: BinarySchema<{ readonly value: XFLDecimal }>;
+declare const foreignState: state.ForeignAccessor;
 
-const surfaceLocalRead: StateReadResult<{ readonly value: XFLDecimal }> =
-  state.get("surface", surfaceSchema);
-const surfaceForeignRead: StateReadResult<{ readonly value: XFLDecimal }> =
-  surfaceForeign.get("surface", surfaceSchema);
-const surfaceForeignWrite: HostVoidResult = surfaceForeign.set(
-  "surface",
+const localSchemaRead: StateReadResult<{ readonly value: XFLDecimal }> =
+  state.get("schema-value", decimalStateSchema);
+const foreignSchemaRead: StateReadResult<{ readonly value: XFLDecimal }> =
+  foreignState.get("schema-value", decimalStateSchema);
+const foreignStateWrite: HostVoidResult = foreignState.set(
+  "schema-value",
   STBlob.from(new Uint8Array(8)),
 );
-const surfaceForeignDelete: HostVoidResult = surfaceForeign.del("surface");
-void surfaceLocalRead;
-void surfaceForeignRead;
-void surfaceForeignWrite;
-void surfaceForeignDelete;
+const foreignStateDelete: HostVoidResult = foreignState.del("schema-value");
+void localSchemaRead;
+void foreignSchemaRead;
+void foreignStateWrite;
+void foreignStateDelete;
 
-const surfaceFeeBase: Drops = ledger.feeBase;
-const surfaceZero: XFLDecimal = XFLDecimal.zero;
-const surfaceReward = XFLDecimal.from(11, -1);
-const surfaceXflField: RecordField<XFLDecimal, 8> = record.xflle();
-void surfaceFeeBase;
-void surfaceZero;
-void surfaceXflField;
+const baseFee: Drops = ledger.feeBase;
+const decimalZero: XFLDecimal = XFLDecimal.zero;
+const scaledDecimal = XFLDecimal.from(11, -1);
+const persistedDecimalField: RecordField<XFLDecimal, 8> = record.xflle();
+void baseFee;
+void decimalZero;
+void persistedDecimalField;
 
-const surfaceCurrency: Currency = Currency.from("USD");
-const surfaceIssue: Issue = Issue.iou(surfaceCurrency, AccountID.one);
-if (surfaceReward.ok) {
-  const surfaceAmount: Result<IOUAmount, EncodeError> = Amount.iou(
-    surfaceReward.value,
-    surfaceIssue,
+const issuedCurrency: Currency = Currency.from("USD");
+const issuedAsset: Issue = Issue.iou(issuedCurrency, AccountID.one);
+if (scaledDecimal.ok) {
+  const issuedAmount: Result<IOUAmount, EncodeError> = Amount.iou(
+    scaledDecimal.value,
+    issuedAsset,
   );
-  void surfaceAmount;
+  void issuedAmount;
 }
 
-const surfaceTokenKeylet: LedgerKeylet<URIToken> =
+const uriTokenKeylet: LedgerKeylet<URIToken> =
   util.keylet.uriToken(Hash256.zero);
-const surfaceTokenRead: HostResult<URIToken | undefined> =
-  ledger.lookup(surfaceTokenKeylet);
-if (surfaceTokenRead.ok && surfaceTokenRead.value !== undefined) {
-  const surfaceOwner: AccountID = surfaceTokenRead.value.Owner;
-  const surfaceType: typeof LedgerEntryType.URIToken =
-    surfaceTokenRead.value.LedgerEntryType;
-  void surfaceOwner;
-  void surfaceType;
+const uriTokenRead: HostResult<URIToken | undefined> =
+  ledger.lookup(uriTokenKeylet);
+if (uriTokenRead.ok && uriTokenRead.value !== undefined) {
+  const uriTokenOwner: AccountID = uriTokenRead.value.Owner;
+  const uriTokenType: typeof LedgerEntryType.URIToken =
+    uriTokenRead.value.LedgerEntryType;
+  void uriTokenOwner;
+  void uriTokenType;
 }
 
-// @ts-expect-error zero is public but no one constant is selected
+// @ts-expect-error the decimal factory publishes zero but no one constant
 void XFLDecimal.one;
 // @ts-expect-error exact v1 accepts a complete Issue, not three IOU parts
-Amount.iou(XFLDecimal.zero, surfaceCurrency, AccountID.one);
+Amount.iou(XFLDecimal.zero, issuedCurrency, AccountID.one);
 declare const unspecializedLedgerKeylet: LedgerKeylet<LedgerEntry>;
 // @ts-expect-error no generic complete-family lookup was selected
 ledger.lookup(unspecializedLedgerKeylet);

@@ -8,8 +8,7 @@ from hostem.runner import HookRunner
 
 ACCOUNT_HEX = "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
 ACCOUNT_KEYLET_HEX = (
-    "0061"
-    "2B6AC232AA4C4BE41BF49D2459FA4A0347E1B543A4C92FCEE0821C0201E2E9A8"
+    "00612B6AC232AA4C4BE41BF49D2459FA4A0347E1B543A4C92FCEE0821C0201E2E9A8"
 )
 
 URI_TOKEN_ID_HEX = "AA" * 32
@@ -65,6 +64,22 @@ URI_TOKEN = bytes.fromhex(
     "751368747470733A2F2F6578616D706C652E636F6D"
     "8214D0F5430B66E06498D4CEEC816C7B3337F9982337"
     "8414D0F5430B66E06498D4CEEC816C7B3337F9982337"
+)
+
+# Independently serialized through the pinned protocol codec fixture.
+# Every format-specific optional field is present.
+COMPLETE_URI_TOKEN = bytes.fromhex(
+    "110055"
+    "2200000000"
+    "2500000001"
+    "340000000000000000"
+    "550000000000000000000000000000000000000000000000000000000000000000"
+    "50151111111111111111111111111111111111111111111111111111111111111111"
+    "6140000000000F4240"
+    "751368747470733A2F2F6578616D706C652E636F6D"
+    "8214B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+    "8314B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+    "8414B5F762798A53D543A014CAF8B297CFF8F2F937E8"
 )
 
 
@@ -198,6 +213,50 @@ def test_uri_token_keylet_and_specific_lookup_are_typed() -> None:
     ]
 
 
+def test_uri_token_lookup_projects_complete_canonical_format() -> None:
+    source = f'''
+      export function main(): never {{
+        const token = rollback.requirePresent(
+          ledger.lookup(util.keylet.uriToken(
+            Hash256.fromHex("{URI_TOKEN_ID_HEX}"),
+          )),
+          "URIToken missing",
+          1,
+        );
+        if (!(token instanceof URIToken) ||
+            token.LedgerEntryType !== LedgerEntryType.URIToken ||
+            !token.Flags.isZero() ||
+            token.OwnerNode.toBigInt() !== 0n ||
+            token.PreviousTxnLgrSeq.toNumber() !== 1 ||
+            !token.PreviousTxnID.equals(Hash256.zero) ||
+            token.URI.toHex() !== "68747470733A2F2F6578616D706C652E636F6D" ||
+            token.Owner.toHex() !== "{ACCOUNT_HEX}" ||
+            token.Issuer.toHex() !== "{ACCOUNT_HEX}" ||
+            token.Destination?.toHex() !== "{ACCOUNT_HEX}" ||
+            token.Digest?.toHex() !== "{"11" * 32}" ||
+            token.Amount?.asNative()?.drops !== 1000000n ||
+            token.LedgerIndex !== undefined || token.Remarks !== undefined) {{
+          rollback("complete URIToken projection mismatch", 2);
+        }}
+        accept("complete URIToken projected", 0);
+      }}
+    '''
+
+    result = _uri_runner(COMPLETE_URI_TOKEN).run_typescript(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"complete URIToken projected"
+    assert _call_names(result) == [
+        "slot_set",
+        "slot_size",
+        "slot_clear",
+        "slot_set",
+        "slot",
+        "slot_clear",
+        "accept",
+    ]
+
+
 def test_uri_token_lookup_rejects_wrong_complete_ledger_family() -> None:
     result = _uri_runner(ACCOUNT_ROOT).run(
         f'''
@@ -319,7 +378,9 @@ def test_trusted_lookup_payload_must_prove_exact_account_root(value: bytes) -> N
         "slot",
         "slot_clear",
     ]
-    assert not any(key.startswith("slot_data:") for key in runner.runtime._slot_overrides)
+    assert not any(
+        key.startswith("slot_data:") for key in runner.runtime._slot_overrides
+    )
 
 
 def test_slot_size_failure_clears_the_live_measurement_slot() -> None:
@@ -337,7 +398,9 @@ def test_slot_size_failure_clears_the_live_measurement_slot() -> None:
     assert result.error is not None
     assert "slot_size returned -7" in str(result.error)
     assert _call_names(result) == ["slot_set", "slot_size", "slot_clear"]
-    assert not any(key.startswith("slot_data:") for key in runner.runtime._slot_overrides)
+    assert not any(
+        key.startswith("slot_data:") for key in runner.runtime._slot_overrides
+    )
 
 
 def test_second_slot_set_absence_is_an_invariant_after_observed_existence() -> None:
@@ -368,7 +431,9 @@ def test_second_slot_set_absence_is_an_invariant_after_observed_existence() -> N
         "slot_clear",
         "slot_set",
     ]
-    assert not any(key.startswith("slot_data:") for key in runner.runtime._slot_overrides)
+    assert not any(
+        key.startswith("slot_data:") for key in runner.runtime._slot_overrides
+    )
 
 
 def test_short_slot_copy_clears_the_live_copy_slot() -> None:
@@ -392,4 +457,6 @@ def test_short_slot_copy_clears_the_live_copy_slot() -> None:
         "slot",
         "slot_clear",
     ]
-    assert not any(key.startswith("slot_data:") for key in runner.runtime._slot_overrides)
+    assert not any(
+        key.startswith("slot_data:") for key in runner.runtime._slot_overrides
+    )

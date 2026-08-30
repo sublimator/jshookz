@@ -13,6 +13,19 @@ def _call_names(result) -> list[str]:
     return [call.name for call in result.call_log]
 
 
+_EXPECT_SCHEMA_FAILURE = """
+function expectSchemaFailure<T>(
+  result: SchemaReadResult<T>,
+): HostError | ParseError {
+  if (result.ok) {
+    rollback("expected schema-read failure", 1);
+  } else {
+    return result.error;
+  }
+}
+"""
+
+
 def test_local_delete_uses_zero_length_state_set_and_removes_state() -> None:
     runtime = HookRuntime()
     runtime.state_db[b"K"] = b"value"
@@ -208,18 +221,20 @@ def test_schema_sized_local_read_preserves_parse_absence_and_host_channels() -> 
     runtime.state_db[b"K"] = bytes.fromhex("78563412")
     runtime.state_db[b"SHORT"] = bytes.fromhex("010203")
     runtime.state_db[b"LONG"] = bytes.fromhex("0102030405")
+    runtime.state_db[b"MALFORMED_XFL"] = bytes.fromhex("0100000000000000")
 
     result = _run(
         runtime,
-        """
+        _EXPECT_SCHEMA_FAILURE
+        + """
         export function main(): never {
           const schema = cell("U32", record.u32le());
           const value = rollback.onFail(
             state.get("K", schema),
             "schema-sized local state read failed",
           );
-          const short = state.get("SHORT", schema).okOrHandle(error => error);
-          const long = state.get("LONG", schema).okOrHandle(error => error);
+          const short = expectSchemaFailure(state.get("SHORT", schema));
+          const long = expectSchemaFailure(state.get("LONG", schema));
           const missing = rollback.onFail(
             state.get("MISSING", schema),
             "schema-sized missing-state read failed",
@@ -228,15 +243,19 @@ def test_schema_sized_local_read_preserves_parse_absence_and_host_channels() -> 
             state.get("LONG"),
             "untyped long missing",
           );
+          const xflSchema = cell("PersistedXFL", record.xflle());
+          const malformed = expectSchemaFailure(
+            state.get("MALFORMED_XFL", xflSchema),
+          );
           if (value !== 0x12345678 ||
-              typeof short !== "object" || short === null ||
               short.domain !== "parse" || short.issue !== "wrong-length" ||
               short.expectedLength !== 4 || short.actualLength !== 3 ||
-              typeof long !== "object" || long === null ||
               long.domain !== "host" ||
               long.code !== HookReturnCode.TOO_SMALL ||
               missing !== undefined ||
-              untypedLong.byteLength !== 5) {
+              untypedLong.byteLength !== 5 ||
+              malformed.domain !== "parse" ||
+              malformed.issue !== "invalid-value") {
             rollback("schema-sized local state mismatch", 1);
           }
           accept("schema-sized local state", 0);
@@ -245,8 +264,15 @@ def test_schema_sized_local_read_preserves_parse_absence_and_host_channels() -> 
     )
 
     assert result.accepted, result.error
-    assert _call_names(result) == ["state"] * 5 + ["accept"]
-    assert [call.args[1] for call in result.call_log[:5]] == [4, 4, 4, 4, 4096]
+    assert _call_names(result) == ["state"] * 6 + ["accept"]
+    assert [call.args[1] for call in result.call_log[:6]] == [
+        4,
+        4,
+        4,
+        4,
+        4096,
+        8,
+    ]
 
 
 def test_schema_sized_foreign_read_uses_exact_capacity() -> None:
@@ -254,10 +280,14 @@ def test_schema_sized_foreign_read_uses_exact_capacity() -> None:
     scope = (bytes(20), bytes(32))
     runtime._foreign_state_db[(*scope, b"K")] = bytes.fromhex("3412")
     runtime._foreign_state_db[(*scope, b"LONG")] = bytes.fromhex("010203")
+    runtime._foreign_state_db[(*scope, b"MALFORMED_XFL")] = bytes.fromhex(
+        "0100000000000000"
+    )
 
     result = _run(
         runtime,
-        """
+        _EXPECT_SCHEMA_FAILURE
+        + """
         export function main(): never {
           const schema = cell("U16", record.u16le());
           const foreign = state.foreign(AccountID.zero, Hash256.zero);
@@ -265,11 +295,16 @@ def test_schema_sized_foreign_read_uses_exact_capacity() -> None:
             foreign.get("K", schema),
             "schema-sized foreign state read failed",
           );
-          const long = foreign.get("LONG", schema).okOrHandle(error => error);
+          const long = expectSchemaFailure(foreign.get("LONG", schema));
+          const xflSchema = cell("PersistedXFL", record.xflle());
+          const malformed = expectSchemaFailure(
+            foreign.get("MALFORMED_XFL", xflSchema),
+          );
           if (value !== 0x1234 ||
-              typeof long !== "object" || long === null ||
               long.domain !== "host" ||
-              long.code !== HookReturnCode.TOO_SMALL) {
+              long.code !== HookReturnCode.TOO_SMALL ||
+              malformed.domain !== "parse" ||
+              malformed.issue !== "invalid-value") {
             rollback("schema-sized foreign state mismatch", 1);
           }
           accept("schema-sized foreign state", 0);
@@ -278,8 +313,42 @@ def test_schema_sized_foreign_read_uses_exact_capacity() -> None:
     )
 
     assert result.accepted, result.error
-    assert _call_names(result) == ["state_foreign", "state_foreign", "accept"]
-    assert [call.args[1] for call in result.call_log[:2]] == [2, 2]
+    assert _call_names(result) == [
+        "state_foreign",
+        "state_foreign",
+        "state_foreign",
+        "accept",
+    ]
+    assert [call.args[1] for call in result.call_log[:3]] == [2, 2, 8]
+
+
+def test_schema_sized_reads_preserve_exact_negative_host_status() -> None:
+    runtime = HookRuntime()
+    runtime.handlers["state"] = lambda *_args: -77
+    runtime.handlers["state_foreign"] = lambda *_args: -77
+
+    result = _run(
+        runtime,
+        _EXPECT_SCHEMA_FAILURE
+        + """
+        export function main(): never {
+          const schema = cell("PersistedXFL", record.xflle());
+          const local = expectSchemaFailure(state.get("K", schema));
+          const foreign = expectSchemaFailure(
+            state.foreign(AccountID.zero, Hash256.zero).get("K", schema),
+          );
+          if (local.domain !== "host" || Number(local.code) !== -77 ||
+              foreign.domain !== "host" || Number(foreign.code) !== -77) {
+            rollback("typed host status changed", 1);
+          }
+          accept("typed host status preserved", 0);
+        }
+        """,
+    )
+
+    assert result.accepted, result.error
+    assert _call_names(result) == ["state", "state_foreign", "accept"]
+    assert [call.args[1] for call in result.call_log[:2]] == [8, 8]
 
 
 def test_foreign_mutation_preserves_exact_host_failure() -> None:

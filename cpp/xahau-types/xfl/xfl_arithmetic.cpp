@@ -18,6 +18,8 @@ constexpr std::int32_t maxExponent = 80;
     9'999'999'999'999'979ull;
 [[maybe_unused]] constexpr std::uint64_t order17Threshold =
     99'999'999'999'999'593ull;
+[[maybe_unused]] constexpr std::uint64_t order18Threshold =
+    999'999'999'999'995'969ull;
 constexpr std::uint64_t maxDivideQuotient = 10'111'111'111'111'118ull;
 constexpr std::uint32_t maxDividePositions = 16;
 constexpr std::uint32_t maxDivideSubtractions = 167;
@@ -124,7 +126,7 @@ normalizeLive(std::uint64_t magnitude, std::int32_t exponent,
     // Pinned xahaud classifies decimal order through host log10. Its rounded
     // transition points are part of xahauFloatV1, so preserve them with exact
     // integer comparisons rather than replacing them with digit counting.
-    std::int32_t order = 17;
+    std::int32_t order = 18;
 #if defined(CONFIG_TEST_XFL_DIGIT_COUNT_MUTANT)
     if (magnitude < 1'000'000'000'000'000ull)
         order = 14;
@@ -132,6 +134,8 @@ normalizeLive(std::uint64_t magnitude, std::int32_t exponent,
         order = 15;
     else if (magnitude < 100'000'000'000'000'000ull)
         order = 16;
+    else if (magnitude < 1'000'000'000'000'000'000ull)
+        order = 17;
 #else
     if (magnitude < order15Threshold) {
         order = 0;
@@ -142,6 +146,8 @@ normalizeLive(std::uint64_t magnitude, std::int32_t exponent,
         order = 15;
     else if (magnitude < order17Threshold)
         order = 16;
+    else if (magnitude < order18Threshold)
+        order = 17;
 #endif
 
     std::int32_t const adjust = 15 - order;
