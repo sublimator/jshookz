@@ -65,15 +65,18 @@ def test_parameter_keys_reject_structural_to_bytes_impostors(tmp_path: Path):
         compile_hook(source)
 
 
-def test_exact_v1_types_local_delete_and_read_only_foreign_state(tmp_path: Path):
+def test_exact_v1_types_local_and_foreign_state_effects(tmp_path: Path):
     source = tmp_path / "foreign-state.hook.ts"
     source.write_text(
         "export function main():never{"
         "const foreign:state.ForeignAccessor="
         "state.foreign(AccountID.zero,Hash256.zero);"
         "const read:HostResult<STBlob|undefined>=foreign.get('K');"
-        "const deletion:HostVoidResult=state.del('K');"
-        "rollback.onFail(read);deletion.moot();accept();}"
+        "const write:HostVoidResult=foreign.set('K',[1]);"
+        "const foreignDeletion:HostVoidResult=foreign.del('K');"
+        "const localDeletion:HostVoidResult=state.del('K');"
+        "rollback.onFail(read);write.moot();foreignDeletion.moot();"
+        "localDeletion.moot();accept();}"
     )
 
     compile_hook(source)
@@ -82,8 +85,6 @@ def test_exact_v1_types_local_delete_and_read_only_foreign_state(tmp_path: Path)
 @pytest.mark.parametrize(
     "statement",
     [
-        "state.foreign(AccountID.zero,Hash256.zero).set('K',[1]);",
-        "state.foreign(AccountID.zero,Hash256.zero).del('K');",
         "state.foreign(AccountID.zero,Hash256.zero).getMany(['K']);",
         "state.foreign({toBytes:()=>new Uint8Array(20)},Hash256.zero);",
         "state.foreign(AccountID.zero,{toBytes:()=>new Uint8Array(32)});",
@@ -150,13 +151,25 @@ def test_default_v1_declarations_compile_minimal_record_schema(tmp_path: Path):
     compile_hook(source)
 
 
+def test_default_v1_declarations_reject_mutating_parsed_record(tmp_path: Path):
+    source = tmp_path / "readonly-record-schema.hook.ts"
+    source.write_text(
+        "const Cell=record('Cell',1,[['tag',record.u8()]]);"
+        "export function main():never{"
+        "const decoded=rollback.onFail(Cell.safeParse(new Uint8Array([1])),'parse');"
+        "decoded.tag=2;accept();}"
+    )
+
+    with pytest.raises(RuntimeError, match="read-only property"):
+        compile_hook(source)
+
+
 @pytest.mark.parametrize(
     "statement",
     [
         "record.u16be();",
         "record.u32be();",
         "record.i32le();",
-        "record.xflle();",
         "record.currency();",
         "record.overlay({raw:record.bytes(1)});",
         "record.hash(20);",
