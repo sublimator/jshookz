@@ -15,7 +15,6 @@ import hashlib
 import importlib.metadata
 import os
 import re
-import shlex
 import subprocess
 import sys
 import tempfile
@@ -32,10 +31,10 @@ PINNED_WASI_VERSION = (
 )
 PINNED_WASMTIME_VERSION = "47.0.1"
 PINNED_SOURCE_MANIFEST_SHA256 = (
-    "bfd288a63ed75c4b850a5b0ec58d668b667745f998671d438bc187ca76721f61"
+    "c7c24420bdadfabc2fa1b332c0416a551627092ba19db8de5a9224a5408d864b"
 )
 PINNED_ARTIFACT_SHA256 = (
-    "38479358d9416d6b7bb487f8c41a65ad8ba71d0b8306ef54fb7c62eb7dd19780"
+    "859640623eb8ceb84dbbf08b35620de302ca441662ebbaf50fe7b7b54d5e3fc0"
 )
 PINNED_COUNTER_ABI = "recursive-xdata-fuel-v1"
 
@@ -64,6 +63,23 @@ PROBE_TUS = (
     "tests/recursive_fuel_once.cpp",
     "tests/recursive_fuel_wasm.cpp",
 )
+SOURCE_MANIFEST_FILES = (
+    *PROVIDER_STATIC_TUS,
+    *PROBE_TUS,
+    "tests/recursive_fuel_once.h",
+)
+# Pin the declared local source inventory, not clang -MM output. Conditional
+# standard-library includes make the compiler-discovered closure an honest
+# platform property even when these sources and the resulting route are
+# unchanged.
+SOURCE_MANIFEST_TREES = (
+    "includes",
+    "core/includes",
+    "base58/includes",
+    "generated",
+    "stubs",
+)
+SOURCE_MANIFEST_SUFFIXES = frozenset({".c", ".cc", ".cpp", ".h", ".hpp"})
 COMPILE_FLAGS = (
     "-std=c++23",
     "-O2",
@@ -280,31 +296,24 @@ def validate_provider_static_inventory(src: Path) -> None:
     print(f"provider_static_inventory {','.join(found)}")
 
 
-def dependency_manifest(src: Path, clang: Path, wasi: Path) -> tuple[str, list[str]]:
-    dependencies: set[Path] = set()
-    common = [
-        str(clang),
-        f"--sysroot={wasi / 'share' / 'wasi-sysroot'}",
-        *COMPILE_FLAGS,
-        *include_flags(src),
-        "-MM",
-    ]
-    for tu in translation_units(src):
-        output = subprocess.check_output([*common, str(tu)], text=True)
-        flattened = output.replace("\\\n", " ")
-        if ":" not in flattened:
-            raise GateError(f"invalid dependency output for {tu}: {output!r}")
-        for token in shlex.split(flattened.split(":", 1)[1]):
-            candidate = Path(token)
-            if not candidate.is_absolute():
-                candidate = src / candidate
-            candidate = candidate.resolve()
-            try:
-                candidate.relative_to(src.resolve())
-            except ValueError:
-                continue
-            if candidate.is_file():
-                dependencies.add(candidate)
+def declared_source_manifest(src: Path) -> tuple[str, list[str]]:
+    dependencies = {src / relative for relative in SOURCE_MANIFEST_FILES}
+    for relative in SOURCE_MANIFEST_TREES:
+        root = src / relative
+        if not root.is_dir():
+            raise GateError(f"source manifest tree is missing: {relative}")
+        dependencies.update(
+            path
+            for path in root.rglob("*")
+            if path.is_file() and path.suffix in SOURCE_MANIFEST_SUFFIXES
+        )
+    missing = sorted(
+        path.relative_to(src).as_posix()
+        for path in dependencies
+        if not path.is_file()
+    )
+    if missing:
+        raise GateError(f"source manifest files are missing: {missing}")
     rows = []
     for path in sorted(dependencies):
         relative = path.relative_to(src).as_posix()
@@ -313,8 +322,8 @@ def dependency_manifest(src: Path, clang: Path, wasi: Path) -> tuple[str, list[s
     return digest, rows
 
 
-def validate_source_manifest(src: Path, clang: Path, wasi: Path) -> None:
-    digest, rows = dependency_manifest(src, clang, wasi)
+def validate_source_manifest(src: Path) -> None:
+    digest, rows = declared_source_manifest(src)
     if digest != PINNED_SOURCE_MANIFEST_SHA256:
         raise GateError(
             f"artifact source manifest drift: {digest}, "
@@ -775,7 +784,7 @@ def main() -> int:
     try:
         clang, objdump = validate_toolchain(wasi)
         validate_provider_static_inventory(src)
-        validate_source_manifest(src, clang, wasi)
+        validate_source_manifest(src)
         with tempfile.TemporaryDirectory() as temporary:
             work = args.keep_wasm.parent if args.keep_wasm else Path(temporary)
             work.mkdir(parents=True, exist_ok=True)
