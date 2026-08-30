@@ -42,6 +42,7 @@ if (unknownValue instanceof Transaction) { const v: Transaction = unknownValue; 
 if (unknownValue instanceof Payment) { const v: Payment = unknownValue; void v; }
 if (unknownValue instanceof LedgerEntry) { const v: LedgerEntry = unknownValue; void v; }
 if (unknownValue instanceof AccountRoot) { const v: AccountRoot = unknownValue; void v; }
+if (unknownValue instanceof URIToken) { const v: URIToken = unknownValue; void v; }
 if (unknownValue instanceof SerializedField) {
   const v: SerializedField<unknown, number, number, number> = unknownValue; void v;
 }
@@ -117,6 +118,8 @@ const c31 = new Payment(); void c31;
 const c32 = new LedgerEntry(); void c32;
 // @ts-expect-error private provider-only constructor
 const c33 = new AccountRoot(); void c33;
+// @ts-expect-error private provider-only constructor
+const c34 = new URIToken(); void c34;
 
 // ---- only the real serialized-object classes expose `.prototype` ----
 
@@ -181,9 +184,69 @@ const p30: Transaction = Transaction.prototype; void p30;
 const p31: Payment = Payment.prototype; void p31;
 const p32: LedgerEntry = LedgerEntry.prototype; void p32;
 const p33: AccountRoot = AccountRoot.prototype; void p33;
+const p34: URIToken = URIToken.prototype; void p34;
 const paymentIsTransaction: Transaction = Payment.prototype; void paymentIsTransaction;
 const accountRootIsLedgerEntry: LedgerEntry = AccountRoot.prototype;
 void accountRootIsLedgerEntry;
+const uriTokenIsLedgerEntry: LedgerEntry = URIToken.prototype;
+void uriTokenIsLedgerEntry;
+
+// ── selected v1 state, ledger, and amount surface ────────────────
+
+declare const surfaceSchema: BinarySchema<{ readonly value: XFLDecimal }>;
+declare const surfaceForeign: state.ForeignAccessor;
+
+const surfaceLocalRead: StateReadResult<{ readonly value: XFLDecimal }> =
+  state.get("surface", surfaceSchema);
+const surfaceForeignRead: StateReadResult<{ readonly value: XFLDecimal }> =
+  surfaceForeign.get("surface", surfaceSchema);
+const surfaceForeignWrite: HostVoidResult = surfaceForeign.set(
+  "surface",
+  STBlob.from(new Uint8Array(8)),
+);
+const surfaceForeignDelete: HostVoidResult = surfaceForeign.del("surface");
+void surfaceLocalRead;
+void surfaceForeignRead;
+void surfaceForeignWrite;
+void surfaceForeignDelete;
+
+const surfaceFeeBase: Drops = ledger.feeBase;
+const surfaceZero: XFLDecimal = XFLDecimal.zero;
+const surfaceReward = XFLDecimal.from(11, -1);
+const surfaceXflField: RecordField<XFLDecimal, 8> = record.xflle();
+void surfaceFeeBase;
+void surfaceZero;
+void surfaceXflField;
+
+const surfaceCurrency: Currency = Currency.from("USD");
+const surfaceIssue: Issue = Issue.iou(surfaceCurrency, AccountID.one);
+if (surfaceReward.ok) {
+  const surfaceAmount: Result<IOUAmount, EncodeError> = Amount.iou(
+    surfaceReward.value,
+    surfaceIssue,
+  );
+  void surfaceAmount;
+}
+
+const surfaceTokenKeylet: LedgerKeylet<URIToken> =
+  util.keylet.uriToken(Hash256.zero);
+const surfaceTokenRead: HostResult<URIToken | undefined> =
+  ledger.lookup(surfaceTokenKeylet);
+if (surfaceTokenRead.ok && surfaceTokenRead.value !== undefined) {
+  const surfaceOwner: AccountID = surfaceTokenRead.value.Owner;
+  const surfaceType: typeof LedgerEntryType.URIToken =
+    surfaceTokenRead.value.LedgerEntryType;
+  void surfaceOwner;
+  void surfaceType;
+}
+
+// @ts-expect-error zero is public but no one constant is selected
+void XFLDecimal.one;
+// @ts-expect-error exact v1 accepts a complete Issue, not three IOU parts
+Amount.iou(XFLDecimal.zero, surfaceCurrency, AccountID.one);
+declare const unspecializedLedgerKeylet: LedgerKeylet<LedgerEntry>;
+// @ts-expect-error no generic complete-family lookup was selected
+ledger.lookup(unspecializedLedgerKeylet);
 
 // ── 0060 activation: profile-configuration vocabulary ────────────────
 
