@@ -1,13 +1,13 @@
 {
   "schema": "jshookz.f0-provider-identity.v1",
-  "control_commit": "011b1e89c964e12e61d91e0afdc63f76c5787f16",
+  "control_commit": "48a84c3f429b56c457cf2b620d2a01f48f34345f",
   "files": {
     "build/xahau-provider/jshookz_provider.manifest.json": "acb41d88f6e920a28b3785823e8d55cb38f8df490ec4c0fd4df2c230e363c6a3",
     "build/xahau-provider/jshookz_provider.native-abi.json": "1c7cccdc3085b6a5c5fab47cccbee154609547a1d67f2407ff0449bf3325cda7",
     "build/xahau-provider/jshookz_provider.unwizered.wasm": "b07e4fa260f7eb89a08c17b7b1548f7e7839eb4c40c6ea5630cca69269ed3b6a",
     "build/xahau-provider/jshookz_provider.wasm": "eef126d573dcec94b3c5255ac9d66333fdac15438f4109e62d378a44c9de9390",
-    "python/jshookz/src/jshookz/types/api-artifacts.json": "32cc143c81851c11aa0f3f9fdb452d09b9be6df93847fb1c72b85ef246de0401",
-    "python/jshookz/src/jshookz/types/hooks-api.d.ts": "ebcd146a011578e7f51518a1a85e4447a429a4c6214a434580139f4a4694bbe5",
+    "python/jshookz/src/jshookz/types/api-artifacts.json": "566eeb14383ffd6b76a3fcc4abcd050817b6880ddfce978643b0dd114399447f",
+    "python/jshookz/src/jshookz/types/hooks-api.d.ts": "9c4672e2892af02196221c0dca06cadcbe34a1aae3aa2ff05a1e01ea720215fe",
     "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts": "88095e8874611b3564d301cd9712b3b7aa5aafb7a01daeb8961df23a9ee7f076",
     "python/jshookz/src/jshookz/types/xahau-quickjs-v1.surface.json": "8af02f74fd1c49adfb1e489293a24e67ddbd4336efa6ce0e00738049280191d9",
     "python/jshookz/src/jshookz/xfl_profile_ledger.ts": "cfcb68fe9a195f6e70c88a1b8f2d2936838b8c98b3d70cbe2cab9a53e056fd80",
