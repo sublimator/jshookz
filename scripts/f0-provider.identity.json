@@ -1,25 +1,25 @@
 {
   "schema": "jshookz.f0-provider-identity.v1",
-  "control_commit": "014b2d15dc66bc4e31705355887886d620daa6ef",
+  "control_commit": "011b1e89c964e12e61d91e0afdc63f76c5787f16",
   "files": {
-    "build/xahau-provider/jshookz_provider.manifest.json": "d987997ed97f11d9d1db8ee156eb41781fa0c6966d6760523e1218dd40833498",
+    "build/xahau-provider/jshookz_provider.manifest.json": "acb41d88f6e920a28b3785823e8d55cb38f8df490ec4c0fd4df2c230e363c6a3",
     "build/xahau-provider/jshookz_provider.native-abi.json": "1c7cccdc3085b6a5c5fab47cccbee154609547a1d67f2407ff0449bf3325cda7",
     "build/xahau-provider/jshookz_provider.unwizered.wasm": "b07e4fa260f7eb89a08c17b7b1548f7e7839eb4c40c6ea5630cca69269ed3b6a",
     "build/xahau-provider/jshookz_provider.wasm": "eef126d573dcec94b3c5255ac9d66333fdac15438f4109e62d378a44c9de9390",
-    "python/jshookz/src/jshookz/types/api-artifacts.json": "cdf88b15524f7f0d8c15b46cfe67fd95ec7917b1e20a09a2db90bfd5a26aa64d",
-    "python/jshookz/src/jshookz/types/hooks-api.d.ts": "a83c16b97fb4faf98962f4c746b07d43ec5de0de7e689e7c225bc4ceb93b8c3e",
-    "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts": "e03101173bd8775c118feb313fb89e974c4887d61727451c9993043ee41ea4aa",
-    "python/jshookz/src/jshookz/types/xahau-quickjs-v1.surface.json": "8074d80057977d3a4998dba443448df0430b98227c6a27c6b0e010917d279c21",
+    "python/jshookz/src/jshookz/types/api-artifacts.json": "32cc143c81851c11aa0f3f9fdb452d09b9be6df93847fb1c72b85ef246de0401",
+    "python/jshookz/src/jshookz/types/hooks-api.d.ts": "ebcd146a011578e7f51518a1a85e4447a429a4c6214a434580139f4a4694bbe5",
+    "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts": "88095e8874611b3564d301cd9712b3b7aa5aafb7a01daeb8961df23a9ee7f076",
+    "python/jshookz/src/jshookz/types/xahau-quickjs-v1.surface.json": "8af02f74fd1c49adfb1e489293a24e67ddbd4336efa6ce0e00738049280191d9",
     "python/jshookz/src/jshookz/xfl_profile_ledger.ts": "cfcb68fe9a195f6e70c88a1b8f2d2936838b8c98b3d70cbe2cab9a53e056fd80",
     "xahau/generated/raw-hook-abi.json": "9695beadc6dc43a25f97a417827f0e5a48110d9fff05a6e32b62671ce4f6f254",
-    "xahau/profiles/xahau-quickjs-v1.lock.json": "d987997ed97f11d9d1db8ee156eb41781fa0c6966d6760523e1218dd40833498",
+    "xahau/profiles/xahau-quickjs-v1.lock.json": "acb41d88f6e920a28b3785823e8d55cb38f8df490ec4c0fd4df2c230e363c6a3",
     "xahau/profiles/xahau-quickjs-v1.source.json": "f62f27d3610915f18fb98a6fbe675d196c57d1b01f5dc6902d14364a4bd354a0"
   },
   "provider": {
     "wasm_size": 1247172,
     "wasm_sha256": "eef126d573dcec94b3c5255ac9d66333fdac15438f4109e62d378a44c9de9390",
     "bytecode_abi_id": "75ea54f357d397c4b33899e495bb385dad975a43b1c4a7a2cead30474327d33e",
-    "runtime_profile_id": "5dae59fa453879321783a22476a9c7334acaa636b00be2c54fae1991e20b93b2",
+    "runtime_profile_id": "8d294bff4d2667ca21522e1aa14e40036bd585b847d5e64e734036a23c9ebf34",
     "import_count": 27,
     "export_count": 22,
     "memory": {
