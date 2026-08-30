@@ -1,8 +1,10 @@
 #include "amount/amount_js.hpp"
 
 #include "js.hpp"
+#include "leaf/leaf.hpp"
 #include "object/nominal_payload.hpp"
 #include "object/object.hpp"
+#include "result.hpp"
 
 #if defined(JSHOOKZ_XAHAU_TYPES_GC_PROBE)
 #include "tests/object_gc_lifetime_probe_hooks.hpp"
@@ -110,6 +112,9 @@ parts(AmountState const &state) noexcept {
       static_cast<AmountState *>(js_mallocz(ctx, sizeof(AmountState)));
   if (state == nullptr)
     return oom(ctx);
+  // js_mallocz does not run C++ default member initializers; QuickJS
+  // undefined is not the all-zero JSValue representation.
+  state->owner = JS_UNDEFINED;
   if (JS_IsUndefined(owner)) {
     std::memcpy(state->bytes.data(), bytes, length);
     state->data = state->bytes.data();
@@ -201,6 +206,54 @@ enum class DropsInputStatus : std::uint8_t {
     word >>= 8;
   }
   return newAmount(ctx, JS_UNDEFINED, wire, sizeof(wire));
+}
+
+[[nodiscard]] JSValue amountIouFailure(JSContext* ctx)
+{
+  qjs::OwnedValue error(ctx, bindings::result_error(ctx, "encode"));
+  if (error.isException() ||
+      JS_DefinePropertyValueStr(
+          ctx,
+          error.get(),
+          "issue",
+          JS_NewString(ctx, "invalid-value"),
+          JS_PROP_ENUMERABLE) < 0 ||
+      !bindings::result_finish(ctx, error.get()))
+    return JS_EXCEPTION;
+  return bindings::result_failure(ctx, error.release());
+}
+
+// @binding provider:Amount.iou
+[[nodiscard]] JSValue amountFactoryIou(
+    JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  if (argc < 2 || !isXFLDecimal(argv[0]) ||
+      !isRichLeaf(argv[1], RichLeafKind::issue))
+    return JS_ThrowTypeError(
+        ctx, "Amount.iou() expects XFLDecimal and Issue");
+
+  std::int64_t raw = 0;
+  std::uint8_t issue[44] = {};
+  std::uint32_t issueLength = 0;
+  if (!readXFLDecimalRaw(argv[0], &raw) ||
+      !readIssueBytes(ctx, argv[1], issue, &issueLength))
+    return JS_ThrowInternalError(
+        ctx, "Amount.iou() could not read provider values");
+  if (issueLength != 40)
+    return amountIouFailure(ctx);
+
+  std::uint8_t wire[48] = {};
+  std::uint64_t word = static_cast<std::uint64_t>(raw) |
+      xdata::AmountRules::kIssued;
+  for (std::size_t index = 8; index-- > 0;) {
+    wire[index] = static_cast<std::uint8_t>(word);
+    word >>= 8;
+  }
+  std::memcpy(wire + 8, issue, 40);
+  if (xdata::AmountRules::certify({wire, sizeof(wire)}) != nullptr)
+    return amountIouFailure(ctx);
+  return bindings::result_success(
+      ctx, newAmount(ctx, JS_UNDEFINED, wire, sizeof(wire)));
 }
 
 [[nodiscard]] JSValue amountKind(JSContext *ctx, JSValueConst thisValue) {
@@ -521,6 +574,7 @@ JSCFunctionListEntry const amountPrototype[] = {
 
 JSCFunctionListEntry const amountFactory[] = {
     JS_CFUNC_DEF("drops", 1, amountFactoryDrops),
+    JS_CFUNC_DEF("iou", 2, amountFactoryIou),
 };
 
 } // namespace

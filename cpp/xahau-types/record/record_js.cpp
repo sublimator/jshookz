@@ -28,6 +28,7 @@ enum class FieldKind : std::uint8_t
     u16le,
     u32le,
     u64le,
+    xflle,
     bytes,
     hash256,
     accountID,
@@ -254,6 +255,49 @@ encodeFailure(JSContext* context, JSAtom field)
     return bindings::result_failure(context, error.release());
 }
 
+[[nodiscard]] JSValue
+parseValueFailure(JSContext* context, JSAtom field)
+{
+    qjs::OwnedValue error(
+        context, bindings::result_error(context, "parse"));
+    if (error.isException())
+        return error.release();
+    if (!defineString(
+            context,
+            error.get(),
+            "issue",
+            field == JS_ATOM_NULL ? "invalid-value" : "invalid-field"))
+        return JS_EXCEPTION;
+    if (field != JS_ATOM_NULL &&
+        JS_DefinePropertyValueStr(
+            context,
+            error.get(),
+            "field",
+            JS_AtomToString(context, field),
+            JS_PROP_ENUMERABLE) < 0)
+        return JS_EXCEPTION;
+    if (!finishError(context, error.get()))
+        return JS_EXCEPTION;
+    return bindings::result_failure(context, error.release());
+}
+
+[[nodiscard]] JSValue
+throwInvalidParse(JSContext* context, JSAtom field)
+{
+    if (field == JS_ATOM_NULL)
+        return JS_ThrowTypeError(context, "record schema value is invalid");
+    qjs::OwnedValue name(context, JS_AtomToString(context, field));
+    if (name.isException())
+        return name.release();
+    char const* text = JS_ToCString(context, name.get());
+    if (text == nullptr)
+        return JS_EXCEPTION;
+    JSValue error = JS_ThrowTypeError(
+        context, "record field '%s' is invalid", text);
+    JS_FreeCString(context, text);
+    return error;
+}
+
 enum class ValueStatus : std::uint8_t
 {
     valid,
@@ -323,8 +367,10 @@ readBigUint64(
 decodeField(
     JSContext* context,
     FieldSpec const& field,
-    std::uint8_t const* bytes)
+    std::uint8_t const* bytes,
+    bool& invalid)
 {
+    invalid = false;
     auto const* source = bytes + field.offset;
     switch (field.kind) {
         case FieldKind::u8:
@@ -347,6 +393,18 @@ decodeField(
                 value |= static_cast<std::uint64_t>(source[index]) <<
                     (index * 8);
             return JS_NewBigUint64(context, value);
+        }
+        case FieldKind::xflle: {
+            std::uint64_t word = 0;
+            for (std::uint32_t index = 0; index < 8; ++index)
+                word |= static_cast<std::uint64_t>(source[index]) <<
+                    (index * 8);
+            std::int64_t const raw = static_cast<std::int64_t>(word);
+            if (!isCanonicalXFLRaw(raw)) {
+                invalid = true;
+                return JS_UNDEFINED;
+            }
+            return makeXFLDecimalRaw(context, raw);
         }
         case FieldKind::bytes:
             return makeSTBlobBytes(context, source, field.width);
@@ -402,6 +460,16 @@ encodeField(
                 output[index] = static_cast<std::uint8_t>(integer >> (index * 8));
             return ValueStatus::valid;
         }
+        case FieldKind::xflle: {
+            std::int64_t raw = 0;
+            if (!readXFLDecimalRaw(value, &raw))
+                return ValueStatus::invalid;
+            std::uint64_t const word = static_cast<std::uint64_t>(raw);
+            for (std::uint32_t index = 0; index < 8; ++index)
+                output[index] =
+                    static_cast<std::uint8_t>(word >> (index * 8));
+            return ValueStatus::valid;
+        }
         case FieldKind::bytes: {
             NominalPayloadView payload{};
             if (!detail::readSTBlobNominalPayload(value, payload) ||
@@ -441,6 +509,67 @@ encodeField(
 }
 
 [[nodiscard]] JSValue
+parseSchemaBytes(
+    JSContext* context,
+    SchemaState const& schema,
+    std::uint8_t const* data,
+    std::uint32_t length,
+    bool safe)
+{
+    if (length != schema.byteLength) {
+        if (safe)
+            return wrongLengthFailure(
+                context, schema.byteLength, length);
+        return JS_ThrowTypeError(
+            context,
+            "record schema expected %u bytes (got %u)",
+            schema.byteLength,
+            length);
+    }
+
+    auto const* fields = schemaFields(&schema);
+    if (schema.scalar) {
+        bool invalid = false;
+        JSValue value = decodeField(
+            context, fields[0], data, invalid);
+        if (invalid)
+            return safe
+                ? parseValueFailure(context, JS_ATOM_NULL)
+                : throwInvalidParse(context, JS_ATOM_NULL);
+        return safe ? bindings::result_success(context, value) : value;
+    }
+
+    qjs::OwnedValue value(context, JS_NewObjectProto(context, JS_NULL));
+    if (value.isException())
+        return value.release();
+    for (std::uint16_t index = 0; index < schema.fieldCount; ++index) {
+        auto const& field = fields[index];
+        if (field.name == JS_ATOM_NULL)
+            continue;
+        bool invalid = false;
+        JSValue decoded = decodeField(
+            context, field, data, invalid);
+        if (invalid)
+            return safe
+                ? parseValueFailure(context, field.name)
+                : throwInvalidParse(context, field.name);
+        if (JS_IsException(decoded) ||
+            JS_DefinePropertyValue(
+                context,
+                value.get(),
+                field.name,
+                decoded,
+                JS_PROP_ENUMERABLE) < 0)
+            return JS_EXCEPTION;
+    }
+    if (!qjs::freezeObject(context, value.get()))
+        return JS_EXCEPTION;
+    return safe
+        ? bindings::result_success(context, value.release())
+        : value.release();
+}
+
+[[nodiscard]] JSValue
 parseSchema(
     JSContext* context,
     SchemaState const& schema,
@@ -458,45 +587,12 @@ parseSchema(
             context,
             safe ? "BinarySchema.safeParse()" : "record schema parse()",
             qjs::BytePolicy::bytesLikeOrSTBlob);
-    if (bytes.size() != schema.byteLength) {
-        if (safe)
-            return wrongLengthFailure(
-                context, schema.byteLength, bytes.size());
-        return JS_ThrowTypeError(
-            context,
-            "record schema expected %u bytes (got %u)",
-            schema.byteLength,
-            bytes.size());
-    }
-
-    auto const* fields = schemaFields(&schema);
-    if (schema.scalar) {
-        JSValue value = decodeField(context, fields[0], bytes.data());
-        return safe ? bindings::result_success(context, value) : value;
-    }
-
-    qjs::OwnedValue value(context, JS_NewObjectProto(context, JS_NULL));
-    if (value.isException())
-        return value.release();
-    for (std::uint16_t index = 0; index < schema.fieldCount; ++index) {
-        auto const& field = fields[index];
-        if (field.name == JS_ATOM_NULL)
-            continue;
-        JSValue decoded = decodeField(context, field, bytes.data());
-        if (JS_IsException(decoded) ||
-            JS_DefinePropertyValue(
-                context,
-                value.get(),
-                field.name,
-                decoded,
-                JS_PROP_ENUMERABLE) < 0)
-            return JS_EXCEPTION;
-    }
-    if (!qjs::freezeObject(context, value.get()))
-        return JS_EXCEPTION;
-    return safe
-        ? bindings::result_success(context, value.release())
-        : value.release();
+    return parseSchemaBytes(
+        context,
+        schema,
+        bytes.data(),
+        static_cast<std::uint32_t>(bytes.size()),
+        safe);
 }
 
 [[nodiscard]] JSValue
@@ -1107,6 +1203,12 @@ recordU64le(JSContext* context, JSValueConst, int, JSValueConst*)
 }
 
 [[nodiscard]] JSValue
+recordXflle(JSContext* context, JSValueConst, int, JSValueConst*)
+{
+    return newField(context, FieldKind::xflle, 8);
+}
+
+[[nodiscard]] JSValue
 recordBytes(
     JSContext* context,
     JSValueConst,
@@ -1198,6 +1300,8 @@ JSCFunctionListEntry const recordFactories[] = {
     JS_CFUNC_DEF("u32le", 0, recordU32le),
     // @binding provider:record.u64le
     JS_CFUNC_DEF("u64le", 0, recordU64le),
+    // @binding provider:record.xflle
+    JS_CFUNC_DEF("xflle", 0, recordXflle),
     // @binding provider:record.bytes
     JS_CFUNC_DEF("bytes", 1, recordBytes),
     // @binding provider:record.hash
@@ -1261,6 +1365,37 @@ registerRecordSchemas(JSContext* context, JSValueConst global)
                3,
                recordFactories) &&
         !JS_HasException(context);
+}
+
+bool readBinarySchemaByteLength(
+    JSContext* context,
+    JSValueConst schema,
+    std::uint32_t* byteLength) noexcept
+{
+    if (byteLength != nullptr)
+        *byteLength = 0;
+    if (context == nullptr || byteLength == nullptr)
+        return false;
+    auto const* state = schemaState(context, schema);
+    if (state == nullptr)
+        return false;
+    *byteLength = state->byteLength;
+    return true;
+}
+
+JSValue safeParseBinarySchemaBytes(
+    JSContext* context,
+    JSValueConst schema,
+    std::uint8_t const* bytes,
+    std::uint32_t length)
+{
+    auto const* state = schemaState(context, schema);
+    if (state == nullptr)
+        return JS_EXCEPTION;
+    if (length != 0 && bytes == nullptr)
+        return JS_ThrowInternalError(
+            context, "record schema host bytes are unavailable");
+    return parseSchemaBytes(context, *state, bytes, length, true);
 }
 
 }  // namespace jshookz::provider::types

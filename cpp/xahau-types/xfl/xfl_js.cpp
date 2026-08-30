@@ -6,6 +6,8 @@
 #include "xfl/xfl_profile_context.hpp"
 
 #include <array>
+#include <cmath>
+#include <limits>
 
 namespace jshookz::provider::types {
 namespace qjs = jshookz::provider::qjs;
@@ -27,6 +29,131 @@ validDecimalParts(std::uint64_t magnitude, std::int32_t exponent) noexcept
     return magnitude >= xflMinMagnitude && magnitude <= xflMaxMagnitude &&
         exponent >= xflMinExponent && exponent <= xflMaxExponent;
 }
+
+bool
+validRawDecimal(std::int64_t raw) noexcept
+{
+    if (raw == 0)
+        return true;
+    if (raw < 0)
+        return false;
+    XFL const decimal(raw);
+    std::uint64_t const magnitude = decimal.mantissa();
+    std::int32_t const exponent = decimal.exponent();
+    return validDecimalParts(magnitude, exponent) &&
+        XFL::from_components(
+            decimal.is_negative(),
+            exponent,
+            static_cast<std::int64_t>(magnitude))
+                .raw() == raw;
+}
+
+enum class SignedInputStatus : std::uint8_t
+{
+    valid,
+    invalid,
+    exception,
+};
+
+SignedInputStatus
+readSignedMantissa(
+    JSContext* ctx, JSValueConst input, std::int64_t& output)
+{
+    output = 0;
+    if (JS_IsNumber(input)) {
+        double number = 0;
+        if (JS_ToFloat64(ctx, &number, input) < 0)
+            return SignedInputStatus::exception;
+        constexpr double maxSafeInteger = 9007199254740991.0;
+        if (!std::isfinite(number) || std::trunc(number) != number ||
+            number < -maxSafeInteger || number > maxSafeInteger)
+            return SignedInputStatus::invalid;
+        output = static_cast<std::int64_t>(number);
+        return SignedInputStatus::valid;
+    }
+    if (!JS_IsBigInt(ctx, input))
+        return SignedInputStatus::invalid;
+
+    qjs::OwnedValue rendered(ctx, JS_ToString(ctx, input));
+    if (rendered.isException())
+        return SignedInputStatus::exception;
+    std::size_t length = 0;
+    char const* text = JS_ToCStringLen(ctx, &length, rendered.get());
+    if (text == nullptr)
+        return SignedInputStatus::exception;
+    bool const negative = length > 0 && text[0] == '-';
+    std::size_t const first = negative ? 1 : 0;
+    bool valid = first < length;
+    constexpr std::uint64_t positiveLimit =
+        static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+    constexpr std::uint64_t negativeLimit = positiveLimit + 1;
+    std::uint64_t const limit = negative ? negativeLimit : positiveLimit;
+    std::uint64_t magnitude = 0;
+    for (std::size_t index = first; valid && index < length; ++index) {
+        char const digit = text[index];
+        valid = digit >= '0' && digit <= '9';
+        if (!valid)
+            break;
+        std::uint64_t const part = static_cast<std::uint64_t>(digit - '0');
+        if (magnitude > (limit - part) / 10) {
+            valid = false;
+            break;
+        }
+        magnitude = magnitude * 10 + part;
+    }
+    JS_FreeCString(ctx, text);
+    if (!valid)
+        return SignedInputStatus::invalid;
+    if (negative && magnitude == negativeLimit)
+        output = std::numeric_limits<std::int64_t>::min();
+    else
+        output = negative ? -static_cast<std::int64_t>(magnitude)
+                          : static_cast<std::int64_t>(magnitude);
+    return SignedInputStatus::valid;
+}
+
+// @binding provider:XFLDecimal.from
+JSValue
+js_xfl_from(
+    JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+    if (argc < 1 || (!JS_IsNumber(argv[0]) && !JS_IsBigInt(ctx, argv[0])))
+        return JS_ThrowTypeError(
+            ctx, "XFLDecimal.from() expects an integer number or bigint");
+    std::int64_t mantissa = 0;
+    SignedInputStatus const mantissaStatus =
+        readSignedMantissa(ctx, argv[0], mantissa);
+    if (mantissaStatus == SignedInputStatus::exception)
+        return JS_EXCEPTION;
+    if (mantissaStatus != SignedInputStatus::valid)
+        return bindings::xfl_failure(ctx, "invalid");
+
+    std::int32_t exponent = 0;
+    if (argc > 1 && !JS_IsUndefined(argv[1])) {
+        if (!JS_IsNumber(argv[1]))
+            return JS_ThrowTypeError(
+                ctx, "XFLDecimal.from() exponent must be an integer number");
+        double number = 0;
+        if (JS_ToFloat64(ctx, &number, argv[1]) < 0)
+            return JS_EXCEPTION;
+        if (!std::isfinite(number) || std::trunc(number) != number ||
+            number < std::numeric_limits<std::int32_t>::min() ||
+            number > std::numeric_limits<std::int32_t>::max())
+            return bindings::xfl_failure(ctx, "invalid");
+        exponent = static_cast<std::int32_t>(number);
+    }
+
+    hook::XFLArithmeticResult const result =
+        hook::setXahauFloatV1(mantissa, exponent);
+    if (!result.ok())
+        return bindings::xfl_failure(ctx, "invalid");
+    return bindings::result_success(
+        ctx, nativeNew<XFL>(ctx, js_xfl_class_id, result.value));
+}
+
+JSCFunctionListEntry const factoryFunctions[] = {
+    JS_CFUNC_DEF("from", 2, js_xfl_from),
+};
 
 void
 js_xfl_finalizer(JSRuntime* rt, JSValue val)
@@ -281,6 +408,27 @@ registerXFL(JSContext* ctx)
 }
 
 bool
+publishXFLFactory(JSContext* ctx, JSValueConst global)
+{
+    qjs::OwnedValue factory(ctx, JS_NewObject(ctx));
+    qjs::OwnedValue zero(ctx, nativeNew<XFL>(ctx, js_xfl_class_id, XFL{}));
+    if (factory.isException() || zero.isException() ||
+        !qjs::freezeObject(ctx, zero.get()) ||
+        !qjs::installFunctions(ctx, factory.get(), factoryFunctions) ||
+        JS_DefinePropertyValueStr(
+            ctx,
+            factory.get(),
+            "zero",
+            zero.release(),
+            JS_PROP_ENUMERABLE) < 0 ||
+        !installRuntimeTypeClassifier(
+            ctx, factory.get(), RuntimeTypeId::xflDecimal) ||
+        !qjs::freezeObject(ctx, factory.get()))
+        return false;
+    return JS_SetPropertyStr(ctx, global, "XFLDecimal", factory.release()) >= 0;
+}
+
+bool
 isXFLDecimal(JSValueConst value) noexcept
 {
     return xflValueNoThrow(value) != nullptr;
@@ -307,6 +455,34 @@ makeXFLDecimalParts(
             negative, exponent, static_cast<std::int64_t>(magnitude)));
 }
 
+JSValue
+makeXFLDecimalRaw(JSContext* ctx, std::int64_t raw)
+{
+    if (!validRawDecimal(raw))
+        return JS_ThrowInternalError(
+            ctx, "XFLDecimal construction received invalid raw word");
+    return nativeNew<XFL>(ctx, js_xfl_class_id, XFL(raw));
+}
+
+bool
+isCanonicalXFLRaw(std::int64_t raw) noexcept
+{
+    return validRawDecimal(raw);
+}
+
+bool
+readXFLDecimalRaw(JSValueConst input, std::int64_t* raw) noexcept
+{
+    if (raw != nullptr)
+        *raw = 0;
+    XFL const* decimal = xflValueNoThrow(input);
+    if (raw == nullptr || decimal == nullptr ||
+        !validRawDecimal(decimal->raw()))
+        return false;
+    *raw = decimal->raw();
+    return true;
+}
+
 bool
 readXFLDecimalParts(
     JSContext*,
@@ -321,30 +497,20 @@ readXFLDecimalParts(
         *magnitude = 0;
     if (exponent != nullptr)
         *exponent = 0;
-    if (negative == nullptr || magnitude == nullptr || exponent == nullptr ||
-        !JS_IsObject(input) || JS_GetClassID(input) != js_xfl_class_id)
+    if (negative == nullptr || magnitude == nullptr || exponent == nullptr)
         return false;
-    auto const* decimal =
-        static_cast<XFL const*>(JS_GetOpaque(input, js_xfl_class_id));
-    if (decimal == nullptr)
+    std::int64_t raw = 0;
+    if (!readXFLDecimalRaw(input, &raw))
         return false;
+    XFL const decimal(raw);
 
     // Every instance is provider-minted from canonical decimal parts. Keep the
     // read seam defensive so a corrupted opaque cannot cross into Amount.
-    if (decimal->raw() == 0)
+    if (decimal.raw() == 0)
         return true;
-    std::uint64_t const decodedMagnitude = decimal->mantissa();
-    std::int32_t const decodedExponent = decimal->exponent();
-    if (decimal->raw() < 0 ||
-        !validDecimalParts(decodedMagnitude, decodedExponent))
-        return false;
-    bool const decodedNegative = decimal->is_negative();
-    if (XFL::from_components(
-            decodedNegative,
-            decodedExponent,
-            static_cast<std::int64_t>(decodedMagnitude))
-            .raw() != decimal->raw())
-        return false;
+    std::uint64_t const decodedMagnitude = decimal.mantissa();
+    std::int32_t const decodedExponent = decimal.exponent();
+    bool const decodedNegative = decimal.is_negative();
 
     *negative = decodedNegative;
     *magnitude = decodedMagnitude;

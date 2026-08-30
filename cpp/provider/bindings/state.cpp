@@ -3,6 +3,7 @@
 #include "../provider_internal.hpp"
 #include "js.hpp"
 #include "object/nominal_payload.hpp"
+#include "record/record_js.hpp"
 
 #include <cstring>
 
@@ -34,9 +35,17 @@ JSClassDef const foreignStateAccessorClass{
 JSValue
 js_foreign_state_get(JSContext *ctx, JSValueConst this_val,
                      int argc, JSValueConst *argv);
+JSValue
+js_foreign_state_set(JSContext *ctx, JSValueConst this_val,
+                     int argc, JSValueConst *argv);
+JSValue
+js_foreign_state_del(JSContext *ctx, JSValueConst this_val,
+                     int argc, JSValueConst *argv);
 
 JSCFunctionListEntry const foreignStateAccessorPrototype[] = {
-    JS_CFUNC_DEF("get", 1, js_foreign_state_get),
+    JS_CFUNC_DEF("get", 2, js_foreign_state_get),
+    JS_CFUNC_DEF("set", 2, js_foreign_state_set),
+    JS_CFUNC_DEF("del", 1, js_foreign_state_del),
 };
 
 JSValue
@@ -51,22 +60,33 @@ js_state_get(JSContext *ctx, JSValueConst this_val,
     if (!key)
         return qjs::pendingOrTypeError(ctx, "state.get: invalid key");
 
-    /* Extended Hook state tops out at 16 * 256 bytes. A maximum-sized buffer
-       preserves the fixed-buffer host contract: TOO_SMALL never means a
-       truncated success. */
+    bool const typed = argc > 1;
+    std::uint32_t capacity = 4096;
+    if (typed && !types::readBinarySchemaByteLength(
+                     ctx, argv[1], &capacity))
+        return JS_EXCEPTION;
+    if (capacity > 4096)
+        return JS_ThrowRangeError(
+            ctx, "state.get: schema exceeds the 4096-byte state limit");
+
+    /* Untyped state retains the complete state ceiling. Typed state passes
+       the exact schema capacity, preserving TOO_SMALL as a host failure. */
     uint8_t value[4096];
     int64_t result = hook_state(
-        (uint32_t)(uintptr_t)value, sizeof(value),
+        (uint32_t)(uintptr_t)value, capacity,
         (uint32_t)(uintptr_t)key.data(), key.size());
 
     if (result == -5) /* DOESNT_EXIST is typed absence, not host failure. */
         return host_success(ctx, JS_UNDEFINED);
     if (result < 0)
         return host_failure(ctx, result);
-    if ((uint64_t)result > sizeof(value))
+    if ((uint64_t)result > capacity)
         return JS_ThrowInternalError(
             ctx, "state.get: host returned oversized length %lld",
             (long long)result);
+    if (typed)
+        return types::safeParseBinarySchemaBytes(
+            ctx, argv[1], value, static_cast<std::uint32_t>(result));
     return host_success(ctx, makeSTBlob(ctx, value, (uint32_t)result));
 }
 
@@ -137,9 +157,19 @@ js_foreign_state_get(JSContext *ctx, JSValueConst this_val,
         return qjs::pendingOrTypeError(
             ctx, "state.ForeignAccessor.get: invalid key");
 
+    bool const typed = argc > 1;
+    std::uint32_t capacity = 4096;
+    if (typed && !types::readBinarySchemaByteLength(
+                     ctx, argv[1], &capacity))
+        return JS_EXCEPTION;
+    if (capacity > 4096)
+        return JS_ThrowRangeError(
+            ctx,
+            "state.ForeignAccessor.get: schema exceeds the 4096-byte state limit");
+
     uint8_t value[4096];
     int64_t result = hook_state_foreign(
-        (uint32_t)(uintptr_t)value, sizeof(value),
+        (uint32_t)(uintptr_t)value, capacity,
         (uint32_t)(uintptr_t)key.data(), key.size(),
         (uint32_t)(uintptr_t)state->namespaceId, sizeof(state->namespaceId),
         (uint32_t)(uintptr_t)state->account, sizeof(state->account));
@@ -148,12 +178,95 @@ js_foreign_state_get(JSContext *ctx, JSValueConst this_val,
         return host_success(ctx, JS_UNDEFINED);
     if (result < 0)
         return host_failure(ctx, result);
-    if ((uint64_t)result > sizeof(value))
+    if ((uint64_t)result > capacity)
         return JS_ThrowInternalError(
             ctx,
             "state.ForeignAccessor.get: host returned oversized length %lld",
             (long long)result);
+    if (typed)
+        return types::safeParseBinarySchemaBytes(
+            ctx, argv[1], value, static_cast<std::uint32_t>(result));
     return host_success(ctx, makeSTBlob(ctx, value, (uint32_t)result));
+}
+
+JSValue
+// @binding provider:state.ForeignAccessor.set
+js_foreign_state_set(JSContext *ctx, JSValueConst this_val,
+                     int argc, JSValueConst *argv)
+{
+    auto *state = qjs::opaque<ForeignStateAccessorState>(
+        ctx, this_val, foreignStateAccessorClassId);
+    if (state == nullptr)
+        return JS_EXCEPTION;
+    if (argc < 2)
+        return JS_ThrowTypeError(
+            ctx, "state.ForeignAccessor.set: expected key and value");
+    auto key = qjs::ByteView::getBinding(
+        ctx, argv[0], "state.ForeignAccessor.set", 0,
+        qjs::BytePolicy::stateKeyLike);
+    if (!key)
+        return qjs::pendingOrTypeError(
+            ctx, "state.ForeignAccessor.set: invalid key");
+    if (!key.snapshot())
+        return JS_EXCEPTION;
+    auto value = qjs::ByteView::getBinding(
+        ctx, argv[1], "state.ForeignAccessor.set", 1,
+        qjs::BytePolicy::stateValueLike);
+    if (!value)
+        return qjs::pendingOrTypeError(
+            ctx, "state.ForeignAccessor.set: invalid value");
+
+    std::int64_t const result = hook_state_foreign_set(
+        static_cast<std::uint32_t>(
+            reinterpret_cast<std::uintptr_t>(value.data())),
+        value.size(),
+        static_cast<std::uint32_t>(
+            reinterpret_cast<std::uintptr_t>(key.data())),
+        key.size(),
+        static_cast<std::uint32_t>(
+            reinterpret_cast<std::uintptr_t>(state->namespaceId)),
+        sizeof(state->namespaceId),
+        static_cast<std::uint32_t>(
+            reinterpret_cast<std::uintptr_t>(state->account)),
+        sizeof(state->account));
+    return result < 0
+        ? host_effect_failure(ctx, result)
+        : host_effect_success(ctx);
+}
+
+JSValue
+// @binding provider:state.ForeignAccessor.del
+js_foreign_state_del(JSContext *ctx, JSValueConst this_val,
+                     int argc, JSValueConst *argv)
+{
+    auto *state = qjs::opaque<ForeignStateAccessorState>(
+        ctx, this_val, foreignStateAccessorClassId);
+    if (state == nullptr)
+        return JS_EXCEPTION;
+    if (argc < 1)
+        return JS_ThrowTypeError(
+            ctx, "state.ForeignAccessor.del: expected a key");
+    auto key = qjs::ByteView::getBinding(
+        ctx, argv[0], "state.ForeignAccessor.del", 0,
+        qjs::BytePolicy::stateKeyLike);
+    if (!key)
+        return qjs::pendingOrTypeError(
+            ctx, "state.ForeignAccessor.del: invalid key");
+
+    std::int64_t const result = hook_state_foreign_set(
+        0, 0,
+        static_cast<std::uint32_t>(
+            reinterpret_cast<std::uintptr_t>(key.data())),
+        key.size(),
+        static_cast<std::uint32_t>(
+            reinterpret_cast<std::uintptr_t>(state->namespaceId)),
+        sizeof(state->namespaceId),
+        static_cast<std::uint32_t>(
+            reinterpret_cast<std::uintptr_t>(state->account)),
+        sizeof(state->account));
+    return result < 0
+        ? host_effect_failure(ctx, result)
+        : host_effect_success(ctx);
 }
 
 JSValue
@@ -221,7 +334,7 @@ registerState(JSContext *ctx, JSValue global)
     if (state.isException())
         return false;
     if (JS_SetPropertyStr(ctx, state.get(), "get",
-            JS_NewCFunction(ctx, js_state_get, "get", 1)) < 0 ||
+            JS_NewCFunction(ctx, js_state_get, "get", 2)) < 0 ||
         JS_SetPropertyStr(ctx, state.get(), "set",
             JS_NewCFunction(ctx, js_state_set, "set", 2)) < 0 ||
         JS_SetPropertyStr(ctx, state.get(), "del",

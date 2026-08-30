@@ -133,9 +133,12 @@ normalizeLive(std::uint64_t magnitude, std::int32_t exponent,
     else if (magnitude < 100'000'000'000'000'000ull)
         order = 16;
 #else
-    if (magnitude < order15Threshold)
-        order = 14;
-    else if (magnitude < order16Threshold)
+    if (magnitude < order15Threshold) {
+        order = 0;
+        for (std::uint64_t remaining = magnitude; remaining >= 10;
+             remaining /= 10)
+            ++order;
+    } else if (magnitude < order16Threshold)
         order = 15;
     else if (magnitude < order17Threshold)
         order = 16;
@@ -143,8 +146,8 @@ normalizeLive(std::uint64_t magnitude, std::int32_t exponent,
 
     std::int32_t const adjust = 15 - order;
     if (adjust > 0) {
-        magnitude *= 10;
-        --exponent;
+        magnitude *= powersOfTen[static_cast<std::size_t>(adjust)];
+        exponent -= adjust;
     } else if (adjust < 0) {
         magnitude /= powersOfTen[static_cast<std::size_t>(-adjust)];
         exponent -= adjust;
@@ -195,6 +198,29 @@ canonicalNegate(XFL const& value) noexcept
 }
 
 }  // namespace
+
+XFLArithmeticResult
+setXahauFloatV1(std::int64_t mantissa, std::int32_t exponent) noexcept
+{
+    if (mantissa == 0)
+        return {};
+
+    // Pinned xahaud deliberately nudges INT64_MIN inward before taking its
+    // magnitude so negation remains defined.
+    if (mantissa == std::numeric_limits<std::int64_t>::min())
+        ++mantissa;
+    bool const negative = mantissa < 0;
+    std::uint64_t const magnitude = static_cast<std::uint64_t>(
+        negative ? -mantissa : mantissa);
+    XFLArithmeticResult const result =
+        normalizeLive(magnitude, exponent, negative);
+
+    // float_set exposes every non-zero underflow/overflow/canonicalization
+    // failure as INVALID_FLOAT. Keep that one local failure category here.
+    if (!result.ok() || result.value.is_zero())
+        return {{}, XFLArithmeticIssue::invalid};
+    return result;
+}
 
 XFLArithmeticResult
 addXahauFloatV1(XFL const& left, XFL const& right) noexcept

@@ -85,6 +85,15 @@
       ]
     },
     {
+      "name": "fee_base",
+      "return_type": "int64_t",
+      "param_types": [],
+      "amendment": null,
+      "wasm_signature": [
+        "0x7e"
+      ]
+    },
+    {
       "name": "otxn_type",
       "return_type": "int64_t",
       "param_types": [],
@@ -260,6 +269,32 @@
     },
     {
       "name": "state_foreign",
+      "return_type": "int64_t",
+      "param_types": [
+        "uint32_t",
+        "uint32_t",
+        "uint32_t",
+        "uint32_t",
+        "uint32_t",
+        "uint32_t",
+        "uint32_t",
+        "uint32_t"
+      ],
+      "amendment": null,
+      "wasm_signature": [
+        "0x7e",
+        "0x7f",
+        "0x7f",
+        "0x7f",
+        "0x7f",
+        "0x7f",
+        "0x7f",
+        "0x7f",
+        "0x7f"
+      ]
+    },
+    {
+      "name": "state_foreign_set",
       "return_type": "int64_t",
       "param_types": [
         "uint32_t",

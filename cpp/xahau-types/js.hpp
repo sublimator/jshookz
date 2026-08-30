@@ -65,6 +65,7 @@ registerHiddenClass(
 [[nodiscard]] bool registerHash256(JSContext* ctx, JSValueConst global);
 [[nodiscard]] bool registerAccountID(JSContext* ctx, JSValueConst global);
 [[nodiscard]] bool registerXFL(JSContext* ctx);
+[[nodiscard]] bool publishXFLFactory(JSContext* ctx, JSValueConst global);
 
 // Allocation-free exact nominal classifiers used by the one A-prime
 // Symbol.hasInstance implementation.
@@ -119,6 +120,10 @@ registerHiddenClass(
     bool* negative,
     std::uint64_t* magnitude,
     std::int32_t* exponent) noexcept;
+[[nodiscard]] JSValue makeXFLDecimalRaw(JSContext* ctx, std::int64_t raw);
+[[nodiscard]] bool isCanonicalXFLRaw(std::int64_t raw) noexcept;
+[[nodiscard]] bool readXFLDecimalRaw(
+    JSValueConst input, std::int64_t* raw) noexcept;
 
 // Exact STBlob counterpart to JS_GetObjectByteSpanNoThrow. Success returns
 // one owned duplicate of the STBlob wrapper. It allocates nothing, invokes no

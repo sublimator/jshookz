@@ -12,7 +12,7 @@ namespace jshookz::provider::types {
 [[nodiscard]] bool registerObjectTypes(JSContext* ctx);
 
 // Publish the real, non-user-constructible STObject prototype hierarchy built
-// by registerObjectTypes. The five globals are committed as one group.
+// by registerObjectTypes. The generated globals are committed as one group.
 [[nodiscard]] bool publishObjectTypes(JSContext* ctx, JSValueConst global);
 
 // Release registrar-owned atoms/storage before the owning runtime is freed.
@@ -48,6 +48,12 @@ void unregisterObjectTypes(JSRuntime* runtime) noexcept;
 // proven. Any other trusted host payload is an internal provider invariant
 // failure rather than a generic STObject success.
 [[nodiscard]] JSValue makeCertifiedAccountRootOwned(
+    JSContext* ctx, std::uint8_t* bytes, std::uint32_t size);
+
+// Trusted-host ingress for the concrete URIToken ledger lookup. Ownership and
+// invariant semantics match makeCertifiedAccountRootOwned; only the required
+// generated leaf format differs.
+[[nodiscard]] JSValue makeCertifiedURITokenOwned(
     JSContext* ctx, std::uint8_t* bytes, std::uint32_t size);
 
 // Private adapters behind the eventual util.validateObject,

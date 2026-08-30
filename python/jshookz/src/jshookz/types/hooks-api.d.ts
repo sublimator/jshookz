@@ -1891,6 +1891,14 @@ declare global {
     private constructor();
 
     readonly Owner: AccountID;
+    readonly OwnerNode: UInt64;
+    readonly Issuer: AccountID;
+    readonly URI: STBlob;
+    readonly Digest?: Hash256;
+    readonly Amount?: Amount;
+    readonly Destination?: AccountID;
+    readonly PreviousTxnID: Hash256;
+    readonly PreviousTxnLgrSeq: UInt32;
     readonly LedgerEntryType: typeof LedgerEntryType.URIToken;
   }
 

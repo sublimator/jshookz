@@ -826,6 +826,45 @@ JSValue currencyEquals(JSContext *ctx, JSValueConst value, int argc,
                          LeafKind::currency);
 }
 
+// @binding provider:Currency.from
+JSValue currencyFrom(
+    JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  if (argc < 1)
+    return JS_ThrowTypeError(ctx, "Currency.from() expects bytes or a code");
+  std::uint8_t currency[20] = {};
+  if (JS_IsString(argv[0])) {
+    std::size_t length = 0;
+    char const* text = JS_ToCStringLen(ctx, &length, argv[0]);
+    if (text == nullptr)
+      return JS_EXCEPTION;
+    bool valid = length == 3;
+    if (valid && std::memcmp(text, "XAH", 3) != 0) {
+      std::memcpy(currency + 12, text, 3);
+      valid = currencyIsText(currency);
+    }
+    JS_FreeCString(ctx, text);
+    if (!valid)
+      return JS_ThrowTypeError(
+          ctx, "Currency.from() expects XAH or a canonical 3-byte code");
+  } else {
+    auto bytes = qjs::ByteView::getBinding(
+        ctx,
+        argv[0],
+        "Currency.from",
+        0,
+        qjs::BytePolicy::bytesLikeOrSTBlob);
+    if (!bytes)
+      return qjs::byteInputTypeError(
+          ctx, "Currency.from()", qjs::BytePolicy::bytesLikeOrSTBlob);
+    if (bytes.size() != sizeof(currency))
+      return JS_ThrowTypeError(
+          ctx, "Currency.from() expects exactly 20 bytes");
+    std::memcpy(currency, bytes.data(), sizeof(currency));
+  }
+  return makeCurrencyBytes(ctx, currency, sizeof(currency));
+}
+
 enum class IssueVariant : std::uint8_t { native, iou, mpt };
 
 [[nodiscard]] IssueVariant issueVariant(IssueState const &state) noexcept {
@@ -937,6 +976,25 @@ JSValue issueEquals(JSContext *ctx, JSValueConst value, int argc,
   return JS_NewBool(
       ctx, left->length == right->length &&
                std::memcmp(left->data, right->data, left->length) == 0);
+}
+
+// @binding provider:Issue.iou
+JSValue issueIou(
+    JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  if (argc < 2 || !isRichLeaf(argv[0], RichLeafKind::currency) ||
+      !isAccountID(argv[1]))
+    return JS_ThrowTypeError(
+        ctx, "Issue.iou() expects Currency and AccountID");
+  std::uint8_t issue[40] = {};
+  if (!readCurrencyBytes(ctx, argv[0], issue) ||
+      !readAccountIDBytes(ctx, argv[1], issue + 20))
+    return JS_ThrowInternalError(
+        ctx, "Issue.iou() could not read provider values");
+  if (!validIssue(issue, sizeof(issue)))
+    return JS_ThrowTypeError(
+        ctx, "Issue.iou() requires non-native currency and issuer");
+  return makeIssueBytes(ctx, issue, sizeof(issue));
 }
 
 [[nodiscard]] JSValue vectorValue(JSContext *ctx, VectorState &state,
@@ -1387,6 +1445,14 @@ JSCFunctionListEntry const issuePrototype[] = {
     JS_CFUNC_DEF("equals", 1, issueEquals),
 };
 
+JSCFunctionListEntry const currencyFactory[] = {
+    JS_CFUNC_DEF("from", 1, currencyFrom),
+};
+
+JSCFunctionListEntry const issueFactory[] = {
+    JS_CFUNC_DEF("iou", 2, issueIou),
+};
+
 JSCFunctionListEntry const vectorPrototype[] = {
     // @binding provider:Vector256.at
     JS_CFUNC_DEF("at", 1, vectorAt),
@@ -1487,6 +1553,23 @@ bool registerRichLeafTypes(JSContext *ctx) {
     return false;
   }
   return !JS_HasException(ctx);
+}
+
+bool publishRichLeafFactories(JSContext* ctx, JSValueConst global)
+{
+  qjs::OwnedValue currency(ctx, JS_NewObject(ctx));
+  qjs::OwnedValue issue(ctx, JS_NewObject(ctx));
+  if (currency.isException() || issue.isException() ||
+      !qjs::installFunctions(ctx, currency.get(), currencyFactory) ||
+      !installRuntimeTypeClassifier(
+          ctx, currency.get(), RuntimeTypeId::currency) ||
+      !qjs::freezeObject(ctx, currency.get()) ||
+      !qjs::installFunctions(ctx, issue.get(), issueFactory) ||
+      !installRuntimeTypeClassifier(ctx, issue.get(), RuntimeTypeId::issue) ||
+      !qjs::freezeObject(ctx, issue.get()))
+    return false;
+  return JS_SetPropertyStr(ctx, global, "Currency", currency.release()) >= 0 &&
+      JS_SetPropertyStr(ctx, global, "Issue", issue.release()) >= 0;
 }
 
 void unregisterRichLeafTypes(JSRuntime *runtime) noexcept {
@@ -1872,6 +1955,25 @@ JSValue makeIssueView(JSContext *ctx, JSValueConst owner,
 JSValue makeIssueDerivedBytes(JSContext *ctx, JSValueConst owner,
                               std::uint8_t const *bytes, std::uint32_t length) {
   return newIssue(ctx, owner, bytes, length, PayloadOrigin::ownerDerived);
+}
+
+bool readIssueBytes(JSContext* ctx, JSValueConst value,
+                    std::uint8_t output[44],
+                    std::uint32_t* length) noexcept {
+  if (output != nullptr)
+    std::memset(output, 0, 44);
+  if (length != nullptr)
+    *length = 0;
+  if (output == nullptr || length == nullptr || !runtimeReady(ctx) ||
+      !JS_IsObject(value) || JS_GetClassID(value) != classId(LeafKind::issue))
+    return false;
+  auto const* state = static_cast<IssueState const*>(
+      JS_GetOpaque(value, classId(LeafKind::issue)));
+  if (state == nullptr || !validIssue(state->data, state->length))
+    return false;
+  std::memcpy(output, state->data, state->length);
+  *length = state->length;
+  return true;
 }
 
 JSValue makeVector256Bytes(JSContext *ctx, std::uint8_t const *bytes,

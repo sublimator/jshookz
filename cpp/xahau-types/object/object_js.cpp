@@ -2730,6 +2730,33 @@ JSValue makeCertifiedAccountRootOwned(JSContext *ctx, std::uint8_t *bytes,
       xdata::scan_message_literal(outcome.status.message_id));
 }
 
+JSValue makeCertifiedURITokenOwned(JSContext* ctx, std::uint8_t* bytes,
+                                   std::uint32_t size) {
+  if ((size != 0 && bytes == nullptr) ||
+      size > xdata::RecursiveScanLimits{}.max_bytes) {
+    js_free(ctx, bytes);
+    return JS_ThrowInternalError(
+        ctx, "trusted object bytes violate the provider size invariant");
+  }
+  auto outcome = mintOwnedObjectBytes(ctx, bytes, size);
+  if (JS_IsException(outcome.value))
+    return outcome.value;
+  if (!JS_IsUndefined(outcome.value)) {
+    auto const* state = static_cast<ObjectState const*>(
+        JS_GetOpaque(outcome.value, objectClassId));
+    auto const view = state == nullptr ? ObjectView::st_object
+                                       : static_cast<ObjectView>(state->view);
+    if (view == ObjectView::u_r_i_token)
+      return outcome.value;
+    JS_FreeValue(ctx, outcome.value);
+    return JS_ThrowInternalError(
+        ctx, "trusted ledger object is not a complete URIToken");
+  }
+  return JS_ThrowInternalError(
+      ctx, "trusted URIToken certification failed: %s",
+      xdata::scan_message_literal(outcome.status.message_id));
+}
+
 // @binding provider:util.validateObject
 JSValue validateObjectBytes(JSContext *ctx, JSValueConst input) {
   JSValue backing = JS_UNDEFINED;

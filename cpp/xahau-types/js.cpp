@@ -180,13 +180,11 @@ struct RuntimeNoun
 publishCppRuntimeTypes(JSContext* ctx, JSValueConst global)
 {
     constexpr RuntimeNoun nouns[] = {
-        {"Currency", types::RuntimeTypeId::currency},
         {"Hash", types::RuntimeTypeId::hash},
         {"Hash128", types::RuntimeTypeId::hash128},
         {"Hash160", types::RuntimeTypeId::hash160},
         {"Hash192", types::RuntimeTypeId::hash192},
         {"IOUAmount", types::RuntimeTypeId::iouAmount},
-        {"Issue", types::RuntimeTypeId::issue},
         {"LedgerKeylet", types::RuntimeTypeId::ledgerKeylet},
         {"MPTAmount", types::RuntimeTypeId::mptAmount},
         {"NativeAmount", types::RuntimeTypeId::nativeAmount},
@@ -197,7 +195,6 @@ publishCppRuntimeTypes(JSContext* ctx, JSValueConst global)
         {"SerializedField", types::RuntimeTypeId::serializedField},
         {"Vector256", types::RuntimeTypeId::vector256},
         {"XChainBridge", types::RuntimeTypeId::xChainBridge},
-        {"XFLDecimal", types::RuntimeTypeId::xflDecimal},
     };
     for (auto const& noun : nouns)
     {
@@ -244,7 +241,9 @@ extern "C" bool register_cpp_types(JSContext *ctx) {
          types::registerRecordSchemas(ctx, global.get()) &&
          types::registerFieldDescriptors(ctx, global.get()) &&
          types::publishObjectTypes(ctx, global.get()) &&
+         types::publishRichLeafFactories(ctx, global.get()) &&
          types::publishAmountFactory(ctx, global.get()) &&
+         types::publishXFLFactory(ctx, global.get()) &&
          publishCppRuntimeTypes(ctx, global.get()) &&
          installUtil(ctx, global.get());
 }

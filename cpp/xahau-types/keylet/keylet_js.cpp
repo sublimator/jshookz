@@ -1,6 +1,7 @@
 #include "keylet_js.hpp"
 
 #include "js.hpp"
+#include "object/nominal_payload.hpp"
 #include "quickjs.hpp"
 
 #include "sha_impl.h"
@@ -14,6 +15,7 @@ namespace {
 namespace qjs = jshookz::provider::qjs;
 
 constexpr std::uint16_t kAccountRootType = 0x0061;
+constexpr std::uint16_t kUriTokenType = 0x0055;
 constexpr std::uint32_t kKeyletBytes = 34;
 
 JSClassID keyletClassId;
@@ -26,6 +28,17 @@ struct LedgerKeyletState {
 [[nodiscard]] LedgerKeyletState *keyletState(JSContext *ctx,
                                              JSValueConst value) {
   return qjs::opaque<LedgerKeyletState>(ctx, value, keyletClassId);
+}
+
+[[nodiscard]] JSValue newUriTokenKeylet(
+    JSContext* ctx, std::uint8_t const tokenId[32])
+{
+  LedgerKeyletState state;
+  state.kind = LedgerKeyletKind::uriToken;
+  state.bytes[0] = 0x00;
+  state.bytes[1] = 0x55;
+  std::memcpy(state.bytes.data() + 2, tokenId, 32);
+  return nativeNew<LedgerKeyletState>(ctx, keyletClassId, state);
 }
 
 void keyletFinalizer(JSRuntime *runtime, JSValue value) {
@@ -66,6 +79,20 @@ JSValue jsKeyletAccount(JSContext *ctx, JSValueConst, int argc,
   return newAccountKeylet(ctx, account);
 }
 
+// @binding provider:util.keylet.uriToken
+JSValue jsKeyletUriToken(JSContext* ctx, JSValueConst, int argc,
+                         JSValueConst* argv)
+{
+  NominalPayloadView payload{};
+  if (argc < 1 ||
+      !detail::readHash256NominalPayload(
+          argc > 0 ? argv[0] : JS_UNDEFINED, payload) ||
+      payload.size != 32)
+    return JS_ThrowTypeError(
+        ctx, "util.keylet.uriToken: expected a provider Hash256");
+  return newUriTokenKeylet(ctx, payload.data);
+}
+
 // @binding provider:LedgerKeylet.byteLength
 JSValue jsKeyletByteLength(JSContext *ctx, JSValueConst thisValue) {
   return keyletState(ctx, thisValue) == nullptr
@@ -75,9 +102,14 @@ JSValue jsKeyletByteLength(JSContext *ctx, JSValueConst thisValue) {
 
 // @binding provider:LedgerKeylet.type
 JSValue jsKeyletType(JSContext *ctx, JSValueConst thisValue) {
-  return keyletState(ctx, thisValue) == nullptr
-             ? JS_EXCEPTION
-             : JS_NewUint32(ctx, kAccountRootType);
+  auto const* state = keyletState(ctx, thisValue);
+  if (state == nullptr)
+    return JS_EXCEPTION;
+  return JS_NewUint32(
+      ctx,
+      state->kind == LedgerKeyletKind::uriToken
+          ? kUriTokenType
+          : kAccountRootType);
 }
 
 // @binding provider:LedgerKeylet.toBytes
@@ -114,6 +146,7 @@ JSCFunctionListEntry const keyletPrototype[] = {
 
 JSCFunctionListEntry const keyletNamespace[] = {
     JS_CFUNC_DEF("account", 1, jsKeyletAccount),
+    JS_CFUNC_DEF("uriToken", 1, jsKeyletUriToken),
 };
 
 } // namespace
@@ -140,9 +173,15 @@ bool isLedgerKeylet(JSValueConst value) noexcept {
     return false;
   auto const *state = static_cast<LedgerKeyletState const *>(
       JS_GetOpaque(value, keyletClassId));
-  return state != nullptr &&
-         state->kind == LedgerKeyletKind::accountRoot &&
-         state->bytes[0] == 0x00 && state->bytes[1] == 0x61;
+  if (state == nullptr || state->bytes[0] != 0x00)
+    return false;
+  switch (state->kind) {
+  case LedgerKeyletKind::accountRoot:
+    return state->bytes[1] == 0x61;
+  case LedgerKeyletKind::uriToken:
+    return state->bytes[1] == 0x55;
+  }
+  return false;
 }
 
 bool readLedgerKeylet(JSValueConst value, std::uint8_t bytes[34],

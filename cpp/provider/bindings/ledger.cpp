@@ -118,6 +118,19 @@ js_ledger_last_hash(JSContext *ctx, JSValueConst this_val)
 }
 
 JSValue
+// @binding provider:ledger.feeBase
+js_ledger_fee_base(JSContext *ctx, JSValueConst)
+{
+    std::int64_t const result = hook_fee_base();
+    if (result < 0)
+        return JS_ThrowInternalError(
+            ctx,
+            "ledger.feeBase: host violated total invocation fact with %lld",
+            (long long)result);
+    return JS_NewBigUint64(ctx, static_cast<std::uint64_t>(result));
+}
+
+JSValue
 // @binding provider:otxn.type
 js_otxn_type(JSContext *ctx, JSValueConst this_val,
              int argc, JSValueConst *argv)
@@ -314,10 +327,6 @@ js_ledger_lookup(JSContext *ctx, JSValueConst, int argc, JSValueConst *argv)
                         argc > 0 ? argv[0] : JS_UNDEFINED, keylet, &kind))
         return JS_ThrowTypeError(
             ctx, "ledger.lookup: expected a provider LedgerKeylet");
-    if (kind != types::LedgerKeyletKind::accountRoot)
-        return JS_ThrowTypeError(
-            ctx, "ledger.lookup: unsupported keylet type");
-
     std::int64_t const measurementSlotResult = hook_slot_set(
         static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(keylet)),
         sizeof(keylet), 0);
@@ -377,7 +386,9 @@ js_ledger_lookup(JSContext *ctx, JSValueConst, int argc, JSValueConst *argv)
             (long long)cleared);
     }
 
-    JSValue object = types::makeCertifiedAccountRootOwned(ctx, bytes, size);
+    JSValue object = kind == types::LedgerKeyletKind::uriToken
+        ? types::makeCertifiedURITokenOwned(ctx, bytes, size)
+        : types::makeCertifiedAccountRootOwned(ctx, bytes, size);
     if (JS_IsException(object))
         return object;
     return host_success(ctx, object);
@@ -387,6 +398,7 @@ JSCFunctionListEntry const js_ledger_properties[] = {
     JS_CGETSET_DEF("sequence", js_ledger_sequence, NULL),
     JS_CGETSET_DEF("lastTime", js_ledger_last_time, NULL),
     JS_CGETSET_DEF("lastHash", js_ledger_last_hash, NULL),
+    JS_CGETSET_DEF("feeBase", js_ledger_fee_base, NULL),
     JS_CFUNC_DEF("nonce", 0, js_ledger_nonce),
     JS_CFUNC_DEF("lookup", 1, js_ledger_lookup),
 };

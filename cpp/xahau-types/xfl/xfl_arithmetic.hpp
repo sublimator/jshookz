@@ -38,4 +38,10 @@ multiplyXahauFloatV1(XFL const& left, XFL const& right) noexcept;
 [[nodiscard]] XFLArithmeticResult
 divideXahauFloatV1(XFL const& left, XFL const& right) noexcept;
 
+// Canonicalize the public decimal constructor with the pinned xahaud
+// float_set law. A non-zero input that underflows or overflows is invalid;
+// zero always mints canonical zero.
+[[nodiscard]] XFLArithmeticResult
+setXahauFloatV1(std::int64_t mantissa, std::int32_t exponent) noexcept;
+
 }  // namespace hook

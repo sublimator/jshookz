@@ -139,8 +139,9 @@ def test_foreign_accessor_is_frozen_read_only_and_receiver_checked() -> None:
           const prototype = Object.getPrototypeOf(foreign);
           if (!Object.isFrozen(foreign) || !Object.isFrozen(prototype) ||
               Object.getOwnPropertyNames(foreign).length !== 0 ||
-              Object.getOwnPropertyNames(prototype).join(",") !== "get" ||
-              "set" in foreign || "del" in foreign || "getMany" in foreign ||
+              Object.getOwnPropertyNames(prototype).join(",") !== "get,set,del" ||
+              !("set" in foreign) || !("del" in foreign) ||
+              "getMany" in foreign ||
               "ForeignStateAccessor" in globalThis) {
             rollback("foreign accessor surface mismatch", 1);
           }
@@ -159,6 +160,157 @@ def test_foreign_accessor_is_frozen_read_only_and_receiver_checked() -> None:
 
     assert result.accepted, result.error
     assert _call_names(result) == ["accept"]
+
+
+def test_foreign_accessor_writes_and_deletes_its_captured_scope() -> None:
+    runtime = HookRuntime()
+    account = bytes.fromhex("11" * 20)
+    namespace = bytes.fromhex("AA" * 32)
+    runtime._foreign_state_db[(account, namespace, b"DELETE")] = b"old"
+
+    result = _run(
+        runtime,
+        """
+        export function main(): never {
+          const foreign = state.foreign(
+            AccountID.fromHex("11".repeat(20)),
+            Hash256.fromHex("AA".repeat(32)),
+          );
+          rollback.onFail(foreign.set("K", "value"), "set failed");
+          rollback.onFail(foreign.del("DELETE"), "delete failed");
+          const value = rollback.requirePresent(foreign.get("K"), "missing");
+          const deleted = rollback.onFail(foreign.get("DELETE"), "read failed");
+          if (value.toHex() !== "76616C7565" || deleted !== undefined) {
+            rollback("foreign mutation mismatch", 1);
+          }
+          accept("foreign mutation exact", 0);
+        }
+        """,
+    )
+
+    assert result.accepted, result.error
+    assert runtime._foreign_state_db[(account, namespace, b"K")] == b"value"
+    assert (account, namespace, b"DELETE") not in runtime._foreign_state_db
+    assert _call_names(result) == [
+        "state_foreign_set",
+        "state_foreign_set",
+        "state_foreign",
+        "state_foreign",
+        "accept",
+    ]
+    assert result.call_log[0].args[1::2] == (5, 1, 32, 20)
+    assert result.call_log[1].args[0:2] == (0, 0)
+    assert result.call_log[1].args[3::2] == (6, 32, 20)
+
+
+def test_schema_sized_local_read_preserves_parse_absence_and_host_channels() -> None:
+    runtime = HookRuntime()
+    runtime.state_db[b"K"] = bytes.fromhex("78563412")
+    runtime.state_db[b"SHORT"] = bytes.fromhex("010203")
+    runtime.state_db[b"LONG"] = bytes.fromhex("0102030405")
+
+    result = _run(
+        runtime,
+        """
+        export function main(): never {
+          const schema = cell("U32", record.u32le());
+          const value = rollback.onFail(
+            state.get("K", schema),
+            "schema-sized local state read failed",
+          );
+          const short = state.get("SHORT", schema).okOrHandle(error => error);
+          const long = state.get("LONG", schema).okOrHandle(error => error);
+          const missing = rollback.onFail(
+            state.get("MISSING", schema),
+            "schema-sized missing-state read failed",
+          );
+          const untypedLong = rollback.requirePresent(
+            state.get("LONG"),
+            "untyped long missing",
+          );
+          if (value !== 0x12345678 ||
+              typeof short !== "object" || short === null ||
+              short.domain !== "parse" || short.issue !== "wrong-length" ||
+              short.expectedLength !== 4 || short.actualLength !== 3 ||
+              typeof long !== "object" || long === null ||
+              long.domain !== "host" ||
+              long.code !== HookReturnCode.TOO_SMALL ||
+              missing !== undefined ||
+              untypedLong.byteLength !== 5) {
+            rollback("schema-sized local state mismatch", 1);
+          }
+          accept("schema-sized local state", 0);
+        }
+        """,
+    )
+
+    assert result.accepted, result.error
+    assert _call_names(result) == ["state"] * 5 + ["accept"]
+    assert [call.args[1] for call in result.call_log[:5]] == [4, 4, 4, 4, 4096]
+
+
+def test_schema_sized_foreign_read_uses_exact_capacity() -> None:
+    runtime = HookRuntime()
+    scope = (bytes(20), bytes(32))
+    runtime._foreign_state_db[(*scope, b"K")] = bytes.fromhex("3412")
+    runtime._foreign_state_db[(*scope, b"LONG")] = bytes.fromhex("010203")
+
+    result = _run(
+        runtime,
+        """
+        export function main(): never {
+          const schema = cell("U16", record.u16le());
+          const foreign = state.foreign(AccountID.zero, Hash256.zero);
+          const value = rollback.onFail(
+            foreign.get("K", schema),
+            "schema-sized foreign state read failed",
+          );
+          const long = foreign.get("LONG", schema).okOrHandle(error => error);
+          if (value !== 0x1234 ||
+              typeof long !== "object" || long === null ||
+              long.domain !== "host" ||
+              long.code !== HookReturnCode.TOO_SMALL) {
+            rollback("schema-sized foreign state mismatch", 1);
+          }
+          accept("schema-sized foreign state", 0);
+        }
+        """,
+    )
+
+    assert result.accepted, result.error
+    assert _call_names(result) == ["state_foreign", "state_foreign", "accept"]
+    assert [call.args[1] for call in result.call_log[:2]] == [2, 2]
+
+
+def test_foreign_mutation_preserves_exact_host_failure() -> None:
+    runtime = HookRuntime()
+    runtime.handlers["state_foreign_set"] = lambda *_args: -77
+
+    result = _run(
+        runtime,
+        """
+        export function main(): never {
+          const foreign = state.foreign(AccountID.zero, Hash256.zero);
+          const setCode = foreign.set("K", "V").okOrHandle(
+            (error) => Number(error.code),
+          );
+          const delCode = foreign.del("K").okOrHandle(
+            (error) => Number(error.code),
+          );
+          if (setCode !== -77 || delCode !== -77) {
+            rollback("foreign status changed", 1);
+          }
+          accept("foreign failure preserved", 0);
+        }
+        """,
+    )
+
+    assert result.accepted, result.error
+    assert _call_names(result) == [
+        "state_foreign_set",
+        "state_foreign_set",
+        "accept",
+    ]
 
 
 @pytest.mark.parametrize(

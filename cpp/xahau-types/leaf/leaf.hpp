@@ -20,6 +20,8 @@ enum class RichLeafKind : std::uint8_t {
 // materialization.  No JavaScript factory/global is published: only the
 // provider can mint these exact nominal classes.
 [[nodiscard]] bool registerRichLeafTypes(JSContext *ctx);
+[[nodiscard]] bool publishRichLeafFactories(
+    JSContext* ctx, JSValueConst global);
 void unregisterRichLeafTypes(JSRuntime *runtime) noexcept;
 
 [[nodiscard]] bool isRichLeaf(JSValueConst value, RichLeafKind kind) noexcept;
@@ -73,6 +75,11 @@ void unregisterRichLeafTypes(JSRuntime *runtime) noexcept;
 [[nodiscard]] JSValue makeIssueDerivedBytes(JSContext *ctx, JSValueConst owner,
                                             std::uint8_t const *bytes,
                                             std::uint32_t length);
+[[nodiscard]] bool readIssueBytes(
+    JSContext* ctx,
+    JSValueConst value,
+    std::uint8_t output[44],
+    std::uint32_t* length) noexcept;
 [[nodiscard]] JSValue makeVector256Bytes(JSContext *ctx,
                                          std::uint8_t const *bytes,
                                          std::uint32_t length);

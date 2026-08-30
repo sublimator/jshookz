@@ -19,6 +19,9 @@ extern int64_t hook_ledger_last_hash(uint32_t arg0, uint32_t arg1);
 __attribute__((import_module("env"), import_name("ledger_nonce")))
 extern int64_t hook_ledger_nonce(uint32_t arg0, uint32_t arg1);
 
+__attribute__((import_module("env"), import_name("fee_base")))
+extern int64_t hook_fee_base(void);
+
 __attribute__((import_module("env"), import_name("otxn_type")))
 extern int64_t hook_otxn_type(void);
 
@@ -57,6 +60,9 @@ extern int64_t hook_state(uint32_t arg0, uint32_t arg1, uint32_t arg2, uint32_t 
 
 __attribute__((import_module("env"), import_name("state_foreign")))
 extern int64_t hook_state_foreign(uint32_t arg0, uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t arg4, uint32_t arg5, uint32_t arg6, uint32_t arg7);
+
+__attribute__((import_module("env"), import_name("state_foreign_set")))
+extern int64_t hook_state_foreign_set(uint32_t arg0, uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t arg4, uint32_t arg5, uint32_t arg6, uint32_t arg7);
 
 __attribute__((import_module("env"), import_name("state_set")))
 extern int64_t hook_state_set(uint32_t arg0, uint32_t arg1, uint32_t arg2, uint32_t arg3);

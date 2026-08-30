@@ -12,6 +12,10 @@ ACCOUNT_KEYLET_HEX = (
     "2B6AC232AA4C4BE41BF49D2459FA4A0347E1B543A4C92FCEE0821C0201E2E9A8"
 )
 
+URI_TOKEN_ID_HEX = "AA" * 32
+URI_TOKEN_KEYLET_HEX = "0055" + URI_TOKEN_ID_HEX
+URI_TOKEN_OWNER_HEX = "D0F5430B66E06498D4CEEC816C7B3337F9982337"
+
 # Independently serialized through the pinned xahau-codec fixture executable.
 # It contains every generated AccountRoot required field and a native Balance.
 ACCOUNT_ROOT = bytes.fromhex(
@@ -51,11 +55,30 @@ UNADMITTED_FIELD_ACCOUNT_ROOT = ACCOUNT_ROOT + bytes.fromhex(
     "831439249EE0886DE835D4F4D47DA9D9B1D2AED83C11"
 )
 
+# Pinned xahau-codec serialization of one complete URIToken ledger entry.
+URI_TOKEN = bytes.fromhex(
+    "110055"
+    "2200000000"
+    "2500000001"
+    "340000000000000000"
+    "550000000000000000000000000000000000000000000000000000000000000000"
+    "751368747470733A2F2F6578616D706C652E636F6D"
+    "8214D0F5430B66E06498D4CEEC816C7B3337F9982337"
+    "8414D0F5430B66E06498D4CEEC816C7B3337F9982337"
+)
+
 
 def _runner(value: bytes | None = ACCOUNT_ROOT) -> HookRunner:
     runtime = HookRuntime()
     if value is not None:
         runtime.ledger[bytes.fromhex(ACCOUNT_KEYLET_HEX)] = value
+    return HookRunner(runtime)
+
+
+def _uri_runner(value: bytes | None = URI_TOKEN) -> HookRunner:
+    runtime = HookRuntime()
+    if value is not None:
+        runtime.ledger[bytes.fromhex(URI_TOKEN_KEYLET_HEX)] = value
     return HookRunner(runtime)
 
 
@@ -132,6 +155,70 @@ def test_missing_account_root_is_successful_undefined() -> None:
 
     assert result.accepted, result.error
     assert _call_names(result) == ["slot_set", "accept"]
+
+
+def test_uri_token_keylet_and_specific_lookup_are_typed() -> None:
+    source = f'''
+      export function main(): never {{
+        const keylet = util.keylet.uriToken(
+          Hash256.fromHex("{URI_TOKEN_ID_HEX}"),
+        );
+        if (!(keylet instanceof LedgerKeylet) || keylet.type !== 85 ||
+            keylet.toHex() !== "{URI_TOKEN_KEYLET_HEX}") {{
+          rollback("URI token keylet mismatch", 1);
+        }}
+        const token = rollback.requirePresent(
+          ledger.lookup(keylet),
+          "URIToken missing",
+          2,
+        );
+        if (!(token instanceof URIToken) ||
+            !(token instanceof LedgerEntry) ||
+            !(token instanceof STObject) ||
+            token.LedgerEntryType !== LedgerEntryType.URIToken ||
+            token.Owner.toHex() !== "{URI_TOKEN_OWNER_HEX}") {{
+          rollback("URIToken local view mismatch", 3);
+        }}
+        accept("typed URIToken lookup", 0);
+      }}
+    '''
+
+    result = _uri_runner().run_typescript(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"typed URIToken lookup"
+    assert _call_names(result) == [
+        "slot_set",
+        "slot_size",
+        "slot_clear",
+        "slot_set",
+        "slot",
+        "slot_clear",
+        "accept",
+    ]
+
+
+def test_uri_token_lookup_rejects_wrong_complete_ledger_family() -> None:
+    result = _uri_runner(ACCOUNT_ROOT).run(
+        f'''
+          export function main() {{
+            ledger.lookup(util.keylet.uriToken(
+              Hash256.fromHex("{URI_TOKEN_ID_HEX}"),
+            ));
+          }}
+        '''
+    )
+
+    assert result.error is not None
+    assert "URIToken" in str(result.error)
+    assert _call_names(result) == [
+        "slot_set",
+        "slot_size",
+        "slot_clear",
+        "slot_set",
+        "slot",
+        "slot_clear",
+    ]
 
 
 def test_structural_keylet_impostor_is_rejected_before_host_work() -> None:

@@ -43,7 +43,7 @@
         "discriminator": "LedgerEntryType",
         "type_table": "LEDGER_ENTRY_TYPES",
         "format_table": "LEDGER_ENTRY_FORMATS",
-        "leaves": ["AccountRoot"]
+        "leaves": ["AccountRoot", "URIToken"]
       }
     ],
     "refinements": {

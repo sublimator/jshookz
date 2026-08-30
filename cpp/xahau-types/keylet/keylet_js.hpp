@@ -8,6 +8,7 @@ namespace jshookz::provider::types {
 
 enum class LedgerKeyletKind : std::uint8_t {
   accountRoot,
+  uriToken,
 };
 
 // Register the private immutable keylet value class. The public runtime noun

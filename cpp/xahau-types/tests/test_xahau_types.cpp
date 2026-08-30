@@ -357,6 +357,131 @@ TEST_F(XahauTypes, ScalarSchemasPreserveResultAndAssertionChannels)
         R"({"name":"Counter","length":8,"value":true,"wrong":true,"invalid":true,"assertion":true})");
 }
 
+TEST_F(XahauTypes, XFLFactoryAndLittleEndianRecordMatchPinnedFloatSet)
+{
+    auto value = eval(R"JS(
+        (() => {
+          const decimal = XFLDecimal.from(6541432897943971n, -5);
+          const small = XFLDecimal.from(12345n, 0);
+          const signedMinimum = XFLDecimal.from(-9223372036854775808n, 0);
+          const overflow = XFLDecimal.from(1n, 97);
+          const underflow = XFLDecimal.from(1n, -97);
+          const schema = cell("PersistedXFL", record.xflle());
+          if (!decimal.ok) return "factory-failed";
+          const encoded = schema.safeEncode(decimal.value);
+          if (!encoded.ok) return "encode-failed";
+          const parsed = schema.safeParse(encoded.value);
+          const bytes = encoded.value.toBytes();
+          let raw = 0n;
+          for (let index = 7; index >= 0; --index)
+            raw = (raw << 8n) | BigInt(bytes[index]);
+          const rawOf = value => {
+            const result = schema.safeEncode(value);
+            if (!result.ok) return -1n;
+            const encoded = result.value.toBytes();
+            let word = 0n;
+            for (let index = 7; index >= 0; --index)
+              word = (word << 8n) | BigInt(encoded[index]);
+            return word;
+          };
+          const malformedScalar = schema.safeParse(
+            new Uint8Array([1, 0, 0, 0, 0, 0, 0, 0]),
+          );
+          const recordSchema = record("Persisted", 8, [
+            ["value", record.xflle()],
+          ]);
+          const malformedField = recordSchema.safeParse(
+            new Uint8Array([1, 0, 0, 0, 0, 0, 0, 0]),
+          );
+          let assertion = false;
+          try { schema.parse(new Uint8Array([1, 0, 0, 0, 0, 0, 0, 0])); }
+          catch (error) { assertion = error instanceof TypeError; }
+          return JSON.stringify({
+            knownAnswer: raw === 6275552114197674403n,
+            smallAnswer:
+              small.ok && rawOf(small.value) === 6162158790242838528n,
+            signedMinimumAnswer:
+              signedMinimum.ok &&
+              rawOf(signedMinimum.value) === 1810663222985053175n,
+            nominal: parsed.ok && parsed.value instanceof XFLDecimal &&
+              parsed.value.equals(decimal.value),
+            zero: XFLDecimal.zero instanceof XFLDecimal &&
+              XFLDecimal.zero.isZero() && Object.isFrozen(XFLDecimal.zero),
+            noOne: XFLDecimal.one === undefined,
+            frozenFactory: Object.isFrozen(XFLDecimal),
+            invalid:
+              !overflow.ok && overflow.error.issue === "invalid" &&
+              !underflow.ok && underflow.error.issue === "invalid",
+            malformedScalar:
+              !malformedScalar.ok &&
+              malformedScalar.error.issue === "invalid-value",
+            malformedField:
+              !malformedField.ok &&
+              malformedField.error.issue === "invalid-field" &&
+              malformedField.error.field === "value",
+            assertion,
+          });
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException()) << to_string(value.get());
+    EXPECT_EQ(to_string(value.get()),
+        R"({"knownAnswer":true,"smallAnswer":true,"signedMinimumAnswer":true,"nominal":true,"zero":true,"noOne":true,"frozenFactory":true,"invalid":true,"malformedScalar":true,"malformedField":true,"assertion":true})");
+}
+
+TEST_F(XahauTypes, CurrencyIssueAndIouAmountAuthoringIsCanonical)
+{
+    auto value = eval(R"JS(
+        (() => {
+          const currency = Currency.from("EVR");
+          const issuer = AccountID.from(new Uint8Array(20).fill(0x11));
+          const issue = Issue.iou(currency, issuer);
+          const decimal = XFLDecimal.from(15n, -1);
+          if (!decimal.ok) return "decimal-failed";
+          const amount = Amount.iou(decimal.value, issue);
+          if (!amount.ok) return "amount-failed";
+          const wire = amount.value.toBytes();
+          const nativeIssue = Amount.drops(1n).issue;
+          const rejected = Amount.iou(decimal.value, nativeIssue);
+          let invalidCurrency = false;
+          let invalidIssuer = false;
+          try { Issue.iou(Currency.from("XAH"), issuer); }
+          catch (error) { invalidCurrency = error instanceof TypeError; }
+          try { Issue.iou(currency, AccountID.zero); }
+          catch (error) { invalidIssuer = error instanceof TypeError; }
+          return JSON.stringify({
+            currency:
+              currency instanceof Currency && currency.toString() === "EVR" &&
+              currency.toHex() === "00".repeat(12) + "455652" + "00".repeat(5),
+            issue:
+              issue instanceof Issue && issue.kind === "iou" &&
+              issue.currency.equals(currency) && issue.issuer.equals(issuer),
+            amount:
+              amount.value instanceof Amount && amount.value.isIOU() &&
+              amount.value.value.equals(decimal.value) &&
+              amount.value.issue.equals(issue),
+            wire:
+              wire.length === 48 && (wire[0] & 0x80) !== 0 &&
+              wire.slice(8, 28).every((byte, index) =>
+                byte === currency.toBytes()[index]) &&
+              wire.slice(28).every(byte => byte === 0x11),
+            rejected:
+              !rejected.ok && rejected.error.domain === "encode" &&
+              rejected.error.issue === "invalid-value",
+            invalidCurrency,
+            invalidIssuer,
+            frozenFactories:
+              Object.isFrozen(Currency) && Object.isFrozen(Issue),
+          });
+        })()
+    )JS");
+    if (value.isException()) {
+        jshookz::qjs::OwnedValue error(ctx, JS_GetException(ctx));
+        FAIL() << to_string(error.get());
+    }
+    EXPECT_EQ(to_string(value.get()),
+        R"({"currency":true,"issue":true,"amount":true,"wire":true,"rejected":true,"invalidCurrency":true,"invalidIssuer":true,"frozenFactories":true})");
+}
+
 TEST_F(XahauTypes, RecordPatchPreservesUnclaimedBytesAndValidatesFields)
 {
     auto value = eval(R"JS(
@@ -900,16 +1025,20 @@ TEST_F(XahauTypes, GeneratedObjectClassesUseRealPrototypeHierarchy)
         "831439249EE0886DE835D4F4D47DA9D9B1D2AED83C11"));
     auto payment = eval(R"JS(
         (() => {
-          const nouns = [STObject, Transaction, Payment, LedgerEntry, AccountRoot];
+          const nouns = [
+            STObject, Transaction, Payment, LedgerEntry, AccountRoot, URIToken,
+          ];
           const hierarchy =
             Object.getPrototypeOf(Transaction.prototype) === STObject.prototype &&
             Object.getPrototypeOf(Payment.prototype) === Transaction.prototype &&
             Object.getPrototypeOf(LedgerEntry.prototype) === STObject.prototype &&
             Object.getPrototypeOf(AccountRoot.prototype) === LedgerEntry.prototype &&
+            Object.getPrototypeOf(URIToken.prototype) === LedgerEntry.prototype &&
             Object.getPrototypeOf(Transaction) === STObject &&
             Object.getPrototypeOf(Payment) === Transaction &&
             Object.getPrototypeOf(LedgerEntry) === STObject &&
-            Object.getPrototypeOf(AccountRoot) === LedgerEntry;
+            Object.getPrototypeOf(AccountRoot) === LedgerEntry &&
+            Object.getPrototypeOf(URIToken) === LedgerEntry;
           const shapes = nouns.every(noun =>
             typeof noun === "function" && Object.isFrozen(noun) &&
             Object.isFrozen(noun.prototype));
@@ -1574,7 +1703,7 @@ TEST_F(
             Reflect.ownKeys(util).join(",") ===
               "validateObject,safeDecodeObject,decodeObject,keylet" &&
             Object.isFrozen(util.keylet) &&
-            Reflect.ownKeys(util.keylet).join(",") === "account" &&
+            Reflect.ownKeys(util.keylet).join(",") === "account,uriToken" &&
             util.validateObject(bytes) && !util.validateObject(bytes.subarray(0, 2)) &&
             decoded.ok && decoded.value.Flags.toNumber() === 9 &&
             asserted.Flags.toNumber() === 9 &&
@@ -1616,10 +1745,10 @@ TEST_F(XahauTypes, AmountDropsMintsOnlyBoundedNativeNominalAmounts)
 
           return typeof Amount === "object" && Amount !== null &&
             Object.isFrozen(Amount) && !Object.isExtensible(Amount) &&
-            ownNames.length === 1 && ownNames[0] === "drops" &&
+            ownNames.join(",") === "drops,iou" &&
             ownSymbols.length === 1 && ownSymbols[0] === Symbol.hasInstance &&
             typeof Amount.drops === "function" && Amount.drops.length === 1 &&
-            Amount.from === undefined && Amount.iou === undefined &&
+            Amount.from === undefined && typeof Amount.iou === "function" &&
             Amount.mpt === undefined &&
             zero.drops === 0n && hex(zero) === "4000000000000000" &&
             one.drops === 1n && hex(one) === "4000000000000001" &&

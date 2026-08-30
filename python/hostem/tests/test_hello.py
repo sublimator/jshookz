@@ -36,6 +36,47 @@ def test_javascript_hook_calls_real_hookz_host_and_accepts():
     ]
 
 
+def test_ledger_fee_base_is_a_total_bigint_invocation_fact():
+    runner = HookRunner()
+    runner.runtime.handlers["fee_base"] = lambda: 17
+
+    result = runner.run(
+        """
+        export function main() {
+          if (ledger.feeBase !== 17n || typeof ledger.feeBase !== "bigint") {
+            rollback("fee base mismatch", 1);
+          }
+          accept("fee base exact", 0);
+        }
+        """
+    )
+
+    assert result.accepted, result.error
+    assert [call.name for call in result.call_log] == [
+        "fee_base",
+        "fee_base",
+        "accept",
+    ]
+
+
+def test_negative_fee_base_is_an_internal_total_fact_violation():
+    runner = HookRunner()
+    runner.runtime.handlers["fee_base"] = lambda: -77
+
+    result = runner.run(
+        """
+        export function main() {
+          void ledger.feeBase;
+          accept("no");
+        }
+        """
+    )
+
+    assert result.error is not None
+    assert "host violated total invocation fact with -77" in str(result.error)
+    assert [call.name for call in result.call_log] == ["fee_base"]
+
+
 def test_tagged_host_failure_can_drive_javascript_rollback():
     source = """
         export function main(_reserved) {
