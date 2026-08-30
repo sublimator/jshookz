@@ -164,6 +164,19 @@ def test_default_v1_declarations_reject_mutating_parsed_record(tmp_path: Path):
         compile_hook(source)
 
 
+def test_canonical_declarations_reject_mutating_parsed_overlay(tmp_path: Path):
+    source = tmp_path / "readonly-record-overlay.hook.ts"
+    source.write_text(
+        "const R=record('R',1,[[\"view\",record.overlay({raw:record.u8()})]]);"
+        "export function main():never{"
+        "const decoded=R.parse(new Uint8Array([1]));"
+        "decoded.view.raw=2;accept();}"
+    )
+
+    with pytest.raises(RuntimeError, match="read-only property"):
+        compile_hook(source, declarations=CANONICAL_HOOKS_API_DECLARATIONS)
+
+
 @pytest.mark.parametrize(
     "statement",
     [

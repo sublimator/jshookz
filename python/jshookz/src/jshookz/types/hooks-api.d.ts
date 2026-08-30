@@ -973,7 +973,7 @@ declare global {
     T extends RecordField<infer V, number> ? V : never;
 
   type OverlayValue<T extends { readonly [K: string]: RecordField<unknown, number> }> = {
-    -readonly [K in keyof T as RecordFieldValue<T[K]> extends never ? never : K]: RecordFieldValue<T[K]>;
+    readonly [K in keyof T as RecordFieldValue<T[K]> extends never ? never : K]: RecordFieldValue<T[K]>;
   };
 
   interface RecordLayoutClaim {
