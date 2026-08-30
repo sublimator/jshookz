@@ -119,6 +119,7 @@ def test_parser_rejects_raw_bytecode_and_zero_identities():
 
 
 def test_builder_enforces_on_ledger_size_limit_and_identity_width():
+    assert len(artifact(bytes(MAX_PAYLOAD_SIZE))) == 128 * 1024
     with pytest.raises(HookArtifactError, match="maximum"):
         artifact(bytes(MAX_PAYLOAD_SIZE + 1))
     with pytest.raises(HookArtifactError, match="exactly 32 bytes"):
