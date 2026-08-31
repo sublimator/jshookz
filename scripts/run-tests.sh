@@ -89,13 +89,16 @@ start() {
 }
 
 if [[ ${#jshookz_targets[@]} -gt 0 ]]; then
-    start jshookz python/jshookz/.venv/bin/pytest -q "${jshookz_targets[@]}"
+    start jshookz python/jshookz/.venv/bin/pytest -q \
+        -o cache_dir=build/pytest-cache/jshookz "${jshookz_targets[@]}"
 fi
 if [[ ${#hostem_targets[@]} -gt 0 ]]; then
-    start hostem python/hostem/.venv/bin/pytest -q "${hostem_targets[@]}"
+    start hostem python/hostem/.venv/bin/pytest -q \
+        -o cache_dir=build/pytest-cache/hostem "${hostem_targets[@]}"
 fi
 if [[ ${#xdata_targets[@]} -gt 0 ]]; then
-    start x-data python/jshookz/.venv/bin/pytest -q "${xdata_targets[@]}"
+    start x-data python/jshookz/.venv/bin/pytest -q \
+        -o cache_dir=build/pytest-cache/x-data "${xdata_targets[@]}"
 fi
 if [[ ${#ctest_patterns[@]} -gt 0 ]]; then
     ctest_regex="$(IFS='|'; printf '%s' "${ctest_patterns[*]}")"

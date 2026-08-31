@@ -103,6 +103,12 @@ def validate(root: Path) -> list[str]:
         "python/jshookz/.venv/bin/pytest",
         "python/hostem/.venv/bin/pytest",
         "ctest --test-dir build/cpp --output-on-failure",
+        "--no-tests=error",
+        "full_gate=0",
+        'for index in "${!pids[@]}"',
+        "build/pytest-cache/jshookz",
+        "build/pytest-cache/hostem",
+        "build/pytest-cache/x-data",
         "scripts/check-wasm-stack.sh",
     ):
         if token not in tests:
