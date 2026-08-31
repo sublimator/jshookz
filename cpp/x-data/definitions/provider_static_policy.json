@@ -43,7 +43,14 @@
         "discriminator": "LedgerEntryType",
         "type_table": "LEDGER_ENTRY_TYPES",
         "format_table": "LEDGER_ENTRY_FORMATS",
-        "leaves": ["AccountRoot", "URIToken"]
+        "leaves": ["AccountRoot", "URIToken", "Hook", "HookDefinition"],
+        "leaf_names": {
+          "Hook": "HookLedger"
+        },
+        "leaf_bindings": {
+          "Hook": ["LedgerEntryType", "Hooks"],
+          "HookDefinition": ["LedgerEntryType", "HookHash"]
+        }
       }
     ],
     "refinements": {

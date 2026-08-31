@@ -217,11 +217,15 @@ def test_provider_object_specialization_bindings_are_generated_from_formats() ->
         policy_sha=hashlib.sha256(PROVIDER_POLICY.read_bytes()).hexdigest(),
     )
 
-    assert header.count("// @binding provider:") == 123
+    assert header.count("// @binding provider:") == 164
     assert "// @binding provider:STObject" in header
     assert "// @binding provider:Transaction.Account" in header
     assert "// @binding provider:Payment.Amount" in header
     assert "// @binding provider:AccountRoot.Balance" in header
+    assert "// @binding provider:HookLedger.Hooks" in header
+    assert "// @binding provider:HookDefinition.HookHash" in header
+    assert "// @binding provider:HookLedger.OwnerNode" not in header
+    assert "// @binding provider:HookDefinition.HookNamespace" not in header
     assert "// @binding provider:AccountSet" not in header
 
 

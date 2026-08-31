@@ -4,10 +4,6 @@ from jshookz.host import WasmHost
 from jshookz.paths import XAHAU_HOOK_PROVIDER_WASM
 from jshookz.runtime_types import SCHEMA, observe_runtime_types
 
-# Exact runtime-surface observation, including the foreign-state accessor,
-# account-keylet value, and selected typed emission builders.
-_NOMINAL_MATRIX_GAS = 11_746_655
-
 _XFL_VALUE_KERNEL = r"""
 JSON.stringify((() => {
   const amount = wire => util.decodeObject(STBlob.fromHex(`61${wire}`)).Amount;
@@ -340,13 +336,21 @@ def _run_nominal_matrix():
         host.destroy()
 
 
-def test_sealed_provider_nominal_matrix_is_exact_and_deterministically_bounded() -> (
-    None
-):
+def test_sealed_provider_nominal_matrix_is_exact_and_deterministically_bounded(
+    runtime_snapshot,
+) -> None:
     first = _run_nominal_matrix()
     second = _run_nominal_matrix()
     assert first.ok, first.error
     assert second.ok, second.error
     assert first.result_value == second.result_value == "[]"
     assert first.gas_used == second.gas_used
-    assert first.gas_used == _NOMINAL_MATRIX_GAS
+    assert first.host_work_used == second.host_work_used
+    runtime_snapshot.assert_match(
+        "sealed_provider_nominal_matrix",
+        {
+            "gas_used": first.gas_used,
+            "host_work_used": first.host_work_used,
+            "result_value": first.result_value,
+        },
+    )

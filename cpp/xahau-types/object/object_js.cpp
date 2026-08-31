@@ -2669,6 +2669,38 @@ std::uint32_t certifiedObjectMaxBytes() noexcept {
   return xdata::RecursiveScanLimits{}.max_bytes;
 }
 
+namespace {
+
+[[nodiscard]] JSValue makeCertifiedExactViewOwned(
+    JSContext *ctx, std::uint8_t *bytes, std::uint32_t size,
+    ObjectView expected, char const *name) {
+  if ((size != 0 && bytes == nullptr) ||
+      size > xdata::RecursiveScanLimits{}.max_bytes) {
+    js_free(ctx, bytes);
+    return JS_ThrowInternalError(
+        ctx, "trusted object bytes violate the provider size invariant");
+  }
+  auto outcome = mintOwnedObjectBytes(ctx, bytes, size);
+  if (JS_IsException(outcome.value))
+    return outcome.value;
+  if (!JS_IsUndefined(outcome.value)) {
+    auto const *state = static_cast<ObjectState const *>(
+        JS_GetOpaque(outcome.value, objectClassId));
+    auto const view = state == nullptr ? ObjectView::st_object
+                                       : static_cast<ObjectView>(state->view);
+    if (view == expected)
+      return outcome.value;
+    JS_FreeValue(ctx, outcome.value);
+    return JS_ThrowInternalError(
+        ctx, "trusted ledger object is not a complete %s", name);
+  }
+  return JS_ThrowInternalError(
+      ctx, "trusted %s certification failed: %s", name,
+      xdata::scan_message_literal(outcome.status.message_id));
+}
+
+} // namespace
+
 JSValue makeCertifiedTransactionOwned(JSContext *ctx, std::uint8_t *bytes,
                                       std::uint32_t size) {
   if ((size != 0 && bytes == nullptr) ||
@@ -2705,33 +2737,18 @@ JSValue makeCertifiedTransactionOwned(JSContext *ctx, std::uint8_t *bytes,
 
 JSValue makeCertifiedAccountRootOwned(JSContext *ctx, std::uint8_t *bytes,
                                       std::uint32_t size) {
-  if ((size != 0 && bytes == nullptr) ||
-      size > xdata::RecursiveScanLimits{}.max_bytes) {
-    js_free(ctx, bytes);
-    return JS_ThrowInternalError(
-        ctx, "trusted object bytes violate the provider size invariant");
-  }
-  auto outcome = mintOwnedObjectBytes(ctx, bytes, size);
-  if (JS_IsException(outcome.value))
-    return outcome.value;
-  if (!JS_IsUndefined(outcome.value)) {
-    auto const *state = static_cast<ObjectState const *>(
-        JS_GetOpaque(outcome.value, objectClassId));
-    auto const view = state == nullptr ? ObjectView::st_object
-                                       : static_cast<ObjectView>(state->view);
-    if (view == ObjectView::account_root)
-      return outcome.value;
-    JS_FreeValue(ctx, outcome.value);
-    return JS_ThrowInternalError(
-        ctx, "trusted ledger object is not a complete AccountRoot");
-  }
-  return JS_ThrowInternalError(
-      ctx, "trusted AccountRoot certification failed: %s",
-      xdata::scan_message_literal(outcome.status.message_id));
+  return makeCertifiedExactViewOwned(
+      ctx, bytes, size, ObjectView::account_root, "AccountRoot");
 }
 
 JSValue makeCertifiedURITokenOwned(JSContext* ctx, std::uint8_t* bytes,
                                    std::uint32_t size) {
+  return makeCertifiedExactViewOwned(
+      ctx, bytes, size, ObjectView::u_r_i_token, "URIToken");
+}
+
+JSValue makeCertifiedObjectOwned(JSContext *ctx, std::uint8_t *bytes,
+                                 std::uint32_t size) {
   if ((size != 0 && bytes == nullptr) ||
       size > xdata::RecursiveScanLimits{}.max_bytes) {
     js_free(ctx, bytes);
@@ -2739,22 +2756,23 @@ JSValue makeCertifiedURITokenOwned(JSContext* ctx, std::uint8_t* bytes,
         ctx, "trusted object bytes violate the provider size invariant");
   }
   auto outcome = mintOwnedObjectBytes(ctx, bytes, size);
-  if (JS_IsException(outcome.value))
+  if (JS_IsException(outcome.value) || !JS_IsUndefined(outcome.value))
     return outcome.value;
-  if (!JS_IsUndefined(outcome.value)) {
-    auto const* state = static_cast<ObjectState const*>(
-        JS_GetOpaque(outcome.value, objectClassId));
-    auto const view = state == nullptr ? ObjectView::st_object
-                                       : static_cast<ObjectView>(state->view);
-    if (view == ObjectView::u_r_i_token)
-      return outcome.value;
-    JS_FreeValue(ctx, outcome.value);
-    return JS_ThrowInternalError(
-        ctx, "trusted ledger object is not a complete URIToken");
-  }
   return JS_ThrowInternalError(
-      ctx, "trusted URIToken certification failed: %s",
+      ctx, "trusted object certification failed: %s",
       xdata::scan_message_literal(outcome.status.message_id));
+}
+
+JSValue makeCertifiedHookLedgerOwned(JSContext *ctx, std::uint8_t *bytes,
+                                     std::uint32_t size) {
+  return makeCertifiedExactViewOwned(
+      ctx, bytes, size, ObjectView::hook_ledger, "HookLedger");
+}
+
+JSValue makeCertifiedHookDefinitionOwned(JSContext *ctx, std::uint8_t *bytes,
+                                         std::uint32_t size) {
+  return makeCertifiedExactViewOwned(
+      ctx, bytes, size, ObjectView::hook_definition, "HookDefinition");
 }
 
 // @binding provider:util.validateObject

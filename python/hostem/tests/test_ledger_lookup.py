@@ -15,6 +15,17 @@ URI_TOKEN_ID_HEX = "AA" * 32
 URI_TOKEN_KEYLET_HEX = "0055" + URI_TOKEN_ID_HEX
 URI_TOKEN_OWNER_HEX = "D0F5430B66E06498D4CEEC816C7B3337F9982337"
 
+HOOK_KEYLET_HEX = (
+    "0048469372BEE8814EC52CA2AECB5374AB57A47B53627E3C0E2ACBE3FDC78DBFEC7B"
+)
+HOOK_DEFINITION_HASH_HEX = "11" * 32
+HOOK_DEFINITION_KEYLET_HEX = (
+    "00449DE244AE8D8E149F905B9F665ADB1F31FB4B37E577122F230618D23C84969101"
+)
+FEES_KEYLET_HEX = (
+    "00734BC50C9B0D8515D3EAAE1E74B29A95804346C491EE1A95BF25E4AAB854A6A651"
+)
+
 # Independently serialized through the pinned xahau-codec fixture executable.
 # It contains every generated AccountRoot required field and a native Balance.
 ACCOUNT_ROOT = bytes.fromhex(
@@ -82,6 +93,34 @@ COMPLETE_URI_TOKEN = bytes.fromhex(
     "8414B5F762798A53D543A014CAF8B297CFF8F2F937E8"
 )
 
+# Independently serialized by xahau-codec. The Hook entry contains one installed
+# Hook whose HookHash is 0x11 repeated; all canonical required ledger fields are
+# present.
+HOOK_LEDGER = bytes.fromhex(
+    "11004822000000002500000001340000000000000000"
+    "550000000000000000000000000000000000000000000000000000000000000000"
+    "FBEE501F1111111111111111111111111111111111111111111111111111111111111111E1F1"
+)
+INCOMPLETE_HOOK_LEDGER = bytes.fromhex(
+    "11004822000000002500000001340000000000000000"
+    "550000000000000000000000000000000000000000000000000000000000000000"
+)
+
+HOOK_DEFINITION = bytes.fromhex(
+    "110044101400002200000000250000000130130000000000000001"
+    "554444444444444444444444444444444444444444444444444444444444444444"
+    "501F1111111111111111111111111111111111111111111111111111111111111111"
+    "50202222222222222222222222222222222222222222222222222222222222222222"
+    "50213333333333333333333333333333333333333333333333333333333333333333"
+    "6840000000000000007B0100F013F1"
+)
+INCOMPLETE_HOOK_DEFINITION = bytes.fromhex(
+    "110044101400002200000000250000000130130000000000000001"
+    "554444444444444444444444444444444444444444444444444444444444444444"
+)
+
+FEES = bytes.fromhex("1100732200000000201F01312D002020004C4B40")
+
 
 def _runner(value: bytes | None = ACCOUNT_ROOT) -> HookRunner:
     runtime = HookRuntime()
@@ -94,6 +133,13 @@ def _uri_runner(value: bytes | None = URI_TOKEN) -> HookRunner:
     runtime = HookRuntime()
     if value is not None:
         runtime.ledger[bytes.fromhex(URI_TOKEN_KEYLET_HEX)] = value
+    return HookRunner(runtime)
+
+
+def _keylet_runner(keylet_hex: str, value: bytes | None) -> HookRunner:
+    runtime = HookRuntime()
+    if value is not None:
+        runtime.ledger[bytes.fromhex(keylet_hex)] = value
     return HookRunner(runtime)
 
 
@@ -278,6 +324,198 @@ def test_uri_token_lookup_rejects_wrong_complete_ledger_family() -> None:
         "slot",
         "slot_clear",
     ]
+
+
+def test_hook_ledger_keylets_and_sha512half_match_independent_vectors() -> None:
+    source = f'''
+      export function main(): never {{
+        const account = AccountID.fromHex("{ACCOUNT_HEX}");
+        const definitionHash = Hash256.fromHex("{HOOK_DEFINITION_HASH_HEX}");
+        const accountKeylet = util.keylet.account(account);
+        const hookKeylet = util.keylet.hook(account);
+        const definitionKeylet = util.keylet.hookDefinition(definitionHash);
+        const feesKeylet = util.keylet.fees();
+        const raw = rollback.onFail(
+          LedgerKeylet.fromRaw(hookKeylet.toBytes()),
+          "cannot import raw keylet",
+        );
+        const digestInput = new Uint8Array(128);
+        digestInput.fill(0x11, 0, 32);
+        digestInput.fill(0x22, 32, 64);
+        digestInput.fill(0x33, 64, 96);
+        digestInput.fill(0x44, 96, 128);
+
+        if (accountKeylet.toHex() !== "{ACCOUNT_KEYLET_HEX}" ||
+            hookKeylet.toHex() !== "{HOOK_KEYLET_HEX}" ||
+            definitionKeylet.toHex() !== "{HOOK_DEFINITION_KEYLET_HEX}" ||
+            feesKeylet.toHex() !== "{FEES_KEYLET_HEX}" ||
+            raw.toHex() !== hookKeylet.toHex() ||
+            raw.type !== 72 ||
+            util.sha512h(new Uint8Array([1, 2, 3])).toHex() !==
+              "27864CC5219A951A7A6E52B8C8DDDF6981D098DA1658D96258C870B2C88DFBCB" ||
+            util.sha512h(digestInput).toHex() !==
+              "890EF32954C5320012BFDB9D69A7F647FFF5DFE671B7992F33DE9DDEE1E12820") {{
+          rollback("Hook ledger primitive mismatch", 1);
+        }}
+        accept("Hook ledger primitives match", 0);
+      }}
+    '''
+
+    result = _runner(None).run_typescript(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"Hook ledger primitives match"
+    assert _call_names(result) == ["accept"]
+
+
+def test_hook_keylet_lookup_projects_complete_hook_ledger() -> None:
+    source = f'''
+      export function main(): never {{
+        const value = rollback.requirePresent(
+          ledger.lookup(util.keylet.hook(AccountID.fromHex("{ACCOUNT_HEX}"))),
+          "Hook ledger entry missing",
+        );
+        const installed = value.Hooks.at(0);
+        if (!(value instanceof HookLedger) ||
+            !(value instanceof LedgerEntry) ||
+            value.LedgerEntryType !== LedgerEntryType.Hook ||
+            value.Hooks.length !== 1 ||
+            installed?.HookHash?.toHex() !== "{HOOK_DEFINITION_HASH_HEX}") {{
+          rollback("Hook ledger projection mismatch", 1);
+        }}
+        accept("typed Hook ledger lookup", 0);
+      }}
+    '''
+
+    result = _keylet_runner(HOOK_KEYLET_HEX, HOOK_LEDGER).run_typescript(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"typed Hook ledger lookup"
+    assert _call_names(result) == [
+        "slot_set",
+        "slot_size",
+        "slot_clear",
+        "slot_set",
+        "slot",
+        "slot_clear",
+        "accept",
+    ]
+
+
+def test_hook_definition_keylet_lookup_projects_complete_definition() -> None:
+    source = f'''
+      export function main(): never {{
+        const value = rollback.requirePresent(
+          ledger.lookup(util.keylet.hookDefinition(
+            Hash256.fromHex("{HOOK_DEFINITION_HASH_HEX}"),
+          )),
+          "Hook definition missing",
+        );
+        if (!(value instanceof HookDefinition) ||
+            !(value instanceof LedgerEntry) ||
+            value.LedgerEntryType !== LedgerEntryType.HookDefinition ||
+            value.HookHash.toHex() !== "{HOOK_DEFINITION_HASH_HEX}") {{
+          rollback("Hook definition projection mismatch", 1);
+        }}
+        accept("typed Hook definition lookup", 0);
+      }}
+    '''
+
+    result = _keylet_runner(
+        HOOK_DEFINITION_KEYLET_HEX, HOOK_DEFINITION
+    ).run_typescript(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"typed Hook definition lookup"
+
+
+def test_fees_keylet_lookup_preserves_generic_complete_object() -> None:
+    source = '''
+      export function main(): never {
+        const value = rollback.requirePresent(
+          ledger.lookup(util.keylet.fees()),
+          "Fee settings missing",
+        );
+        const reserveBase = rollback.requirePresent(
+          value.get(Field.ReserveBase),
+          "ReserveBase missing",
+        );
+        const reserveIncrement = rollback.requirePresent(
+          value.get(Field.ReserveIncrement),
+          "ReserveIncrement missing",
+        );
+        if (!(value instanceof LedgerEntry) ||
+            value instanceof HookLedger || value instanceof HookDefinition ||
+            value.LedgerEntryType !== LedgerEntryType.FeeSettings ||
+            reserveBase.toNumber() !== 20_000_000 ||
+            reserveIncrement.toNumber() !== 5_000_000) {
+          rollback("Fee settings projection mismatch", 1);
+        }
+        accept("generic fee settings lookup", 0);
+      }
+    '''
+
+    result = _keylet_runner(FEES_KEYLET_HEX, FEES).run_typescript(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"generic fee settings lookup"
+
+
+@pytest.mark.parametrize(
+    ("keylet_hex", "value", "factory", "expected"),
+    [
+        (
+            HOOK_KEYLET_HEX,
+            INCOMPLETE_HOOK_LEDGER,
+            f'util.keylet.hook(AccountID.fromHex("{ACCOUNT_HEX}"))',
+            "HookLedger",
+        ),
+        (
+            HOOK_DEFINITION_KEYLET_HEX,
+            INCOMPLETE_HOOK_DEFINITION,
+            "util.keylet.hookDefinition(Hash256.fromHex(\"" +
+            HOOK_DEFINITION_HASH_HEX + "\"))",
+            "HookDefinition",
+        ),
+    ],
+)
+def test_typed_hook_ledger_keylets_reject_incomplete_formats(
+    keylet_hex: str, value: bytes, factory: str, expected: str
+) -> None:
+    result = _keylet_runner(keylet_hex, value).run(
+        f"export function main() {{ ledger.lookup({factory}); }}"
+    )
+
+    assert result.error is not None
+    assert expected in str(result.error)
+
+
+def test_raw_keylet_lookup_does_not_assert_a_richer_format() -> None:
+    source = f'''
+      export function main(): never {{
+        const raw = rollback.onFail(
+          LedgerKeylet.fromRaw(util.keylet.hook(
+            AccountID.fromHex("{ACCOUNT_HEX}"),
+          ).toBytes()),
+          "cannot import keylet",
+        );
+        const value = rollback.requirePresent(
+          ledger.lookup(raw),
+          "ledger object missing",
+        );
+        if (!(value instanceof STObject) || value instanceof HookLedger) {{
+          rollback("raw keylet asserted a HookLedger", 1);
+        }}
+        accept("raw keylet remained generic", 0);
+      }}
+    '''
+
+    result = _keylet_runner(
+        HOOK_KEYLET_HEX, INCOMPLETE_HOOK_LEDGER
+    ).run_typescript(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"raw keylet remained generic"
 
 
 def test_structural_keylet_impostor_is_rejected_before_host_work() -> None:

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from hookz import hookapi
 from hookz.runtime import HookRuntime
 from hookz.handlers.otxn import otxn_slot as builtin_otxn_slot
 from hookz.handlers.slot import slot_clear as builtin_slot_clear
@@ -229,6 +230,74 @@ def test_negative_otxn_type_is_an_execution_invariant_failure() -> None:
     assert result.error is not None
     assert "host violated total invocation fact with -5" in str(result.error)
     assert _call_names(result) == ["otxn_type"]
+
+
+def test_otxn_id_preserves_exact_hash_and_accepts_flags() -> None:
+    runner = _runner(PAYMENT)
+    runner.runtime.otxn_id_val = bytes.fromhex("A1" * 32)
+    source = """
+      export function main(): never {
+        const plain = rollback.onFail(otxn.id(), "cannot read transaction ID");
+        const flagged = rollback.onFail(
+          otxn.id(1),
+          "cannot read flagged transaction ID",
+        );
+        if (plain.toHex() !== "A1".repeat(32) || !plain.equals(flagged)) {
+          rollback("originating transaction ID mismatch", 1);
+        }
+        accept("originating transaction ID preserved", 0);
+      }
+    """
+
+    result = runner.run_typescript(source)
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"originating transaction ID preserved"
+    assert _call_names(result) == ["otxn_id", "otxn_id", "accept"]
+    assert result.call_log[0].args[-1] == 0
+    assert result.call_log[1].args[-1] == 1
+
+
+def test_otxn_id_preserves_negative_host_status() -> None:
+    runner = _runner(PAYMENT)
+    runner.runtime.handlers["otxn_id"] = lambda *_args: hookapi.INVALID_ARGUMENT
+    source = """
+      function expectHostFailure<T>(result: HostResult<T>): HostError {
+        if (result.ok) {
+          rollback("expected otxn_id host failure", 1);
+        } else {
+          return result.error;
+        }
+      }
+
+      export function main(): never {
+        const error = expectHostFailure(otxn.id());
+        if (error.code !== HookReturnCode.INVALID_ARGUMENT) {
+          rollback("otxn_id host status changed", 1);
+        }
+        accept("otxn_id host status preserved", 0);
+      }
+    """
+
+    result = runner.run_typescript(source)
+
+    assert result.accepted, result.error
+    assert _call_names(result) == ["otxn_id", "accept"]
+
+
+def test_otxn_id_rejects_malformed_positive_host_length() -> None:
+    runner = _runner(PAYMENT)
+    runner.runtime.handlers["otxn_id"] = lambda *_args: 31
+
+    result = runner.run_typescript(
+        "export function main(): never { "
+        "rollback.onFail(otxn.id(), 'cannot read transaction ID'); "
+        "accept('no'); }"
+    )
+
+    assert result.error is not None
+    assert "host returned 31, expected 32" in str(result.error)
+    assert _call_names(result) == ["otxn_id"]
 
 
 @pytest.mark.parametrize(

@@ -1954,7 +1954,7 @@ declare global {
     readonly HookHash?: Hash256;
   }
 
-  /** Serialized-array wrapper for one installed Hook object. */
+  /** Host-handle wrapper retained for the aspirational per-field host API. */
   interface HookArrayEntry extends STObject {
     readonly Hook: InstalledHook;
   }
@@ -1964,7 +1964,7 @@ declare global {
     private constructor();
 
     readonly LedgerEntryType: typeof LedgerEntryType.Hook;
-    readonly Hooks: STArray<HookArrayEntry>;
+    readonly Hooks: STArray<InstalledHook>;
   }
 
   /** Ledger entry containing one installed Hook implementation. */

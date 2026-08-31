@@ -56,7 +56,8 @@ JSON.stringify({
   schema: "jshookz.runtime-type-observation.v1",
   globals: Object.getOwnPropertyNames(globalThis).sort().map(name => {
     const prototypeNouns = [
-      "STObject", "Transaction", "Payment", "LedgerEntry", "AccountRoot"
+      "STObject", "Transaction", "Payment", "LedgerEntry", "AccountRoot",
+      "URIToken", "HookLedger", "HookDefinition"
     ];
     const value = globalThis[name];
     const kind = value === null ? "null" : typeof value;
@@ -112,12 +113,9 @@ JSON.stringify({
     };
   }),
   enum_namespaces: [
-    "TransactionType",
-    "LedgerEntryType",
-    "TransactionResult",
-    "HookReturnCode",
-    "EntropyTier",
-  ].map(name => {
+    "EntropyTier", "TransactionType", "LedgerEntryType", "TransactionResult",
+    "HookReturnCode"
+  ].filter(name => globalThis[name] !== undefined).map(name => {
     const value = globalThis[name];
     const kind = value === null ? "null" : typeof value;
     const objectLike = (kind === "object" || kind === "function");

@@ -56,6 +56,17 @@ void unregisterObjectTypes(JSRuntime* runtime) noexcept;
 [[nodiscard]] JSValue makeCertifiedURITokenOwned(
     JSContext* ctx, std::uint8_t* bytes, std::uint32_t size);
 
+// Trusted-host generic ledger ingress. This consumes `bytes` on every path,
+// certifies/indexes exactly once, and returns the strongest completely proven
+// generated format. It makes no caller-supplied nominal claim.
+[[nodiscard]] JSValue makeCertifiedObjectOwned(
+    JSContext* ctx, std::uint8_t* bytes, std::uint32_t size);
+
+[[nodiscard]] JSValue makeCertifiedHookLedgerOwned(
+    JSContext* ctx, std::uint8_t* bytes, std::uint32_t size);
+[[nodiscard]] JSValue makeCertifiedHookDefinitionOwned(
+    JSContext* ctx, std::uint8_t* bytes, std::uint32_t size);
+
 // Private adapters behind the eventual util.validateObject,
 // util.safeDecodeObject, and util.decodeObject publication. They enforce the
 // exact ObjectBytes provenance union without executing JavaScript.

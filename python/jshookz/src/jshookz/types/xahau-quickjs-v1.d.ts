@@ -1636,17 +1636,12 @@ declare global {
     readonly HookHash?: Hash256;
   }
 
-  /** Serialized-array wrapper for one installed Hook object. */
-  interface HookArrayEntry extends STObject {
-    readonly Hook: InstalledHook;
-  }
-
   /** Account-level ledger entry containing its fixed-position Hook array. */
   class HookLedger extends LedgerEntry {
     private constructor();
 
     readonly LedgerEntryType: typeof LedgerEntryType.Hook;
-    readonly Hooks: STArray<HookArrayEntry>;
+    readonly Hooks: STArray<InstalledHook>;
   }
 
   /** Ledger entry containing one installed Hook implementation. */

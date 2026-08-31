@@ -245,8 +245,9 @@ void XFLDecimal.one;
 // @ts-expect-error exact v1 accepts a complete Issue, not three IOU parts
 Amount.iou(XFLDecimal.zero, issuedCurrency, AccountID.one);
 declare const unspecializedLedgerKeylet: LedgerKeylet<LedgerEntry>;
-// @ts-expect-error no generic complete-family lookup was selected
-ledger.lookup(unspecializedLedgerKeylet);
+const unspecializedLedgerRead: HostResult<LedgerEntry | undefined> =
+  ledger.lookup(unspecializedLedgerKeylet);
+void unspecializedLedgerRead;
 
 // ── 0060 activation: profile-configuration vocabulary ────────────────
 

@@ -413,8 +413,9 @@ def provider_object_specializations(
         view_public_names.append(family.name)
         view_parent_names.append("st_object")
         for leaf in family.leaves:
-            view_names.append(_cpp_identifier(leaf))
-            view_public_names.append(leaf)
+            public_leaf = family.leaf_name(leaf)
+            view_names.append(_cpp_identifier(public_leaf))
+            view_public_names.append(public_leaf)
             view_parent_names.append(_cpp_identifier(family.name))
     if len(view_names) != len(set(view_names)):
         raise ValueError("object specialization view names are not unique")
@@ -460,12 +461,13 @@ def provider_object_specializations(
             for member in (*inherited_members, *(field.name for field in family.common))
         )
         for leaf in family.leaves:
-            object_binding_paths.append(leaf)
+            public_leaf = family.leaf_name(leaf)
+            object_binding_paths.append(public_leaf)
             object_binding_paths.extend(
-                f"{leaf}.{member}"
+                f"{public_leaf}.{member}"
                 for member in (
                     *inherited_members,
-                    *(field.name for field in family.format(leaf).fields),
+                    *family.binding_fields(leaf),
                 )
             )
         format_begin = len(formats)
@@ -494,7 +496,7 @@ def provider_object_specializations(
                     }
                 )
             selected_view = (
-                object_format.name
+                family.leaf_name(object_format.name)
                 if object_format.name in family.leaves
                 else family.name
             )

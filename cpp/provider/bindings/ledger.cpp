@@ -161,6 +161,30 @@ js_otxn_type(JSContext *ctx, JSValueConst this_val,
 }
 
 JSValue
+// @binding provider:otxn.id
+js_otxn_id(JSContext *ctx, JSValueConst, int argc, JSValueConst *argv)
+{
+    std::uint32_t flags = 0;
+    if (argc > 0 && !JS_IsUndefined(argv[0]) &&
+        JS_ToUint32(ctx, &flags, argv[0]) < 0)
+        return JS_EXCEPTION;
+
+    std::uint8_t bytes[32];
+    std::int64_t const result = hook_otxn_id(
+        static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(bytes)),
+        sizeof(bytes),
+        flags);
+    if (result < 0)
+        return host_failure(ctx, result);
+    if (result != static_cast<std::int64_t>(sizeof(bytes)))
+        return JS_ThrowInternalError(
+            ctx,
+            "otxn.id: host returned %lld, expected 32",
+            (long long)result);
+    return host_success(ctx, makeHash256(ctx, bytes, sizeof(bytes)));
+}
+
+JSValue
 // @binding provider:otxn.param
 js_otxn_param(JSContext *ctx, JSValueConst this_val,
               int argc, JSValueConst *argv)
@@ -418,9 +442,25 @@ js_ledger_lookup(JSContext *ctx, JSValueConst, int argc, JSValueConst *argv)
             (long long)cleared);
     }
 
-    JSValue object = kind == types::LedgerKeyletKind::uriToken
-        ? types::makeCertifiedURITokenOwned(ctx, bytes, size)
-        : types::makeCertifiedAccountRootOwned(ctx, bytes, size);
+    JSValue object = JS_UNDEFINED;
+    switch (kind) {
+    case types::LedgerKeyletKind::generic:
+    case types::LedgerKeyletKind::fees:
+        object = types::makeCertifiedObjectOwned(ctx, bytes, size);
+        break;
+    case types::LedgerKeyletKind::accountRoot:
+        object = types::makeCertifiedAccountRootOwned(ctx, bytes, size);
+        break;
+    case types::LedgerKeyletKind::uriToken:
+        object = types::makeCertifiedURITokenOwned(ctx, bytes, size);
+        break;
+    case types::LedgerKeyletKind::hookLedger:
+        object = types::makeCertifiedHookLedgerOwned(ctx, bytes, size);
+        break;
+    case types::LedgerKeyletKind::hookDefinition:
+        object = types::makeCertifiedHookDefinitionOwned(ctx, bytes, size);
+        break;
+    }
     if (JS_IsException(object))
         return object;
     return host_success(ctx, object);
@@ -520,6 +560,9 @@ registerLedger(JSContext *ctx, JSValue global)
         return false;
     if (JS_SetPropertyStr(ctx, otxn.get(), "type",
             JS_NewCFunction(ctx, js_otxn_type, "type", 0)) < 0)
+        return false;
+    if (JS_SetPropertyStr(ctx, otxn.get(), "id",
+            JS_NewCFunction(ctx, js_otxn_id, "id", 1)) < 0)
         return false;
     if (JS_SetPropertyStr(ctx, otxn.get(), "param",
             JS_NewCFunction(ctx, js_otxn_param, "param", 2)) < 0)

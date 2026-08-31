@@ -2,13 +2,50 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from jshookz.paths import REPO_ROOT, WASI_TOOLCHAIN
+
+
+RUNTIME_SNAPSHOT = Path(__file__).with_name("runtime-observations.snapshot.json")
+
+
+class RuntimeSnapshot:
+    """Compare deterministic observations, or explicitly refresh their JSON."""
+
+    def __init__(self, path: Path, *, update: bool) -> None:
+        self.path = path
+        self.update = update
+
+    def assert_match(self, name: str, actual: dict[str, Any]) -> None:
+        document = json.loads(self.path.read_text())
+        observations = document["observations"]
+        if self.update:
+            observations[name] = actual
+            self.path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
+        assert actual == observations[name]
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.getgroup("jshookz snapshots").addoption(
+        "--update-runtime-snapshots",
+        action="store_true",
+        help="replace committed deterministic runtime observations with actual values",
+    )
+
+
+@pytest.fixture
+def runtime_snapshot(request: pytest.FixtureRequest) -> RuntimeSnapshot:
+    return RuntimeSnapshot(
+        RUNTIME_SNAPSHOT,
+        update=bool(request.config.getoption("--update-runtime-snapshots")),
+    )
 
 
 def _build_sealed_provider(

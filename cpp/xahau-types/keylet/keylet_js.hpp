@@ -7,14 +7,20 @@
 namespace jshookz::provider::types {
 
 enum class LedgerKeyletKind : std::uint8_t {
+  generic,
   accountRoot,
   uriToken,
+  hookLedger,
+  hookDefinition,
+  fees,
 };
 
 // Register the private immutable keylet value class. The public runtime noun
 // and util.keylet factory are installed separately after all classified value
 // types exist.
 [[nodiscard]] bool registerLedgerKeylet(JSContext *ctx);
+[[nodiscard]] bool publishLedgerKeyletType(JSContext *ctx,
+                                           JSValueConst global);
 [[nodiscard]] bool installLedgerKeyletNamespace(JSContext *ctx,
                                                 JSValueConst util);
 

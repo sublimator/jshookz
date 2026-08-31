@@ -44,6 +44,8 @@ class ObjectFamily:
     common: tuple[FormatField, ...]
     formats: tuple[ObjectFormat, ...]
     leaves: tuple[str, ...]
+    leaf_names: tuple[tuple[str, str], ...]
+    leaf_bindings: tuple[tuple[str, tuple[str, ...]], ...]
     defaults: tuple[tuple[str, str], ...]
 
     def format(self, name: str) -> ObjectFormat:
@@ -51,6 +53,13 @@ class ObjectFamily:
             if value.name == name:
                 return value
         raise KeyError(name)
+
+    def leaf_name(self, name: str) -> str:
+        return dict(self.leaf_names).get(name, name)
+
+    def binding_fields(self, name: str) -> tuple[str, ...]:
+        selected = dict(self.leaf_bindings).get(name)
+        return self.format(name).allowed if selected is None else selected
 
 
 @dataclass(frozen=True)
@@ -112,6 +121,24 @@ def _string_map(value: object, *, owner: str) -> dict[str, str]:
     ):
         raise ValueError(f"{owner} must be a string map")
     return dict(value)
+
+
+def _string_list_map(value: object, *, owner: str) -> dict[str, tuple[str, ...]]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{owner} must be an object of string lists")
+    result: dict[str, tuple[str, ...]] = {}
+    for key, items in value.items():
+        if (
+            not isinstance(key, str)
+            or not isinstance(items, list)
+            or not all(isinstance(item, str) for item in items)
+            or len(items) != len(set(items))
+        ):
+            raise ValueError(f"{owner} must be an object of unique string lists")
+        result[key] = tuple(items)
+    return result
 
 
 def load_model(
@@ -186,6 +213,37 @@ def load_model(
             raise ValueError(f"leaves selected twice: {', '.join(sorted(duplicate_leaves))}")
         selected_leaves.update(leaves)
 
+        leaf_names = _string_map(raw.get("leaf_names"), owner=f"{name}.leaf_names")
+        unknown_leaf_names = sorted(set(leaf_names) - set(leaves))
+        if unknown_leaf_names:
+            raise ValueError(
+                f"{name}.leaf_names names unselected leaves: "
+                + ", ".join(unknown_leaf_names)
+            )
+        public_leaf_names = [leaf_names.get(leaf, leaf) for leaf in leaves]
+        if len(public_leaf_names) != len(set(public_leaf_names)):
+            raise ValueError(f"{name}.leaf_names duplicates a public name")
+
+        leaf_bindings = _string_list_map(
+            raw.get("leaf_bindings"), owner=f"{name}.leaf_bindings"
+        )
+        unknown_binding_leaves = sorted(set(leaf_bindings) - set(leaves))
+        if unknown_binding_leaves:
+            raise ValueError(
+                f"{name}.leaf_bindings names unselected leaves: "
+                + ", ".join(unknown_binding_leaves)
+            )
+        for leaf, field_names in leaf_bindings.items():
+            admitted_binding_fields = {
+                field.name for field in (*common, *specific[leaf])
+            }
+            unknown_fields = sorted(set(field_names) - admitted_binding_fields)
+            if unknown_fields:
+                raise ValueError(
+                    f"{name}.leaf_bindings.{leaf} names fields outside its format: "
+                    + ", ".join(unknown_fields)
+                )
+
         defaults = _string_map(raw.get("defaults"), owner=f"{name}.defaults")
         common_names = {field.name for field in common}
         if not set(defaults) <= common_names:
@@ -196,6 +254,8 @@ def load_model(
             common,
             tuple(formats),
             tuple(leaves),
+            tuple(sorted(leaf_names.items())),
+            tuple(sorted(leaf_bindings.items())),
             tuple(sorted(defaults.items())),
         )
         families.append(family)
@@ -215,6 +275,11 @@ def load_model(
                     for value in formats
                 ],
                 "leaves": leaves,
+                "leaf_names": sorted(leaf_names.items()),
+                "leaf_bindings": [
+                    (leaf, list(fields))
+                    for leaf, fields in sorted(leaf_bindings.items())
+                ],
                 "defaults": sorted(defaults.items()),
             }
         )

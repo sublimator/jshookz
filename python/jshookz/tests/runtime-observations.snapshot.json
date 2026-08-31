@@ -1,0 +1,10 @@
+{
+  "observations": {
+    "sealed_provider_nominal_matrix": {
+      "gas_used": 11749252,
+      "host_work_used": 0,
+      "result_value": "[]"
+    }
+  },
+  "schema": "jshookz-runtime-observations-v1"
+}

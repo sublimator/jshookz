@@ -1751,15 +1751,67 @@ TEST_F(
           ];
           return Object.isFrozen(util) &&
             Reflect.ownKeys(util).join(",") ===
-              "validateObject,safeDecodeObject,decodeObject,keylet" &&
+              "validateObject,safeDecodeObject,decodeObject,sha512h,keylet" &&
             Object.isFrozen(util.keylet) &&
-            Reflect.ownKeys(util.keylet).join(",") === "account,uriToken" &&
+            Reflect.ownKeys(util.keylet).join(",") ===
+              "account,uriToken,hook,hookDefinition,fees" &&
             util.validateObject(bytes) && !util.validateObject(bytes.subarray(0, 2)) &&
             decoded.ok && decoded.value.Flags.toNumber() === 9 &&
             asserted.Flags.toNumber() === 9 &&
             runtimeNouns.every(name =>
               typeof globalThis[name]?.[Symbol.hasInstance] === "function") &&
             published.every(name => Object.hasOwn(globalThis, name));
+        })()
+    )JS");
+    ASSERT_FALSE(value.isException());
+    EXPECT_TRUE(JS_ToBool(ctx, value.get()));
+}
+
+TEST_F(XahauTypes, HookLedgerKeyletsAndSha512HalfMatchIndependentVectors)
+{
+    auto value = eval(R"JS(
+        (() => {
+          const account = AccountID.fromHex(
+            "B5F762798A53D543A014CAF8B297CFF8F2F937E8");
+          const definitionHash = Hash256.fromHex(
+            "1111111111111111111111111111111111111111111111111111111111111111");
+          const accountKeylet = util.keylet.account(account);
+          const hookKeylet = util.keylet.hook(account);
+          const definitionKeylet = util.keylet.hookDefinition(definitionHash);
+          const feesKeylet = util.keylet.fees();
+          const rawBytes = new Uint8Array(34);
+          rawBytes[0] = 0x12;
+          rawBytes[1] = 0x34;
+          rawBytes[33] = 0xAB;
+          const raw = LedgerKeylet.fromRaw(rawBytes);
+          const wrong = LedgerKeylet.fromRaw(new Uint8Array(33));
+          const copied = raw.value.toBytes();
+          copied[0] = 0;
+
+          return accountKeylet.toHex() ===
+              "00612B6AC232AA4C4BE41BF49D2459FA4A0347E1B543A4C92FCEE0821C0201E2E9A8" &&
+            hookKeylet.toHex() ===
+              "0048469372BEE8814EC52CA2AECB5374AB57A47B53627E3C0E2ACBE3FDC78DBFEC7B" &&
+            definitionKeylet.toHex() ===
+              "00449DE244AE8D8E149F905B9F665ADB1F31FB4B37E577122F230618D23C84969101" &&
+            feesKeylet.toHex() ===
+              "00734BC50C9B0D8515D3EAAE1E74B29A95804346C491EE1A95BF25E4AAB854A6A651" &&
+            accountKeylet instanceof LedgerKeylet &&
+            hookKeylet instanceof LedgerKeylet &&
+            definitionKeylet instanceof LedgerKeylet &&
+            feesKeylet instanceof LedgerKeylet &&
+            raw.ok && raw.value instanceof LedgerKeylet &&
+            raw.value.type === 0x1234 &&
+            raw.value.toHex() === "1234" + "00".repeat(31) + "AB" &&
+            !wrong.ok && wrong.error.domain === "parse" &&
+            wrong.error.issue === "wrong-length" &&
+            wrong.error.expectedLength === 34 && wrong.error.actualLength === 33 &&
+            util.sha512h(new Uint8Array([1, 2, 3])).toHex() ===
+              "27864CC5219A951A7A6E52B8C8DDDF6981D098DA1658D96258C870B2C88DFBCB" &&
+            util.sha512h(STBlob.from(new Uint8Array([1, 2, 3]))).toHex() ===
+              "27864CC5219A951A7A6E52B8C8DDDF6981D098DA1658D96258C870B2C88DFBCB" &&
+            Object.isFrozen(LedgerKeylet) &&
+            !Object.isExtensible(raw.value);
         })()
     )JS");
     ASSERT_FALSE(value.isException());

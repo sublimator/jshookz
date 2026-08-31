@@ -8,6 +8,8 @@
 #include "pathset/pathset_js.hpp"
 #include "record/record_js.hpp"
 
+#include "sha_impl.h"
+
 #include <cstdint>
 #include <cstring>
 
@@ -161,10 +163,32 @@ decodeObject(
     return types::decodeObjectBytes(ctx, firstArgument(argc, argv));
 }
 
+[[nodiscard]] JSValue
+jsSha512Half(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+    auto bytes = qjs::ByteView::getBinding(
+        ctx,
+        argc > 0 ? argv[0] : JS_UNDEFINED,
+        "util.sha512h",
+        0,
+        qjs::BytePolicy::bytesLikeOrSTBlob);
+    if (!bytes)
+        return qjs::pendingOrTypeError(
+            ctx, "util.sha512h: expected byte input");
+
+    std::uint8_t digest[64];
+    sha_impl::Sha512State hash;
+    sha_impl::sha512_init(hash);
+    sha_impl::sha512_update(hash, bytes.data(), bytes.size());
+    sha_impl::sha512_final(hash, digest);
+    return types::makeHash256Bytes(ctx, digest, 32);
+}
+
 JSCFunctionListEntry const utilFunctions[] = {
     JS_CFUNC_DEF("validateObject", 1, validateObject),
     JS_CFUNC_DEF("safeDecodeObject", 1, safeDecodeObject),
     JS_CFUNC_DEF("decodeObject", 1, decodeObject),
+    JS_CFUNC_DEF("sha512h", 1, jsSha512Half),
 };
 
 struct RuntimeNoun
@@ -198,7 +222,10 @@ publishCppRuntimeTypes(JSContext* ctx, JSValueConst global)
     };
     for (auto const& noun : nouns)
     {
-        if (!types::publishRuntimeType(ctx, global, noun.name, noun.type))
+        bool const published = noun.type == types::RuntimeTypeId::ledgerKeylet
+            ? types::publishLedgerKeyletType(ctx, global)
+            : types::publishRuntimeType(ctx, global, noun.name, noun.type);
+        if (!published)
             return false;
     }
     return true;
