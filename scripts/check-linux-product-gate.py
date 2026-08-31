@@ -17,6 +17,7 @@ FILES = (
     "scripts/linux-product-gate.lock.env",
     "scripts/linux-product-gate.sh",
     "scripts/run-linux-product-gate.sh",
+    "scripts/run-tests.sh",
 )
 LOCK_KEYS = {
     "LINUX_GATE_SCHEMA",
@@ -34,11 +35,7 @@ WORKFLOW_PRODUCT_TOKENS = (
     "./scripts/run-linux-product-gate.sh poison",
     "conan install cpp --output-folder=build/cpp --build=missing",
     "cmake -S cpp -B build/cpp",
-    "ctest --test-dir build/cpp --output-on-failure",
-    "pytest -q python/jshookz/tests",
-    "pytest -q python/hostem/tests",
-    "pytest -q cpp/x-data/tests",
-    "check-wasm-stack.sh",
+    "CI=1 scripts/run-tests.sh",
     "compile-hook",
     "package-hook",
 )
@@ -100,6 +97,17 @@ def validate(root: Path) -> list[str]:
     if workflow.count("./scripts/run-linux-product-gate.sh poison") != 1:
         errors.append("workflow must call the Linux poison gate exactly once")
 
+    tests = texts["scripts/run-tests.sh"]
+    for token in (
+        "refusing an unscoped local test run",
+        "python/jshookz/.venv/bin/pytest",
+        "python/hostem/.venv/bin/pytest",
+        "ctest --test-dir build/cpp --output-on-failure",
+        "scripts/check-wasm-stack.sh",
+    ):
+        if token not in tests:
+            errors.append(f"test driver lost token: {token}")
+
     gate = texts["scripts/linux-product-gate.sh"]
     for token in (
         "Usage: linux-product-gate.sh poison",
@@ -159,10 +167,10 @@ def self_test(root: Path) -> list[str]:
                 "container gate lost token",
             ),
             (
-                ".github/workflows/wasm.yml",
+                "scripts/run-tests.sh",
                 "scripts/check-wasm-stack.sh",
                 "true # removed stack check",
-                "workflow lost product step",
+                "test driver lost token",
             ),
         )
         for relative, old, new, expected in mutations:

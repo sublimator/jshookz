@@ -106,14 +106,9 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/build/cpp/conan_toolchain.cmake" \
             -DCMAKE_BUILD_TYPE=Release
           cmake --build build/cpp
-          ctest --test-dir build/cpp --output-on-failure
 
-      - name: Test product surfaces
-        run: |
-          python/jshookz/.venv/bin/pytest -q python/jshookz/tests
-          python/hostem/.venv/bin/pytest -q python/hostem/tests
-          python/jshookz/.venv/bin/pytest -q cpp/x-data/tests
-          scripts/check-wasm-stack.sh
+      - name: Test product surfaces concurrently
+        run: CI=1 scripts/run-tests.sh
 
 
       - name: End-to-end compile and package a hook
