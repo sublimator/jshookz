@@ -2,20 +2,20 @@
   "observations": {
     "maximum_topology_heap": {
       "peak": [
-        5432853,
-        2861
+        5431350,
+        2838
       ],
       "post_success": [
-        3467557,
-        2875
+        3466310,
+        2852
       ],
       "pre_call": [
-        1237896,
-        2848
+        1236393,
+        2825
       ],
       "registration": [
-        185300,
-        2798
+        184053,
+        2775
       ],
       "static_protocol": 31540
     },

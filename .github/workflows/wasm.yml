@@ -88,8 +88,10 @@ jobs:
           python/jshookz/src/jshookz/node_modules/.bin/tsc \
             -p python/hostem/tsconfig.xahau-integration.json
 
-      - name: Build and seal Xahau provider
-        run: python/jshookz/.venv/bin/jshookz build provider
+      - name: Build and seal Xahau provider products
+        run: |
+          python/jshookz/.venv/bin/jshookz build provider
+          python/jshookz/.venv/bin/jshookz build provider-consensus-entropy
 
       - name: Check generated definitions
         run: scripts/check-generated-definitions.sh

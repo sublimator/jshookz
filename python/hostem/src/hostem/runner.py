@@ -15,7 +15,7 @@ from hookz.runtime import (
 )
 from jshookz.generated_hook_raw import RAW_HOOK_ABI
 from jshookz.host import WasmHost
-from jshookz.hook_compiler import compile_hook
+from jshookz.hook_compiler import CompiledHook, compile_hook
 
 
 _RAW_HOOK_NAMES = frozenset(row[0] for row in RAW_HOOK_ABI)
@@ -90,6 +90,15 @@ class HookRunner:
         self.profile_path = Path(profile_path) if profile_path is not None else None
         self.declarations = Path(declarations) if declarations is not None else None
 
+    def _compile(self, source: Path) -> CompiledHook:
+        if self.declarations is None:
+            return compile_hook(source, wasm_path=self.wasm_path)
+        return compile_hook(
+            source,
+            wasm_path=self.wasm_path,
+            declarations=self.declarations,
+        )
+
     def run_file(
         self,
         path: str | Path,
@@ -98,11 +107,7 @@ class HookRunner:
     ) -> HostemHookResult:
         source = Path(path)
         if source.suffix.lower() in {".ts", ".js", ".mjs"}:
-            compiled = compile_hook(
-                source,
-                wasm_path=self.wasm_path,
-                declarations=self.declarations,
-            )
+            compiled = self._compile(source)
             return self._run_bytecode(
                 compiled.bytecode,
                 label=str(source),
@@ -124,11 +129,7 @@ class HookRunner:
         with tempfile.TemporaryDirectory(prefix="hostem-hook-ts-") as temp:
             source_path = Path(temp) / "hook.ts"
             source_path.write_text(source)
-            compiled = compile_hook(
-                source_path,
-                wasm_path=self.wasm_path,
-                declarations=self.declarations,
-            )
+            compiled = self._compile(source_path)
         return self._run_bytecode(compiled.bytecode, label=label, mode=mode)
 
     def run(
