@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.metadata
+import json
 import os
 import re
 import subprocess
@@ -30,13 +31,9 @@ PINNED_WASI_VERSION = (
     "config: f992bcc08219",
 )
 PINNED_WASMTIME_VERSION = "47.0.1"
-PINNED_SOURCE_MANIFEST_SHA256 = (
-    "c7c24420bdadfabc2fa1b332c0416a551627092ba19db8de5a9224a5408d864b"
-)
-PINNED_ARTIFACT_SHA256 = (
-    "859640623eb8ceb84dbbf08b35620de302ca441662ebbaf50fe7b7b54d5e3fc0"
-)
 PINNED_COUNTER_ABI = "recursive-xdata-fuel-v1"
+SNAPSHOT_PATH = Path(__file__).with_name("recursive-fuel.snapshot.json")
+SNAPSHOT_SCHEMA = "recursive-xdata-fuel-snapshot-v1"
 
 BUDGET = 100_000_000
 ITERATIONS = (128, 256)
@@ -322,17 +319,38 @@ def declared_source_manifest(src: Path) -> tuple[str, list[str]]:
     return digest, rows
 
 
-def validate_source_manifest(src: Path) -> None:
+def load_snapshot() -> dict[str, str]:
+    document = json.loads(SNAPSHOT_PATH.read_text())
+    if document.get("schema") != SNAPSHOT_SCHEMA:
+        raise GateError(f"unsupported recursive fuel snapshot: {document!r}")
+    for name in ("source_manifest_sha256", "artifact_sha256"):
+        value = document.get(name)
+        if not isinstance(value, str) or len(value) != 64:
+            raise GateError(f"recursive fuel snapshot has invalid {name}")
+    return document
+
+
+def write_snapshot(source_manifest: str, artifact: str) -> None:
+    document = {
+        "artifact_sha256": artifact,
+        "schema": SNAPSHOT_SCHEMA,
+        "source_manifest_sha256": source_manifest,
+    }
+    SNAPSHOT_PATH.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
+
+
+def validate_source_manifest(src: Path, expected: str | None) -> str:
     digest, rows = declared_source_manifest(src)
-    if digest != PINNED_SOURCE_MANIFEST_SHA256:
+    if expected is not None and digest != expected:
         raise GateError(
             f"artifact source manifest drift: {digest}, "
-            f"expected {PINNED_SOURCE_MANIFEST_SHA256}"
+            f"expected {expected}"
         )
     print(f"source_manifest sha256={digest} files={len(rows)}")
     for row in rows:
         relative, file_hash = row.split("\0", 1)
         print(f"source_sha256 {file_hash} {relative}")
+    return digest
 
 
 def compile_wasm(
@@ -770,6 +788,11 @@ def main() -> int:
     parser.add_argument("--src", type=Path, required=True)
     parser.add_argument("--wasi", type=Path, default=None)
     parser.add_argument("--keep-wasm", type=Path, default=None)
+    parser.add_argument(
+        "--update-snapshot",
+        action="store_true",
+        help="replace committed source/artifact observations after every gate passes",
+    )
     args = parser.parse_args()
     src = args.src.resolve()
     wasi = (
@@ -782,19 +805,26 @@ def main() -> int:
         )
     ).resolve()
     try:
+        snapshot = load_snapshot()
         clang, objdump = validate_toolchain(wasi)
         validate_provider_static_inventory(src)
-        validate_source_manifest(src)
+        source_manifest = validate_source_manifest(
+            src,
+            None if args.update_snapshot else snapshot["source_manifest_sha256"],
+        )
         with tempfile.TemporaryDirectory() as temporary:
             work = args.keep_wasm.parent if args.keep_wasm else Path(temporary)
             work.mkdir(parents=True, exist_ok=True)
             clean = args.keep_wasm or work / "recursive_fuel.wasm"
             compile_wasm(src, wasi, clang, clean, instrumented=False)
             artifact_hash = sha256_file(clean)
-            if artifact_hash != PINNED_ARTIFACT_SHA256:
+            if (
+                not args.update_snapshot
+                and artifact_hash != snapshot["artifact_sha256"]
+            ):
                 raise GateError(
                     f"clean artifact drift: {artifact_hash}, "
-                    f"expected {PINNED_ARTIFACT_SHA256}"
+                    f"expected {snapshot['artifact_sha256']}"
                 )
             print(
                 f"artifact sha256={artifact_hash} bytes={clean.stat().st_size} "
@@ -845,6 +875,9 @@ def main() -> int:
 
             _, slopes = measure_clean(clean_meter)
             require_delta_and_scale_gates(slopes)
+        if args.update_snapshot:
+            write_snapshot(source_manifest, artifact_hash)
+            print(f"updated snapshot {SNAPSHOT_PATH}")
         print("PASS recursive direct-Wasm fuel/complexity gate")
         return 0
     except (
