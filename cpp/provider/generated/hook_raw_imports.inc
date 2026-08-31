@@ -25,6 +25,9 @@ extern int64_t hook_fee_base(void);
 __attribute__((import_module("env"), import_name("otxn_type")))
 extern int64_t hook_otxn_type(void);
 
+__attribute__((import_module("env"), import_name("otxn_id")))
+extern int64_t hook_otxn_id(uint32_t arg0, uint32_t arg1, uint32_t arg2);
+
 __attribute__((import_module("env"), import_name("otxn_param")))
 extern int64_t hook_otxn_param(uint32_t arg0, uint32_t arg1, uint32_t arg2, uint32_t arg3);
 

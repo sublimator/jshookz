@@ -8,6 +8,7 @@
     "ledger_nonce",
     "fee_base",
     "otxn_type",
+    "otxn_id",
     "otxn_param",
     "otxn_slot",
     "slot_set",

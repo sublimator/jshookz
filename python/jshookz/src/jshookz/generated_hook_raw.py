@@ -10,6 +10,7 @@ RAW_HOOK_ABI = (
     ('ledger_nonce', 'int64_t', ('uint32_t', 'uint32_t'), ''),
     ('fee_base', 'int64_t', (), ''),
     ('otxn_type', 'int64_t', (), ''),
+    ('otxn_id', 'int64_t', ('uint32_t', 'uint32_t', 'uint32_t'), ''),
     ('otxn_param', 'int64_t', ('uint32_t', 'uint32_t', 'uint32_t', 'uint32_t'), ''),
     ('otxn_slot', 'int64_t', ('uint32_t',), ''),
     ('slot_set', 'int64_t', ('uint32_t', 'uint32_t', 'uint32_t'), ''),

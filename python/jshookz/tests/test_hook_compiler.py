@@ -103,6 +103,89 @@ def test_exact_v1_rejects_unearned_or_structural_foreign_state_surface(
         compile_hook(source)
 
 
+def test_exact_v1_hook_ledger_contract_is_typed(tmp_path: Path):
+    source = tmp_path / "hook-ledger-contract.hook.ts"
+    source.write_text(
+        """
+        export function main(): never {
+          const transactionId: HostResult<Hash256> = otxn.id();
+          const flaggedTransactionId: HostResult<Hash256> = otxn.id(1);
+          const raw: ParseResult<LedgerKeylet> = LedgerKeylet.fromRaw(
+            new Uint8Array(34),
+          );
+
+          const hookKeylet: LedgerKeylet<HookLedger> =
+            util.keylet.hook(AccountID.zero);
+          const definitionKeylet: LedgerKeylet<HookDefinition> =
+            util.keylet.hookDefinition(Hash256.zero);
+          const feesKeylet: LedgerKeylet = util.keylet.fees();
+
+          const hook: HookLedger | undefined = rollback.onFail(
+            ledger.lookup(hookKeylet),
+          );
+          const definition: HookDefinition | undefined = rollback.onFail(
+            ledger.lookup(definitionKeylet),
+          );
+          const fees: STObject | undefined = rollback.onFail(
+            ledger.lookup(feesKeylet),
+          );
+          const digest: Hash256 = util.sha512h(new Uint8Array([1, 2, 3]));
+
+          rollback.onFail(transactionId);
+          rollback.onFail(flaggedTransactionId);
+          if (!raw.ok) rollback(raw.error.issue);
+          const rawKeylet = raw.value;
+          void rawKeylet.type;
+          void hook;
+          void definition;
+          void fees;
+          trace("ledger declaration", digest);
+          return accept();
+        }
+        """
+    )
+
+    assert compile_hook(source).bytecode
+
+
+def test_exact_v1_otxn_id_remains_fallible(tmp_path: Path):
+    source = tmp_path / "otxn-id-is-not-direct.hook.ts"
+    source.write_text(
+        """
+        export function main(): never {
+          const transactionId: Hash256 = otxn.id();
+          trace("transaction id", transactionId);
+          return accept();
+        }
+        """
+    )
+
+    with pytest.raises(RuntimeError, match="TypeScript compilation failed"):
+        compile_hook(source)
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "ledger.lookupMany([]);",
+        "util.keylet.raw(new Uint8Array(34));",
+        "const value: Fees = util.decodeObject(new Uint8Array()); void value;",
+        "const value: XFLWord = 0n; void value;",
+    ],
+)
+def test_exact_v1_does_not_publish_raw_or_batch_facades(
+    tmp_path: Path,
+    statement: str,
+):
+    source = tmp_path / "ledger-surface-red.hook.ts"
+    source.write_text(
+        f"export function main():never{{{statement}return accept();}}"
+    )
+
+    with pytest.raises(RuntimeError, match="TypeScript compilation failed"):
+        compile_hook(source)
+
+
 @pytest.mark.parametrize("suffix", [".ts", ".js"])
 @pytest.mark.parametrize(
     ("expression", "expected"),

@@ -15,6 +15,9 @@
     "Hash256.fromHex": {
       "0": "hexString"
     },
+    "LedgerKeylet.fromRaw": {
+      "0": "bytesLikeOrSTBlob"
+    },
     "STBlob.equals": {
       "0": "bytesLikeOrSTBlob"
     },
@@ -61,11 +64,14 @@
     "state.set": {
       "0": "stateKeyLike",
       "1": "stateValueLike"
+    },
+    "util.sha512h": {
+      "0": "bytesLikeOrSTBlob"
     }
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "99aca01b20dfa16efd5bcacb2b6409f760e4c44ca0a0eb3b32930e9666fb4d40"
+    "sha256": "2a287b4faf29ae6a766871069c38277a9500a73190bdac39c45b6f15b6794a50"
   },
   "globals": {
     "AccountID": "object",
@@ -79,6 +85,8 @@
     "Hash160": "object",
     "Hash192": "object",
     "Hash256": "object",
+    "HookDefinition": "function",
+    "HookLedger": "function",
     "HookReturnCode": "object",
     "IOUAmount": "object",
     "Issue": "object",
@@ -164,6 +172,7 @@
       "sequence": "value"
     },
     "otxn": {
+      "id": "function",
       "object": "function",
       "param": "function",
       "type": "function"
@@ -197,10 +206,14 @@
       "decodeObject": "function",
       "keylet": "object",
       "safeDecodeObject": "function",
+      "sha512h": "function",
       "validateObject": "function"
     },
     "util.keylet": {
       "account": "function",
+      "fees": "function",
+      "hook": "function",
+      "hookDefinition": "function",
       "uriToken": "function"
     }
   },
@@ -437,6 +450,48 @@
         "toHex"
       ],
       "probe": "Hash256.from(new Uint8Array(32))"
+    },
+    "HookDefinition": {
+      "frozen": true,
+      "members": {
+        "Flags": "value",
+        "HookHash": "value",
+        "LedgerEntryType": "value",
+        "LedgerIndex": "optional-value",
+        "Remarks": "optional-value",
+        "fieldBytes": "function",
+        "get": "function",
+        "has": "function",
+        "toBytes": "function",
+        "toJSON": "function",
+        "withField": "function",
+        "withoutField": "function"
+      },
+      "own": [
+        "constructor"
+      ],
+      "probe": "util.decodeObject(STBlob.fromHex('110044101400002200000000250000000130130000000000000001554444444444444444444444444444444444444444444444444444444444444444501F111111111111111111111111111111111111111111111111111111111111111150202222222222222222222222222222222222222222222222222222222222222222502133333333333333333333333333333333333333333333333333333333333333336840000000000000007B0100F013F1'))"
+    },
+    "HookLedger": {
+      "frozen": true,
+      "members": {
+        "Flags": "value",
+        "Hooks": "value",
+        "LedgerEntryType": "value",
+        "LedgerIndex": "optional-value",
+        "Remarks": "optional-value",
+        "fieldBytes": "function",
+        "get": "function",
+        "has": "function",
+        "toBytes": "function",
+        "toJSON": "function",
+        "withField": "function",
+        "withoutField": "function"
+      },
+      "own": [
+        "constructor"
+      ],
+      "probe": "util.decodeObject(STBlob.fromHex('11004822000000002500000001340000000000000000550000000000000000000000000000000000000000000000000000000000000000FBEE501F1111111111111111111111111111111111111111111111111111111111111111E1F1'))"
     },
     "Issue": {
       "members": {
@@ -1028,6 +1083,8 @@
       "fromHex": "function",
       "zero": "value"
     },
+    "HookDefinition": {},
+    "HookLedger": {},
     "HookReturnCode": {
       "ALREADY_SET": "value",
       "CANT_RETURN_NEGATIVE": "value",

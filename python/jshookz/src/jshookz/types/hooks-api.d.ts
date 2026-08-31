@@ -1960,14 +1960,18 @@ declare global {
   }
 
   /** Account-level ledger entry containing its fixed-position Hook array. */
-  interface HookLedger extends STObject {
-    readonly LedgerEntryType: "Hook";
+  class HookLedger extends LedgerEntry {
+    private constructor();
+
+    readonly LedgerEntryType: typeof LedgerEntryType.Hook;
     readonly Hooks: STArray<HookArrayEntry>;
   }
 
   /** Ledger entry containing one installed Hook implementation. */
-  interface HookDefinition extends STObject {
-    readonly LedgerEntryType: "HookDefinition";
+  class HookDefinition extends LedgerEntry {
+    private constructor();
+
+    readonly LedgerEntryType: typeof LedgerEntryType.HookDefinition;
     readonly HookHash: Hash256;
   }
 
