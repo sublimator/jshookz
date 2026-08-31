@@ -495,11 +495,13 @@ def _bundle_emitted_javascript(
     outputs = metadata.get("outputs")
     if not isinstance(outputs, dict):
         raise TypeError("Hook bundler metadata has no outputs")
-    javascript_outputs = [
-        value
-        for name, value in outputs.items()
-        if Path(name).resolve() == bundled.resolve()
-    ]
+    javascript_outputs = []
+    for name, value in outputs.items():
+        described_path = Path(name)
+        if not described_path.is_absolute():
+            described_path = output_dir / described_path
+        if described_path.resolve() == bundled.resolve():
+            javascript_outputs.append(value)
     if len(javascript_outputs) != 1:
         raise RuntimeError(
             "Hook bundler did not describe exactly one JavaScript output"

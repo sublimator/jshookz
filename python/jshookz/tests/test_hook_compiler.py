@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -2020,7 +2021,12 @@ def test_frontend_emit_survives_parallel_workers():
     assert len(set(paths)) == 1
 
 
-def test_compiler_bundles_static_relative_helper_import(tmp_path: Path):
+def test_compiler_bundles_static_relative_helper_import(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    compiler_temp = tmp_path / "compiler-temp"
+    compiler_temp.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(compiler_temp))
     helper = tmp_path / "helper.ts"
     helper.write_text("export function helper(): number { return 1; }\n")
     source = tmp_path / "imports.hook.ts"
