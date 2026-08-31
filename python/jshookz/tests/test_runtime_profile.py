@@ -536,7 +536,7 @@ def test_provider_bundle_emits_the_profile_lock(tmp_path: Path):
     assert f'"{lock["bytecode_abi_id"]}"' in cmake_manifest
     assert f'"{lock["runtime_profile_id"]}"' in cmake_manifest
     assert 'XAHAU_QUICKJS_WASMTIME_VERSION "47.0.3"' in cmake_manifest
-    assert 'XAHAU_QUICKJS_INITIALIZATION_FUEL "5500000"' in cmake_manifest
+    assert 'XAHAU_QUICKJS_INITIALIZATION_FUEL "5000000"' in cmake_manifest
     assert (
         'XAHAU_QUICKJS_HOST_WORK_METER "base-plus-addressed-byte-v1"' in cmake_manifest
     )

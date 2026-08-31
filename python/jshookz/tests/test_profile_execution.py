@@ -58,6 +58,9 @@ class _InitializationFuel:
 
 _COLD_INITIALIZATION_CEILING = 5_000_000
 _COLD_INITIALIZATION_HEADROOM = 500_000
+_COLD_ORACLE_MEASUREMENT_ENVELOPE = (
+    _COLD_INITIALIZATION_CEILING + _COLD_INITIALIZATION_HEADROOM
+)
 _SEALED_INITIALIZATION_CEILING = 1_000_000
 _SEALED_INITIALIZATION_HEADROOM = 4_000_000
 
@@ -77,8 +80,12 @@ def _source_initialization_fuel() -> int:
     return value
 
 
-def _measure_initialization_fuel(wasm_path: Path) -> _InitializationFuel:
-    limits = _limits()
+def _measure_initialization_fuel(
+    wasm_path: Path,
+    *,
+    measurement_envelope: int,
+) -> _InitializationFuel:
+    limits = replace(_limits(), initialization_fuel=measurement_envelope)
     host = WasmHost(wasm_path=wasm_path, execution_limits=limits)
     try:
         after_instantiation = host.store.get_fuel()
@@ -104,8 +111,12 @@ def _measure_initialization_fuel(wasm_path: Path) -> _InitializationFuel:
     return measurement
 
 
-def _assert_initialization_accounting(measurement: _InitializationFuel) -> None:
-    assert measurement.envelope == _source_initialization_fuel()
+def _assert_initialization_accounting(
+    measurement: _InitializationFuel,
+    *,
+    expected_envelope: int,
+) -> None:
+    assert measurement.envelope == expected_envelope
     assert measurement.instantiation_used > 0
     assert measurement.profile_configuration_used > 0
     assert measurement.qjs_init_used > 0
@@ -148,21 +159,39 @@ def test_preinitialized_init_fits_a_small_fuel_budget():
         host.destroy()
 
 
-def test_cold_initialization_fits_the_profile_fuel_envelope():
-    measurement = _measure_initialization_fuel(XAHAU_HOOK_PROVIDER_UNWIZERED_WASM)
+def test_cold_initialization_fits_the_diagnostic_fuel_envelope():
+    measurement = _measure_initialization_fuel(
+        XAHAU_HOOK_PROVIDER_UNWIZERED_WASM,
+        measurement_envelope=_COLD_ORACLE_MEASUREMENT_ENVELOPE,
+    )
 
-    _assert_initialization_accounting(measurement)
+    _assert_initialization_accounting(
+        measurement,
+        expected_envelope=_COLD_ORACLE_MEASUREMENT_ENVELOPE,
+    )
     assert measurement.qjs_init_used > 3_000_000
     assert measurement.total_used <= _COLD_INITIALIZATION_CEILING
     assert measurement.remaining >= _COLD_INITIALIZATION_HEADROOM
 
 
 def test_sealed_initialization_uses_the_noop_path_with_more_headroom():
-    cold = _measure_initialization_fuel(XAHAU_HOOK_PROVIDER_UNWIZERED_WASM)
-    sealed = _measure_initialization_fuel(XAHAU_HOOK_PROVIDER_WASM)
+    cold = _measure_initialization_fuel(
+        XAHAU_HOOK_PROVIDER_UNWIZERED_WASM,
+        measurement_envelope=_COLD_ORACLE_MEASUREMENT_ENVELOPE,
+    )
+    sealed = _measure_initialization_fuel(
+        XAHAU_HOOK_PROVIDER_WASM,
+        measurement_envelope=_source_initialization_fuel(),
+    )
 
-    _assert_initialization_accounting(cold)
-    _assert_initialization_accounting(sealed)
+    _assert_initialization_accounting(
+        cold,
+        expected_envelope=_COLD_ORACLE_MEASUREMENT_ENVELOPE,
+    )
+    _assert_initialization_accounting(
+        sealed,
+        expected_envelope=_source_initialization_fuel(),
+    )
     assert sealed.qjs_init_used <= 16
     assert cold.qjs_init_used > sealed.qjs_init_used
     assert sealed.total_used <= _SEALED_INITIALIZATION_CEILING
