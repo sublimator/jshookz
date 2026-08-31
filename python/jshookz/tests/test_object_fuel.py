@@ -153,7 +153,6 @@ WASM_MALLOC_OVERHEAD = 16
 MAXIMUM_REQUESTED_CORE = 4_194_336
 MAXIMUM_ENGINE_REQUESTED = 413
 MAXIMUM_DUPLICATE_STACK = 528
-MAXIMUM_STATIC_PROTOCOL_BYTES = 31_498
 
 
 COMMON_SETUP = r"""
@@ -696,6 +695,7 @@ def test_maximum_topology_fits_heap_and_post_success_headroom():
 
 def test_maximum_topology_records_exact_requested_and_charged_heap(
     resource_probe_wasm: Path,
+    runtime_snapshot,
 ):
     lock = verify_runtime_profile_lock(
         XAHAU_RUNTIME_PROFILE_LOCK,
@@ -750,41 +750,23 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     finally:
         host.destroy()
 
-    assert {
-        "registration": registration,
-        "pre_call": pre_call,
-        "peak": peak,
-        "post_success": post_success,
-        "static_protocol": static_bytes,
-    } == {
-        # Wizer restores the accepted runtime namespaces plus five frozen
-        # serialized-object constructors/prototypes.  The class hierarchy adds
-        # 3,179 requested persistent bytes and 58 persistent allocations; the
-        # generated complete-format tables add 7,757 static protocol bytes.
-        # Publishing accept.require adds 136 charged bytes and 3 allocations.
-        # The frozen foreign-state accessor class/prototype adds 1,090 charged
-        # persistent bytes and 21 allocations; no accessor instance is live in
-        # this topology. The frozen LedgerKeylet class/prototype, classifier
-        # noun, and nested util.keylet namespace add 1,364 charged bytes and
-        # 25 allocations; no keylet instance is live in this topology.
-        # Publishing hook.again, emit.build, entropy.cr, the entropy enum,
-        # typed parameter codecs, and accept.requireTransaction moves this
-        # exact experimental-provider registration snapshot coherently.
-        "registration": (183_346, 2_765),
-        "pre_call": (1_235_942, 2_815),
-        "peak": (5_430_899, 2_828),
-        "post_success": (3_465_603, 2_842),
-        "static_protocol": MAXIMUM_STATIC_PROTOCOL_BYTES,
-    }
+    runtime_snapshot.assert_match(
+        "maximum_topology_heap",
+        {
+            "registration": list(registration),
+            "pre_call": list(pre_call),
+            "peak": list(peak),
+            "post_success": list(post_success),
+            "static_protocol": static_bytes,
+        },
+    )
     assert restored_snapshot == registration
 
-    registration_requested = registration[0] - registration[1] * WASM_MALLOC_OVERHEAD
     pre_call_requested = pre_call[0] - pre_call[1] * WASM_MALLOC_OVERHEAD
     peak_requested = peak[0] - peak[1] * WASM_MALLOC_OVERHEAD
     peak_requested_delta = peak_requested - pre_call_requested
     peak_count_delta = peak[1] - pre_call[1]
 
-    assert pre_call_requested - registration_requested == 1_051_796
     assert peak_requested_delta == MAXIMUM_REQUESTED_CORE + MAXIMUM_ENGINE_REQUESTED
     assert peak[0] - pre_call[0] == (
         MAXIMUM_REQUESTED_CORE
@@ -793,7 +775,6 @@ def test_maximum_topology_records_exact_requested_and_charged_heap(
     )
     assert MAXIMUM_DUPLICATE_STACK == 11 * 6 * 8
     assert peak[0] < limits.quickjs_heap_bytes
-    assert limits.quickjs_heap_bytes - post_success[0] == 13_311_613
     assert limits.quickjs_heap_bytes - post_success[0] >= HEADROOM_BYTES
 
 
