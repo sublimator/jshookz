@@ -37,6 +37,11 @@ option(
     OFF
 )
 option(
+    JSHOOKZ_CONSENSUS_ENTROPY_PROVIDER
+    "Build the named provider-consensus-entropy product"
+    OFF
+)
+option(
     JSHOOKZ_TEST_XFL_GAP_LOOP_MUTANT
     "Build the non-product repeated-division XFL fuel mutant"
     OFF
@@ -70,6 +75,12 @@ add_link_options(-Wno-deprecated)
 # Provider-owned C++ sources compiled into the WASM module.
 include(provider_sources.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/../x-data/definitions.cmake)
+
+if(JSHOOKZ_CONSENSUS_ENTROPY_PROVIDER)
+    list(APPEND JSHOOKZ_PROVIDER_CPP_SOURCES
+        ${CMAKE_CURRENT_LIST_DIR}/bindings/entropy.cpp
+    )
+endif()
 
 add_executable(jshookz_provider
     ${JSHOOKZ_QUICKJS_C_SOURCES}
@@ -105,6 +116,12 @@ if(XAHAU_HOOK_PROVIDER)
         # growth granularity to happen to land on the profile value.
         -Wl,--initial-memory=458752
         -Wl,--max-memory=33554432
+    )
+endif()
+
+if(JSHOOKZ_CONSENSUS_ENTROPY_PROVIDER)
+    target_compile_definitions(jshookz_provider PRIVATE
+        CONFIG_XAHAU_CONSENSUS_ENTROPY_PROVIDER
     )
 endif()
 

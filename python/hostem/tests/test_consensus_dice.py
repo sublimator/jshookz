@@ -9,6 +9,11 @@ from hookz.account import to_raddr
 from hookz.runtime import HookRuntime
 from hookz.xrpl.txn_parser import parse_object
 from hostem.runner import HookRunner
+from jshookz.paths import (
+    XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_WASM,
+    XAHAU_CONSENSUS_ENTROPY_RUNTIME_PROFILE_LOCK,
+    XAHAU_V1_CONSENSUS_ENTROPY_HOOKS_API_DECLARATIONS,
+)
 
 
 HOOK = Path(__file__).parents[1] / "examples" / "lucky-six.hook.ts"
@@ -52,6 +57,15 @@ DEFAULT_ENTROPY_DENOMINATOR = 20
 ENTROPY_POLICY = "EntropyPolicy"
 ENTROPY_TIER_SHIFT = 32
 ENTROPY_COUNT_SHIFT = 16
+
+
+def _entropy_runner(runtime: HookRuntime | None = None) -> HookRunner:
+    return HookRunner(
+        runtime,
+        wasm_path=XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_WASM,
+        profile_path=XAHAU_CONSENSUS_ENTROPY_RUNTIME_PROFILE_LOCK,
+        declarations=XAHAU_V1_CONSENSUS_ENTROPY_HOOKS_API_DECLARATIONS,
+    )
 
 
 def _packed_entropy_status(
@@ -120,11 +134,10 @@ def _runner(
     )
     if require_full_commit_reveal or minimum_entropy_contributors is not None:
         minimum = minimum_entropy_contributors or 0
-        runtime.params[ENTROPY_POLICY] = (
-            bytes([int(require_full_commit_reveal)])
-            + minimum.to_bytes(2, "little")
-        )
-    return HookRunner(runtime)
+        runtime.params[ENTROPY_POLICY] = bytes(
+            [int(require_full_commit_reveal)]
+        ) + minimum.to_bytes(2, "little")
+    return _entropy_runner(runtime)
 
 
 def _calls(result, name: str):
@@ -133,7 +146,7 @@ def _calls(result, name: str):
 
 def test_declaration_requires_an_explicit_minimum_tier() -> None:
     with pytest.raises(RuntimeError, match="Expected 2 arguments, but got 1"):
-        HookRunner().run_typescript(
+        _entropy_runner().run_typescript(
             "export function main(): never { "
             "entropy.cr.dice(6); accept('unreachable'); }"
         )

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from jshookz.host import WasmHost
-from jshookz.paths import XAHAU_HOOK_PROVIDER_WASM
+from jshookz.paths import (
+    XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_WASM,
+    XAHAU_HOOK_PROVIDER_WASM,
+)
 from jshookz.runtime_types import SCHEMA, observe_runtime_types
 
 _XFL_VALUE_KERNEL = r"""
@@ -257,14 +260,12 @@ def test_sealed_provider_runtime_type_observation_is_actual_global_state() -> No
         "LedgerEntryType",
         "TransactionResult",
         "HookReturnCode",
-        "EntropyTier",
     }
     expected = {
         "TransactionType": (77, "Invoke", 99),
         "LedgerEntryType": (34, "AccountRoot", 97),
         "TransactionResult": (199, "telLOCAL_ERROR", -399),
         "HookReturnCode": (47, "INVALID_FLOAT", -10024),
-        "EntropyTier": (4, "validatorFull", 4),
     }
     for name, (count, member, literal) in expected.items():
         row = enum_rows[name]
@@ -281,6 +282,21 @@ def test_sealed_provider_runtime_type_observation_is_actual_global_state() -> No
         assert len(row["values"]) == count
         assert row["values"][member] == literal
     assert "Invalid" not in enum_rows["TransactionType"]["own_keys"]
+
+
+def test_entropy_provider_adds_only_its_named_enum_namespace() -> None:
+    baseline = observe_runtime_types(XAHAU_HOOK_PROVIDER_WASM)
+    entropy = observe_runtime_types(XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_WASM)
+    baseline_names = {row["name"] for row in baseline["enum_namespaces"]}
+    entropy_rows = {row["name"]: row for row in entropy["enum_namespaces"]}
+
+    assert set(entropy_rows) == baseline_names | {"EntropyTier"}
+    row = entropy_rows["EntropyTier"]
+    assert row["kind"] == "object"
+    assert row["frozen"]
+    assert not row["extensible"]
+    assert row["descriptors_exact"]
+    assert row["values"]["validatorFull"] == 4
 
 
 def test_sealed_provider_state_set_accepts_stobject_serialized_type() -> None:

@@ -6,10 +6,20 @@ from pathlib import Path
 
 import pytest
 import tomllib
-from jshookz.build import _validate_native_abi, seal_xahau_hook_provider_bundle
+from jshookz.build import (
+    BASELINE_PRODUCT,
+    CONSENSUS_ENTROPY_PRODUCT,
+    PRODUCTS,
+    _validate_native_abi,
+    seal_xahau_hook_provider_bundle,
+)
 from jshookz.host import WasmHost
 from jshookz.paths import (
+    XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_WASM,
+    XAHAU_CONSENSUS_ENTROPY_RUNTIME_PROFILE_LOCK,
+    XAHAU_CONSENSUS_ENTROPY_RUNTIME_PROFILE_SOURCE,
     XAHAU_HOOK_PROVIDER_WASM,
+    XAHAU_RUNTIME_PROFILE_LOCK,
     XAHAU_RUNTIME_PROFILE_SOURCE,
     XAHAU_V1_HOOKS_API_DECLARATIONS,
     XAHAU_V1_JAVASCRIPT_SURFACE,
@@ -25,6 +35,7 @@ from jshookz.runtime_profile import (
 )
 
 SOURCE = XAHAU_RUNTIME_PROFILE_SOURCE
+RAW_HOOK_POLICY = SOURCE.parents[1] / "raw-hook-api-policy.json"
 OBJECT_LIMITS = {
     "serialized_object_max_bytes": 1_048_576,
     "serialized_object_max_fields": 32_768,
@@ -35,6 +46,28 @@ OBJECT_LIMITS = {
 
 def _write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
+
+
+def _policy_import_names(*, consensus_entropy: bool = False) -> set[str]:
+    policy = json.loads(RAW_HOOK_POLICY.read_text())
+    names = set(policy["functions"])
+    if consensus_entropy:
+        names.update(row["name"] for row in policy["experimental_extensions"])
+    return names
+
+
+def test_provider_products_have_closed_names_and_disjoint_mutable_outputs() -> None:
+    assert set(PRODUCTS) == {BASELINE_PRODUCT, CONSENSUS_ENTROPY_PRODUCT}
+    for attribute in (
+        "build_dir",
+        "wasm",
+        "unwizered_wasm",
+        "manifest",
+        "cmake_manifest",
+        "native_abi",
+        "profile_lock",
+    ):
+        assert len({getattr(product, attribute) for product in PRODUCTS.values()}) == 2
 
 
 def test_native_engine_and_python_oracle_versions_are_named_separately():
@@ -81,9 +114,7 @@ def test_foreign_state_import_is_read_only_and_fully_metered():
     policy = json.loads((repository / "xahau/raw-hook-api-policy.json").read_text())
     assert "state_foreign" in policy["functions"]
     assert policy["functions"].count("state_foreign_set") == 1
-    generated = (
-        repository / "cpp/provider/generated/hook_raw_imports.inc"
-    ).read_text()
+    generated = (repository / "cpp/provider/generated/hook_raw_imports.inc").read_text()
     assert 'import_name("state_foreign")' in generated
     assert generated.count('import_name("state_foreign_set")') == 1
     declaration = XAHAU_V1_HOOKS_API_DECLARATIONS.read_text()
@@ -104,9 +135,7 @@ def test_fee_base_is_one_unaddressed_total_fact_import():
     assert "fee_base" not in source["limits"]["host_work_addressed_length_indices"]
     policy = json.loads((repository / "xahau/raw-hook-api-policy.json").read_text())
     assert policy["functions"].count("fee_base") == 1
-    generated = (
-        repository / "cpp/provider/generated/hook_raw_imports.inc"
-    ).read_text()
+    generated = (repository / "cpp/provider/generated/hook_raw_imports.inc").read_text()
     assert generated.count('import_name("fee_base")') == 1
 
 
@@ -122,9 +151,7 @@ def test_whole_ledger_lookup_selects_only_metered_slot_set():
     assert source["limits"]["host_work_addressed_length_indices"]["slot_set"] == [1]
     policy = json.loads((repository / "xahau/raw-hook-api-policy.json").read_text())
     assert policy["functions"].count("slot_set") == 1
-    generated = (
-        repository / "cpp/provider/generated/hook_raw_imports.inc"
-    ).read_text()
+    generated = (repository / "cpp/provider/generated/hook_raw_imports.inc").read_text()
     assert generated.count('import_name("slot_set")') == 1
 
 
@@ -140,9 +167,7 @@ def test_hook_again_is_one_unaddressed_effect_import():
     assert "hook_again" not in source["limits"]["host_work_addressed_length_indices"]
     policy = json.loads((repository / "xahau/raw-hook-api-policy.json").read_text())
     assert policy["functions"].count("hook_again") == 1
-    generated = (
-        repository / "cpp/provider/generated/hook_raw_imports.inc"
-    ).read_text()
+    generated = (repository / "cpp/provider/generated/hook_raw_imports.inc").read_text()
     assert generated.count('import_name("hook_again")') == 1
 
 
@@ -162,9 +187,7 @@ def test_emission_builder_imports_are_selected_and_fully_metered():
     policy = json.loads((repository / "xahau/raw-hook-api-policy.json").read_text())
     assert policy["functions"].count("etxn_details") == 1
     assert policy["functions"].count("etxn_fee_base") == 1
-    generated = (
-        repository / "cpp/provider/generated/hook_raw_imports.inc"
-    ).read_text()
+    generated = (repository / "cpp/provider/generated/hook_raw_imports.inc").read_text()
     assert generated.count('import_name("etxn_details")') == 1
     assert generated.count('import_name("etxn_fee_base")') == 1
 
@@ -181,7 +204,10 @@ def test_profile_lock_pins_provider_and_has_no_wasi(tmp_path: Path):
     assert loaded.runtime_profile_id.hex() == lock["runtime_profile_id"]
     assert len(loaded.bytecode_abi_id) == 32
     assert len(loaded.runtime_profile_id) == 32
-    assert len(lock["provider"]["imports"]) == 30
+    assert lock["source"]["product"] == "provider"
+    assert {row["name"] for row in lock["provider"]["imports"]} == (
+        _policy_import_names()
+    )
     assert lock["source"]["limits"]["host_work_budget"] == 2_097_152
     assert {item["module"] for item in lock["provider"]["imports"]} == {"env"}
     assert lock["provider"]["imports"] == sorted(
@@ -517,7 +543,11 @@ def test_provider_bundle_emits_the_profile_lock(tmp_path: Path):
     assert (
         'XAHAU_QUICKJS_HOST_ADAPTER_POLICY "xahau-raw-hook-host-v1"' in cmake_manifest
     )
-    assert 'XAHAU_QUICKJS_PROVIDER_IMPORT_COUNT "30"' in cmake_manifest
+    assert 'XAHAU_QUICKJS_PRODUCT "provider"' in cmake_manifest
+    assert (
+        f'XAHAU_QUICKJS_PROVIDER_IMPORT_COUNT "{len(_policy_import_names())}"'
+        in cmake_manifest
+    )
     assert 'XAHAU_QUICKJS_PROVIDER_EXPORT_COUNT "22"' in cmake_manifest
     cmake_object_limits = {
         "XAHAU_QUICKJS_SERIALIZED_OBJECT_MAX_BYTES": 1_048_576,
@@ -534,9 +564,10 @@ def test_provider_bundle_emits_the_profile_lock(tmp_path: Path):
     assert hashlib.sha256(native_abi_path.read_bytes()).hexdigest() in cmake_manifest
     native_abi = json.loads(native_abi_path.read_text())
     assert native_abi["source"]["macro_function_count"] == 75
-    assert [
-        row["name"] for row in native_abi["experimental_extensions"]
-    ] == ["entropy_cr_dice", "entropy_cr_status"]
+    assert [row["name"] for row in native_abi["experimental_extensions"]] == [
+        "entropy_cr_dice",
+        "entropy_cr_status",
+    ]
 
 
 def test_native_projection_rejects_duplicate_provider_import():
@@ -545,6 +576,70 @@ def test_native_projection_rejects_duplicate_provider_import():
     ]
     with pytest.raises(ValueError, match="pinned raw Hook ABI"):
         _validate_native_abi([*imports, imports[0]])
+
+
+def test_entropy_profile_is_one_named_delta_over_the_baseline():
+    delta = json.loads(XAHAU_CONSENSUS_ENTROPY_RUNTIME_PROFILE_SOURCE.read_text())
+    lock = build_runtime_profile_lock(
+        XAHAU_CONSENSUS_ENTROPY_RUNTIME_PROFILE_SOURCE,
+        XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_WASM,
+    )
+
+    assert set(delta) == {
+        "schema",
+        "base",
+        "product",
+        "name",
+        "javascript_surface",
+        "provider",
+    }
+    assert delta["base"] == SOURCE.name
+    assert lock["source"]["product"] == "provider-consensus-entropy"
+    assert {row["name"] for row in lock["provider"]["imports"]} == (
+        _policy_import_names(consensus_entropy=True)
+    )
+    assert {
+        row["name"] for row in delta["provider"]["add_imports"]
+    } == _policy_import_names(consensus_entropy=True) - _policy_import_names()
+
+
+@pytest.mark.parametrize(
+    ("source_path", "wasm_path"),
+    [
+        (SOURCE, XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_WASM),
+        (
+            XAHAU_CONSENSUS_ENTROPY_RUNTIME_PROFILE_SOURCE,
+            XAHAU_HOOK_PROVIDER_WASM,
+        ),
+    ],
+)
+def test_provider_products_reject_cross_sealing(
+    source_path: Path,
+    wasm_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match="provider import surface differs"):
+        build_runtime_profile_lock(source_path, wasm_path)
+
+
+@pytest.mark.parametrize(
+    ("lock_path", "wasm_path"),
+    [
+        (XAHAU_RUNTIME_PROFILE_LOCK, XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_WASM),
+        (
+            XAHAU_CONSENSUS_ENTROPY_RUNTIME_PROFILE_LOCK,
+            XAHAU_HOOK_PROVIDER_WASM,
+        ),
+    ],
+)
+def test_provider_products_reject_cross_verification(
+    lock_path: Path,
+    wasm_path: Path,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="provider binary/surface does not match",
+    ):
+        verify_runtime_profile_lock(lock_path, wasm_path)
 
 
 def test_profile_source_rejects_fourteenth_float_sum_import(tmp_path: Path):

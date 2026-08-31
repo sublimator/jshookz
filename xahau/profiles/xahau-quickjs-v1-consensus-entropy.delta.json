@@ -1,0 +1,17 @@
+{
+  "schema": "xahau.quickjs.runtime-profile-delta.v1",
+  "base": "xahau-quickjs-v1.source.json",
+  "product": "provider-consensus-entropy",
+  "name": "xahau-quickjs-v1-consensus-entropy",
+  "javascript_surface": {
+    "schema": "jshookz.javascript-surface.v1",
+    "declaration": "python/jshookz/src/jshookz/types/xahau-quickjs-v1-consensus-entropy.d.ts",
+    "manifest": "python/jshookz/src/jshookz/types/xahau-quickjs-v1-consensus-entropy.surface.json"
+  },
+  "provider": {
+    "add_imports": [
+      {"module": "env", "name": "entropy_cr_dice", "params": ["i32", "i32"], "results": ["i64"]},
+      {"module": "env", "name": "entropy_cr_status", "params": [], "results": ["i64"]}
+    ]
+  }
+}

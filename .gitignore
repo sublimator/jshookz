@@ -43,5 +43,5 @@ compile_commands.json
 # Node dependencies used by differential tests.
 node_modules/
 
-# Derived by `jshookz build provider`. xahaud pins this, we do not.
-xahau/profiles/xahau-quickjs-v1.lock.json
+# Derived by `jshookz build <provider-product>`. Consumers pin these; we do not.
+xahau/profiles/*.lock.json

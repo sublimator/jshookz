@@ -82,9 +82,13 @@ class HookRunner:
         runtime: HookRuntime | None = None,
         *,
         wasm_path: str | Path | None = None,
+        profile_path: str | Path | None = None,
+        declarations: str | Path | None = None,
     ):
         self.runtime = runtime or HookRuntime()
         self.wasm_path = Path(wasm_path) if wasm_path is not None else None
+        self.profile_path = Path(profile_path) if profile_path is not None else None
+        self.declarations = Path(declarations) if declarations is not None else None
 
     def run_file(
         self,
@@ -94,7 +98,11 @@ class HookRunner:
     ) -> HostemHookResult:
         source = Path(path)
         if source.suffix.lower() in {".ts", ".js", ".mjs"}:
-            compiled = compile_hook(source, wasm_path=self.wasm_path)
+            compiled = compile_hook(
+                source,
+                wasm_path=self.wasm_path,
+                declarations=self.declarations,
+            )
             return self._run_bytecode(
                 compiled.bytecode,
                 label=str(source),
@@ -116,7 +124,11 @@ class HookRunner:
         with tempfile.TemporaryDirectory(prefix="hostem-hook-ts-") as temp:
             source_path = Path(temp) / "hook.ts"
             source_path.write_text(source)
-            compiled = compile_hook(source_path, wasm_path=self.wasm_path)
+            compiled = compile_hook(
+                source_path,
+                wasm_path=self.wasm_path,
+                declarations=self.declarations,
+            )
         return self._run_bytecode(compiled.bytecode, label=label, mode=mode)
 
     def run(
@@ -128,7 +140,11 @@ class HookRunner:
     ) -> HostemHookResult:
         """Run an unchecked JavaScript string as a low-level runtime diagnostic."""
         provider = _HookzProvider(self.runtime)
-        compiler = WasmHost.profiled(handler=provider, wasm_path=self.wasm_path)
+        compiler = WasmHost.profiled(
+            handler=provider,
+            wasm_path=self.wasm_path,
+            profile_path=self.profile_path,
+        )
         compiler.init()
         try:
             bytecode = compiler.compile_source(source, module=True)
@@ -157,7 +173,11 @@ class HookRunner:
         missing = object()
         previous_again = rt.handlers.get("hook_again", missing)
         provider = _HookzProvider(rt)
-        host = WasmHost.profiled(handler=provider, wasm_path=self.wasm_path)
+        host = WasmHost.profiled(
+            handler=provider,
+            wasm_path=self.wasm_path,
+            profile_path=self.profile_path,
+        )
         if previous_again is missing:
             rt.handlers["hook_again"] = again.call
 
@@ -187,7 +207,8 @@ class HookRunner:
                 result.error = error
         else:
             result.error = RuntimeError(
-                "JavaScript Hook returned without accept/rollback")
+                "JavaScript Hook returned without accept/rollback"
+            )
         finally:
             if previous_again is missing:
                 del rt.handlers["hook_again"]

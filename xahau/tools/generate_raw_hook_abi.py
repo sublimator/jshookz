@@ -21,9 +21,17 @@ POLICY = ROOT / "xahau" / "raw-hook-api-policy.json"
 MACRO_REL = Path("include/xrpl/hook/hook_api.macro")
 OUTPUTS = {
     ROOT / "python" / "jshookz" / "src" / "jshookz" / "generated_hook_raw.py": "python",
-    ROOT / "cpp" / "provider" / "generated" / "hook_raw_imports.inc": "c",
+    ROOT / "cpp" / "provider" / "generated" / "hook_raw_imports.inc": "c-base",
+    ROOT
+    / "cpp"
+    / "provider"
+    / "generated"
+    / "hook_raw_imports_consensus_entropy.inc": "c-entropy",
     ROOT / "xahau" / "generated" / "raw-hook-abi.json": "json",
 }
+
+BASELINE_PRODUCT = "provider"
+CONSENSUS_ENTROPY_PRODUCT = "provider-consensus-entropy"
 
 
 def _selected():
@@ -35,12 +43,13 @@ def _selected():
     if missing:
         raise SystemExit(f"policy names absent from pinned hook_api.macro: {missing}")
     selected = [by_name[name] for name in names]
-    extensions = policy.get("experimental_extensions", [])
-    for row in extensions:
+    extension_rows = policy.get("experimental_extensions", [])
+    extensions = []
+    for row in extension_rows:
         name = row["name"]
         if name in by_name or any(function.name == name for function in selected):
             raise SystemExit(f"experimental extension duplicates base function: {name}")
-        selected.append(
+        extensions.append(
             HookApiFunction(
                 name=name,
                 return_type=row["return_type"],
@@ -48,7 +57,7 @@ def _selected():
                 amendment=row.get("amendment", ""),
             )
         )
-    return policy, functions, selected
+    return policy, functions, selected, extensions
 
 
 def _banner(comment: str, extensions) -> str:
@@ -65,12 +74,22 @@ def _banner(comment: str, extensions) -> str:
     )
 
 
-def _python(selected, extensions) -> str:
+def _python(selected, extensions, extension_rows) -> str:
+    combined = [*selected, *extensions]
     rows = "\n".join(
         f"    ({fn.name!r}, {fn.return_type!r}, {fn.param_types!r}, {fn.amendment!r}),"
-        for fn in selected
+        for fn in combined
     )
-    return _banner("#", extensions) + f"\nRAW_HOOK_ABI = (\n{rows}\n)\n"
+    baseline_names = "\n".join(f"        {fn.name!r}," for fn in selected)
+    entropy_names = "\n".join(f"        {fn.name!r}," for fn in combined)
+    return (
+        _banner("#", extension_rows)
+        + f"\nRAW_HOOK_ABI = (\n{rows}\n)\n\n"
+        + "RAW_HOOK_ABI_PRODUCT_NAMES = {\n"
+        + f"    {BASELINE_PRODUCT!r}: (\n{baseline_names}\n    ),\n"
+        + f"    {CONSENSUS_ENTROPY_PRODUCT!r}: (\n{entropy_names}\n    ),\n"
+        + "}\n"
+    )
 
 
 def _c(selected, extensions) -> str:
@@ -95,7 +114,17 @@ def _c(selected, extensions) -> str:
     return "\n".join(lines)
 
 
-def _json(all_functions, selected, extensions) -> str:
+def _json_row(fn) -> dict:
+    return {
+        "name": fn.name,
+        "return_type": fn.return_type,
+        "param_types": list(fn.param_types),
+        "amendment": fn.amendment or None,
+        "wasm_signature": [hex(code) for code in fn.signature],
+    }
+
+
+def _json(all_functions, selected, extensions, extension_rows) -> str:
     payload = {
         "source": {
             "repository": "https://github.com/Xahau/xahaud",
@@ -103,17 +132,14 @@ def _json(all_functions, selected, extensions) -> str:
             "path": str(MACRO_REL),
             "macro_function_count": len(all_functions),
         },
-        "experimental_extensions": extensions,
-        "selected": [
-            {
-                "name": fn.name,
-                "return_type": fn.return_type,
-                "param_types": list(fn.param_types),
-                "amendment": fn.amendment or None,
-                "wasm_signature": [hex(code) for code in fn.signature],
-            }
-            for fn in selected
-        ],
+        "experimental_extensions": extension_rows,
+        "selected": [_json_row(fn) for fn in selected],
+        "products": {
+            BASELINE_PRODUCT: [_json_row(fn) for fn in selected],
+            CONSENSUS_ENTROPY_PRODUCT: [
+                _json_row(fn) for fn in (*selected, *extensions)
+            ],
+        },
     }
     return json.dumps(payload, indent=2) + "\n"
 
@@ -122,12 +148,15 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    policy, all_functions, selected = _selected()
-    extensions = policy.get("experimental_extensions", [])
+    policy, all_functions, selected, extensions = _selected()
+    extension_rows = policy.get("experimental_extensions", [])
     renderers = {
-        "python": lambda: _python(selected, extensions),
-        "c": lambda: _c(selected, extensions),
-        "json": lambda: _json(all_functions, selected, extensions),
+        "python": lambda: _python(selected, extensions, extension_rows),
+        "c-base": lambda: _c(selected, []),
+        "c-entropy": lambda: _c(extensions, extension_rows),
+        "json": lambda: _json(
+            all_functions, selected, extensions, extension_rows
+        ),
     }
 
     stale = []

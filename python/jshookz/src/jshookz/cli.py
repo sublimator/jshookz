@@ -8,7 +8,10 @@ from . import build, paths
 
 
 def cmd_build(args: argparse.Namespace) -> int:
-    build.build_xahau_hook_provider(wizer=not args.no_wizer)
+    build.build_xahau_hook_provider(
+        product=args.target,
+        wizer=not args.no_wizer,
+    )
     return 0
 
 
@@ -175,7 +178,7 @@ def main() -> None:
     p_build = sub.add_parser("build", help="Build the sealed Xahau Hook provider")
     p_build.add_argument(
         "target",
-        choices=["provider"],
+        choices=["provider", "provider-consensus-entropy"],
         default="provider",
         nargs="?",
     )

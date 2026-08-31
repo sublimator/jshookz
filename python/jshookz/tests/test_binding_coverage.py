@@ -15,6 +15,7 @@ from jshookz.host import WasmHost
 from jshookz.paths import (
     REPO_ROOT,
     XAHAU_HOOK_PROVIDER_WASM,
+    XAHAU_V1_CONSENSUS_ENTROPY_JAVASCRIPT_SURFACE,
     XAHAU_V1_JAVASCRIPT_SURFACE,
 )
 
@@ -322,8 +323,9 @@ JSON.stringify((() => {{
 
 
 def test_binding_tags_match_surface():
-    surface = json.loads(XAHAU_V1_JAVASCRIPT_SURFACE.read_text())
-    required = _surface_paths(surface)
+    baseline = json.loads(XAHAU_V1_JAVASCRIPT_SURFACE.read_text())
+    entropy = json.loads(XAHAU_V1_CONSENSUS_ENTROPY_JAVASCRIPT_SURFACE.read_text())
+    required = _surface_paths(baseline) | _surface_paths(entropy)
     tagged = _iter_tagged()
     assert tagged, "no // @binding tags found"
 
@@ -334,12 +336,31 @@ def test_binding_tags_match_surface():
 
     extra = (provider - PROVIDER_ONLY) - required
     extra -= {path for path in extra if _expand(path) & required}
-    assert extra == set(), f"provider tags not on the v1 surface: {sorted(extra)}"
+    assert extra == set(), f"provider tags not on a product surface: {sorted(extra)}"
 
     missing = sorted(required - covered)
     assert missing == [], (
-        "v1 surface members without a provider @binding:\n  " + "\n  ".join(missing)
+        "product surface members without a provider @binding:\n  "
+        + "\n  ".join(missing)
     )
+
+
+def test_entropy_surface_is_an_exact_named_extension() -> None:
+    baseline = _surface_paths(json.loads(XAHAU_V1_JAVASCRIPT_SURFACE.read_text()))
+    entropy = _surface_paths(
+        json.loads(XAHAU_V1_CONSENSUS_ENTROPY_JAVASCRIPT_SURFACE.read_text())
+    )
+
+    assert baseline <= entropy
+    assert entropy - baseline == {
+        "EntropyTier.consensusFallback",
+        "EntropyTier.participantAligned",
+        "EntropyTier.validatorFull",
+        "EntropyTier.validatorQuorum",
+        "entropy.cr",
+        "entropy.cr.dice",
+        "entropy.cr.status",
+    }
 
 
 def test_sealed_provider_field_table_joins_all_generated_material_rows():

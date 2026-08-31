@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "skipLibCheck": false,
+    "lib": ["ES2023"],
+    "target": "ES2023"
+  },
+  "files": [
+    "xahau-quickjs-v1-consensus-entropy.d.ts",
+    "v1-noun-fixtures.ts"
+  ]
+}

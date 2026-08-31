@@ -17,6 +17,8 @@ REQUIRED_ARTIFACTS = frozenset(
         "python/jshookz/src/jshookz/types/hooks-api.d.ts",
         "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
         "python/jshookz/src/jshookz/types/xahau-quickjs-v1.surface.json",
+        "python/jshookz/src/jshookz/types/xahau-quickjs-v1-consensus-entropy.d.ts",
+        "python/jshookz/src/jshookz/types/xahau-quickjs-v1-consensus-entropy.surface.json",
         # 0060 activation: the generated profile-sensitive member ledger
         # the JSH-XFL001 compiler policy consumes (schema
         # jshookz.xfl-profile-ledger.v1).
@@ -25,6 +27,14 @@ REQUIRED_ARTIFACTS = frozenset(
 )
 V1_DECLARATION = "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts"
 V1_SURFACE = "python/jshookz/src/jshookz/types/xahau-quickjs-v1.surface.json"
+ENTROPY_V1_DECLARATION = (
+    "python/jshookz/src/jshookz/types/"
+    "xahau-quickjs-v1-consensus-entropy.d.ts"
+)
+ENTROPY_V1_SURFACE = (
+    "python/jshookz/src/jshookz/types/"
+    "xahau-quickjs-v1-consensus-entropy.surface.json"
+)
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
@@ -83,14 +93,20 @@ def validate_api_artifacts(
         if _digest(target) != expected:
             raise ValueError(f"API artifact hash mismatch: {relative}")
 
-    surface = json.loads((root / V1_SURFACE).read_text())
-    if not isinstance(surface, dict):
-        raise TypeError("v1 JavaScript surface must be a JSON object")
-    declaration = surface.get("declaration")
-    if not isinstance(declaration, dict):
-        raise TypeError("v1 JavaScript surface has no declaration identity")
-    if declaration.get("path") != V1_DECLARATION:
-        raise ValueError("v1 JavaScript surface names the wrong declaration")
-    if declaration.get("sha256") != artifacts[V1_DECLARATION]:
-        raise ValueError("v1 JavaScript surface declaration hash differs from manifest")
+    for surface_name, declaration_name in (
+        (V1_SURFACE, V1_DECLARATION),
+        (ENTROPY_V1_SURFACE, ENTROPY_V1_DECLARATION),
+    ):
+        surface = json.loads((root / surface_name).read_text())
+        if not isinstance(surface, dict):
+            raise TypeError("v1 JavaScript surface must be a JSON object")
+        declaration = surface.get("declaration")
+        if not isinstance(declaration, dict):
+            raise TypeError("v1 JavaScript surface has no declaration identity")
+        if declaration.get("path") != declaration_name:
+            raise ValueError("v1 JavaScript surface names the wrong declaration")
+        if declaration.get("sha256") != artifacts[declaration_name]:
+            raise ValueError(
+                "v1 JavaScript surface declaration hash differs from manifest"
+            )
     return payload

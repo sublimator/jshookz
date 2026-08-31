@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import copy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,8 @@ from wasmtime import Engine, FuncType, MemoryType, Module
 from . import _runtime_profile_constants as generated
 from .paths import (
     SOURCE_CHECKOUT,
+    XAHAU_V1_CONSENSUS_ENTROPY_HOOKS_API_DECLARATIONS,
+    XAHAU_V1_CONSENSUS_ENTROPY_JAVASCRIPT_SURFACE,
     XAHAU_V1_HOOKS_API_DECLARATIONS,
     XAHAU_V1_JAVASCRIPT_SURFACE,
 )
@@ -20,6 +23,7 @@ from .schema import HOOK_API
 
 
 SOURCE_SCHEMA = "xahau.quickjs.runtime-profile-source.v1"
+SOURCE_DELTA_SCHEMA = "xahau.quickjs.runtime-profile-delta.v1"
 LOCK_SCHEMA = "xahau.quickjs.runtime-profile-lock.v1"
 SURFACE_SCHEMA = "jshookz.javascript-surface.v1"
 _OBJECT_LIMIT_NAMES = (
@@ -29,6 +33,10 @@ _OBJECT_LIMIT_NAMES = (
     "serialized_object_max_depth",
 )
 _UINT32_MAX = (1 << 32) - 1
+_PRODUCT_PROFILE_NAMES = {
+    "provider": "xahau-quickjs-v1",
+    "provider-consensus-entropy": "xahau-quickjs-v1-consensus-entropy",
+}
 
 
 def canonical_json_bytes(value: Any) -> bytes:
@@ -48,6 +56,73 @@ def _load_object(path: str | Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"{path}: expected a JSON object")
     return value
+
+
+def _load_source_manifest(path: str | Path) -> dict[str, Any]:
+    """Load the baseline source or materialize the one named entropy delta."""
+    document_path = Path(path)
+    document = _load_object(document_path)
+    if document.get("schema") == SOURCE_SCHEMA:
+        return document
+    if document.get("schema") != SOURCE_DELTA_SCHEMA:
+        raise ValueError(
+            f"unsupported runtime-profile source schema: {document.get('schema')!r}"
+        )
+
+    expected_fields = {
+        "schema",
+        "base",
+        "product",
+        "name",
+        "javascript_surface",
+        "provider",
+    }
+    if set(document) != expected_fields:
+        raise ValueError("runtime-profile delta fields differ from the closed schema")
+    if (
+        document.get("base") != "xahau-quickjs-v1.source.json"
+        or document.get("product") != "provider-consensus-entropy"
+        or document.get("name") != "xahau-quickjs-v1-consensus-entropy"
+    ):
+        raise ValueError("runtime-profile delta is not the named entropy product")
+
+    base_path = document_path.parent / document["base"]
+    base = _load_object(base_path)
+    if (
+        base.get("schema") != SOURCE_SCHEMA
+        or base.get("product") != "provider"
+        or base.get("name") != "xahau-quickjs-v1"
+    ):
+        raise ValueError("runtime-profile delta base is not the canonical provider")
+
+    surface = document.get("javascript_surface")
+    provider_delta = document.get("provider")
+    if not isinstance(surface, dict) or not isinstance(provider_delta, dict):
+        raise ValueError("runtime-profile delta objects are malformed")
+    if set(provider_delta) != {"add_imports"}:
+        raise ValueError("runtime-profile delta provider fields differ")
+    additions = provider_delta["add_imports"]
+    if not isinstance(additions, list) or len(additions) != 2:
+        raise ValueError("entropy product delta must add exactly two imports")
+
+    materialized = copy.deepcopy(base)
+    materialized["product"] = document["product"]
+    materialized["name"] = document["name"]
+    materialized["javascript_surface"] = copy.deepcopy(surface)
+    imports = materialized.get("provider", {}).get("imports")
+    if not isinstance(imports, list):
+        raise ValueError("runtime-profile delta base has no provider imports")
+    names = {row.get("name") for row in imports if isinstance(row, dict)}
+    added_names = {row.get("name") for row in additions if isinstance(row, dict)}
+    if (
+        len(added_names) != len(additions)
+        or names & added_names
+        or added_names != {"entropy_cr_dice", "entropy_cr_status"}
+    ):
+        raise ValueError("runtime-profile entropy imports differ")
+    imports.extend(copy.deepcopy(additions))
+    imports.sort(key=lambda row: (row["module"], row["name"]))
+    return materialized
 
 
 def _validated_object_limits(source: dict[str, Any]) -> dict[str, int]:
@@ -70,6 +145,19 @@ def _validated_object_limits(source: dict[str, Any]) -> dict[str, int]:
             )
         values[name] = value
     return values
+
+
+def _validate_product_identity(source: dict[str, Any]) -> str:
+    """Require one closed product/profile name pair inside hashed source."""
+    product = source.get("product")
+    expected_name = _PRODUCT_PROFILE_NAMES.get(product)
+    if expected_name is None:
+        raise ValueError(f"unknown runtime-profile product: {product!r}")
+    if source.get("name") != expected_name:
+        raise ValueError(
+            f"runtime-profile product {product!r} requires name {expected_name!r}"
+        )
+    return product
 
 
 def _validate_xfl_activation_contract(source: dict[str, Any]) -> None:
@@ -100,9 +188,10 @@ def _validate_xfl_activation_contract(source: dict[str, Any]) -> None:
         "version_shift": generated.MODULE_VALIDATION_VERSION_SHIFT,
     }
     provider = source.get("provider")
-    if not isinstance(provider, dict) or provider.get(
-        "module_validation_result"
-    ) != expected_validation:
+    if (
+        not isinstance(provider, dict)
+        or provider.get("module_validation_result") != expected_validation
+    ):
         raise ValueError("runtime-profile module-validation result layout differs")
 
 
@@ -298,22 +387,40 @@ def _selected_javascript_artifacts(
     policy = source.get("javascript_surface")
     if not isinstance(policy, dict) or policy.get("schema") != SURFACE_SCHEMA:
         raise ValueError(f"runtime-profile source must select {SURFACE_SCHEMA!r}")
+    product = _validate_product_identity(source)
+    if product == "provider-consensus-entropy":
+        packaged_surface_relative = (
+            "python/jshookz/src/jshookz/types/"
+            "xahau-quickjs-v1-consensus-entropy.surface.json"
+        )
+        packaged_surface_path = XAHAU_V1_CONSENSUS_ENTROPY_JAVASCRIPT_SURFACE
+        packaged_declaration_relative = (
+            "python/jshookz/src/jshookz/types/xahau-quickjs-v1-consensus-entropy.d.ts"
+        )
+        packaged_declaration_path = XAHAU_V1_CONSENSUS_ENTROPY_HOOKS_API_DECLARATIONS
+    else:
+        packaged_surface_relative = (
+            "python/jshookz/src/jshookz/types/xahau-quickjs-v1.surface.json"
+        )
+        packaged_surface_path = XAHAU_V1_JAVASCRIPT_SURFACE
+        packaged_declaration_relative = (
+            "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts"
+        )
+        packaged_declaration_path = XAHAU_V1_HOOKS_API_DECLARATIONS
     surface = _selected_artifact(
         document_path,
         policy.get("manifest"),
         override=surface_path,
-        packaged_relative=(
-            "python/jshookz/src/jshookz/types/xahau-quickjs-v1.surface.json"
-        ),
-        packaged_path=XAHAU_V1_JAVASCRIPT_SURFACE,
+        packaged_relative=packaged_surface_relative,
+        packaged_path=packaged_surface_path,
         label="JavaScript surface manifest",
     )
     declaration = _selected_artifact(
         document_path,
         policy.get("declaration"),
         override=declaration_path,
-        packaged_relative=("python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts"),
-        packaged_path=XAHAU_V1_HOOKS_API_DECLARATIONS,
+        packaged_relative=packaged_declaration_relative,
+        packaged_path=packaged_declaration_path,
         label="JavaScript declaration",
     )
     return surface, declaration
@@ -455,11 +562,12 @@ def build_runtime_profile_lock(
     declaration_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Resolve a source manifest against an exact provider WASM binary."""
-    source = _load_object(source_path)
+    source = _load_source_manifest(source_path)
     if source.get("schema") != SOURCE_SCHEMA:
         raise ValueError(
             f"unsupported runtime-profile source schema: {source.get('schema')!r}"
         )
+    _validate_product_identity(source)
     _validated_object_limits(source)
     _validate_xfl_activation_contract(source)
 
@@ -536,6 +644,7 @@ def profile_execution_limits(lock: RuntimeProfileLock) -> ProfileExecutionLimits
         limits = source["limits"]
     except (KeyError, TypeError) as error:
         raise ValueError("runtime-profile lock has no execution limits") from error
+    _validate_product_identity(source)
     object_limits = _validated_object_limits(source)
     if not isinstance(limits, dict):
         raise ValueError("runtime-profile execution limits must be an object")
@@ -638,6 +747,7 @@ def verify_runtime_profile_lock(
     source = lock.data.get("source")
     if not isinstance(source, dict):
         raise ValueError("runtime-profile lock has no source manifest")
+    _validate_product_identity(source)
 
     lock_document = Path(lock_path)
     lock_suffix = ".lock.json"

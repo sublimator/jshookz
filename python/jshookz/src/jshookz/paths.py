@@ -11,6 +11,12 @@ XAHAU_V1_HOOKS_API_DECLARATIONS = (
 XAHAU_V1_JAVASCRIPT_SURFACE = (
     PACKAGE_ROOT / "types" / "xahau-quickjs-v1.surface.json"
 )
+XAHAU_V1_CONSENSUS_ENTROPY_HOOKS_API_DECLARATIONS = (
+    PACKAGE_ROOT / "types" / "xahau-quickjs-v1-consensus-entropy.d.ts"
+)
+XAHAU_V1_CONSENSUS_ENTROPY_JAVASCRIPT_SURFACE = (
+    PACKAGE_ROOT / "types" / "xahau-quickjs-v1-consensus-entropy.surface.json"
+)
 API_ARTIFACT_MANIFEST = PACKAGE_ROOT / "types" / "api-artifacts.json"
 # Backwards-compatible name for consumers asking for the broad public spec.
 HOOKS_API_DECLARATIONS = CANONICAL_HOOKS_API_DECLARATIONS
@@ -72,12 +78,47 @@ XAHAU_HOOK_PROVIDER_CMAKE_MANIFEST = (
 XAHAU_HOOK_PROVIDER_NATIVE_ABI = (
     XAHAU_PROVIDER_BUILD_DIR / "jshookz_provider.native-abi.json"
 )
+XAHAU_CONSENSUS_ENTROPY_PROVIDER_BUILD_DIR = (
+    BUILD_DIR / "xahau-provider-consensus-entropy"
+)
+XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_WASM = Path(
+    os.environ.get(
+        "JSHOOKZ_CONSENSUS_ENTROPY_PROVIDER_WASM",
+        XAHAU_CONSENSUS_ENTROPY_PROVIDER_BUILD_DIR / "jshookz_provider.wasm",
+    )
+)
+XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_UNWIZERED_WASM = (
+    XAHAU_CONSENSUS_ENTROPY_PROVIDER_BUILD_DIR
+    / "jshookz_provider.unwizered.wasm"
+)
+XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_MANIFEST = (
+    XAHAU_CONSENSUS_ENTROPY_PROVIDER_BUILD_DIR
+    / "jshookz_provider.manifest.json"
+)
+XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_CMAKE_MANIFEST = (
+    XAHAU_CONSENSUS_ENTROPY_PROVIDER_BUILD_DIR
+    / "jshookz_provider.manifest.cmake"
+)
+XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_NATIVE_ABI = (
+    XAHAU_CONSENSUS_ENTROPY_PROVIDER_BUILD_DIR
+    / "jshookz_provider.native-abi.json"
+)
 XAHAU_RUNTIME_PROFILE_SOURCE = (
     REPO_ROOT / "xahau/profiles" / "xahau-quickjs-v1.source.json"
 )
 # Emitted by `jshookz build provider`. Not committed; xahaud pins a copy.
 XAHAU_RUNTIME_PROFILE_LOCK = (
     REPO_ROOT / "xahau/profiles" / "xahau-quickjs-v1.lock.json"
+)
+XAHAU_CONSENSUS_ENTROPY_RUNTIME_PROFILE_SOURCE = (
+    REPO_ROOT
+    / "xahau/profiles"
+    / "xahau-quickjs-v1-consensus-entropy.delta.json"
+)
+XAHAU_CONSENSUS_ENTROPY_RUNTIME_PROFILE_LOCK = (
+    REPO_ROOT
+    / "xahau/profiles"
+    / "xahau-quickjs-v1-consensus-entropy.lock.json"
 )
 XAHAU_RAW_HOOK_ABI = (
     REPO_ROOT / "xahau/generated" / "raw-hook-abi.json"
