@@ -164,6 +164,7 @@ decodeObject(
 }
 
 [[nodiscard]] JSValue
+// @binding provider:util.sha512h
 jsSha512Half(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
 {
     auto bytes = qjs::ByteView::getBinding(

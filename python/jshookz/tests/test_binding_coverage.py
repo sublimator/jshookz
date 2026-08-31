@@ -110,6 +110,12 @@ def _expand(path: str) -> set[str]:
         names.update(f"UInt{width}.{rest}" for width in _UINT_WIDTHS)
     if path.startswith("Result."):
         names.add("VoidResult." + path[len("Result.") :])
+    if path.startswith("LedgerEntry."):
+        member = path[len("LedgerEntry.") :]
+        names.update(
+            f"{leaf}.{member}"
+            for leaf in ("AccountRoot", "HookDefinition", "HookLedger", "URIToken")
+        )
     return names
 
 

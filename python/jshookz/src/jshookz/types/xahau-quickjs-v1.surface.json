@@ -71,7 +71,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1.d.ts",
-    "sha256": "7fc4e30d6be029e24e41c9c28930d2b5c84a76a6d827ba6419a67408348f0104"
+    "sha256": "c631dedb444b448ca5a90f27353af287f5d1018bf79b2e3df676c26d6c57d200"
   },
   "globals": {
     "AccountID": "object",
@@ -1173,6 +1173,9 @@
       "URIToken": "value",
       "XChainOwnedClaimID": "value",
       "XChainOwnedCreateAccountClaimID": "value"
+    },
+    "LedgerKeylet": {
+      "fromRaw": "function"
     },
     "Payment": {},
     "STBlob": {

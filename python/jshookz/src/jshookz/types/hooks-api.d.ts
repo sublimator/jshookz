@@ -2388,10 +2388,11 @@ declare global {
     toHex(): HexString;
   }
   /** Typed-locator runtime noun (0085 close shape). */
-  const LedgerKeylet: RuntimeType<LedgerKeylet> & {
+  interface LedgerKeyletFactory extends RuntimeType<LedgerKeylet> {
     /** Import a raw 34-byte locator carrying no minted object-type claim. */
     fromRaw(value: BytesLike | STBlob): ParseResult<LedgerKeylet>;
-  };
+  }
+  const LedgerKeylet: LedgerKeyletFactory;
 
   namespace otxn {
     function raw(): HostResult<STBlob>;
