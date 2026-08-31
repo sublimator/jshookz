@@ -137,6 +137,7 @@ DELTA_FLOORS = {
     "replacement_large_minus_small": 130_000.0,
 }
 CONSTANT_STRUCTURE_SPREAD = 20.0
+NESTED_FIRST_TOUCH_STRUCTURE_SPREAD = 2_000
 MISSING_LOOKUP_STRUCTURE_SPREAD = 110.0
 MAX_SERIALIZED_BYTES = 1_048_576
 MAX_FIELDS = 32_768
@@ -449,6 +450,33 @@ def _sample(
         host.destroy()
 
 
+def _nested_miss_first_and_warm(size: int) -> tuple[FuelSample, FuelSample]:
+    host = WasmHost.profiled()
+    host.init()
+    try:
+        setup = host.eval(_setup_source("nested_miss", size, ITERATIONS[1], False))
+        assert setup.ok, setup.error
+        assert host.execution_limits is not None
+        samples = []
+        for _ in range(2):
+            host.store.set_fuel(host.execution_limits.invocation_fuel)
+            result = host.eval(
+                f"JSON.stringify(__runObjectFuel({ITERATIONS[1]}))"
+            )
+            assert result.ok, result.error
+            payload = json.loads(result.result_value or "null")
+            assert payload == {
+                "route": "nested_miss",
+                "count": ITERATIONS[1],
+                "routeCalls": ITERATIONS[1],
+                "accumulator": ITERATIONS[1],
+            }
+            samples.append(FuelSample(result.gas_used, payload))
+        return samples[0], samples[1]
+    finally:
+        host.destroy()
+
+
 @cache
 def _sample_bank(
     route: str, size: int, *, poison: bool = False
@@ -511,6 +539,17 @@ def test_cache_miss_lanes_remain_more_expensive_than_hits(size: int):
     assert primitive_miss - primitive_hit >= DELTA_FLOORS["primitive_miss_minus_hit"]
     assert rich_miss - rich_hit >= DELTA_FLOORS["rich_miss_minus_hit"]
     assert nested_miss - nested_hit >= DELTA_FLOORS["nested_miss_minus_hit"]
+
+
+def test_nested_first_touches_remain_size_independent_and_cache_is_retained():
+    first_small, warm_small = _nested_miss_first_and_warm(STRUCTURE_SIZES[0])
+    first_large, warm_large = _nested_miss_first_and_warm(STRUCTURE_SIZES[1])
+
+    assert (
+        abs(first_large.gas - first_small.gas)
+        <= NESTED_FIRST_TOUCH_STRUCTURE_SPREAD
+    )
+    assert abs(warm_large.gas - warm_small.gas) <= CONSTANT_STRUCTURE_SPREAD
 
 
 def test_object_lookup_sweeps_scale_linearly_and_misses_remain_visible():

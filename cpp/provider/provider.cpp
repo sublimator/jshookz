@@ -350,6 +350,16 @@ void qjs_init(void)
     if (initialized)
         initialized =
             jshookz::provider::installDeterministicSandbox(ctx);
+    if (initialized) {
+        /* Wizer captures an already-populated QuickJS heap.  Treat that
+           initialized heap as the first GC baseline, just as QuickJS does
+           after an automatic collection, so frozen API growth cannot consume
+           the allocation headroom intended for Hook execution. */
+        JSMemoryUsage usage{};
+        JS_ComputeMemoryUsage(rt, &usage);
+        auto const liveBytes = static_cast<size_t>(usage.malloc_size);
+        JS_SetGCThreshold(rt, liveBytes + (liveBytes >> 1));
+    }
     if (!initialized)
         destroy_runtime();
 }
