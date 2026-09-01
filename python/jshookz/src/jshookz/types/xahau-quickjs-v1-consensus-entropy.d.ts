@@ -551,7 +551,7 @@ declare global {
   /** A successful, non-nullish value; falsy-but-present values qualify. */
   type Present<T> = Exclude<T, null | undefined>;
 
-  /** A provider-minted value with one canonical ledger representation. */
+  /** A provider-minted value accepted by the native serialized-byte registry. */
   type SerializedType = (
     | { readonly [__providerValueBrand]: string }
     | { readonly [__stObjectBrand]: void }
@@ -712,6 +712,8 @@ declare global {
     readonly [__providerValueBrand]: `UInt${Bits}`;
     readonly bits: Bits;
     readonly byteLength: Bits extends 8 ? 1 : Bits extends 16 ? 2 : Bits extends 32 ? 4 : 8;
+    /** Canonical fixed-width, big-endian ledger bytes. */
+    toBytes(): Uint8Array;
     toBigInt(): bigint;
     toString(): string;
     /** Conversion is total through 32 bits; UInt64 may exceed JS safe integer. */
@@ -1842,13 +1844,10 @@ declare global {
       set(key: StateKeyLike, value: StateValueLike): HostVoidResult;
       del(key: StateKeyLike): HostVoidResult;
     }
-    function get(key: string | BytesLike | STBlob | Hash256 | AccountID): HostResult<STBlob | undefined>;
+    function get(key: StateKeyLike): HostResult<STBlob | undefined>;
     function get<T>(key: StateKeyLike, schema: BinarySchema<T>): StateReadResult<T>;
-    function set(
-      key: string | BytesLike | STBlob | Hash256 | AccountID,
-      value: string | BytesLike | STBlob | Hash256 | AccountID,
-    ): HostVoidResult;
-    function del(key: string | BytesLike | STBlob | Hash256 | AccountID): HostVoidResult;
+    function set(key: StateKeyLike, value: StateValueLike): HostVoidResult;
+    function del(key: StateKeyLike): HostVoidResult;
     function foreign(account: AccountID, namespace: Hash256): ForeignAccessor;
   }
 

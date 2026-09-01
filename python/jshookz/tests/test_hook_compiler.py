@@ -83,6 +83,23 @@ def test_exact_v1_types_local_and_foreign_state_effects(tmp_path: Path):
     compile_hook(source)
 
 
+def test_exact_v1_local_state_accepts_the_declared_serialized_family(
+    tmp_path: Path,
+):
+    source = tmp_path / "serialized-state.hook.ts"
+    source.write_text(
+        "export function main():never{"
+        "const key:StateKeyLike=UInt32.max;"
+        "const value:StateValueLike=Currency.from('EVR');"
+        "const read:HostResult<STBlob|undefined>=state.get(key);"
+        "const write:HostVoidResult=state.set(key,value);"
+        "const deletion:HostVoidResult=state.del(key);"
+        "rollback.onFail(read);write.moot();deletion.moot();accept();}"
+    )
+
+    compile_hook(source)
+
+
 @pytest.mark.parametrize(
     "statement",
     [

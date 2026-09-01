@@ -577,7 +577,7 @@ declare global {
   type JSTruthy<T> = Exclude<T, JSFalsy>;
   /** A successful, non-nullish value; falsy-but-present values qualify. */
   type Present<T> = Exclude<T, null | undefined>;
-  /** A provider-minted value with one canonical ledger representation. */
+  /** A provider-minted value accepted by the native serialized-byte registry. */
   type SerializedType = (
     | { readonly [__providerValueBrand]: string }
     | { readonly [__stObjectBrand]: void }
@@ -782,6 +782,8 @@ declare global {
     readonly [__providerValueBrand]: `UInt${Bits}`;
     readonly bits: Bits;
     readonly byteLength: Bits extends 8 ? 1 : Bits extends 16 ? 2 : Bits extends 32 ? 4 : 8;
+    /** Canonical fixed-width, big-endian ledger bytes. */
+    toBytes(): Uint8Array;
     toBigInt(): bigint;
     toString(): string;
     /** Conversion is total through 32 bits; UInt64 may exceed JS safe integer. */
@@ -2525,7 +2527,6 @@ declare global {
     /** String parts are encoded as UTF-8 state-key text. */
     function key(part: string | BytePart, options?: KeyOptions): STBlob;
     function key(parts: readonly (string | BytePart)[], options?: KeyOptions): STBlob;
-    function get(key: string | BytesLike | STBlob | Hash256 | AccountID): HostResult<STBlob | undefined>;
     function get(key: StateKeyLike): HostResult<STBlob | undefined>;
     function get<T>(key: StateKeyLike, schema: BinarySchema<T>): StateReadResult<T>;
     /** Policied read: disposition declared at the site (`ReadPolicies`). */
@@ -2536,12 +2537,7 @@ declare global {
     ): PolicyRead<T, P>;
     function getMany(keys: readonly StateKeyLike[]): HostResult<readonly (STBlob | undefined)[]>;
     function getMany<const T extends BatchKeys>(keys: T): HostResult<BatchValues<T>>;
-    function set(
-      key: string | BytesLike | STBlob | Hash256 | AccountID,
-      value: string | BytesLike | STBlob | Hash256 | AccountID,
-    ): HostVoidResult;
     function set(key: StateKeyLike, value: StateValueLike): HostVoidResult;
-    function del(key: string | BytesLike | STBlob | Hash256 | AccountID): HostVoidResult;
     function del(key: StateKeyLike): HostVoidResult;
     function setMany(items: readonly Put[]): HostVoidResult;
     /**

@@ -1911,6 +1911,21 @@ TEST_F(XahauTypes, STObjectJoinsSerializedByteFamily)
     EXPECT_EQ(std::memcmp(bytes.data(), expected.data(), expected.size()), 0);
 }
 
+TEST_F(XahauTypes, UIntJoinsSerializedByteFamily)
+{
+    auto value = eval("UInt32.from(0x12345678).okOr(null)");
+    ASSERT_FALSE(value.isException());
+
+    auto bytes = jshookz::provider::qjs::ByteView::get(
+        ctx,
+        value.get(),
+        jshookz::provider::qjs::BytePolicy::stateKeyLike);
+    ASSERT_TRUE(static_cast<bool>(bytes));
+    std::array<std::uint8_t, 4> const expected{0x12, 0x34, 0x56, 0x78};
+    ASSERT_EQ(bytes.size(), expected.size());
+    EXPECT_EQ(std::memcmp(bytes.data(), expected.data(), expected.size()), 0);
+}
+
 TEST_F(XahauTypes, RuntimeTypeObjectsUseOneSealedNominalClassifier)
 {
     namespace types = jshookz::provider::types;

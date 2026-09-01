@@ -6,10 +6,12 @@
 #include "quickjs.hpp"
 #include "xfl/xfl.hpp"
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <limits>
+#include <span>
 
 namespace {
 
@@ -374,6 +376,25 @@ uintByteLength(JSContext* ctx, JSValueConst thisValue)
 }
 
 JSValue
+// @binding provider:UInt.toBytes
+uintToBytes(
+    JSContext* ctx, JSValueConst thisValue, int, JSValueConst*)
+{
+    auto const* integer = thisUInt(ctx, thisValue);
+    if (integer == nullptr)
+        return JS_EXCEPTION;
+
+    std::array<std::uint8_t, 8> bytes{};
+    auto const length = static_cast<std::size_t>(integer->bits / 8);
+    for (std::size_t index = 0; index < length; ++index)
+        bytes[length - index - 1] = static_cast<std::uint8_t>(
+            integer->value >> (index * 8));
+    return jshookz::provider::qjs::uint8Array(
+        ctx,
+        std::span<std::uint8_t const>{bytes.data(), length});
+}
+
+JSValue
 // @binding provider:UInt.toBigInt
 uintToBigInt(
     JSContext* ctx, JSValueConst thisValue, int, JSValueConst*)
@@ -710,6 +731,7 @@ uintFrom(
 JSCFunctionListEntry const uintPrototypeFunctions[] = {
     JS_CGETSET_DEF("bits", uintBits, nullptr),
     JS_CGETSET_DEF("byteLength", uintByteLength, nullptr),
+    JS_CFUNC_DEF("toBytes", 0, uintToBytes),
     JS_CFUNC_DEF("toBigInt", 0, uintToBigInt),
     JS_CFUNC_DEF("toNumber", 0, uintToNumber),
     JS_CFUNC_DEF("toString", 0, uintToString),
@@ -862,7 +884,11 @@ extern "C" bool
 register_uint_types(JSContext* ctx)
 {
     if (!jshookz::qjs::defineClass(
-            JS_GetRuntime(ctx), &uintClassId, &uintClass))
+            JS_GetRuntime(ctx), &uintClassId, &uintClass) ||
+        !jshookz::provider::qjs::registerByteClass(
+            uintClassId,
+            jshookz::provider::qjs::ByteClassFamily::serializedType,
+            uintToBytes))
         return false;
 
     OwnedValue prototype(ctx, JS_NewObject(ctx));

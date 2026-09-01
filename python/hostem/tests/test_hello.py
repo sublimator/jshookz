@@ -910,6 +910,14 @@ def test_state_accepts_provider_registered_serialized_types():
           rollback.onFail(state.set("RICH", STBlob.fromHex("A1B2C3")));
           rollback.onFail(state.set("HASH", Hash256.from(new Uint8Array(32))));
           rollback.onFail(state.set("ACCT", AccountID.one));
+          rollback.onFail(state.set(UInt32.max, UInt16.max));
+          const integer = rollback.requirePresent(
+            state.get(UInt32.max),
+            "rich integer key is missing",
+          );
+          if (!integer.equals(UInt16.max.toBytes())) {
+            rollback("rich integer value changed", 84);
+          }
           accept("rich bytes retained", 85);
         }
     """
@@ -923,10 +931,13 @@ def test_state_accepts_provider_registered_serialized_types():
     assert runner.runtime.state_db[b"RICH"] == bytes([0xA1, 0xB2, 0xC3])
     assert runner.runtime.state_db[b"HASH"] == bytes(32)
     assert runner.runtime.state_db[b"ACCT"] == bytes(19) + b"\x01"
+    assert runner.runtime.state_db[bytes([0xFF] * 4)] == bytes([0xFF] * 2)
     assert [call.name for call in result.call_log] == [
         "state_set",
         "state_set",
         "state_set",
+        "state_set",
+        "state",
         "accept",
     ]
 
