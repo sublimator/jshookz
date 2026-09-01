@@ -169,6 +169,12 @@ class HookRunner:
         rt._label = label
         rt._current_export = "cbak" if mode == "callback" else "hook"
         journal_mark = len(rt.state_journal)
+        # Hook state is transactional. Handlers mutate the model immediately
+        # so in-flight reads observe earlier writes, while the ordered journal
+        # remains useful evidence. Preserve the invocation boundary here and
+        # restore both stores unless the Hook accepts.
+        local_state_before = dict(rt.state_db)
+        foreign_state_before = dict(rt._foreign_state_db)
 
         again = _AgainInvocation(mode)
         missing = object()
@@ -219,4 +225,9 @@ class HookRunner:
         result.call_log = list(rt.call_log)
         result.state_writes = rt.state_journal[journal_mark:]
         result.again_requested = again.requested
+        if not result.accepted:
+            rt.state_db.clear()
+            rt.state_db.update(local_state_before)
+            rt._foreign_state_db.clear()
+            rt._foreign_state_db.update(foreign_state_before)
         return result
