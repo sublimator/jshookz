@@ -11,10 +11,7 @@ enum ResultCode {
   InvalidStake = 3,
   InvalidConfiguration = 4,
   EntropyQuality = 5,
-  EntropyUnavailable = 6,
-  PrizeReserve = 7,
   PrizeBuild = 8,
-  PrizeEmit = 9,
 }
 
 function requiredEntropyTier(): EntropyTier {
@@ -38,7 +35,6 @@ function requiredEntropyTier(): EntropyTier {
   const quality = rollback.onFail(
     entropy.cr.status(),
     "Cannot inspect commit/reveal quality",
-    ResultCode.EntropyQuality,
   );
   if (requireFull) {
     rollback.when(
@@ -67,7 +63,6 @@ function sendPrize(destination: AccountID): void {
   rollback.onFail(
     emit.reserve(1),
     "Cannot reserve the Lucky Six prize",
-    ResultCode.PrizeReserve,
   );
   const prize = rollback.onFail(
     emit.build.payment({
@@ -80,7 +75,6 @@ function sendPrize(destination: AccountID): void {
   rollback.onFail(
     emit.tx(prize),
     "Cannot emit the Lucky Six prize",
-    ResultCode.PrizeEmit,
   );
 }
 
@@ -119,7 +113,6 @@ export function main(): never {
   const face = rollback.onFail(
     entropy.cr.dice(6, requiredEntropyTier()),
     "Required entropy is unavailable",
-    ResultCode.EntropyUnavailable,
   );
   accept.when(face !== 5, `Thanks! You rolled ${face + 1}.`);
 

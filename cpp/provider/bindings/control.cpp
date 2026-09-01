@@ -127,29 +127,36 @@ js_rollback_on_fail(JSContext *ctx, JSValueConst this_val,
     if (success)
         return qjs::property(ctx, argv[0], "value").release();
 
-    int64_t code;
+    int64_t fallback_code = 0;
     int const explicit_code = argc > 2 && !JS_IsUndefined(argv[2]);
     if (explicit_code) {
         if (argc < 2 || JS_IsUndefined(argv[1]))
             return JS_ThrowTypeError(
                 ctx,
                 "rollback.onFail: uncoded Result requires message and code");
-        if (!JS_IsNumber(argv[2]) || JS_ToInt64(ctx, &code, argv[2]) < 0)
+        if (!JS_IsNumber(argv[2]) ||
+            JS_ToInt64(ctx, &fallback_code, argv[2]) < 0)
             return JS_ThrowTypeError(
                 ctx, "rollback.onFail: expected numeric rollback code");
+    }
+
+    qjs::OwnedValue error = qjs::property(ctx, argv[0], "error");
+    if (error.isException())
+        return error.release();
+    qjs::OwnedValue code_value = qjs::property(ctx, error.get(), "code");
+    if (code_value.isException())
+        return code_value.release();
+
+    int64_t code;
+    if (JS_IsNumber(code_value.get())) {
+        if (JS_ToInt64(ctx, &code, code_value.get()) < 0)
+            return JS_EXCEPTION;
+    } else if (explicit_code) {
+        code = fallback_code;
     } else {
-        qjs::OwnedValue error = qjs::property(ctx, argv[0], "error");
-        if (error.isException())
-            return error.release();
-        qjs::OwnedValue code_value = qjs::property(ctx, error.get(), "code");
-        if (code_value.isException())
-            return code_value.release();
-        if (!JS_IsNumber(code_value.get()) ||
-            JS_ToInt64(ctx, &code, code_value.get()) < 0) {
-            return JS_ThrowTypeError(
-                ctx,
-                "rollback.onFail: uncoded Result requires explicit code");
-        }
+        return JS_ThrowTypeError(
+            ctx,
+            "rollback.onFail: uncoded Result requires explicit code");
     }
 
     if (argc > 1 && !JS_IsUndefined(argv[1])) {

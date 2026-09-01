@@ -279,6 +279,10 @@ TEST_F(ControlTruthTable, OnFailPreservesFalsySuccesses)
     expectReturn("rollback.onFail(S_UNDEF, 'm') === undefined ? 1 : 2", 1);
     expectRollback("rollback.onFail(FAILED, 'm')");
     EXPECT_EQ(g_last_rollback_code, 12);
+    // A caller-supplied fallback applies only to an uncoded failure. A
+    // failure carrying a host status keeps that exact status.
+    expectRollback("rollback.onFail(FAILED, 'm', 34)");
+    EXPECT_EQ(g_last_rollback_code, 12);
     // Contract pin: a domain failure with no code on the error and no
     // explicit code argument is a TypeError, not a terminal.
     expectThrow("rollback.onFail(UNCODED, 'm')");
@@ -310,6 +314,9 @@ TEST_F(ControlTruthTable, EffectArraysFitTheAggregates)
     expectReturn(
         "rollback.onAnyFail([VOIDOK, VOIDOK], 'm').length", 2);
     expectRollback("rollback.onAnyFail([VOIDOK, VOIDFAIL], 'm')");
+    EXPECT_EQ(g_last_rollback_code, 21);
+    expectRollback("rollback.onAnyFail([VOIDOK, VOIDFAIL], 'm', 34)");
+    EXPECT_EQ(g_last_rollback_code, 21);
     // Successes only: the failed effect is skipped, not slotted.
     expectReturn(
         "rollback.onAllFail([VOIDOK, VOIDFAIL], 'm', 34).length", 1);

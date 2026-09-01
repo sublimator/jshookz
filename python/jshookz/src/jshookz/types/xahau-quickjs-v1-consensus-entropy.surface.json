@@ -71,7 +71,7 @@
   },
   "declaration": {
     "path": "python/jshookz/src/jshookz/types/xahau-quickjs-v1-consensus-entropy.d.ts",
-    "sha256": "585acf9a5d5608dd797543fc7c14e665dc2179e600b11554e018d9def7407935"
+    "sha256": "367a9503c472bfa8251bdb9916235fb50a82a74d460f0c8fb997d01f60e79316"
   },
   "globals": {
     "AccountID": "object",

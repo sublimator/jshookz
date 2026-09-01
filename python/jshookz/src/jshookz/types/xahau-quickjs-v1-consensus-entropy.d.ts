@@ -2135,19 +2135,22 @@ declare global {
       message?: string | BytesLike | STBlob,
     ): void;
     /**
-     * Apply a contract-owned terminal policy to a result whose failure does not
-     * already carry a Hook status.
+     * Apply terminal policy to a Result. A numeric `error.code` is preserved
+     * as the terminal status; `fallbackCode` applies only when the failure does
+     * not already carry one. This also makes mixed host/local error unions
+     * safe: host failures keep their exact status while local failures use the
+     * contract-owned fallback.
      */
     function onFail<T, Error>(
       result: Result<T, Error>,
       message: string | BytesLike | STBlob,
-      code?: number,
+      fallbackCode?: number,
     ): T;
-    /** Effect form with a contract-owned policy for uncoded domains. */
+    /** Effect form; a carried status wins and the fallback serves uncoded domains. */
     function onFail<Error>(
       result: VoidResult<Error>,
       message: string | BytesLike | STBlob,
-      code?: number,
+      fallbackCode?: number,
     ): void;
     /**
      * Require a present (non-nullish) value from a Result. Failure and a
@@ -2210,17 +2213,17 @@ declare global {
       results: readonly HostVoidResult[],
       message?: string | BytesLike | STBlob,
     ): readonly undefined[];
-    /** Domain effect form with a contract-owned policy. */
+    /** Domain effect form; a carried status wins over the fallback. */
     function onAnyFail<Error>(
       results: readonly VoidResult<Error>[],
       message: string | BytesLike | STBlob,
-      code: number,
+      fallbackCode: number,
     ): readonly undefined[];
-    /** Apply a contract-owned rollback policy when any domain result failed. */
+    /** Roll back on the first failure; a carried status wins over the fallback. */
     function onAnyFail<T, Error>(
       results: readonly Result<T, Error>[],
       message: string | BytesLike | STBlob,
-      code: number,
+      fallbackCode: number,
     ): readonly T[];
     /**
      * Return the successful values in input order when at least one operation

@@ -42,7 +42,6 @@ class LuckySixResultCode(IntEnum):
     INVALID_STAKE = 3
     INVALID_CONFIGURATION = 4
     ENTROPY_QUALITY = 5
-    ENTROPY_UNAVAILABLE = 6
 
 
 class TransactionTypeValue(IntEnum):
@@ -323,7 +322,7 @@ def test_unavailable_entropy_rolls_back_the_original_payment(
 
     assert result.rejected, result.error
     assert result.return_msg == b"Required entropy is unavailable"
-    assert result.return_code == LuckySixResultCode.ENTROPY_UNAVAILABLE
+    assert result.return_code == status
     assert len(_calls(result, "entropy_cr_dice")) == 1
     assert not _calls(result, "etxn_reserve")
     assert not _calls(result, "emit")

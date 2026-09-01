@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from hookz import hookapi
 from hostem import HookRunner
 
 
@@ -167,7 +168,7 @@ def test_rollback_on_fail_rejects_structural_result_lookalikes():
     assert [call.name for call in result.call_log] == ["accept"]
 
 
-def test_rollback_require_present_collapses_host_failure_and_absence():
+def test_result_consumers_keep_host_status_and_apply_contract_absence_policy():
     source = """
         export function main(_reserved) {
           const mode = otxn.type();
@@ -191,7 +192,7 @@ def test_rollback_require_present_collapses_host_failure_and_absence():
     failed_runner.runtime.otxn_type = 1
     failed = failed_runner.run(source)
     assert failed.rejected, failed.error
-    assert failed.return_code == 71
+    assert failed.return_code == hookapi.TOO_BIG
     assert failed.return_msg == b"required operation failed"
     assert [call.name for call in failed.call_log] == [
         "otxn_type",
@@ -513,7 +514,7 @@ def test_rollback_on_any_fail_uses_first_failure_in_input_order():
     ]
 
 
-def test_rollback_on_any_fail_applies_domain_failure_policy():
+def test_rollback_on_any_fail_preserves_coded_failure_over_fallback():
     source = """
         export function main(_reserved) {
           rollback.onAnyFail([
@@ -527,7 +528,7 @@ def test_rollback_on_any_fail_applies_domain_failure_policy():
     result = HookRunner().run(source)
 
     assert result.rejected, result.error
-    assert result.return_code == 137
+    assert result.return_code == hookapi.TOO_BIG
     assert result.return_msg == b"invalid batch value"
     assert [call.name for call in result.call_log] == [
         "state_set",
