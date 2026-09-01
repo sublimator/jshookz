@@ -900,7 +900,7 @@ def test_bounded_uint_values_pin_width_arithmetic_and_conversion_policy():
     assert result.accepted, result.error
     assert result.return_code == 111
     assert result.return_msg == b"bounded UInt"
-    assert runner.runtime.traces[0].value == "b'255'"
+    assert runner.runtime.traces[0].value == "ff"
     assert [call.name for call in result.call_log] == ["trace", "accept"]
 
 
