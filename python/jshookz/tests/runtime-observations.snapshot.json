@@ -2,25 +2,25 @@
   "observations": {
     "maximum_topology_heap": {
       "peak": [
-        5431350,
-        2838
+        5431446,
+        2840
       ],
       "post_success": [
-        3466310,
-        2852
+        3466406,
+        2854
       ],
       "pre_call": [
-        1236393,
-        2825
+        1236489,
+        2827
       ],
       "registration": [
-        184053,
-        2775
+        184149,
+        2777
       ],
       "static_protocol": 31540
     },
     "sealed_provider_nominal_matrix": {
-      "gas_used": 11753768,
+      "gas_used": 11754740,
       "host_work_used": 0,
       "result_value": "[]"
     }
