@@ -9,8 +9,8 @@ Usage:
   CI=1 scripts/run-tests.sh
 
 Local runs require explicit test files, node ids, or CTest regular expressions.
-The unscoped all-suite gate is reserved for CI/publication and runs the four
-independent suites concurrently.
+The unscoped all-suite gate is reserved for CI/publication and runs each
+product suite serially on the constrained CI runner.
 EOF
 }
 
