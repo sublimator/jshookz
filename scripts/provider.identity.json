@@ -1,5 +1,5 @@
 {
-  "schema": "jshookz.f0-provider-identity.v1",
+  "schema": "jshookz.provider-identity.v1",
   "control_commit": "4828ff201d6045af48021dd951a1f51fc68d963e",
   "files": {
     "build/xahau-provider/jshookz_provider.manifest.json": "2368b974bb4ad05b2d41a1f7148c74fa672b099565d1c1a172745136f56e9809",
