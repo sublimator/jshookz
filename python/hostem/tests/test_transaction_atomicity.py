@@ -128,3 +128,42 @@ def test_runtime_failure_restores_state_but_preserves_attempt_evidence() -> None
         ("foreign", b"FOREIGN-NEW", b"new"),
         ("foreign", b"FOREIGN-DELETE", None),
     ]
+
+
+def _run_emission(runtime: HookRuntime, terminal: str):
+    return HookRunner(runtime).run_typescript(
+        f"""
+        export function main(): never {{
+          rollback.onFail(emit.reserve(1), "cannot reserve");
+          const built = rollback.onFail(
+            emit.build.payment({{
+              Destination: AccountID.fromHex("11".repeat(20)),
+              Amount: Amount.drops(1n),
+            }}),
+            "cannot build",
+          );
+          rollback.onFail(emit.tx(built), "cannot emit");
+          {terminal}
+        }}
+        """
+    )
+
+
+def test_only_accepted_emissions_join_durable_history() -> None:
+    runtime = HookRuntime()
+
+    accepted = _run_emission(runtime, 'accept("commit");')
+
+    assert accepted.accepted, accepted.error
+    assert len(accepted.emitted_txns) == 1
+    assert accepted.attempted_emissions == []
+    assert runtime.emitted_txns == accepted.emitted_txns
+
+    accepted_history = list(runtime.emitted_txns)
+    rejected = _run_emission(runtime, 'rollback("abort");')
+
+    assert rejected.rejected, rejected.error
+    assert rejected.emitted_txns == []
+    assert len(rejected.attempted_emissions) == 1
+    assert runtime.attempted_emissions == rejected.attempted_emissions
+    assert runtime.emitted_txns == accepted_history

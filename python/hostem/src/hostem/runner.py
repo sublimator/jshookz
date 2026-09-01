@@ -169,6 +169,14 @@ class HookRunner:
         rt._label = label
         rt._current_export = "cbak" if mode == "callback" else "hook"
         journal_mark = len(rt.state_journal)
+        emitted_mark = len(rt.emitted_txns)
+        rt._emitted_mark = emitted_mark
+        rt.attempted_emissions = []
+        rt.emission_rejections = []
+        rt.emission_undecided = []
+        rt._etxn_reserved = False
+        rt._etxn_count = 0
+        rt._emit_nonce_counter = 0
         # Hook state is transactional. Handlers mutate the model immediately
         # so in-flight reads observe earlier writes, while the ordered journal
         # remains useful evidence. Preserve the invocation boundary here and
@@ -225,6 +233,13 @@ class HookRunner:
         result.call_log = list(rt.call_log)
         result.state_writes = rt.state_journal[journal_mark:]
         result.again_requested = again.requested
+        pending_emissions = rt.emitted_txns[emitted_mark:]
+        if result.accepted:
+            result.emitted_txns = pending_emissions
+        else:
+            del rt.emitted_txns[emitted_mark:]
+            rt.attempted_emissions = pending_emissions
+            result.attempted_emissions = pending_emissions
         if not result.accepted:
             rt.state_db.clear()
             rt.state_db.update(local_state_before)
