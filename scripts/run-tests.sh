@@ -88,6 +88,33 @@ start() {
     labels+=("$label")
 }
 
+run_serial() {
+    local label="$1"
+    shift
+    printf 'starting %s\n' "$label"
+    if "$@"; then
+        printf 'passed %s\n' "$label"
+    else
+        printf 'failed %s\n' "$label" >&2
+        failed=1
+    fi
+}
+
+failed=0
+
+if [[ "$full_gate" -eq 1 ]]; then
+    run_serial jshookz python/jshookz/.venv/bin/pytest -q \
+        -o cache_dir=build/pytest-cache/jshookz "${jshookz_targets[@]}"
+    run_serial hostem python/hostem/.venv/bin/pytest -q \
+        -o cache_dir=build/pytest-cache/hostem "${hostem_targets[@]}"
+    run_serial x-data python/jshookz/.venv/bin/pytest -q \
+        -o cache_dir=build/pytest-cache/x-data "${xdata_targets[@]}"
+    run_serial ctest ctest --test-dir build/cpp --output-on-failure \
+        --no-tests=error --parallel 1 -R '(.)'
+    run_serial wasm-stack scripts/check-wasm-stack.sh
+    exit "$failed"
+fi
+
 if [[ ${#jshookz_targets[@]} -gt 0 ]]; then
     start jshookz python/jshookz/.venv/bin/pytest -q \
         -o cache_dir=build/pytest-cache/jshookz "${jshookz_targets[@]}"
@@ -105,11 +132,6 @@ if [[ ${#ctest_patterns[@]} -gt 0 ]]; then
     start ctest ctest --test-dir build/cpp --output-on-failure \
         --no-tests=error --parallel "$jobs" -R "($ctest_regex)"
 fi
-if [[ "$full_gate" -eq 1 ]]; then
-    start wasm-stack scripts/check-wasm-stack.sh
-fi
-
-failed=0
 for index in "${!pids[@]}"; do
     if wait "${pids[$index]}"; then
         printf 'passed %s\n' "${labels[$index]}"

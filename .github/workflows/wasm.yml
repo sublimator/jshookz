@@ -91,6 +91,8 @@ jobs:
       - name: Build and seal Xahau provider products
         run: |
           python/jshookz/.venv/bin/jshookz build provider
+          scripts/provider-identity.py check
+          scripts/provider-identity.py self-test
           python/jshookz/.venv/bin/jshookz build provider-consensus-entropy
 
       - name: Check generated definitions
@@ -109,7 +111,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release
           cmake --build build/cpp
 
-      - name: Test product surfaces concurrently
+      - name: Test product surfaces serially
         run: CI=1 scripts/run-tests.sh
 
 
