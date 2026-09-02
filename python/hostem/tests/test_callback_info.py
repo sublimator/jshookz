@@ -100,6 +100,28 @@ def test_repeated_reads_are_cached_and_identical() -> None:
     assert _call_names(result) == ["otxn_id", "accept"]
 
 
+def test_invocation_id_is_enumerable_before_and_after_the_first_read() -> None:
+    result = _runner().run_typescript(
+        """
+        export function main(): never { rollback("not the callback", 1); }
+        export function callback(info: CallbackInfo): never {
+          const before = Object.keys(info).sort().join(",");
+          void info.invocationId;
+          const after = Object.keys(info).sort().join(",");
+          if (before !== after || !before.includes("invocationId")) {
+            rollback("key set changed on first read: " + before + " / " + after, 1);
+          }
+          accept(before, 0);
+        }
+        """,
+        mode="callback",
+    )
+
+    assert result.accepted, result.error
+    assert result.return_msg == b"applied,failureBitSet,invocationId,rawFlags"
+    assert _call_names(result) == ["otxn_id", "accept"]
+
+
 def test_refused_host_answer_is_an_execution_invariant_failure() -> None:
     runner = _runner()
     runner.runtime.handlers["otxn_id"] = lambda *_args: hookapi.INVALID_ARGUMENT

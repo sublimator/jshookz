@@ -146,8 +146,15 @@ js_callback_invocation_id(JSContext *ctx, JSValueConst this_val)
     return id;
 }
 
+// Like JS_CGETSET_DEF but enumerable from the start, so the info's key set
+// is the same before and after the first read replaces the accessor.
 static const JSCFunctionListEntry callback_info_accessors[] = {
-    JS_CGETSET_DEF("invocationId", js_callback_invocation_id, NULL),
+    {.name = "invocationId",
+     .prop_flags = JS_PROP_CONFIGURABLE | JS_PROP_ENUMERABLE,
+     .def_type = JS_DEF_CGETSET,
+     .magic = 0,
+     .u = {.getset = {.get = {.getter = js_callback_invocation_id},
+                      .set = {.setter = NULL}}}},
 };
 
 static JSValue
