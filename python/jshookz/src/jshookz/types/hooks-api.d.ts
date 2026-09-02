@@ -2427,7 +2427,10 @@ declare global {
      * the same transaction `type()` and `object()` describe there.
      */
     function id(): Hash256;
-    /** Emission generation and burden of this invocation: total facts. */
+    /**
+     * Emission generation and burden carried by the originating
+     * transaction: total, defaulting to 0 and 1 when it was not emitted.
+     */
     function generation(): number;
     function burden(): bigint;
     /**
@@ -2790,9 +2793,14 @@ declare global {
     function details(): HostResult<STBlob>;
     function feeBase(transaction: BytesLike | STBlob | EmittedTransaction): HostResult<Drops>;
     function nonce(): HostResult<Hash256>;
-    /** Emission generation and burden of this invocation: total facts. */
+    /** Generation the next emitted transaction will carry: total. */
     function generation(): number;
-    function burden(): bigint;
+    /**
+     * Burden the next emitted transaction will carry. A conforming call can
+     * observe host failure: `PREREQUISITE_NOT_MET` before `emit.reserve`,
+     * `FEE_TOO_LARGE` when the multiplied burden overflows.
+     */
+    function burden(): HostResult<bigint>;
   }
 
   namespace util {
