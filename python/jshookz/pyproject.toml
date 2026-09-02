@@ -35,3 +35,9 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 timeout = 60
+# Source-level provider mutants rebuild and reseal the provider per mutant.
+# They run in the scheduled CI lane (`pytest -m mutation`), not by default.
+addopts = "-m 'not mutation'"
+markers = [
+    "mutation: rebuilds the provider with a source-level mutant; scheduled lane, deselected by default",
+]

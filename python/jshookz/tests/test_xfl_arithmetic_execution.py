@@ -387,6 +387,7 @@ def test_all_public_oracle_rows_execute_through_packaged_sealed_provider(
     )
 
 
+@pytest.mark.mutation
 @pytest.mark.parametrize(
     ("xfl_semantic_mutant_wasm", "case_ids"),
     [
@@ -582,6 +583,7 @@ def test_packaged_operation_lanes_have_deterministic_bounded_fuel(
     _assert_fuel_ceiling(first, fuel_ceiling)
 
 
+@pytest.mark.mutation
 def test_maximum_alignment_relational_gate_rejects_kernel_o_gap_division(
     tmp_path: Path,
     xfl_gap_loop_mutant_wasm: Path,
@@ -618,6 +620,7 @@ def test_maximum_alignment_relational_gate_rejects_kernel_o_gap_division(
     )
 
 
+@pytest.mark.mutation
 @pytest.mark.parametrize(
     "case_id",
     [

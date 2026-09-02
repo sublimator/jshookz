@@ -109,8 +109,11 @@ if [[ "$full_gate" -eq 1 ]]; then
         -o cache_dir=build/pytest-cache/hostem "${hostem_targets[@]}"
     run_serial x-data python/jshookz/.venv/bin/pytest -q \
         -o cache_dir=build/pytest-cache/x-data "${xdata_targets[@]}"
+    # The Python suites run one at a time so their provider compiles do not
+    # starve each other on the two-core runner. CTest's fuel lanes count
+    # deterministic fuel, not wall time, so they may use both cores.
     run_serial ctest ctest --test-dir build/cpp --output-on-failure \
-        --no-tests=error --parallel 1 -R '(.)'
+        --no-tests=error --parallel 2 -R '(.)'
     run_serial wasm-stack scripts/check-wasm-stack.sh
     exit "$failed"
 fi

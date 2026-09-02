@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  schedule:
+    # Weekly source-level mutant lane; see the `mutation` job.
+    - cron: "0 3 * * 1"
 
 env:
   WASI_SDK_VERSION: "32"
@@ -19,65 +22,12 @@ env:
 
 jobs:
   product:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
-      - uses: astral-sh/setup-uv@v6
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-
-      - name: Install build tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential cmake curl libboost-dev ninja-build xz-utils
-          mkdir -p "$BOOST_INCLUDE_DIR"
-          ln -s /usr/include/boost "$BOOST_INCLUDE_DIR/boost"
-
-      - name: Install wasi-sdk
-        run: |
-          mkdir -p .tools
-          curl --fail --location --retry 3 \
-            --output /tmp/wasi-sdk.tar.gz \
-            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux.tar.gz"
-          echo "$WASI_SDK_SHA256  /tmp/wasi-sdk.tar.gz" | sha256sum --check
-          tar -xzf /tmp/wasi-sdk.tar.gz -C .tools
-          mv ".tools/wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux" "$WASI_SDK_PATH"
-
-      - name: Install Binaryen
-        run: |
-          curl --fail --location --retry 3 \
-            --output /tmp/binaryen.tar.gz \
-            "https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN_VERSION}/binaryen-version_${BINARYEN_VERSION}-x86_64-linux.tar.gz"
-          echo "$BINARYEN_SHA256  /tmp/binaryen.tar.gz" | sha256sum --check
-          tar -xzf /tmp/binaryen.tar.gz -C .tools
-          mv ".tools/binaryen-version_${BINARYEN_VERSION}" "$BINARYEN_HOME"
-          echo "$BINARYEN_HOME/bin" >> "$GITHUB_PATH"
-
-      - name: Install Wizer
-        run: |
-          curl --fail --location --retry 3 \
-            --output /tmp/wizer.tar.xz \
-            "https://github.com/bytecodealliance/wizer/releases/download/v${WIZER_VERSION}/wizer-v${WIZER_VERSION}-x86_64-linux.tar.xz"
-          echo "$WIZER_SHA256  /tmp/wizer.tar.xz" | sha256sum --check
-          tar -xJf /tmp/wizer.tar.xz -C .tools
-          echo "$GITHUB_WORKSPACE/.tools/wizer-v${WIZER_VERSION}-x86_64-linux" >> "$GITHUB_PATH"
-
-      - name: Install Conan
-        run: |
-          python3 -m pip install --user 'conan>=2,<3'
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Install the pinned TypeScript frontend and bundler
-        run: npm ci --prefix python/jshookz/src/jshookz
-
-      - name: Install locked test environments
-        run: |
-          uv sync --project python/jshookz --locked --group dev
-          uv sync --project python/hostem --locked --group dev
+      - uses: ./.github/actions/toolchain
 
       - name: Verify generated Hook ABI and TypeScript API
         run: |
@@ -114,7 +64,6 @@ jobs:
       - name: Test product surfaces serially
         run: CI=1 scripts/run-tests.sh
 
-
       - name: End-to-end compile and package a hook
         run: |
           cd "$RUNNER_TEMP"
@@ -133,6 +82,7 @@ jobs:
           test -s smoke.xqjs
 
   quickjs:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -141,3 +91,25 @@ jobs:
         run: |
           make -j"$(getconf _NPROCESSORS_ONLN)" CONFIG_WERROR=y
           make test
+
+  # Source-level provider mutants rebuild and reseal the provider once per
+  # mutant. They prove the oracle rows still discriminate, which changes only
+  # when the kernel or the oracle changes, so they run weekly and on demand
+  # rather than on every push.
+  mutation:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/toolchain
+
+      - name: Build and seal the baseline provider
+        run: python/jshookz/.venv/bin/jshookz build provider
+
+      - name: Kill source-level provider mutants
+        # Each mutant rebuilds the provider inside test setup, which sits near
+        # the suite's 60s per-test timeout on a two-core runner.
+        run: |
+          python/jshookz/.venv/bin/pytest -q -m mutation --timeout 300 \
+            -o cache_dir=build/pytest-cache/mutation python/jshookz/tests
