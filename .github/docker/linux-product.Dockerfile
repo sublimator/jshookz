@@ -23,10 +23,12 @@ RUN source /opt/jshookz/linux-product-gate.lock.env && \
       python3 && \
     rm -rf /var/lib/apt/lists/*
 
-ENV CMAKE_BUILD_PARALLEL_LEVEL=2 \
+ENV CMAKE_BUILD_PARALLEL_LEVEL=1 \
+    CTEST_PARALLEL_LEVEL=1 \
     CMAKE_GENERATOR=Ninja \
     CC=gcc \
     CXX=g++ \
+    MAKEFLAGS=-j1 \
     PYTHONDONTWRITEBYTECODE=1
 
 COPY scripts/linux-product-gate.sh /opt/jshookz/linux-product-gate.sh

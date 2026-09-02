@@ -70,7 +70,7 @@ def _build_sealed_provider(
             "-DXAHAU_HOOK_PROVIDER=ON",
             *cmake_options,
         ),
-        ("cmake", "--build", str(build), "--parallel", "4"),
+        ("cmake", "--build", str(build)),
         (
             wizer,
             "--keep-init-func",

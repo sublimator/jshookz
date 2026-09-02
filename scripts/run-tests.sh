@@ -143,6 +143,11 @@ run_serial() {
 failed=0
 
 if [[ "$full_gate" -eq 1 ]]; then
+    # The CI runner exposes two vCPUs, but Wasmtime and the operating system
+    # need headroom. Propagate one-worker builds into pytest-owned fixtures too.
+    export CMAKE_BUILD_PARALLEL_LEVEL=1
+    export CTEST_PARALLEL_LEVEL=1
+    export MAKEFLAGS=-j1
     wanted jshookz && run_serial jshookz python/jshookz/.venv/bin/pytest -q \
         -o cache_dir=build/pytest-cache/jshookz "${jshookz_targets[@]}"
     wanted hostem && run_serial hostem python/hostem/.venv/bin/pytest -q \
