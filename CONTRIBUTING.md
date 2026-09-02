@@ -22,7 +22,26 @@ python/jshookz/.venv/bin/pytest -q python/jshookz/tests
 ```
 
 `jshookz build provider` emits the runtime-profile lock and the JSON/CMake
-manifests. Do not commit the lock; xahaud pins it.
+manifests. Do not commit the lock; xahaud pins it. It also exports
+`build/xahau-provider-bundle/`, the complete directory xahaud consumes:
+point `XAHAU_QUICKJS_PROVIDER_BUNDLE_DIR` at it for a local build, or
+`jshookz export-bundle provider -o <xahaud>/external/quickjs-provider` to
+move xahaud's committed pin.
+
+## Pins
+
+A runtime or provider change moves committed pins: the generated raw Hook
+ABI, the provider identity snapshot, the runtime observation snapshot, and
+the recursive fuel snapshot. Regenerate all of them in one step and commit
+them with the change that moved them, never as a separate relock commit:
+
+```bash
+scripts/relock.sh          # rebuild, reseal, rewrite every pin, list what moved
+scripts/relock.sh --check  # the same gates read-only, as CI sees them
+```
+
+The API artifact manifest is checked, not rewritten, because the
+declarations it hashes come from the projection tool.
 
 ## Raw Hook ABI and hostem
 
