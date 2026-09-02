@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -31,6 +33,57 @@ from . import _runtime_profile_constants as profile_constants
 
 _CLEANUP_FUEL = 5_000_000
 _HOST_WORK_EXHAUSTED = "host work budget exhausted"
+
+# One Engine per metering setting and one compiled Module per distinct
+# provider byte string. Cranelift compilation of the sealed provider costs
+# about one CPU-second, and a compile-validate-run cycle creates three hosts,
+# so recompiling per host dominated every test suite. The configuration is
+# pinned below and identical for every host that shares an engine; each host
+# still owns its own Store, Linker, and instance, so isolation is unchanged.
+_ENGINE_LOCK = threading.RLock()
+_ENGINES: dict[bool, Engine] = {}
+_MODULES: dict[tuple[bool, str], Module] = {}
+
+
+def _engine_config(metered: bool) -> Config:
+    config = Config()
+    # The Python binding does not expose this Wasmtime C-API setting,
+    # but it is a consensus input for the QuickJS profile.  Keep the call
+    # explicit and pinned instead of inheriting the engine default.
+    wasmtime_ffi.wasmtime_config_cranelift_nan_canonicalization_set(config.ptr(), True)
+    config.wasm_threads = False
+    config.wasm_relaxed_simd = False
+    config.wasm_memory64 = False
+    config.wasm_multi_memory = False
+    config.wasm_tail_call = False
+    if metered:
+        config.consume_fuel = True
+    return config
+
+
+def _shared_engine(metered: bool) -> Engine:
+    with _ENGINE_LOCK:
+        engine = _ENGINES.get(metered)
+        if engine is None:
+            engine = Engine(_engine_config(metered))
+            _ENGINES[metered] = engine
+        return engine
+
+
+def _compiled_module(metered: bool, wasm_path: Path) -> Module:
+    """Compile each distinct provider once per engine configuration.
+
+    The key is the exact bytes, not the path, so a provider rebuilt in place
+    recompiles and two different providers at the same path never collide.
+    """
+    data = Path(wasm_path).read_bytes()
+    key = (metered, hashlib.sha256(data).hexdigest())
+    with _ENGINE_LOCK:
+        module = _MODULES.get(key)
+        if module is None:
+            module = Module(_shared_engine(metered), data)
+            _MODULES[key] = module
+        return module
 
 
 class HostHandler(Protocol):
@@ -146,22 +199,7 @@ class WasmHost:
         )
 
     def _setup_engine(self):
-        config = Config()
-        # The Python binding does not expose this Wasmtime C-API setting,
-        # but it is a consensus input for the QuickJS profile.  Keep the call
-        # explicit and pinned instead of inheriting the engine default.
-        wasmtime_ffi.wasmtime_config_cranelift_nan_canonicalization_set(
-            config.ptr(), True
-        )
-        config.wasm_threads = False
-        config.wasm_relaxed_simd = False
-        config.wasm_memory64 = False
-        config.wasm_multi_memory = False
-        config.wasm_tail_call = False
-        if self._metered:
-            config.consume_fuel = True
-
-        self.engine = Engine(config)
+        self.engine = _shared_engine(self._metered)
         self.store = Store(self.engine)
 
         if self._metered:
@@ -173,8 +211,8 @@ class WasmHost:
         for fn in self.api.functions:
             self._register_host_function(fn)
 
-        # Load and instantiate
-        module = Module.from_file(self.engine, str(self.wasm_path))
+        # Instantiate the shared compiled module into this host's own store
+        module = _compiled_module(self._metered, Path(self.wasm_path))
         self.instance = self.linker.instantiate(self.store, module)
         self.memory = self.instance.exports(self.store)["memory"]
 

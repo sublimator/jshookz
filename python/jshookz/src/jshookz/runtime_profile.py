@@ -281,10 +281,26 @@ def _wasm_stack_pointer_initial(wasm: bytes) -> int:
     return mutable_i32[0]
 
 
+# The surface census compiles the provider through Cranelift to enumerate its
+# imports and exports. It is a pure function of the bytes and every profiled
+# host verifies the lock, so memoize it by digest.
+_SURFACE_CACHE: dict[str, dict[str, Any]] = {}
+
+
 def _wasm_surface(wasm_path: str | Path) -> dict[str, Any]:
     path = Path(wasm_path)
     wasm = path.read_bytes()
-    module = Module.from_file(Engine(), str(path))
+    digest = _sha256(wasm)
+    cached = _SURFACE_CACHE.get(digest)
+    if cached is not None:
+        return copy.deepcopy(cached)
+    surface = _uncached_wasm_surface(wasm)
+    _SURFACE_CACHE[digest] = copy.deepcopy(surface)
+    return surface
+
+
+def _uncached_wasm_surface(wasm: bytes) -> dict[str, Any]:
+    module = Module(Engine(), wasm)
 
     imports = []
     for item in module.imports:
