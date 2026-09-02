@@ -200,16 +200,46 @@ def test_export_is_deterministic(exported: Path, tmp_path: Path) -> None:
         assert (again / name).read_bytes() == (exported / name).read_bytes(), name
 
 
-def test_export_retires_the_previous_contract_files_only(tmp_path: Path) -> None:
+def test_export_retires_the_previous_contract_files(tmp_path: Path) -> None:
     target = tmp_path / "pin"
     target.mkdir()
     (target / "jshookz_provider.lock.json").write_text("{}")
     (target / "jshookz_provider.manifest.cmake").write_text("set(X 1)\n")
-    (target / "README.md").write_text("kept\n")
     consumer_bundle.export(build.BASELINE_PRODUCT, target)
     assert not (target / "jshookz_provider.lock.json").exists()
     assert not (target / "jshookz_provider.manifest.cmake").exists()
-    assert (target / "README.md").read_text() == "kept\n"
+    assert {path.name for path in target.iterdir()} == BUNDLE_FILES
+
+
+def test_export_refuses_a_destination_holding_strangers(tmp_path: Path) -> None:
+    target = tmp_path / "pin"
+    target.mkdir()
+    (target / "README.md").write_text("stale\n")
+    (target / "jshookz_provider.wasm.orig").write_bytes(b"\0")
+    with pytest.raises(RuntimeError, match="README.md, jshookz_provider.wasm.orig"):
+        consumer_bundle.export(build.BASELINE_PRODUCT, target)
+    assert {path.name for path in target.iterdir()} == {
+        "README.md",
+        "jshookz_provider.wasm.orig",
+    }
+
+
+def test_export_refuses_the_product_build_directory_as_destination() -> None:
+    baseline = build.PRODUCTS[build.BASELINE_PRODUCT]
+    with pytest.raises(RuntimeError, match="outside the bundle"):
+        consumer_bundle.export(build.BASELINE_PRODUCT, baseline.build_dir)
+    assert (baseline.build_dir / "jshookz_provider.unwizered.wasm").is_file()
+
+
+def test_export_overwrites_a_previous_export_in_place(tmp_path: Path) -> None:
+    target = tmp_path / "pin"
+    consumer_bundle.export(build.BASELINE_PRODUCT, target)
+    (target / "jshookz_provider.receipt").write_text("schema tampered\n")
+    consumer_bundle.export(build.BASELINE_PRODUCT, target)
+    receipt = consumer_bundle.parse_receipt(
+        (target / "jshookz_provider.receipt").read_text()
+    )
+    assert receipt["schema"] == consumer_bundle.RECEIPT_SCHEMA
 
 
 def test_default_bundle_roots_are_disjoint_per_product() -> None:
@@ -225,9 +255,24 @@ def test_default_bundle_roots_are_disjoint_per_product() -> None:
 def test_parse_receipt_rejects_anything_but_key_value_lines() -> None:
     parse = consumer_bundle.parse_receipt
     assert parse("a 1\nb x\n") == {"a": "1", "b": "x"}
-    for bad in ("a 1", "a 1\n\nb 2\n", "a\n", "a 1 2\n", "a 1\na 2\n", " a 1\n"):
+    for bad in (
+        "a 1",
+        "a 1\n\nb 2\n",
+        "a\n",
+        "a 1 2\n",
+        "a 1\na 2\n",
+        " a 1\n",
+        "A 1\n",
+        "a-b 1\n",
+        "a 1\t\n",
+        "# c\n",
+    ):
         with pytest.raises(consumer_bundle.BundleError):
             parse(bad)
+    rendered = consumer_bundle.render_receipt({"b": "2", "a": "x"})
+    assert rendered == "a x\nb 2\n" and parse(rendered) == {"a": "x", "b": "2"}
+    with pytest.raises(consumer_bundle.BundleError):
+        consumer_bundle.render_receipt({"Bad-Key": "1"})
 
 
 def _fake_product(monkeypatch: pytest.MonkeyPatch, build_dir: Path) -> None:

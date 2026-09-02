@@ -72,9 +72,10 @@ XAHAU_HOOK_PROVIDER_MANIFEST = (
 XAHAU_HOOK_PROVIDER_NATIVE_ABI = (
     XAHAU_PROVIDER_BUILD_DIR / "jshookz_provider.native-abi.json"
 )
-# Complete consumer bundles: the exact file set xahaud's cmake requires plus
-# the consumer lock, exported by `jshookz build <product>`. Point xahaud's
-# XAHAU_QUICKJS_PROVIDER_BUNDLE_DIR here; never share roots between products.
+# Complete consumer bundles: the sealed wasm, provenance JSON, API artifacts,
+# the flat receipt, and the preprojected values file, exported by
+# `jshookz build <product>`. Point xahaud's XAHAU_QUICKJS_PROVIDER_BUNDLE_DIR
+# here; never share roots between products.
 XAHAU_PROVIDER_CONSUMER_BUNDLE_DIR = BUILD_DIR / "xahau-provider-bundle"
 XAHAU_CONSENSUS_ENTROPY_PROVIDER_BUILD_DIR = (
     BUILD_DIR / "xahau-provider-consensus-entropy"

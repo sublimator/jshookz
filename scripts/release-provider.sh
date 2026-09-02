@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # Publish one sealed provider product as a content-addressed GitHub release.
 #
-# The release id is the sealed wasm's SHA-256 (`provider-<sha256>`), so a
-# consumer derives the download URL from its own committed lock. Publishing
-# the same bytes again is a no-op; a tag whose bytes differ is a hard failure
-# and is never mutated.
+# The release is addressed by the complete bundle: its tag is
+# `provider-<sha256 of jshookz_provider.receipt>`, and the receipt pins every
+# other byte in the bundle. A consumer that commits the receipt derives the
+# download URL from that one file. Publishing identical assets again is a
+# no-op; a tag whose asset set or bytes differ is a hard failure and is never
+# mutated.
+#
+# Every asset is exported fresh into an empty staging directory by the
+# producer exporter, which validates the seal, the native ABI, and the API
+# artifacts before writing; nothing is copied from a working bundle.
 #
 # Publication is an operator act. Without --publish this script only reports
 # what it would do. --publish additionally requires
@@ -15,17 +21,19 @@ set -euo pipefail
 usage() {
     cat <<'EOF'
 Usage:
-  scripts/release-provider.sh [--product provider|provider-consensus-entropy]
-                              [--publish]
+  scripts/release-provider.sh [--product provider] [--publish]
 
 Preconditions (all checked, all read-only):
   - tracked tree clean, HEAD reachable from an origin branch
   - the newest CI run for HEAD concluded success
-  - scripts/provider-identity.py check is green (baseline product)
-  - build/<product>-bundle/ exists and its lock matches the sealed wasm
+  - scripts/provider-identity.py check is green
+  - the product exports cleanly into an empty staging directory
 
-Assets: every consumer-bundle file, the unwizered wasm, and SHA256SUMS.
-Release body: jshookz.provider-release.v1 JSON.
+Only the baseline product has a tracked identity snapshot; publication of
+provider-consensus-entropy is refused until one exists.
+
+Assets: the twelve consumer-bundle files, the unwizered wasm, and SHA256SUMS.
+Release body: jshookz.provider-release.v1 JSON (notes only, not an asset).
 EOF
 }
 
@@ -44,26 +52,26 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-case "$product" in
-    provider)
-        build_dir=build/xahau-provider
-        bundle_dir=build/xahau-provider-bundle
-        ;;
-    provider-consensus-entropy)
-        build_dir=build/xahau-provider-consensus-entropy
-        bundle_dir=build/xahau-provider-consensus-entropy-bundle
-        ;;
-    *) printf 'unknown product: %s\n' "$product" >&2; exit 2 ;;
-esac
-
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 command -v gh >/dev/null || { printf '%s\n' 'gh is required' >&2; exit 1; }
+jshookz=python/jshookz/.venv/bin/jshookz
+[[ -x "$jshookz" ]] || { printf 'missing %s; run uv sync\n' "$jshookz" >&2; exit 1; }
 
 fail() {
     printf 'release-provider: %s\n' "$*" >&2
     exit 1
 }
+
+case "$product" in
+    provider)
+        build_dir=build/xahau-provider
+        ;;
+    provider-consensus-entropy)
+        fail 'provider-consensus-entropy has no tracked identity snapshot; refusing to publish it'
+        ;;
+    *) fail "unknown product: $product" ;;
+esac
 
 # --- preconditions -----------------------------------------------------------
 
@@ -84,89 +92,91 @@ case "$ci_run" in
     *) fail "CI for $head_sha is not green: $ci_run" ;;
 esac
 
-if [[ "$product" == provider ]]; then
-    scripts/provider-identity.py check >/dev/null ||
-        fail 'provider identity check failed; run scripts/relock.sh'
-fi
-
-receipt="$bundle_dir/jshookz_provider.receipt"
-[[ -s "$receipt" ]] ||
-    fail "missing consumer bundle $bundle_dir; run jshookz build $product"
+scripts/provider-identity.py check >/dev/null ||
+    fail 'provider identity check failed; run scripts/relock.sh'
 [[ -s "$build_dir/jshookz_provider.unwizered.wasm" ]] ||
-    fail "missing $build_dir/jshookz_provider.unwizered.wasm"
+    fail "missing $build_dir/jshookz_provider.unwizered.wasm; run jshookz build $product"
 
-# The receipt is one `key value` per line; read it the way a consumer does.
+# --- assets: exported fresh, validated by the exporter -----------------------
+
+work="$(mktemp -d "${TMPDIR:-/tmp}/release-provider.XXXXXX")"
+trap 'rm -rf "$work"' EXIT
+stage="$work/assets"
+mkdir "$stage"
+"$jshookz" export-bundle "$product" -o "$stage" >/dev/null ||
+    fail "export of $product failed; the seal is stale or incoherent"
+cp "$build_dir/jshookz_provider.unwizered.wasm" "$stage"/
+(cd "$stage" && shasum -a 256 -- * | sort -k2 > "$work/SHA256SUMS" && mv "$work/SHA256SUMS" SHA256SUMS)
+
+receipt="$stage/jshookz_provider.receipt"
 pin() {
     awk -v key="$1" '$1 == key { print $2; found = 1 } END { exit !found }' "$receipt" ||
         fail "receipt has no $1"
 }
+[[ "$(pin product)" == "$product" ]] || fail 'receipt names a different product'
 wasm_sha="$(pin provider_sha256)"
 wasm_size="$(pin provider_size)"
-receipt_product="$(pin product)"
 runtime_profile_id="$(pin runtime_profile_id)"
 bytecode_abi_id="$(pin bytecode_abi_id)"
 wasmtime="$(pin wasmtime_version)"
-[[ "$receipt_product" == "$product" ]] ||
-    fail "receipt names product $receipt_product, not $product"
-actual_sha="$(shasum -a 256 "$bundle_dir/jshookz_provider.wasm" | awk '{print $1}')"
-actual_size="$(stat -f %z "$bundle_dir/jshookz_provider.wasm" 2>/dev/null ||
-    stat -c %s "$bundle_dir/jshookz_provider.wasm")"
-[[ "$actual_sha" == "$wasm_sha" && "$actual_size" == "$wasm_size" ]] ||
-    fail 'sealed wasm does not match the receipt; rebuild'
+receipt_sha="$(shasum -a 256 "$receipt" | awk '{print $1}')"
+tag="provider-$receipt_sha"
 
-tag="provider-$wasm_sha"
+assets=()
+while IFS= read -r name; do assets+=("$stage/$name"); done < <(ls "$stage" | sort)
 
-# --- assets ------------------------------------------------------------------
-
-stage="$(mktemp -d "${TMPDIR:-/tmp}/release-$tag.XXXXXX")"
-trap 'rm -rf "$stage"' EXIT
-cp "$bundle_dir"/* "$stage"/
-cp "$build_dir/jshookz_provider.unwizered.wasm" "$stage"/
-(cd "$stage" && shasum -a 256 -- * | sort -k2 > SHA256SUMS.tmp && mv SHA256SUMS.tmp SHA256SUMS)
-
-python3 - "$stage" "$head_sha" "$ci_run_id" "$product" "$wasm_sha" "$wasm_size" \
-    "$runtime_profile_id" "$bytecode_abi_id" "$wasmtime" > "$stage/RELEASE_BODY.json" <<'PY'
+python3 - "$stage" "$head_sha" "$ci_run_id" "$product" "$tag" "$receipt_sha" \
+    "$wasm_sha" "$wasm_size" "$runtime_profile_id" "$bytecode_abi_id" "$wasmtime" \
+    > "$work/RELEASE_BODY.json" <<'PY'
 import hashlib, json, sys
 from pathlib import Path
-stage, head, ci, product, sha, size, profile, abi, wasmtime = sys.argv[1:]
+stage, head, ci, product, tag, receipt, sha, size, profile, abi, wasmtime = sys.argv[1:]
 stage = Path(stage)
 def digest(name):
     return hashlib.sha256((stage / name).read_bytes()).hexdigest()
 body = {
     "schema": "jshookz.provider-release.v1",
+    "tag": tag,
     "product": product,
     "producer_commit": head,
     "ci_run": ci,
+    "receipt_sha256": receipt,
     "wasm_sha256": sha,
     "wasm_size": int(size),
     "unwizered_sha256": digest("jshookz_provider.unwizered.wasm"),
-    "manifest_sha256": digest("jshookz_provider.manifest.json"),
-    "native_abi_sha256": digest("jshookz_provider.native-abi.json"),
-    "receipt_sha256": digest("jshookz_provider.receipt"),
     "values_sha256": digest("jshookz_provider.values.cpp"),
     "runtime_profile_id": profile,
     "bytecode_abi_id": abi,
     "wasmtime": wasmtime,
+    "assets": sorted(p.name for p in stage.iterdir()),
 }
 print(json.dumps(body, indent=2))
 PY
 
-printf 'release %s\n  repo    %s\n  target  %s (CI run %s green)\n  product %s\n  assets  %s\n' \
-    "$tag" "$repo" "$head_sha" "$ci_run_id" "$product" \
+printf 'release %s\n  repo    %s\n  target  %s (CI run %s green)\n  product %s\n  wasm    %s (%s bytes)\n  assets  %s\n' \
+    "$tag" "$repo" "$head_sha" "$ci_run_id" "$product" "$wasm_sha" "$wasm_size" \
     "$(ls "$stage" | tr '\n' ' ')"
 
-# --- idempotence -------------------------------------------------------------
+# --- idempotence over the complete asset set ---------------------------------
+
+same_assets() {
+    # $1: directory holding a downloaded release; true when its file set and
+    # every byte equal the staged assets.
+    local dir="$1"
+    [[ "$(ls "$dir" | sort)" == "$(ls "$stage" | sort)" ]] || return 1
+    (cd "$dir" && shasum -a 256 --quiet -c "$stage/SHA256SUMS") >/dev/null 2>&1 || return 1
+    cmp -s "$dir/SHA256SUMS" "$stage/SHA256SUMS"
+}
 
 if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
-    existing="$(mktemp -d "${TMPDIR:-/tmp}/existing-$tag.XXXXXX")"
-    gh release download "$tag" --repo "$repo" --dir "$existing" --pattern 'jshookz_provider.wasm'
-    existing_sha="$(shasum -a 256 "$existing/jshookz_provider.wasm" | awk '{print $1}')"
-    rm -rf "$existing"
-    if [[ "$existing_sha" == "$wasm_sha" ]]; then
-        printf '%s\n' "already published with identical bytes: $tag"
+    existing="$work/existing"
+    mkdir "$existing"
+    gh release download "$tag" --repo "$repo" --dir "$existing"
+    if same_assets "$existing"; then
+        printf '%s\n' "already published with identical assets: $tag"
         exit 0
     fi
-    fail "tag $tag exists with different bytes ($existing_sha); a hash tag is never mutated"
+    fail "tag $tag exists with a different asset set or bytes; a hash tag is never mutated"
 fi
 
 # --- publish -----------------------------------------------------------------
@@ -180,13 +190,12 @@ fi
 
 gh release create "$tag" --repo "$repo" --target "$head_sha" \
     --title "$product $wasm_sha" \
-    --notes-file "$stage/RELEASE_BODY.json" \
-    "$stage"/*
+    --notes-file "$work/RELEASE_BODY.json" \
+    "${assets[@]}"
 
-verify="$(mktemp -d "${TMPDIR:-/tmp}/verify-$tag.XXXXXX")"
-gh release download "$tag" --repo "$repo" --dir "$verify" --pattern 'jshookz_provider.wasm'
-published_sha="$(shasum -a 256 "$verify/jshookz_provider.wasm" | awk '{print $1}')"
-rm -rf "$verify"
-[[ "$published_sha" == "$wasm_sha" ]] ||
-    fail "published wasm hashes to $published_sha, expected $wasm_sha"
+verify="$work/verify"
+mkdir "$verify"
+gh release download "$tag" --repo "$repo" --dir "$verify"
+same_assets "$verify" ||
+    fail "published assets do not match the staged bundle; do not consume $tag"
 printf 'published %s\n  https://github.com/%s/releases/tag/%s\n' "$tag" "$repo" "$tag"

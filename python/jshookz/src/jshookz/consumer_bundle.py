@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -595,30 +596,31 @@ def render_receipt(values: dict[str, str]) -> str:
     """One `key value` per line, keys sorted, nothing else."""
     lines = []
     for key in sorted(values):
-        if not key or not all(c.islower() or c.isdigit() or c == "_" for c in key):
-            raise BundleError(f"invalid receipt key: {key!r}")
+        if not RECEIPT_KEY.match(key) or not RECEIPT_VALUE.match(values[key]):
+            raise BundleError(f"invalid receipt line: {key!r} {values[key]!r}")
         lines.append(f"{key} {values[key]}")
     return "\n".join(lines) + "\n"
+
+
+# One grammar governs both sides: a key is [a-z0-9_]+, a value is one run of
+# non-whitespace, a line is exactly `key value`, the file is newline-terminated
+# with no blank lines, no comments, no quoting, and no repeated keys.
+RECEIPT_KEY = re.compile(r"[a-z0-9_]+\Z")
+RECEIPT_VALUE = re.compile(r"\S+\Z")
 
 
 def parse_receipt(text: str) -> dict[str, str]:
     """The consumer's reading of the receipt, kept here so tests prove it."""
     values: dict[str, str] = {}
+    if not text.endswith("\n") or "\n\n" in text:
+        raise BundleError("receipt must be newline-terminated lines without blanks")
     for number, line in enumerate(text.split("\n")[:-1], start=1):
         key, sep, value = line.partition(" ")
-        if (
-            not sep
-            or not key
-            or not value
-            or " " in value
-            or any(c.isspace() for c in key)
-        ):
+        if not sep or not RECEIPT_KEY.match(key) or not RECEIPT_VALUE.match(value):
             raise BundleError(f"receipt line {number} is not `key value`: {line!r}")
         if key in values:
             raise BundleError(f"receipt repeats key {key!r}")
         values[key] = value
-    if not text.endswith("\n") or "\n\n" in text:
-        raise BundleError("receipt must be newline-terminated lines without blanks")
     return values
 
 
@@ -661,6 +663,22 @@ def export(product: str, destination: Path | None = None) -> Path:
     values_cpp = render_values_cpp(projection).encode()
     receipt = render_receipt(receipt_values(projection, _sha256(values_cpp)))
 
+    # The destination is exactly the bundle. Anything else there is either a
+    # retired contract file, which is removed, or a stranger, which is refused
+    # so a stale or mistyped file can never ride along into a pin or a release.
+    if target.exists():
+        if not target.is_dir():
+            raise RuntimeError(f"bundle destination is not a directory: {target}")
+        strangers = sorted(
+            entry.name
+            for entry in target.iterdir()
+            if entry.name not in BUNDLE_FILES and entry.name not in RETIRED_FILES
+        )
+        if strangers:
+            raise RuntimeError(
+                f"bundle destination {target} holds files outside the bundle: "
+                f"{', '.join(strangers)}; remove them or export elsewhere"
+            )
     target.mkdir(parents=True, exist_ok=True)
     for name, source in sources.items():
         shutil.copyfile(source, target / name)
