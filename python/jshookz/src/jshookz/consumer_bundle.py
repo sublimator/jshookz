@@ -51,11 +51,11 @@ API_ARTIFACTS: dict[str, tuple[Path, str]] = {
     ),
     "xahau-quickjs-v1.d.ts": (
         paths.XAHAU_V1_HOOKS_API_DECLARATIONS,
-        "exact_v1_declaration",
+        "v1_declaration",
     ),
     "xahau-quickjs-v1.surface.json": (
         paths.XAHAU_V1_JAVASCRIPT_SURFACE,
-        "selected_surface",
+        "v1_surface",
     ),
     "xfl-profile-ledger.ts": (paths.XAHAU_XFL_PROFILE_LEDGER, "xfl_profile_ledger"),
 }
@@ -262,10 +262,15 @@ def validate(
     if source_provider.get("forbidden_import_modules") != ["wasi_snapshot_preview1"]:
         raise BundleError("provider must forbid exactly wasi_snapshot_preview1")
 
+    # `selected` is always the baseline selection; each product carries its
+    # own import list under `products`, and the entropy product's is a
+    # superset of the baseline's.
     products = _dict(native.get("products"), "native ABI products")
     native_imports = products.get(product)
-    if not isinstance(native_imports, list) or native.get("selected") != native_imports:
-        raise BundleError(f"native ABI does not select product {product!r}")
+    if not isinstance(native_imports, list):
+        raise BundleError(f"native ABI has no import list for product {product!r}")
+    if native.get("selected") != products.get("provider"):
+        raise BundleError("native ABI selection disagrees with the baseline product")
     native_by_name = {row.get("name"): row for row in native_imports}
     if set(native_by_name) != {row["name"] for row in imports} or len(
         native_by_name
@@ -313,6 +318,7 @@ def validate(
     declared = _dict(api_manifest.get("artifacts"), "API artifacts")
     identities: dict[str, str] = {}
     expected_keys: set[str] = set()
+    by_relative: dict[str, str] = {}
     for name, (source_path, label) in API_ARTIFACTS.items():
         digest = _sha256(artifacts[name])
         identities[label] = digest
@@ -320,20 +326,32 @@ def validate(
             continue
         relative = source_path.relative_to(paths.REPO_ROOT).as_posix()
         expected_keys.add(relative)
+        by_relative[relative] = digest
         if declared.get(relative) != digest:
             raise BundleError(f"API artifact {name} disagrees with its manifest digest")
     if set(declared) != expected_keys:
         raise BundleError("API artifact manifest file set disagrees with the bundle")
 
+    # The manifest names the declaration and surface this product selected
+    # (baseline or entropy) by repo-relative path; both must be bundle
+    # artifacts whose bytes carry the digests the manifest recorded.
     surface = _dict(manifest.get("javascript_surface"), "javascript_surface")
     nested = _dict(source.get("javascript_surface"), "source.javascript_surface")
-    if surface.get("declaration_sha256") != identities["exact_v1_declaration"]:
-        raise BundleError("exact-v1 declaration digest disagrees with the manifest")
-    if surface.get("sha256") != identities["selected_surface"]:
-        raise BundleError("selected surface digest disagrees with the manifest")
     for key in ("declaration", "manifest", "schema"):
         if surface.get(key) != nested.get(key):
             raise BundleError(f"javascript_surface.{key} disagrees between copies")
+    for pointer, digest_key, label in (
+        ("declaration", "declaration_sha256", "selected_declaration"),
+        ("manifest", "sha256", "selected_surface"),
+    ):
+        relative = surface.get(pointer)
+        if relative not in by_relative:
+            raise BundleError(
+                f"selected {pointer} {relative!r} is not a bundle artifact"
+            )
+        if surface.get(digest_key) != by_relative[relative]:
+            raise BundleError(f"selected {pointer} digest disagrees with the manifest")
+        identities[label] = by_relative[relative]
 
     return Projection(
         product=product,
@@ -475,7 +493,7 @@ bool const providerMemoryShared = false;
 std::string_view const javascriptBroadDeclarationSHA256 =
     {_quote(p.identities["broad_declaration"])};
 std::string_view const javascriptExactV1DeclarationSHA256 =
-    {_quote(p.identities["exact_v1_declaration"])};
+    {_quote(p.identities["selected_declaration"])};
 std::string_view const javascriptSurfaceSHA256 = {_quote(p.identities["selected_surface"])};
 std::string_view const javascriptXFLProfileLedgerSHA256 =
     {_quote(p.identities["xfl_profile_ledger"])};
@@ -552,7 +570,10 @@ def receipt_values(p: Projection, values_sha256: str) -> dict[str, str]:
         "api_artifacts_sha256": p.identities["api_artifact_manifest"],
         "broad_declaration_sha256": p.identities["broad_declaration"],
         "bytecode_abi_id": manifest["bytecode_abi_id"],
-        "exact_v1_declaration_sha256": p.identities["exact_v1_declaration"],
+        # Key name matches xahaud's javascriptExactV1DeclarationSHA256 extern and
+        # its sealed 40-key vector; the value is this product's selected
+        # declaration digest (the entropy declaration for the entropy product).
+        "exact_v1_declaration_sha256": p.identities["selected_declaration"],
         "heap_bytes": limits["quickjs_heap_bytes"],
         "hook_api_version": source["artifact"]["hook_api_version"],
         "host_adapter_policy": source["execution"]["host_adapter_policy"],

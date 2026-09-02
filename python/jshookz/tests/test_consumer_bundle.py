@@ -242,6 +242,24 @@ def test_export_overwrites_a_previous_export_in_place(tmp_path: Path) -> None:
     assert receipt["schema"] == consumer_bundle.RECEIPT_SCHEMA
 
 
+def test_entropy_product_exports_its_own_bundle(tmp_path: Path) -> None:
+    exported = consumer_bundle.export(build.CONSENSUS_ENTROPY_PRODUCT, tmp_path / "e")
+    receipt = consumer_bundle.parse_receipt(
+        (exported / "jshookz_provider.receipt").read_text()
+    )
+    assert receipt["product"] == build.CONSENSUS_ENTROPY_PRODUCT
+    assert int(receipt["provider_import_count"]) == 30
+    assert receipt["exact_v1_declaration_sha256"] == _sha256(
+        exported / "xahau-quickjs-v1-consensus-entropy.d.ts"
+    )
+    assert receipt["selected_surface_sha256"] == _sha256(
+        exported / "xahau-quickjs-v1-consensus-entropy.surface.json"
+    )
+    values = (exported / "jshookz_provider.values.cpp").read_text()
+    assert 'providerProduct = "provider-consensus-entropy";' in values
+    assert '"entropy_cr_dice"' in values
+
+
 def test_default_bundle_roots_are_disjoint_per_product() -> None:
     roots = {product.bundle_dir.resolve() for product in build.PRODUCTS.values()}
     assert len(roots) == len(build.PRODUCTS)
