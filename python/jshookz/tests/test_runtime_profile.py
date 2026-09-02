@@ -66,6 +66,7 @@ def test_provider_products_have_closed_names_and_disjoint_mutable_outputs() -> N
         "cmake_manifest",
         "native_abi",
         "profile_lock",
+        "bundle_dir",
     ):
         assert len({getattr(product, attribute) for product in PRODUCTS.values()}) == 2
 

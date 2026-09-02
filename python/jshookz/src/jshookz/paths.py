@@ -18,6 +18,7 @@ XAHAU_V1_CONSENSUS_ENTROPY_JAVASCRIPT_SURFACE = (
     PACKAGE_ROOT / "types" / "xahau-quickjs-v1-consensus-entropy.surface.json"
 )
 API_ARTIFACT_MANIFEST = PACKAGE_ROOT / "types" / "api-artifacts.json"
+XAHAU_XFL_PROFILE_LEDGER = PACKAGE_ROOT / "xfl_profile_ledger.ts"
 # Backwards-compatible name for consumers asking for the broad public spec.
 HOOKS_API_DECLARATIONS = CANONICAL_HOOKS_API_DECLARATIONS
 
@@ -78,8 +79,15 @@ XAHAU_HOOK_PROVIDER_CMAKE_MANIFEST = (
 XAHAU_HOOK_PROVIDER_NATIVE_ABI = (
     XAHAU_PROVIDER_BUILD_DIR / "jshookz_provider.native-abi.json"
 )
+# Complete consumer bundles: the exact file set xahaud's cmake requires plus
+# the consumer lock, exported by `jshookz build <product>`. Point xahaud's
+# XAHAU_QUICKJS_PROVIDER_BUNDLE_DIR here; never share roots between products.
+XAHAU_PROVIDER_CONSUMER_BUNDLE_DIR = BUILD_DIR / "xahau-provider-bundle"
 XAHAU_CONSENSUS_ENTROPY_PROVIDER_BUILD_DIR = (
     BUILD_DIR / "xahau-provider-consensus-entropy"
+)
+XAHAU_CONSENSUS_ENTROPY_PROVIDER_CONSUMER_BUNDLE_DIR = (
+    BUILD_DIR / "xahau-provider-consensus-entropy-bundle"
 )
 XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_WASM = Path(
     os.environ.get(

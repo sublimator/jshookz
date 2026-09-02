@@ -109,6 +109,19 @@ python/jshookz/.venv/bin/jshookz package-hook hook.ts \
   -o hook.xqjs
 ```
 
+Hand xahaud the provider:
+
+```bash
+# `jshookz build provider` also exports build/xahau-provider-bundle/: the
+# sealed wasm, manifest, native ABI, the API artifacts, and the consumer lock.
+cmake -S /path/to/xahaud -B /path/to/xahaud/build \
+  -DXAHAU_QUICKJS_PROVIDER_BUNDLE_DIR="$PWD/build/xahau-provider-bundle"
+
+# Move xahaud's committed pin instead: export straight into its bundle directory.
+python/jshookz/.venv/bin/jshookz export-bundle provider \
+  -o /path/to/xahaud/external/quickjs-provider
+```
+
 ## Current scope
 
 The v1 runtime exposes 13 existing Hook host functions, including ledger

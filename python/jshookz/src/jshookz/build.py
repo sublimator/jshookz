@@ -27,6 +27,7 @@ class ProviderProduct:
     native_abi: Path
     profile_source: Path
     profile_lock: Path
+    bundle_dir: Path
     cmake_options: tuple[str, ...] = ()
 
 
@@ -34,6 +35,7 @@ PRODUCTS = {
     BASELINE_PRODUCT: ProviderProduct(
         name=BASELINE_PRODUCT,
         build_dir=paths.XAHAU_PROVIDER_BUILD_DIR,
+        bundle_dir=paths.XAHAU_PROVIDER_CONSUMER_BUNDLE_DIR,
         wasm=paths.XAHAU_HOOK_PROVIDER_WASM,
         unwizered_wasm=paths.XAHAU_HOOK_PROVIDER_UNWIZERED_WASM,
         manifest=paths.XAHAU_HOOK_PROVIDER_MANIFEST,
@@ -45,14 +47,11 @@ PRODUCTS = {
     CONSENSUS_ENTROPY_PRODUCT: ProviderProduct(
         name=CONSENSUS_ENTROPY_PRODUCT,
         build_dir=paths.XAHAU_CONSENSUS_ENTROPY_PROVIDER_BUILD_DIR,
+        bundle_dir=paths.XAHAU_CONSENSUS_ENTROPY_PROVIDER_CONSUMER_BUNDLE_DIR,
         wasm=paths.XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_WASM,
-        unwizered_wasm=(
-            paths.XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_UNWIZERED_WASM
-        ),
+        unwizered_wasm=(paths.XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_UNWIZERED_WASM),
         manifest=paths.XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_MANIFEST,
-        cmake_manifest=(
-            paths.XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_CMAKE_MANIFEST
-        ),
+        cmake_manifest=(paths.XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_CMAKE_MANIFEST),
         native_abi=paths.XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_NATIVE_ABI,
         profile_source=paths.XAHAU_CONSENSUS_ENTROPY_RUNTIME_PROFILE_SOURCE,
         profile_lock=paths.XAHAU_CONSENSUS_ENTROPY_RUNTIME_PROFILE_LOCK,
@@ -208,6 +207,115 @@ def seal_xahau_hook_provider_bundle(
     return manifest_path
 
 
+# The consumer bundle is the exact file set xahaud's cmake/QuickJSProvider.cmake
+# requires at configure, plus the consumer lock its generator parses. Keep the
+# basenames and the lock shape identical to that contract; xahaud verifies
+# every digest before projecting a single constant.
+CONSUMER_LOCK_SCHEMA = "xahau.quickjs.provider-consumer-lock.v1"
+CONSUMER_LOCK_FILE = "jshookz_provider.lock.json"
+SEALED_BUNDLE_FILES = (
+    "jshookz_provider.wasm",
+    "jshookz_provider.manifest.json",
+    "jshookz_provider.native-abi.json",
+)
+CONSUMER_BUNDLE_API_ARTIFACTS = {
+    "api-artifacts.json": paths.API_ARTIFACT_MANIFEST,
+    "hooks-api.d.ts": paths.CANONICAL_HOOKS_API_DECLARATIONS,
+    "xahau-quickjs-v1-consensus-entropy.d.ts": (
+        paths.XAHAU_V1_CONSENSUS_ENTROPY_HOOKS_API_DECLARATIONS
+    ),
+    "xahau-quickjs-v1-consensus-entropy.surface.json": (
+        paths.XAHAU_V1_CONSENSUS_ENTROPY_JAVASCRIPT_SURFACE
+    ),
+    "xahau-quickjs-v1.d.ts": paths.XAHAU_V1_HOOKS_API_DECLARATIONS,
+    "xahau-quickjs-v1.surface.json": paths.XAHAU_V1_JAVASCRIPT_SURFACE,
+    "xfl-profile-ledger.ts": paths.XAHAU_XFL_PROFILE_LEDGER,
+}
+
+
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def consumer_lock(manifest: dict, bundle: Path) -> dict:
+    """Derive the consumer lock from a sealed manifest and the bundle bytes."""
+    return {
+        "api_artifacts": {
+            "file": "api-artifacts.json",
+            "sha256": _sha256_file(bundle / "api-artifacts.json"),
+        },
+        "bytecode_abi_id": manifest["bytecode_abi_id"],
+        "manifest": {
+            "file": "jshookz_provider.manifest.json",
+            "schema": manifest["schema"],
+            "sha256": _sha256_file(bundle / "jshookz_provider.manifest.json"),
+        },
+        "native_abi": {
+            "file": "jshookz_provider.native-abi.json",
+            "sha256": _sha256_file(bundle / "jshookz_provider.native-abi.json"),
+        },
+        "product": manifest["source"]["product"],
+        "provider": {
+            "file": "jshookz_provider.wasm",
+            "sha256": manifest["provider"]["sha256"],
+            "size": manifest["provider"]["size"],
+        },
+        "runtime_profile_id": manifest["runtime_profile_id"],
+        "schema": CONSUMER_LOCK_SCHEMA,
+        "wasmtime_version": manifest["source"]["engine"]["version"],
+    }
+
+
+def export_consumer_bundle(
+    product: str = BASELINE_PRODUCT, destination: Path | None = None
+) -> Path:
+    """Copy one sealed product plus its API artifacts into a consumer bundle.
+
+    The result is what xahaud consumes directly, either through
+    `-DXAHAU_QUICKJS_PROVIDER_BUNDLE_DIR=<destination>` for a local build or
+    by copying into `external/quickjs-provider` for a pin. Nothing is
+    rebuilt or resealed here; a stale or mismatched seal fails closed.
+    """
+    try:
+        selected = PRODUCTS[product]
+    except KeyError as error:
+        raise ValueError(f"unknown provider product: {product!r}") from error
+    target = Path(destination).resolve() if destination else selected.bundle_dir
+    sources: dict[str, Path] = {
+        name: selected.build_dir / name for name in SEALED_BUNDLE_FILES
+    }
+    sources.update(CONSUMER_BUNDLE_API_ARTIFACTS)
+    missing = [str(path) for path in sources.values() if not path.is_file()]
+    if missing:
+        raise RuntimeError(
+            f"incomplete {product} build; run `jshookz build {product}` first. "
+            f"Missing: {', '.join(missing)}"
+        )
+    manifest = json.loads(sources["jshookz_provider.manifest.json"].read_text())
+    if manifest.get("source", {}).get("product") != product:
+        raise RuntimeError(
+            f"sealed manifest names product "
+            f"{manifest.get('source', {}).get('product')!r}, not {product!r}"
+        )
+    wasm = sources["jshookz_provider.wasm"].read_bytes()
+    if (
+        hashlib.sha256(wasm).hexdigest() != manifest["provider"]["sha256"]
+        or len(wasm) != manifest["provider"]["size"]
+    ):
+        raise RuntimeError(
+            "sealed provider does not match its manifest; rebuild before exporting"
+        )
+    target.mkdir(parents=True, exist_ok=True)
+    for name, source in sources.items():
+        shutil.copyfile(source, target / name)
+    lock = consumer_lock(manifest, target)
+    (target / CONSUMER_LOCK_FILE).write_text(
+        json.dumps(lock, indent=2, sort_keys=True) + "\n"
+    )
+    print(f"✓ Exported consumer bundle {target}")
+    return target
+
+
 def build_xahau_hook_provider(
     *, product: str = BASELINE_PRODUCT, wizer: bool = True
 ) -> Path:
@@ -255,6 +363,7 @@ def build_xahau_hook_provider(
             source_path=selected.profile_source,
             product=selected.name,
         )
+        export_consumer_bundle(product=selected.name)
     else:
         shutil.copyfile(cold, wasm)
         print(f"✓ Skipped Wizer (--no-wizer); copied {cold.name}")

@@ -15,6 +15,12 @@ def cmd_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export_bundle(args: argparse.Namespace) -> int:
+    """Export a built product as the complete xahaud consumer bundle."""
+    print(build.export_consumer_bundle(product=args.target, destination=args.output))
+    return 0
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     """Print project paths and build status."""
     print(f"Repo root:     {paths.SOURCE_CHECKOUT or '<not a source checkout>'}")
@@ -188,6 +194,30 @@ def main() -> None:
         help="copy the unwizered cmake wasm to the sealed path (debug only)",
     )
     p_build.set_defaults(func=cmd_build)
+
+    # export-bundle
+    p_export = sub.add_parser(
+        "export-bundle",
+        help=(
+            "Export a built product plus its API artifacts and consumer lock "
+            "as the directory xahaud consumes"
+        ),
+    )
+    p_export.add_argument(
+        "target",
+        choices=["provider", "provider-consensus-entropy"],
+        default="provider",
+        nargs="?",
+    )
+    p_export.add_argument(
+        "-o",
+        "--output",
+        help=(
+            "Destination directory (defaults to build/<product>-bundle); "
+            "pass xahaud's external/quickjs-provider to move its pin"
+        ),
+    )
+    p_export.set_defaults(func=cmd_export_bundle)
 
     # info
     p_info = sub.add_parser("info", help="Show project paths and status")
