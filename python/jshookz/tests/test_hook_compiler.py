@@ -180,6 +180,24 @@ def test_exact_v1_otxn_id_is_total(tmp_path: Path):
         compile_hook(source)
 
 
+def test_exact_v1_callback_info_carries_the_invocation_id(tmp_path: Path):
+    source = tmp_path / "callback-invocation-id.hook.ts"
+    source.write_text(
+        """
+        export function main(): never { return accept(); }
+        export function callback(info: CallbackInfo): never {
+          const id: Hash256 = info.invocationId;
+          const applied: boolean = info.applied;
+          void id.toHex();
+          void applied;
+          return accept();
+        }
+        """
+    )
+
+    assert compile_hook(source).bytecode
+
+
 @pytest.mark.parametrize(
     "statement",
     [

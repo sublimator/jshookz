@@ -106,6 +106,51 @@ destroy_runtime(void)
 }
 
 static JSValue
+// @binding provider:CallbackInfo.invocationId
+js_callback_invocation_id(JSContext *ctx, JSValueConst this_val)
+{
+    // The raw otxn_id flag-1 read: the id of the transaction actually being
+    // applied for this callback (the EmitFailure wrapper's own id there),
+    // whereas otxn.id() names the failed emitted transaction the wrapper
+    // carries. Total, so a negative or malformed host answer is a fault.
+    std::uint8_t bytes[32];
+    std::int64_t const result = hook_otxn_id(
+        static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(bytes)),
+        sizeof(bytes),
+        1);
+    if (result < 0)
+        return JS_ThrowInternalError(
+            ctx,
+            "CallbackInfo.invocationId: host violated total invocation fact "
+            "with %lld",
+            (long long)result);
+    if (result != static_cast<std::int64_t>(sizeof(bytes)))
+        return JS_ThrowInternalError(
+            ctx,
+            "CallbackInfo.invocationId: host returned %lld, expected 32",
+            (long long)result);
+    JSValue id = jshookz::provider::makeHash256(ctx, bytes, sizeof(bytes));
+    if (JS_IsException(id))
+        return id;
+    // Cache by replacing the configurable accessor with the value, so later
+    // reads make no host call and return the same object.
+    if (JS_DefinePropertyValueStr(
+            ctx,
+            this_val,
+            "invocationId",
+            JS_DupValue(ctx, id),
+            JS_PROP_ENUMERABLE) < 0) {
+        JS_FreeValue(ctx, id);
+        return JS_EXCEPTION;
+    }
+    return id;
+}
+
+static const JSCFunctionListEntry callback_info_accessors[] = {
+    JS_CGETSET_DEF("invocationId", js_callback_invocation_id, NULL),
+};
+
+static JSValue
 // @binding provider:CallbackInfo
 callbackInfo(JSContext *context, uint32_t rawFlags)
 {
@@ -114,6 +159,14 @@ callbackInfo(JSContext *context, uint32_t rawFlags)
     OwnedValue info(context, JS_NewObject(context));
     if (info.isException())
         return info.release();
+    // Lazy: constructing the info crosses no host boundary.
+    if (JS_SetPropertyFunctionList(
+            context,
+            info.get(),
+            callback_info_accessors,
+            sizeof(callback_info_accessors) /
+                sizeof(callback_info_accessors[0])) < 0)
+        return JS_EXCEPTION;
     if (JS_DefinePropertyValueStr(
             context,
             info.get(),

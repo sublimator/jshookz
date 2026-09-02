@@ -1767,6 +1767,14 @@ declare global {
      * this is retained for diagnostics and forward-compatible expert use.
      */
     readonly rawFlags: number;
+    /**
+     * Identity of the transaction actually being applied for this
+     * callback. In an EmitFailure callback that is the EmitFailure
+     * wrapper's own computed id, whereas `otxn.id()` names the failed
+     * emitted transaction the wrapper carries; outside EmitFailure the two
+     * coincide. Read lazily: no host call unless accessed.
+     */
+    readonly invocationId: Hash256;
   }
 
   /**
