@@ -6,11 +6,13 @@ usage() {
 Usage:
   scripts/run-tests.sh PYTEST_TARGET [...]
   scripts/run-tests.sh --ctest REGEX [--ctest REGEX ...]
-  CI=1 scripts/run-tests.sh
+  CI=1 scripts/run-tests.sh [--suite NAME ...]
 
 Local runs require explicit test files, node ids, or CTest regular expressions.
 The unscoped all-suite gate is reserved for CI/publication and runs each
-product suite serially on the constrained CI runner.
+product suite serially on the constrained CI runner. --suite limits that gate
+to named suites (jshookz, hostem, x-data, ctest, wasm-stack) so parallel CI
+jobs can each run one slice of the same serial gate.
 EOF
 }
 
@@ -22,7 +24,33 @@ jshookz_targets=()
 hostem_targets=()
 xdata_targets=()
 ctest_patterns=()
+suites=()
 full_gate=0
+
+args=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --suite)
+            [[ $# -ge 2 ]] || {
+                printf '%s\n' '--suite requires a name' >&2
+                exit 2
+            }
+            case "$2" in
+                jshookz|hostem|x-data|ctest|wasm-stack) suites+=("$2") ;;
+                *)
+                    printf 'unknown suite: %s\n' "$2" >&2
+                    exit 2
+                    ;;
+            esac
+            shift 2
+            ;;
+        *)
+            args+=("$1")
+            shift
+            ;;
+    esac
+done
+set -- "${args[@]+"${args[@]}"}"
 
 if [[ $# -eq 0 ]]; then
     case "${CI:-}" in
@@ -40,7 +68,19 @@ if [[ $# -eq 0 ]]; then
             exit 2
             ;;
     esac
+elif [[ ${#suites[@]} -gt 0 ]]; then
+    printf '%s\n' '--suite applies only to the unscoped CI=1 gate' >&2
+    exit 2
 fi
+
+wanted() {
+    [[ ${#suites[@]} -eq 0 ]] && return 0
+    local suite
+    for suite in "${suites[@]}"; do
+        [[ "$suite" == "$1" ]] && return 0
+    done
+    return 1
+}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -103,18 +143,18 @@ run_serial() {
 failed=0
 
 if [[ "$full_gate" -eq 1 ]]; then
-    run_serial jshookz python/jshookz/.venv/bin/pytest -q \
+    wanted jshookz && run_serial jshookz python/jshookz/.venv/bin/pytest -q \
         -o cache_dir=build/pytest-cache/jshookz "${jshookz_targets[@]}"
-    run_serial hostem python/hostem/.venv/bin/pytest -q \
+    wanted hostem && run_serial hostem python/hostem/.venv/bin/pytest -q \
         -o cache_dir=build/pytest-cache/hostem "${hostem_targets[@]}"
-    run_serial x-data python/jshookz/.venv/bin/pytest -q \
+    wanted x-data && run_serial x-data python/jshookz/.venv/bin/pytest -q \
         -o cache_dir=build/pytest-cache/x-data "${xdata_targets[@]}"
     # Leave one runner CPU available to the OS and support processes. Even
     # deterministic fuel lanes have wall-clock timeouts, so the complete CI
     # gate uses one test worker throughout.
-    run_serial ctest ctest --test-dir build/cpp --output-on-failure \
-        --no-tests=error --parallel 1 -R '(.)'
-    run_serial wasm-stack scripts/check-wasm-stack.sh
+    wanted ctest && run_serial ctest ctest --test-dir build/cpp \
+        --output-on-failure --no-tests=error --parallel 1 -R '(.)'
+    wanted wasm-stack && run_serial wasm-stack scripts/check-wasm-stack.sh
     exit "$failed"
 fi
 

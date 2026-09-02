@@ -1,5 +1,10 @@
 name: build-and-test
 
+# One serial gate, split across runners. Every job that tests runs
+# `CI=1 scripts/run-tests.sh --suite ...`, the same single-worker gate the
+# constrained runner ruling requires; the split only puts the slices on
+# separate machines so wall time is the longest slice, not the sum.
+
 on:
   push:
   pull_request:
@@ -21,7 +26,9 @@ env:
   CMAKE_BUILD_PARALLEL_LEVEL: "2"
 
 jobs:
-  product:
+  # Seals both products, proves their identities and generated files, and
+  # packages one Hook end to end. This is the publication-facing job.
+  provider:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
@@ -48,21 +55,11 @@ jobs:
       - name: Check generated definitions
         run: scripts/check-generated-definitions.sh
 
-      - name: Preflight provider-static poison probes on Linux
-        run: ./scripts/run-linux-product-gate.sh poison
-
-      - name: Test host C++
+      - name: Check the exported consumer bundle and the sealed stack
         run: |
-          conan profile detect --exist-ok
-          conan install cpp --output-folder=build/cpp --build=missing \
-            -s compiler.cppstd=23
-          cmake -S cpp -B build/cpp \
-            -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/build/cpp/conan_toolchain.cmake" \
-            -DCMAKE_BUILD_TYPE=Release
-          cmake --build build/cpp
-
-      - name: Test product surfaces serially
-        run: CI=1 scripts/run-tests.sh
+          test -s build/xahau-provider-bundle/jshookz_provider.lock.json
+          test -s build/xahau-provider-consensus-entropy-bundle/jshookz_provider.lock.json
+          CI=1 scripts/run-tests.sh --suite wasm-stack
 
       - name: End-to-end compile and package a hook
         run: |
@@ -80,6 +77,59 @@ jobs:
             -o smoke.xqjs
           test -s smoke.qjsc
           test -s smoke.xqjs
+
+  # Docker-isolated Linux poison probes; independent of every other job.
+  poison:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Preflight provider-static poison probes on Linux
+        run: ./scripts/run-linux-product-gate.sh poison
+
+  jshookz:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/toolchain
+      - name: Build and seal Xahau provider products
+        run: |
+          python/jshookz/.venv/bin/jshookz build provider
+          python/jshookz/.venv/bin/jshookz build provider-consensus-entropy
+      - name: Test jshookz and x-data
+        run: CI=1 scripts/run-tests.sh --suite jshookz --suite x-data
+
+  hostem:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/toolchain
+      - name: Build and seal Xahau provider products
+        run: |
+          python/jshookz/.venv/bin/jshookz build provider
+          python/jshookz/.venv/bin/jshookz build provider-consensus-entropy
+      - name: Test hostem
+        run: CI=1 scripts/run-tests.sh --suite hostem
+
+  native:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/toolchain
+      - name: Build host C++
+        run: |
+          conan profile detect --exist-ok
+          conan install cpp --output-folder=build/cpp --build=missing \
+            -s compiler.cppstd=23
+          cmake -S cpp -B build/cpp \
+            -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/build/cpp/conan_toolchain.cmake" \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/cpp
+      - name: Test host C++
+        run: CI=1 scripts/run-tests.sh --suite ctest
 
   quickjs:
     if: github.event_name != 'schedule'
