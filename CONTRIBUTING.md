@@ -21,10 +21,14 @@ python/jshookz/.venv/bin/jshookz build provider
 python/jshookz/.venv/bin/pytest -q python/jshookz/tests
 ```
 
-`jshookz build provider` emits the runtime-profile lock and the JSON/CMake
-manifests. Do not commit the lock; xahaud pins it. It also exports
-`build/xahau-provider-bundle/`, the complete directory xahaud consumes:
-point `XAHAU_QUICKJS_PROVIDER_BUNDLE_DIR` at it for a local build, or
+`jshookz build provider` emits the runtime-profile lock and the JSON
+manifest. Do not commit the lock; xahaud pins it. It also exports
+`build/xahau-provider-bundle/`, the complete directory xahaud consumes: the
+sealed wasm, the JSON provenance, the API artifacts, `jshookz_provider.receipt`
+(one `key value` per line, every pin xahaud needs, readable by any CMake with
+`file(STRINGS)`), and `jshookz_provider.values.cpp` (the profile constants
+xahaud compiles as-is, pinned by the receipt). Point
+`XAHAU_QUICKJS_PROVIDER_BUNDLE_DIR` at it for a local build, or
 `jshookz export-bundle provider -o <xahaud>/external/quickjs-provider` to
 move xahaud's committed pin.
 

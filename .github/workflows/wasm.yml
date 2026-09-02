@@ -61,8 +61,8 @@ jobs:
 
       - name: Check the exported consumer bundle and the sealed stack
         run: |
-          test -s build/xahau-provider-bundle/jshookz_provider.lock.json
-          test -s build/xahau-provider-consensus-entropy-bundle/jshookz_provider.lock.json
+          test -s build/xahau-provider-bundle/jshookz_provider.receipt
+          test -s build/xahau-provider-consensus-entropy-bundle/jshookz_provider.receipt
           CI=1 scripts/run-tests.sh --suite wasm-stack
 
       - name: End-to-end compile and package a hook

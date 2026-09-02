@@ -89,27 +89,30 @@ if [[ "$product" == provider ]]; then
         fail 'provider identity check failed; run scripts/relock.sh'
 fi
 
-lock="$bundle_dir/jshookz_provider.lock.json"
-[[ -s "$lock" ]] ||
+receipt="$bundle_dir/jshookz_provider.receipt"
+[[ -s "$receipt" ]] ||
     fail "missing consumer bundle $bundle_dir; run jshookz build $product"
 [[ -s "$build_dir/jshookz_provider.unwizered.wasm" ]] ||
     fail "missing $build_dir/jshookz_provider.unwizered.wasm"
 
-read -r wasm_sha wasm_size lock_product runtime_profile_id bytecode_abi_id wasmtime < <(
-    python3 - "$lock" <<'PY'
-import json, sys
-lock = json.load(open(sys.argv[1]))
-print(lock["provider"]["sha256"], lock["provider"]["size"], lock["product"],
-      lock["runtime_profile_id"], lock["bytecode_abi_id"], lock["wasmtime_version"])
-PY
-)
-[[ "$lock_product" == "$product" ]] ||
-    fail "bundle lock names product $lock_product, not $product"
+# The receipt is one `key value` per line; read it the way a consumer does.
+pin() {
+    awk -v key="$1" '$1 == key { print $2; found = 1 } END { exit !found }' "$receipt" ||
+        fail "receipt has no $1"
+}
+wasm_sha="$(pin provider_sha256)"
+wasm_size="$(pin provider_size)"
+receipt_product="$(pin product)"
+runtime_profile_id="$(pin runtime_profile_id)"
+bytecode_abi_id="$(pin bytecode_abi_id)"
+wasmtime="$(pin wasmtime_version)"
+[[ "$receipt_product" == "$product" ]] ||
+    fail "receipt names product $receipt_product, not $product"
 actual_sha="$(shasum -a 256 "$bundle_dir/jshookz_provider.wasm" | awk '{print $1}')"
 actual_size="$(stat -f %z "$bundle_dir/jshookz_provider.wasm" 2>/dev/null ||
     stat -c %s "$bundle_dir/jshookz_provider.wasm")"
 [[ "$actual_sha" == "$wasm_sha" && "$actual_size" == "$wasm_size" ]] ||
-    fail 'sealed wasm does not match the bundle lock; rebuild'
+    fail 'sealed wasm does not match the receipt; rebuild'
 
 tag="provider-$wasm_sha"
 
@@ -139,7 +142,8 @@ body = {
     "unwizered_sha256": digest("jshookz_provider.unwizered.wasm"),
     "manifest_sha256": digest("jshookz_provider.manifest.json"),
     "native_abi_sha256": digest("jshookz_provider.native-abi.json"),
-    "consumer_lock_sha256": digest("jshookz_provider.lock.json"),
+    "receipt_sha256": digest("jshookz_provider.receipt"),
+    "values_sha256": digest("jshookz_provider.values.cpp"),
     "runtime_profile_id": profile,
     "bytecode_abi_id": abi,
     "wasmtime": wasmtime,

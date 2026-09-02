@@ -63,7 +63,6 @@ def test_provider_products_have_closed_names_and_disjoint_mutable_outputs() -> N
         "wasm",
         "unwizered_wasm",
         "manifest",
-        "cmake_manifest",
         "native_abi",
         "profile_lock",
         "bundle_dir",
@@ -519,50 +518,19 @@ def test_provider_bundle_emits_the_profile_lock(tmp_path: Path):
     lock = build_runtime_profile_lock(SOURCE, XAHAU_HOOK_PROVIDER_WASM)
     lock_path = tmp_path / "profile.lock.json"
     manifest_path = tmp_path / "jshookz_provider.manifest.json"
-    cmake_manifest_path = tmp_path / "jshookz_provider.manifest.cmake"
     native_abi_path = tmp_path / "jshookz_provider.native-abi.json"
     emitted = seal_xahau_hook_provider_bundle(
         XAHAU_HOOK_PROVIDER_WASM,
         lock_path,
         manifest_path,
-        cmake_manifest_path,
         native_abi_path,
     )
 
     assert emitted == manifest_path
     assert json.loads(manifest_path.read_text()) == lock
     assert lock_path.read_bytes() == manifest_path.read_bytes()
-    cmake_manifest = cmake_manifest_path.read_text()
-    assert f'"{lock["provider"]["sha256"]}"' in cmake_manifest
-    assert f'"{lock["bytecode_abi_id"]}"' in cmake_manifest
-    assert f'"{lock["runtime_profile_id"]}"' in cmake_manifest
-    assert 'XAHAU_QUICKJS_WASMTIME_VERSION "47.0.3"' in cmake_manifest
-    assert 'XAHAU_QUICKJS_INITIALIZATION_FUEL "5000000"' in cmake_manifest
-    assert (
-        'XAHAU_QUICKJS_HOST_WORK_METER "base-plus-addressed-byte-v1"' in cmake_manifest
-    )
-    assert (
-        'XAHAU_QUICKJS_HOST_ADAPTER_POLICY "xahau-raw-hook-host-v1"' in cmake_manifest
-    )
-    assert 'XAHAU_QUICKJS_PRODUCT "provider"' in cmake_manifest
-    assert (
-        f'XAHAU_QUICKJS_PROVIDER_IMPORT_COUNT "{len(_policy_import_names())}"'
-        in cmake_manifest
-    )
-    assert 'XAHAU_QUICKJS_PROVIDER_EXPORT_COUNT "22"' in cmake_manifest
-    cmake_object_limits = {
-        "XAHAU_QUICKJS_SERIALIZED_OBJECT_MAX_BYTES": 1_048_576,
-        "XAHAU_QUICKJS_SERIALIZED_OBJECT_MAX_FIELDS": 32_768,
-        "XAHAU_QUICKJS_SERIALIZED_OBJECT_MAX_SCOPES": 32_769,
-        "XAHAU_QUICKJS_SERIALIZED_OBJECT_MAX_DEPTH": 10,
-    }
-    for name, value in cmake_object_limits.items():
-        assert f'{name} "{value}"' in cmake_manifest
-    assert (
-        'XAHAU_QUICKJS_NATIVE_ABI_FILE "jshookz_provider.native-abi.json"'
-        in cmake_manifest
-    )
-    assert hashlib.sha256(native_abi_path.read_bytes()).hexdigest() in cmake_manifest
+    assert len(lock["provider"]["imports"]) == len(_policy_import_names())
+    assert len(lock["provider"]["exports"]) == 22
     native_abi = json.loads(native_abi_path.read_text())
     assert native_abi["source"]["macro_function_count"] == 75
     assert [row["name"] for row in native_abi["experimental_extensions"]] == [

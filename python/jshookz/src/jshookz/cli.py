@@ -199,8 +199,8 @@ def main() -> None:
     p_export = sub.add_parser(
         "export-bundle",
         help=(
-            "Export a built product plus its API artifacts and consumer lock "
-            "as the directory xahaud consumes"
+            "Export a built product plus its API artifacts, flat receipt, and "
+            "preprojected C++ values as the directory xahaud consumes"
         ),
     )
     p_export.add_argument(

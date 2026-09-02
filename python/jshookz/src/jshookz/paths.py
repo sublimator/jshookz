@@ -5,12 +5,8 @@ from pathlib import Path
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 CANONICAL_HOOKS_API_DECLARATIONS = PACKAGE_ROOT / "types" / "hooks-api.d.ts"
-XAHAU_V1_HOOKS_API_DECLARATIONS = (
-    PACKAGE_ROOT / "types" / "xahau-quickjs-v1.d.ts"
-)
-XAHAU_V1_JAVASCRIPT_SURFACE = (
-    PACKAGE_ROOT / "types" / "xahau-quickjs-v1.surface.json"
-)
+XAHAU_V1_HOOKS_API_DECLARATIONS = PACKAGE_ROOT / "types" / "xahau-quickjs-v1.d.ts"
+XAHAU_V1_JAVASCRIPT_SURFACE = PACKAGE_ROOT / "types" / "xahau-quickjs-v1.surface.json"
 XAHAU_V1_CONSENSUS_ENTROPY_HOOKS_API_DECLARATIONS = (
     PACKAGE_ROOT / "types" / "xahau-quickjs-v1-consensus-entropy.d.ts"
 )
@@ -31,10 +27,9 @@ def _discover_repo_root() -> Path | None:
         else list(PACKAGE_ROOT.parents)
     )
     for candidate in candidates:
-        if (
-            (candidate / "cpp/provider/CMakeLists.txt").is_file()
-            and (candidate / "cpp/quickjs/quickjs.c").is_file()
-        ):
+        if (candidate / "cpp/provider/CMakeLists.txt").is_file() and (
+            candidate / "cpp/quickjs/quickjs.c"
+        ).is_file():
             return candidate
     return None
 
@@ -52,6 +47,7 @@ def require_source_checkout() -> Path:
             "JSHOOKZ_REPO_ROOT to its root"
         )
     return SOURCE_CHECKOUT
+
 
 # Provider source
 PROVIDER_SRC = REPO_ROOT / "cpp" / "provider"
@@ -73,9 +69,6 @@ XAHAU_HOOK_PROVIDER_UNWIZERED_WASM = (
 XAHAU_HOOK_PROVIDER_MANIFEST = (
     XAHAU_PROVIDER_BUILD_DIR / "jshookz_provider.manifest.json"
 )
-XAHAU_HOOK_PROVIDER_CMAKE_MANIFEST = (
-    XAHAU_PROVIDER_BUILD_DIR / "jshookz_provider.manifest.cmake"
-)
 XAHAU_HOOK_PROVIDER_NATIVE_ABI = (
     XAHAU_PROVIDER_BUILD_DIR / "jshookz_provider.native-abi.json"
 )
@@ -96,41 +89,26 @@ XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_WASM = Path(
     )
 )
 XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_UNWIZERED_WASM = (
-    XAHAU_CONSENSUS_ENTROPY_PROVIDER_BUILD_DIR
-    / "jshookz_provider.unwizered.wasm"
+    XAHAU_CONSENSUS_ENTROPY_PROVIDER_BUILD_DIR / "jshookz_provider.unwizered.wasm"
 )
 XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_MANIFEST = (
-    XAHAU_CONSENSUS_ENTROPY_PROVIDER_BUILD_DIR
-    / "jshookz_provider.manifest.json"
-)
-XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_CMAKE_MANIFEST = (
-    XAHAU_CONSENSUS_ENTROPY_PROVIDER_BUILD_DIR
-    / "jshookz_provider.manifest.cmake"
+    XAHAU_CONSENSUS_ENTROPY_PROVIDER_BUILD_DIR / "jshookz_provider.manifest.json"
 )
 XAHAU_CONSENSUS_ENTROPY_HOOK_PROVIDER_NATIVE_ABI = (
-    XAHAU_CONSENSUS_ENTROPY_PROVIDER_BUILD_DIR
-    / "jshookz_provider.native-abi.json"
+    XAHAU_CONSENSUS_ENTROPY_PROVIDER_BUILD_DIR / "jshookz_provider.native-abi.json"
 )
 XAHAU_RUNTIME_PROFILE_SOURCE = (
     REPO_ROOT / "xahau/profiles" / "xahau-quickjs-v1.source.json"
 )
 # Emitted by `jshookz build provider`. Not committed; xahaud pins a copy.
-XAHAU_RUNTIME_PROFILE_LOCK = (
-    REPO_ROOT / "xahau/profiles" / "xahau-quickjs-v1.lock.json"
-)
+XAHAU_RUNTIME_PROFILE_LOCK = REPO_ROOT / "xahau/profiles" / "xahau-quickjs-v1.lock.json"
 XAHAU_CONSENSUS_ENTROPY_RUNTIME_PROFILE_SOURCE = (
-    REPO_ROOT
-    / "xahau/profiles"
-    / "xahau-quickjs-v1-consensus-entropy.delta.json"
+    REPO_ROOT / "xahau/profiles" / "xahau-quickjs-v1-consensus-entropy.delta.json"
 )
 XAHAU_CONSENSUS_ENTROPY_RUNTIME_PROFILE_LOCK = (
-    REPO_ROOT
-    / "xahau/profiles"
-    / "xahau-quickjs-v1-consensus-entropy.lock.json"
+    REPO_ROOT / "xahau/profiles" / "xahau-quickjs-v1-consensus-entropy.lock.json"
 )
-XAHAU_RAW_HOOK_ABI = (
-    REPO_ROOT / "xahau/generated" / "raw-hook-abi.json"
-)
+XAHAU_RAW_HOOK_ABI = REPO_ROOT / "xahau/generated" / "raw-hook-abi.json"
 
 # wasi-sdk
 WASI_SDK_PATH = Path(

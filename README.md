@@ -113,7 +113,8 @@ Hand xahaud the provider:
 
 ```bash
 # `jshookz build provider` also exports build/xahau-provider-bundle/: the
-# sealed wasm, manifest, native ABI, the API artifacts, and the consumer lock.
+# sealed wasm, manifest, native ABI, the API artifacts, a flat key-value
+# receipt of every pin, and the preprojected C++ values xahaud compiles.
 cmake -S /path/to/xahaud -B /path/to/xahaud/build \
   -DXAHAU_QUICKJS_PROVIDER_BUNDLE_DIR="$PWD/build/xahau-provider-bundle"
 
