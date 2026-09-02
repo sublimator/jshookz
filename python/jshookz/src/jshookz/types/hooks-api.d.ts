@@ -2397,7 +2397,8 @@ declare global {
   const LedgerKeylet: LedgerKeyletFactory;
 
   namespace otxn {
-    function raw(): HostResult<STBlob>;
+    /** Serialized originating transaction bytes; total, like `object()`. */
+    function raw(): STBlob;
     /**
      * Minted originating transaction. Total getters. Existence is an
      * execution invariant.
@@ -2409,9 +2410,15 @@ declare global {
      */
     function hostObject(): HostTx;
     function type(): TransactionType;
-    function id(flags?: number): HostResult<Hash256>;
-    function generation(): HostResult<number>;
-    function burden(): HostResult<bigint>;
+    /**
+     * Originating transaction id. Total: an executing Hook always has one,
+     * exactly as `otxn.object()` and `otxn.type()` do; a negative raw host
+     * status is an execution invariant failure and raises.
+     */
+    function id(flags?: number): Hash256;
+    /** Emission generation and burden of this invocation: total facts. */
+    function generation(): number;
+    function burden(): bigint;
     /**
      * Transaction-carried hook parameters (`otxn_param`). Names and values
      * are blobs. Absent and empty are the same host status (`DOESNT_EXIST`)
@@ -2450,9 +2457,9 @@ declare global {
     /**
      * Minted originating-transaction metadata, if the host supplied it.
      */
-    function metaObject(): HostResult<TxMeta | undefined>;
-    function metaHostObject(): HostResult<HostTxMeta | undefined>;
-    function xpop(): HostResult<XPop | undefined>;
+    function metaObject(): TxMeta | undefined;
+    function metaHostObject(): HostTxMeta | undefined;
+    function xpop(): XPop | undefined;
   }
 
   /** Consensus-derived entropy operations. */
@@ -2772,8 +2779,9 @@ declare global {
     function details(): HostResult<STBlob>;
     function feeBase(transaction: BytesLike | STBlob | EmittedTransaction): HostResult<Drops>;
     function nonce(): HostResult<Hash256>;
-    function generation(): HostResult<number>;
-    function burden(): HostResult<bigint>;
+    /** Emission generation and burden of this invocation: total facts. */
+    function generation(): number;
+    function burden(): bigint;
   }
 
   namespace util {
@@ -2848,7 +2856,8 @@ declare global {
     const feeBase: Drops;
     function nonce(): HostResult<Hash256>;
     function accountRoot(account: AccountID): HostResult<AccountRoot | undefined>;
-    function unlReport(): HostResult<UNLReport | undefined>;
+    /** Present when the ledger carries a UNL report; absence is the only non-success. */
+    function unlReport(): UNLReport | undefined;
     /**
      * Host-backed ledger object. Outer `HostResult` is existence; field
      * reads on the handle are crossings.
@@ -2872,8 +2881,9 @@ declare global {
   namespace hook {
     /** Hook account for this invocation; provider construction is total. */
     function account(): AccountID;
-    function hash(): HostResult<Hash256>;
-    function position(): HostResult<number>;
+    /** Hash and chain position of the executing Hook: total invocation facts. */
+    function hash(): Hash256;
+    function position(): number;
     function mode(): HookExecutionMode;
     function hashAt(position: number): HostResult<Hash256 | undefined>;
     /**

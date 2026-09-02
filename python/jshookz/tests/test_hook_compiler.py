@@ -113,9 +113,7 @@ def test_exact_v1_rejects_unearned_or_structural_foreign_state_surface(
     statement: str,
 ):
     source = tmp_path / "foreign-state-red.hook.ts"
-    source.write_text(
-        f"export function main():never{{{statement}accept();}}"
-    )
+    source.write_text(f"export function main():never{{{statement}accept();}}")
 
     with pytest.raises(RuntimeError, match="TypeScript compilation failed"):
         compile_hook(source)
@@ -126,8 +124,8 @@ def test_exact_v1_hook_ledger_contract_is_typed(tmp_path: Path):
     source.write_text(
         """
         export function main(): never {
-          const transactionId: HostResult<Hash256> = otxn.id();
-          const flaggedTransactionId: HostResult<Hash256> = otxn.id(1);
+          const transactionId: Hash256 = otxn.id();
+          const flaggedTransactionId: Hash256 = otxn.id(1);
           const raw: ParseResult<LedgerKeylet> = LedgerKeylet.fromRaw(
             new Uint8Array(34),
           );
@@ -149,8 +147,7 @@ def test_exact_v1_hook_ledger_contract_is_typed(tmp_path: Path):
           );
           const digest: Hash256 = util.sha512h(new Uint8Array([1, 2, 3]));
 
-          rollback.onFail(transactionId);
-          rollback.onFail(flaggedTransactionId);
+          void transactionId.equals(flaggedTransactionId);
           if (!raw.ok) rollback(raw.error.issue);
           const rawKeylet = raw.value;
           void rawKeylet.type;
@@ -166,13 +163,15 @@ def test_exact_v1_hook_ledger_contract_is_typed(tmp_path: Path):
     assert compile_hook(source).bytecode
 
 
-def test_exact_v1_otxn_id_remains_fallible(tmp_path: Path):
-    source = tmp_path / "otxn-id-is-not-direct.hook.ts"
+def test_exact_v1_otxn_id_is_total(tmp_path: Path):
+    # A Hook always has an originating id, so the value is direct; the old
+    # Result-shaped reading must no longer typecheck.
+    source = tmp_path / "otxn-id-is-not-a-result.hook.ts"
     source.write_text(
         """
         export function main(): never {
-          const transactionId: Hash256 = otxn.id();
-          trace("transaction id", transactionId);
+          const transactionId: HostResult<Hash256> = otxn.id();
+          rollback.onFail(transactionId);
           return accept();
         }
         """
@@ -196,9 +195,7 @@ def test_exact_v1_does_not_publish_raw_or_batch_facades(
     statement: str,
 ):
     source = tmp_path / "ledger-surface-red.hook.ts"
-    source.write_text(
-        f"export function main():never{{{statement}return accept();}}"
-    )
+    source.write_text(f"export function main():never{{{statement}return accept();}}")
 
     with pytest.raises(RuntimeError, match="TypeScript compilation failed"):
         compile_hook(source)
@@ -294,9 +291,7 @@ def test_default_v1_declarations_reject_unearned_record_surface(
     tmp_path: Path, statement: str
 ):
     source = tmp_path / "future-record-api.hook.ts"
-    source.write_text(
-        f"export function main():never{{{statement}accept();}}"
-    )
+    source.write_text(f"export function main():never{{{statement}accept();}}")
 
     with pytest.raises(RuntimeError, match="TypeScript compilation failed"):
         compile_hook(source)
@@ -724,9 +719,7 @@ def test_accept_require_assertion_narrows_instanceof_condition(tmp_path: Path):
     declarations = tmp_path / "without-accept-require-assertion.d.ts"
     projected = XAHAU_V1_HOOKS_API_DECLARATIONS.read_text()
     assert "): asserts condition;" in projected
-    declarations.write_text(projected.replace(
-        "): asserts condition;", "): void;", 1
-    ))
+    declarations.write_text(projected.replace("): asserts condition;", "): void;", 1))
     with pytest.raises(RuntimeError, match="Type 'Transaction' is missing"):
         _typescript_to_javascript(source, declarations=declarations)
 
@@ -2057,7 +2050,7 @@ def test_compiler_bundles_static_relative_helper_import(
     )
     compiled = compile_hook(source)
 
-    assert "from \"./helper\"" not in compiled.javascript
+    assert 'from "./helper"' not in compiled.javascript
     host = WasmHost(wasm_path=XAHAU_HOOK_PROVIDER_WASM)
     host.init()
     try:

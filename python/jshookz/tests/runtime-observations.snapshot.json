@@ -20,7 +20,7 @@
       "static_protocol": 31540
     },
     "sealed_provider_nominal_matrix": {
-      "gas_used": 11754740,
+      "gas_used": 11754073,
       "host_work_used": 0,
       "result_value": "[]"
     }

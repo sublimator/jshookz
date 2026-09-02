@@ -169,19 +169,24 @@ js_otxn_id(JSContext *ctx, JSValueConst, int argc, JSValueConst *argv)
         JS_ToUint32(ctx, &flags, argv[0]) < 0)
         return JS_EXCEPTION;
 
+    // Total, like otxn.type(): an executing Hook always has an originating
+    // id, so a negative host status is an invariant violation, not data.
     std::uint8_t bytes[32];
     std::int64_t const result = hook_otxn_id(
         static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(bytes)),
         sizeof(bytes),
         flags);
     if (result < 0)
-        return host_failure(ctx, result);
+        return JS_ThrowInternalError(
+            ctx,
+            "otxn.id: host violated total invocation fact with %lld",
+            (long long)result);
     if (result != static_cast<std::int64_t>(sizeof(bytes)))
         return JS_ThrowInternalError(
             ctx,
             "otxn.id: host returned %lld, expected 32",
             (long long)result);
-    return host_success(ctx, makeHash256(ctx, bytes, sizeof(bytes)));
+    return makeHash256(ctx, bytes, sizeof(bytes));
 }
 
 JSValue

@@ -35,11 +35,7 @@ PAYMENT = bytes.fromhex(
     "8314841F44689750ED44FFB6A21950C8F29403915DFD"
 )
 ACCOUNT_SET = bytes.fromhex(
-    "120003"
-    "2400000001"
-    "68400000000000000A"
-    "7300"
-    "8114B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+    "120003240000000168400000000000000A73008114B5F762798A53D543A014CAF8B297CFF8F2F937E8"
 )
 PAYMENT_WITHOUT_DESTINATION = bytes.fromhex(
     "120000"
@@ -237,11 +233,8 @@ def test_otxn_id_preserves_exact_hash_and_accepts_flags() -> None:
     runner.runtime.otxn_id_val = bytes.fromhex("A1" * 32)
     source = """
       export function main(): never {
-        const plain = rollback.onFail(otxn.id(), "cannot read transaction ID");
-        const flagged = rollback.onFail(
-          otxn.id(1),
-          "cannot read flagged transaction ID",
-        );
+        const plain: Hash256 = otxn.id();
+        const flagged: Hash256 = otxn.id(1);
         if (plain.toHex() !== "A1".repeat(32) || !plain.equals(flagged)) {
           rollback("originating transaction ID mismatch", 1);
         }
@@ -258,31 +251,21 @@ def test_otxn_id_preserves_exact_hash_and_accepts_flags() -> None:
     assert result.call_log[1].args[-1] == 1
 
 
-def test_otxn_id_preserves_negative_host_status() -> None:
+def test_negative_otxn_id_is_an_execution_invariant_failure() -> None:
+    # otxn.id() is total, like otxn.type(): an executing Hook always has an
+    # originating id, so a negative host status is a fault, not contract data.
     runner = _runner(PAYMENT)
     runner.runtime.handlers["otxn_id"] = lambda *_args: hookapi.INVALID_ARGUMENT
-    source = """
-      function expectHostFailure<T>(result: HostResult<T>): HostError {
-        if (result.ok) {
-          rollback("expected otxn_id host failure", 1);
-        } else {
-          return result.error;
-        }
-      }
 
-      export function main(): never {
-        const error = expectHostFailure(otxn.id());
-        if (error.code !== HookReturnCode.INVALID_ARGUMENT) {
-          rollback("otxn_id host status changed", 1);
-        }
-        accept("otxn_id host status preserved", 0);
-      }
-    """
+    result = runner.run_typescript(
+        "export function main(): never { void otxn.id(); accept('no'); }"
+    )
 
-    result = runner.run_typescript(source)
-
-    assert result.accepted, result.error
-    assert _call_names(result) == ["otxn_id", "accept"]
+    assert not result.accepted
+    assert not result.rejected
+    assert result.error is not None
+    assert "host violated total invocation fact with -7" in str(result.error)
+    assert _call_names(result) == ["otxn_id"]
 
 
 def test_otxn_id_rejects_malformed_positive_host_length() -> None:
@@ -290,9 +273,7 @@ def test_otxn_id_rejects_malformed_positive_host_length() -> None:
     runner.runtime.handlers["otxn_id"] = lambda *_args: 31
 
     result = runner.run_typescript(
-        "export function main(): never { "
-        "rollback.onFail(otxn.id(), 'cannot read transaction ID'); "
-        "accept('no'); }"
+        "export function main(): never { void otxn.id(); accept('no'); }"
     )
 
     assert result.error is not None
@@ -430,9 +411,7 @@ def test_measurement_failure_clears_its_returned_slot() -> None:
 
 def test_short_bulk_copy_frees_guest_bytes_and_clears_copy_slot() -> None:
     runner = _runner(PAYMENT)
-    runner.runtime.handlers["slot"] = (
-        lambda _output, capacity, _slot: capacity - 1
-    )
+    runner.runtime.handlers["slot"] = lambda _output, capacity, _slot: capacity - 1
 
     result = runner.run_typescript(
         "export function main(): never { otxn.object(); accept('no', 1); }"

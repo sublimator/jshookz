@@ -1798,7 +1798,12 @@ declare global {
      */
     function object(): Transaction;
     function type(): TransactionType;
-    function id(flags?: number): HostResult<Hash256>;
+    /**
+     * Originating transaction id. Total: an executing Hook always has one,
+     * exactly as `otxn.object()` and `otxn.type()` do; a negative raw host
+     * status is an execution invariant failure and raises.
+     */
+    function id(flags?: number): Hash256;
     /**
      * Transaction-carried hook parameters (`otxn_param`). Names and values
      * are blobs. Absent and empty are the same host status (`DOESNT_EXIST`)
