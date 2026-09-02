@@ -34,6 +34,9 @@ HEADER_SIZE = 80
 # XQJS has its own bounded CreateCode budget. Legacy Wasm keeps the original
 # 0xFFFF limit in xahaud; the JavaScript envelope may use the existing larger
 # SetHook transaction allowance without inheriting that Wasm-era ceiling.
+# This cap was sized against unstripped bytecode, which still carried the
+# source text and debug tables (82 KB for the largest Hook; about 29 KB
+# stripped). Revisit once release packaging strips; it may fit 0xFFFF again.
 MAX_CREATE_CODE_SIZE = 128 * 1024
 MAX_PAYLOAD_SIZE = MAX_CREATE_CODE_SIZE - HEADER_SIZE
 IDENTITY_SIZE = 32

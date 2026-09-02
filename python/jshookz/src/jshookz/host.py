@@ -636,6 +636,11 @@ class WasmHost:
         )
         return HookModuleValidation(valid=False, error=error)
 
+    # The provider currently emits unstripped bytecode: instructions plus
+    # debug tables plus the full source text, roughly 2.8x the instructions
+    # alone. A debug/release switch belongs here, set on the provider before
+    # each compile: keep the debug tables for hostem diagnostics, strip
+    # everything for on-ledger packaging.
     def compile_source(self, source: str, *, module: bool = True) -> bytes:
         """Compile source with this exact QuickJS WASM provider.
 

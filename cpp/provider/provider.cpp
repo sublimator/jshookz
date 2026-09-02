@@ -526,6 +526,12 @@ static int32_t compile_source(
         return -1;
     }
 
+    // The runtime's strip flags are never set, so this emits the function
+    // source text and the debug tables (pc-to-line, names) along with the
+    // instructions. Measured on the largest packaged Hook: 82,446 bytes as
+    // emitted here, 37,397 with source stripped, 29,475 with debug stripped,
+    // for a 56,687-byte bundle. Release packaging should strip everything via
+    // JS_SetStripInfo; a debug build keeps the tables so errors carry lines.
     size_t out_size;
     bytecode_buf = JS_WriteObject(
         ctx, &out_size, object.get(), JS_WRITE_OBJ_BYTECODE);

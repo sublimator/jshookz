@@ -667,6 +667,9 @@ def _compile_already_checked_javascript(
     host = WasmHost(wasm_path=provider)
     host.init()
     try:
+        # Unstripped today: the bytecode carries the bundle's source text and
+        # debug tables. Packaging for the ledger should compile in release
+        # mode (everything stripped); hostem should keep the debug tables.
         bytecode = host.compile_source(javascript, module=True)
         validation = None if emit_malformed else host.validate_hook_bytecode(bytecode)
     finally:
