@@ -672,7 +672,11 @@ class WasmHost:
             self._safe_wasm_free(ptr)
 
     def destroy(self):
-        """Clean up QuickJS and release the complete Wasmtime instance graph."""
+        """Clean up QuickJS and release this host's Store, Linker, and instance.
+
+        The Engine and compiled Module are shared with other hosts and outlive
+        this one; only this host's references to them are dropped.
+        """
         if self._destroyed:
             return
         if self._metered and self.store.get_fuel() < _CLEANUP_FUEL:
