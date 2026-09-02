@@ -125,7 +125,6 @@ def test_exact_v1_hook_ledger_contract_is_typed(tmp_path: Path):
         """
         export function main(): never {
           const transactionId: Hash256 = otxn.id();
-          const flaggedTransactionId: Hash256 = otxn.id(1);
           const raw: ParseResult<LedgerKeylet> = LedgerKeylet.fromRaw(
             new Uint8Array(34),
           );
@@ -147,7 +146,7 @@ def test_exact_v1_hook_ledger_contract_is_typed(tmp_path: Path):
           );
           const digest: Hash256 = util.sha512h(new Uint8Array([1, 2, 3]));
 
-          void transactionId.equals(flaggedTransactionId);
+          void transactionId.toHex();
           if (!raw.ok) rollback(raw.error.issue);
           const rawKeylet = raw.value;
           void rawKeylet.type;
@@ -185,6 +184,7 @@ def test_exact_v1_otxn_id_is_total(tmp_path: Path):
     "statement",
     [
         "ledger.lookupMany([]);",
+        "otxn.id(1);",
         "util.keylet.raw(new Uint8Array(34));",
         "const value: Fees = util.decodeObject(new Uint8Array()); void value;",
         "const value: XFLWord = 0n; void value;",

@@ -162,20 +162,22 @@ js_otxn_type(JSContext *ctx, JSValueConst this_val,
 
 JSValue
 // @binding provider:otxn.id
-js_otxn_id(JSContext *ctx, JSValueConst, int argc, JSValueConst *argv)
+js_otxn_id(JSContext *ctx, JSValueConst, int argc, JSValueConst *)
 {
-    std::uint32_t flags = 0;
-    if (argc > 0 && !JS_IsUndefined(argv[0]) &&
-        JS_ToUint32(ctx, &flags, argv[0]) < 0)
-        return JS_EXCEPTION;
+    if (argc > 0)
+        return JS_ThrowTypeError(ctx, "otxn.id: takes no arguments");
 
+    // Flagless: the raw flags word selects, inside an EmitFailure callback,
+    // between the failed emitted transaction's hash (0, the same transaction
+    // otxn.type() reports there) and the wrapper's own id (nonzero). The
+    // typed API names the former; the latter is a separate, unearned read.
     // Total, like otxn.type(): an executing Hook always has an originating
     // id, so a negative host status is an invariant violation, not data.
     std::uint8_t bytes[32];
     std::int64_t const result = hook_otxn_id(
         static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(bytes)),
         sizeof(bytes),
-        flags);
+        0);
     if (result < 0)
         return JS_ThrowInternalError(
             ctx,
@@ -567,7 +569,7 @@ registerLedger(JSContext *ctx, JSValue global)
             JS_NewCFunction(ctx, js_otxn_type, "type", 0)) < 0)
         return false;
     if (JS_SetPropertyStr(ctx, otxn.get(), "id",
-            JS_NewCFunction(ctx, js_otxn_id, "id", 1)) < 0)
+            JS_NewCFunction(ctx, js_otxn_id, "id", 0)) < 0)
         return false;
     if (JS_SetPropertyStr(ctx, otxn.get(), "param",
             JS_NewCFunction(ctx, js_otxn_param, "param", 2)) < 0)

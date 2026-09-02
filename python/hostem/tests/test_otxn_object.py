@@ -228,14 +228,16 @@ def test_negative_otxn_type_is_an_execution_invariant_failure() -> None:
     assert _call_names(result) == ["otxn_type"]
 
 
-def test_otxn_id_preserves_exact_hash_and_accepts_flags() -> None:
+def test_otxn_id_preserves_exact_hash_and_is_flagless() -> None:
+    # The raw flags word is always 0: inside an EmitFailure callback that is
+    # the failed emitted transaction's hash, the transaction otxn.type()
+    # reports there; the wrapper's own id behind a nonzero flag is not API.
     runner = _runner(PAYMENT)
     runner.runtime.otxn_id_val = bytes.fromhex("A1" * 32)
     source = """
       export function main(): never {
-        const plain: Hash256 = otxn.id();
-        const flagged: Hash256 = otxn.id(1);
-        if (plain.toHex() !== "A1".repeat(32) || !plain.equals(flagged)) {
+        const id: Hash256 = otxn.id();
+        if (id.toHex() !== "A1".repeat(32)) {
           rollback("originating transaction ID mismatch", 1);
         }
         accept("originating transaction ID preserved", 0);
@@ -246,9 +248,8 @@ def test_otxn_id_preserves_exact_hash_and_accepts_flags() -> None:
 
     assert result.accepted, result.error
     assert result.return_msg == b"originating transaction ID preserved"
-    assert _call_names(result) == ["otxn_id", "otxn_id", "accept"]
+    assert _call_names(result) == ["otxn_id", "accept"]
     assert result.call_log[0].args[-1] == 0
-    assert result.call_log[1].args[-1] == 1
 
 
 def test_negative_otxn_id_is_an_execution_invariant_failure() -> None:
