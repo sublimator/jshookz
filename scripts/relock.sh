@@ -71,8 +71,9 @@ step() {
 }
 
 
-# The exported consumer bundle must match a fresh export of the same seal:
-# an edited or stale bundle directory is a red, exactly as a stale pin.
+# The exported consumer bundle must match a fresh export of the same seal,
+# byte for byte and file for file: a stale, hand-edited, or stranger-carrying
+# bundle directory is a red, exactly as a stale pin.
 check_bundles() {
     local product bundle fresh
     for product in provider provider-consensus-entropy; do
@@ -89,10 +90,9 @@ check_bundles() {
                 "$product" >&2
             return 1
         fi
-        if ! cmp -s "$fresh/jshookz_provider.receipt" \
-                "$bundle/jshookz_provider.receipt"; then
+        if ! diff -rq "$fresh" "$bundle" >&2; then
             rm -rf "$fresh"
-            printf 'exported bundle for %s is stale; run jshookz build %s\n' \
+            printf 'exported bundle for %s differs; run jshookz build %s\n' \
                 "$product" "$product" >&2
             return 1
         fi

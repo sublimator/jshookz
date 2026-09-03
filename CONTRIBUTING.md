@@ -48,7 +48,7 @@ The API artifact manifest is checked, not rewritten, because the
 declarations it hashes come from the projection tool.
 
 Check mode also re-exports each built product's consumer bundle into a
-temporary directory under `build/` and compares the receipt with
+temporary directory under `build/` and diffs every file against
 `build/xahau-<product>-bundle/`, so a stale or hand-edited bundle is a red
 like any stale pin.
 
