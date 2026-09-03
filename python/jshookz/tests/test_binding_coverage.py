@@ -26,7 +26,7 @@ _TAG = re.compile(
 _HOST_CALL = re.compile(r"\b(?:hook_|host_)[A-Za-z]\w*\s*\(")
 _HOOK_IMPORT = re.compile(r'^\s*#\s*include\s*[<"][^>"]*hook_imports\.hpp[>"]')
 _UINT_WIDTHS = ("8", "16", "32", "64")
-PROVIDER_ONLY = frozenset({"CallbackInfo"})
+PROVIDER_ONLY = frozenset({"CallbackInfo", "CallbackInfo.invocationId"})
 _XAHAU_DEFINITIONS = REPO_ROOT / "cpp/x-data/definitions/xahau_definitions.json"
 _PROVIDER_STATIC_POLICY = (
     REPO_ROOT / "cpp/x-data/definitions/provider_static_policy.json"
