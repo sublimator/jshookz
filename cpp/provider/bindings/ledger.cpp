@@ -170,7 +170,7 @@ js_otxn_id(JSContext *ctx, JSValueConst, int argc, JSValueConst *)
     // Flagless: the raw flags word selects, inside an EmitFailure callback,
     // between the failed emitted transaction's hash (0, the same transaction
     // otxn.type() reports there) and the wrapper's own id (nonzero). The
-    // typed API names the former; the latter is a separate, unearned read.
+    // typed API names the former; the latter is CallbackInfo.invocationId.
     // Total, like otxn.type(): an executing Hook always has an originating
     // id, so a negative host status is an invariant violation, not data.
     std::uint8_t bytes[32];

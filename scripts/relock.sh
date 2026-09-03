@@ -70,6 +70,36 @@ step() {
     printf '\n== %s\n' "$1"
 }
 
+
+# The exported consumer bundle must match a fresh export of the same seal:
+# an edited or stale bundle directory is a red, exactly as a stale pin.
+check_bundles() {
+    local product bundle fresh
+    for product in provider provider-consensus-entropy; do
+        bundle="build/xahau-$product-bundle"
+        [[ -s "$bundle/jshookz_provider.receipt" ]] || {
+            printf 'no exported bundle for %s; run jshookz build %s\n' \
+                "$product" "$product" >&2
+            return 1
+        }
+        fresh="$(mktemp -d "build/relock-bundle.XXXXXX")"
+        if ! "$jshookz" export-bundle "$product" -o "$fresh" >/dev/null 2>&1; then
+            rm -rf "$fresh"
+            printf 'export of %s fails; the seal is stale or incoherent\n' \
+                "$product" >&2
+            return 1
+        fi
+        if ! cmp -s "$fresh/jshookz_provider.receipt" \
+                "$bundle/jshookz_provider.receipt"; then
+            rm -rf "$fresh"
+            printf 'exported bundle for %s is stale; run jshookz build %s\n' \
+                "$product" "$product" >&2
+            return 1
+        fi
+        rm -rf "$fresh"
+    done
+}
+
 if [[ "$mode" == check ]]; then
     failed=0
     gate() {
@@ -86,6 +116,7 @@ if [[ "$mode" == check ]]; then
     gate "raw Hook ABI" "$hostem_python" xahau/tools/generate_raw_hook_abi.py --check
     gate "provider identity" scripts/provider-identity.py check
     gate "API artifacts" python3 scripts/check-api-artifacts.py
+    gate "consumer bundles" check_bundles
     gate "runtime observation snapshot" "$jshookz_pytest" -q \
         -o cache_dir=build/pytest-cache/relock \
         -k "$snapshot_select" "${snapshot_tests[@]}"

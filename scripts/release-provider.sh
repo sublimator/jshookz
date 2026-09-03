@@ -192,7 +192,7 @@ fi
     fail 'refusing to publish: OPERATOR_EXPLICITLY_SAID_PUBLISH=true was not set by the operator'
 
 gh release create "$tag" --repo "$repo" --target "$head_sha" \
-    --title "$product $wasm_sha" \
+    --title "$product receipt ${receipt_sha:0:16} wasm ${wasm_sha:0:16}" \
     --notes-file "$work/RELEASE_BODY.json" \
     "${assets[@]}"
 

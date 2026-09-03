@@ -47,6 +47,11 @@ scripts/relock.sh --check  # the same gates read-only, as CI sees them
 The API artifact manifest is checked, not rewritten, because the
 declarations it hashes come from the projection tool.
 
+Check mode also re-exports each built product's consumer bundle into a
+temporary directory under `build/` and compares the receipt with
+`build/xahau-<product>-bundle/`, so a stale or hand-edited bundle is a red
+like any stale pin.
+
 ## Raw Hook ABI and hostem
 
 ```bash

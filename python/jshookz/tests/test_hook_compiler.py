@@ -180,6 +180,18 @@ def test_exact_v1_otxn_id_is_total(tmp_path: Path):
         compile_hook(source)
 
 
+def test_exact_v1_otxn_id_takes_no_arguments(tmp_path: Path):
+    # The raw flag word is not API; the compiler rejects it before the runtime
+    # TypeError (pinned in hostem) can.
+    source = tmp_path / "otxn-id-flag.hook.ts"
+    source.write_text(
+        "export function main(): never { void otxn.id(1); return accept(); }"
+    )
+
+    with pytest.raises(RuntimeError, match="TypeScript compilation failed"):
+        compile_hook(source)
+
+
 def test_exact_v1_callback_info_carries_the_invocation_id(tmp_path: Path):
     source = tmp_path / "callback-invocation-id.hook.ts"
     source.write_text(
@@ -202,7 +214,6 @@ def test_exact_v1_callback_info_carries_the_invocation_id(tmp_path: Path):
     "statement",
     [
         "ledger.lookupMany([]);",
-        "otxn.id(1);",
         "util.keylet.raw(new Uint8Array(34));",
         "const value: Fees = util.decodeObject(new Uint8Array()); void value;",
         "const value: XFLWord = 0n; void value;",

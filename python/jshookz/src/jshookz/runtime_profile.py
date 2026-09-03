@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import copy
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -285,17 +286,20 @@ def _wasm_stack_pointer_initial(wasm: bytes) -> int:
 # imports and exports. It is a pure function of the bytes and every profiled
 # host verifies the lock, so memoize it by digest.
 _SURFACE_CACHE: dict[str, dict[str, Any]] = {}
+_SURFACE_LOCK = threading.Lock()
 
 
 def _wasm_surface(wasm_path: str | Path) -> dict[str, Any]:
     path = Path(wasm_path)
     wasm = path.read_bytes()
     digest = _sha256(wasm)
-    cached = _SURFACE_CACHE.get(digest)
+    with _SURFACE_LOCK:
+        cached = _SURFACE_CACHE.get(digest)
     if cached is not None:
         return copy.deepcopy(cached)
     surface = _uncached_wasm_surface(wasm)
-    _SURFACE_CACHE[digest] = copy.deepcopy(surface)
+    with _SURFACE_LOCK:
+        _SURFACE_CACHE.setdefault(digest, copy.deepcopy(surface))
     return surface
 
 
