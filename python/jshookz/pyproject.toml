@@ -35,6 +35,9 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 timeout = 60
+# Charge the timeout to test bodies only. Session fixtures that build a
+# provider variant take longer than 60s at one build job on the CI runner.
+timeout_func_only = true
 # Source-level provider mutants rebuild and reseal the provider per mutant.
 # They run in the scheduled CI lane (`pytest -m mutation`), not by default.
 addopts = "-m 'not mutation'"
