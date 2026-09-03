@@ -99,7 +99,10 @@ scripts/provider-identity.py check >/dev/null ||
 
 # --- assets: exported fresh, validated by the exporter -----------------------
 
-work="$(mktemp -d "${TMPDIR:-/tmp}/release-provider.XXXXXX")"
+# Stage inside the repository (gitignored build/) so cleanup is never blocked
+# by a guard on deletions outside the tree.
+mkdir -p build
+work="$(mktemp -d "$repo_root/build/release-provider.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 stage="$work/assets"
 mkdir "$stage"
